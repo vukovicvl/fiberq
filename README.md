@@ -1,4 +1,4 @@
 fiberq
 
 Open-Source Fiber Network Design Plugin for QGIS  
-Contact: vukovicvl@fiberq.net
+Contact: vukovicvlmma@gmail.com
