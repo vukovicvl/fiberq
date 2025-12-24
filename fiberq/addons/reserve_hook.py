@@ -8,8 +8,8 @@ from qgis.core import (
 import os
 
 class ReserveHook(QObject):
-    """Prati sloj 'Opticke_rezerve' i ažurira slack_m/total_len_m na kablovima,
-    i automatski postavlja simboliku (završna = C, prolazna = S ili SVG ako postoji)."""
+    """Monitors 'Opticke_rezerve' layer and updates slack_m/total_len_m on cables,
+    and automatically sets symbolization (terminal = C, pass-through = S or SVG if exists)."""
     def __init__(self, iface):
         super().__init__(iface.mainWindow())
         self.iface = iface
@@ -23,7 +23,7 @@ class ReserveHook(QObject):
             return
         for l in QgsProject.instance().mapLayers().values():
             try:
-                if isinstance(l, QgsVectorLayer) and l.geometryType() == QgsWkbTypes.PointGeometry and l.name().lower().startswith('opticke_rezerve'):
+                if isinstance(l, QgsVectorLayer) and l.geometryType() == QgsWkbTypes.PointGeometry and l.name().lower().startswith('optical_reserves'):
                     self._connect_layer(l)
                     self._connected = True
             except Exception:
@@ -32,7 +32,7 @@ class ReserveHook(QObject):
     def _layers_added(self, layers):
         try:
             for l in layers:
-                if isinstance(l, QgsVectorLayer) and l.geometryType() == QgsWkbTypes.PointGeometry and l.name().lower().startswith('opticke_rezerve'):
+                if isinstance(l, QgsVectorLayer) and l.geometryType() == QgsWkbTypes.PointGeometry and l.name().lower().startswith('optical_reserves'):
                     self._connect_layer(l)
         except Exception:
             pass
@@ -94,8 +94,8 @@ class ReserveHook(QObject):
                 s.setSizeUnit(QgsUnitTypes.RenderMapUnits)
             return s
         cats = [
-            QgsRendererCategory('zavrsna', _svg_symbol('map_rezerva_c.svg'), 'Završna'),
-            QgsRendererCategory('prolazna', _svg_symbol('map_rezerva_s.svg'), 'Prolazna'),
+            QgsRendererCategory('zavrsna', _svg_symbol('map_rezerva_c.svg'), 'Terminal'),
+            QgsRendererCategory('prolazna', _svg_symbol('map_rezerva_s.svg'), 'Pass-through'),
         ]
         r = QgsCategorizedSymbolRenderer(field, cats)
         rez.setRenderer(r)
@@ -214,7 +214,7 @@ class ReserveHook(QObject):
         # Sum slack from all reserves for this cable
         rez = None
         for l in proj.mapLayers().values():
-            if isinstance(l, QgsVectorLayer) and l.name().lower().startswith('opticke_rezerve'):
+            if isinstance(l, QgsVectorLayer) and l.name().lower().startswith('optical_reserves'):
                 rez = l; break
         if rez is None:
             return
