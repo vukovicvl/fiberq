@@ -1,0 +1,5 @@
+# Testing dependencies for FiberQ QGIS plugin
+pytest>=7.0.0
+pytest-qgis>=2.0.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
