@@ -869,7 +869,7 @@ class DuctingUI:
         self.menu.setToolTipsVisible(True)
 
         act = QAction(_load_icon('ic_place_manholes.svg'), "Placing manholes", core.iface.mainWindow())
-        act.triggered.connect(core.open_okno_workflow)
+        act.triggered.connect(core.open_manhole_workflow)
         self.menu.addAction(act)
         core.actions.append(act)
 
@@ -1480,7 +1480,7 @@ class StuboviPlugin:
 
     # === OPTIČKE REZERVE: sloj i logika ===
 
-    def _set_rezerve_layer_alias(self, layer):
+    def _set_slack_layer_alias(self, layer):
         """Prikaži sloj 'Opticke_rezerve' kao 'Optical slack' u Layers panelu."""
         try:
             from qgis.core import QgsProject
@@ -1492,7 +1492,7 @@ class StuboviPlugin:
             # Ako nešto zezne (npr. layerTreeRoot još nije spreman), samo preskoči
             pass
 
-    def _apply_rezerve_field_aliases(self, layer):
+    def _apply_slack_field_aliases(self, layer):
         """Podesi engleske alias nazive polja + ValueMap (EN prikaz, SR vrednost u bazi)."""
         alias_map = {
             "tip": "Type",
@@ -1554,8 +1554,8 @@ class StuboviPlugin:
                     and lyr.name() in ("Opticke_rezerve", "Optical slack")
                 ):
                     # primeni engleske alias nazive i englesko ime sloja u panelu
-                    self._apply_rezerve_field_aliases(lyr)
-                    self._set_rezerve_layer_alias(lyr)
+                    self._apply_slack_field_aliases(lyr)
+                    self._set_slack_layer_alias(lyr)
                     return lyr
             except Exception:
                 pass
@@ -1575,18 +1575,18 @@ class StuboviPlugin:
         ])
         vl.updateFields()
         # primeni alias nazive i englesko ime sloja
-        self._apply_rezerve_field_aliases(vl)
-        self._set_rezerve_layer_alias(vl)
+        self._apply_slack_field_aliases(vl)
+        self._set_slack_layer_alias(vl)
         QgsProject.instance().addMapLayer(vl)
         try:
-            self._stilizuj_rezerve_layer(vl)
+            self._stylize_slack_layer(vl)
         except Exception:
             pass
         return vl
 
 
     
-    def _stilizuj_rezerve_layer(self, vl):
+    def _stylize_slack_layer(self, vl):
         """
         Jednostavan stil: sve optičke rezerve su male crvene tačke.
         Nema više C/S font markera, tako da i posle reload-a ostaju samo tačke.
@@ -3024,7 +3024,7 @@ class StuboviPlugin:
             pass
 
     
-    def _set_okna_layer_alias(self, layer: QgsVectorLayer) -> None:
+    def _set_manholes_layer_alias(self, layer: QgsVectorLayer) -> None:
         """Postavi user-visible naziv sloja za manholes."""
         try:
             proj = QgsProject.instance()
@@ -3036,7 +3036,7 @@ class StuboviPlugin:
             pass
 
 
-    def _apply_okna_field_aliases(self, layer: QgsVectorLayer) -> None:
+    def _apply_manholes_field_aliases(self, layer: QgsVectorLayer) -> None:
         """Engleski aliasi za polja okna."""
         try:
             alias_map = {
@@ -3320,7 +3320,7 @@ class StuboviPlugin:
                 or {"broj_okna", "tip_okna"}.issubset(fset)
             ):
                 try:
-                    self._apply_okna_field_aliases(layer)    # EN user view
+                    self._apply_manholes_field_aliases(layer)    # EN user view
                 except Exception:
                     pass
                 _set_custom_name(layer, "Manholes")
@@ -3887,7 +3887,7 @@ class StuboviPlugin:
         except Exception:
             pass
 
-    def razgrani_kablove_offset(self):
+    def branch_cables_offset(self):
         """
         Handler za dugme 'Branch cables (offset)'.
         Računa branch_index i primenjuje offset za aktivni line sloj.
@@ -5281,7 +5281,7 @@ class StuboviPlugin:
 
 
     # === OKNA (Kanalizacija) ===
-    def open_okno_workflow(self):
+    def open_manhole_workflow(self):
         """Sekvenca: 1) izbor tipa okna -> 2) unos podataka -> 3) klik na mapu i polaganje."""
         try:
             # 1) izbor tipa
@@ -5304,16 +5304,16 @@ class StuboviPlugin:
         except Exception as e:
             QMessageBox.critical(self.iface.mainWindow(), "Manhole", f"Error: {e}")
 
-    def _ensure_okna_layer(self):
+    def _ensure_manholes_layer(self):
         """Vrati (kreiraj ako treba) sloj za okna / manholes."""
         for lyr in QgsProject.instance().mapLayers().values():
             try:
                 name = lyr.name().strip()
                 if name in ("OKNA", "Manholes") and lyr.geometryType() == QgsWkbTypes.PointGeometry:
                     try:
-                        self._apply_okna_style(lyr)
-                        self._apply_okna_field_aliases(lyr)
-                        self._set_okna_layer_alias(lyr)
+                        self._apply_manholes_style(lyr)
+                        self._apply_manholes_field_aliases(lyr)
+                        self._set_manholes_layer_alias(lyr)
                         self._move_layer_to_top(lyr)
                     except Exception:
                         pass
@@ -5348,9 +5348,9 @@ class StuboviPlugin:
         pr.addAttributes(fields)
         layer.updateFields()
         QgsProject.instance().addMapLayer(layer, True)
-        self._apply_okna_style(layer)
-        self._apply_okna_field_aliases(layer)
-        self._set_okna_layer_alias(layer)
+        self._apply_manholes_style(layer)
+        self._apply_manholes_field_aliases(layer)
+        self._set_manholes_layer_alias(layer)
         self._move_layer_to_top(layer)
         return layer
 
@@ -5399,7 +5399,7 @@ class StuboviPlugin:
     
 
     
-    def _apply_okna_style(self, layer):
+    def _apply_manholes_style(self, layer):
         """OKNA: kvadrat u map jedinicama (metri) + fiksna oznaka "KO <broj>"
         koja je UVEK IZNAD simbola i ima konstantnu veličinu (ne menja se pri zumiranju).
         - marker: RenderMetersInMapUnits (ponaša se kao stub pri zumiranju)
@@ -5591,7 +5591,7 @@ class StuboviPlugin:
         except Exception:
             pass
 
-    def _ensure_cevi_group(self):
+    def _ensure_ducts_group(self):
         """Vrati ili kreiraj grupu za cevi u legendi.
         Interno i dalje koristimo naziv 'CEVI', ali korisniku prikažemo 'Pipes'.
         """
@@ -5716,7 +5716,7 @@ class StuboviPlugin:
         # Dodaj u grupu CEVI/Pipes
         prj.addMapLayer(layer, False)
         try:
-            group = self._ensure_cevi_group()
+            group = self._ensure_ducts_group()
             group.addLayer(layer)
         except Exception:
             prj.addMapLayer(layer, True)
@@ -5743,11 +5743,11 @@ class StuboviPlugin:
         return layer
 
 
-    def _ensure_pe_cev_layer(self):
+    def _ensure_pe_duct_layer(self):
         # Interno ime sloja ostaje 'PE cevi'
         return self._ensure_pipe_layer("PE cevi")
 
-    def _ensure_prelazna_cev_layer(self):
+    def _ensure_transition_duct_layer(self):
         # Interno ime sloja ostaje 'Prelazne cevi'
         return self._ensure_pipe_layer("Prelazne cevi")
 
@@ -10358,7 +10358,7 @@ class ReservePlaceTool(QgsMapTool):
         if hasattr(self, 'action_branch'):
             add_shortcut('Ctrl+G', self.action_branch.trigger)
         elif hasattr(self, 'razgrani_kablove_offset'):
-            add_shortcut('Ctrl+G', self.razgrani_kablove_offset)
+            add_shortcut('Ctrl+G', self.branch_cables_offset)
 
         if hasattr(self, 'action_bom'):
             add_shortcut('Ctrl+B', self.action_bom.trigger)
