@@ -505,10 +505,10 @@ ELEMENT_DEFS = [
 ]
 NASTAVAK_DEF = {"name": "Joint Closures", "symbol": {"name": "diamond", "color": "red", "size": "5", "size_unit": "MapUnit"}}
 # === UI GROUPS (modular menus/buttons) ===
-class TrasiranjeUI:
+class RoutingUI:
     """
-    Grupise sve akcije vezane za trasiranje u jedan drop-down.
-    Ne menja logiku; samo kreira akcije/meni i povezuje na postojece metode core-a.
+    Groups all routing-related actions into a single drop-down menu.
+    Does not change logic; only creates actions/menu and connects to existing core methods.
     """
     def __init__(self, core):
         from qgis.PyQt.QtWidgets import QMenu, QToolButton
@@ -525,52 +525,52 @@ class TrasiranjeUI:
 
         # Kreiraj trasu
         icon_trasa = _load_icon('ic_create_route.svg')
-        core.action_trasa = QAction(icon_trasa, 'Create route', core.iface.mainWindow())
-        core.action_trasa.triggered.connect(core.kreiraj_trasu)
-        core.actions.append(core.action_trasa)
-        self.menu.addAction(core.action_trasa)
+        core.action_route = QAction(icon_trasa, 'Create route', core.iface.mainWindow())
+        core.action_route.triggered.connect(core.create_route)
+        core.actions.append(core.action_route)
+        self.menu.addAction(core.action_route)
 
         # Spoji selektovane trase
         icon_spoji = _load_icon('ic_merge_selected_routes.svg')
-        core.action_spoji = QAction(icon_spoji, 'Merge selected routes', core.iface.mainWindow())
-        core.action_spoji.triggered.connect(core.spoji_sve_trase)
-        core.actions.append(core.action_spoji)
-        self.menu.addAction(core.action_spoji)
+        core.action_merge = QAction(icon_spoji, 'Merge selected routes', core.iface.mainWindow())
+        core.action_merge.triggered.connect(core.merge_all_routes)
+        core.actions.append(core.action_merge)
+        self.menu.addAction(core.action_merge)
 
         # Uvezi trasu iz fajla
         icon_import = _load_icon('ic_import_route_from_file.svg')
         core.action_import = QAction(icon_import, 'Import route from file', core.iface.mainWindow())
-        core.action_import.triggered.connect(core.uvezi_trasu_iz_fajla)
+        core.action_import.triggered.connect(core.import_route_from_file)
         core.actions.append(core.action_import)
         self.menu.addAction(core.action_import)
 
         # Dodaj lomnu tačku
         icon_lomna = _load_icon('ic_add_breakpoint.svg')
-        core.action_lomna = QAction(icon_lomna, 'Add breakpoint', core.iface.mainWindow())
-        core.action_lomna.triggered.connect(core.activate_lomna_tool)
-        core.actions.append(core.action_lomna)
-        self.menu.addAction(core.action_lomna)
+        core.action_breakpoint = QAction(icon_lomna, 'Add breakpoint', core.iface.mainWindow())
+        core.action_breakpoint.triggered.connect(core.activate_lomna_tool)
+        core.actions.append(core.action_breakpoint)
+        self.menu.addAction(core.action_breakpoint)
 
         # Kreiraj ručno trasu
         icon_rucna = _load_icon('ic_create_route_manually.svg')
-        core.action_rucna = QAction(icon_rucna, 'Create a route manually', core.iface.mainWindow())
-        core.action_rucna.triggered.connect(core.activate_rucna_trasu_tool)
-        core.actions.append(core.action_rucna)
-        self.menu.addAction(core.action_rucna)
+        core.action_manual = QAction(icon_rucna, 'Create a route manually', core.iface.mainWindow())
+        core.action_manual.triggered.connect(core.activate_rucna_trasu_tool)
+        core.actions.append(core.action_manual)
+        self.menu.addAction(core.action_manual)
 
         # Izmeni tip trase
         icon_edit_tip_trase = _load_icon('ic_change_route_type.svg')
         core.action_edit_tip_trase = QAction(icon_edit_tip_trase, 'Change route type', core.iface.mainWindow())
-        core.action_edit_tip_trase.triggered.connect(core.izmeni_tip_trase)
+        core.action_edit_tip_trase.triggered.connect(core.change_route_type)
         core.actions.append(core.action_edit_tip_trase)
         self.menu.addAction(core.action_edit_tip_trase)
 
         # Korekcija trase
         icon_korekcija = _load_icon('ic_route_correction.svg')
-        core.action_korekcija = QAction(icon_korekcija, 'Route correction', core.iface.mainWindow())
-        core.action_korekcija.triggered.connect(core.proveri_konzistentnost)
-        core.actions.append(core.action_korekcija)
-        self.menu.addAction(core.action_korekcija)
+        core.action_correction = QAction(icon_korekcija, 'Route correction', core.iface.mainWindow())
+        core.action_correction.triggered.connect(core.proveri_konzistentnost)
+        core.actions.append(core.action_correction)
+        self.menu.addAction(core.action_correction)
 
         # Dugme
         self.button = QToolButton()
@@ -762,9 +762,9 @@ class OpenDrawingMapTool(QgsMapToolIdentify):
             pass
 
 
-class CrteziUI:
+class DrawingsUI:
     """
-    Drop-down 'Crteži' sa akcijama: 'Dodaj crtež' i 'Otvori crtež (klikom)'.
+    Drop-down 'Drawings' with actions: 'Add drawing' and 'Open drawing (by click)'.
     """
     def __init__(self, core):
         from qgis.PyQt.QtWidgets import QMenu, QToolButton
@@ -789,9 +789,9 @@ class CrteziUI:
         self.button.setToolTip('Drawings')
         self.button.setStatusTip('Drawings')
         core.toolbar.addWidget(self.button)
-class PolaganjeKablovaUI:
+class CableLayingUI:
     """
-    Postojeći drop-down 'Položi kabl' izdvojen u posebnu klasu.
+    Existing drop-down 'Cable laying' separated into a dedicated class.
     """
     def __init__(self, core):
         from qgis.PyQt.QtWidgets import QMenu, QToolButton
@@ -802,16 +802,16 @@ class PolaganjeKablovaUI:
         # Podzemni
         self.menu_kabl_podzemni = QMenu("Underground", self.menu_kabl)
         self.menu_kabl_podzemni.setIcon(_load_icon('ic_cable_underground.svg'))
-        act_pg = QAction(_load_icon('ic_underground_backbone.svg'), "Backbone", core.iface.mainWindow()); act_pg.triggered.connect(lambda: core.polozi_kabl_tip("podzemni", "glavni")); self.menu_kabl_podzemni.addAction(act_pg)
-        act_pd = QAction(_load_icon('ic_underground_distributive.svg'), "Distributive", core.iface.mainWindow()); act_pd.triggered.connect(lambda: core.polozi_kabl_tip("podzemni", "distributivni")); self.menu_kabl_podzemni.addAction(act_pd)
-        act_pr = QAction(_load_icon('ic_underground_drop.svg'), "Drop", core.iface.mainWindow()); act_pr.triggered.connect(lambda: core.polozi_kabl_tip("podzemni", "razvodni")); self.menu_kabl_podzemni.addAction(act_pr)
+        act_pg = QAction(_load_icon('ic_underground_backbone.svg'), "Backbone", core.iface.mainWindow()); act_pg.triggered.connect(lambda: core.lay_cable_type("podzemni", "glavni")); self.menu_kabl_podzemni.addAction(act_pg)
+        act_pd = QAction(_load_icon('ic_underground_distributive.svg'), "Distributive", core.iface.mainWindow()); act_pd.triggered.connect(lambda: core.lay_cable_type("podzemni", "distributivni")); self.menu_kabl_podzemni.addAction(act_pd)
+        act_pr = QAction(_load_icon('ic_underground_drop.svg'), "Drop", core.iface.mainWindow()); act_pr.triggered.connect(lambda: core.lay_cable_type("podzemni", "razvodni")); self.menu_kabl_podzemni.addAction(act_pr)
 
         # Vazdušni
         self.menu_kabl_vazdusni = QMenu("Aerial", self.menu_kabl)
         self.menu_kabl_vazdusni.setIcon(_load_icon('ic_cable_aerial.svg'))
-        act_vg = QAction(_load_icon('ic_aerial_backbone.svg'), "Backbone", core.iface.mainWindow()); act_vg.triggered.connect(lambda: core.polozi_kabl_tip("vazdusni", "glavni")); self.menu_kabl_vazdusni.addAction(act_vg)
-        act_vd = QAction(_load_icon('ic_aerial_distributive.svg'), "Distributive", core.iface.mainWindow()); act_vd.triggered.connect(lambda: core.polozi_kabl_tip("vazdusni", "distributivni")); self.menu_kabl_vazdusni.addAction(act_vd)
-        act_vr = QAction(_load_icon('ic_aerial_drop.svg'), "Drop", core.iface.mainWindow()); act_vr.triggered.connect(lambda: core.polozi_kabl_tip("vazdusni", "razvodni")); self.menu_kabl_vazdusni.addAction(act_vr)
+        act_vg = QAction(_load_icon('ic_aerial_backbone.svg'), "Backbone", core.iface.mainWindow()); act_vg.triggered.connect(lambda: core.lay_cable_type("vazdusni", "glavni")); self.menu_kabl_vazdusni.addAction(act_vg)
+        act_vd = QAction(_load_icon('ic_aerial_distributive.svg'), "Distributive", core.iface.mainWindow()); act_vd.triggered.connect(lambda: core.lay_cable_type("vazdusni", "distributivni")); self.menu_kabl_vazdusni.addAction(act_vd)
+        act_vr = QAction(_load_icon('ic_aerial_drop.svg'), "Drop", core.iface.mainWindow()); act_vr.triggered.connect(lambda: core.lay_cable_type("vazdusni", "razvodni")); self.menu_kabl_vazdusni.addAction(act_vr)
 
         self.menu_kabl.addMenu(self.menu_kabl_podzemni)
         self.menu_kabl.addMenu(self.menu_kabl_vazdusni)
@@ -827,8 +827,8 @@ class PolaganjeKablovaUI:
 
 
 
-class PolaganjeElemenataUI:
-    """Drop-down za polaganje elemenata (tačaka) na trasi."""
+class ElementPlacementUI:
+    """Drop-down for placing elements (points) on a route."""
     def __init__(self, core):
         from qgis.PyQt.QtWidgets import QMenu, QToolButton
         self.core = core
@@ -860,8 +860,8 @@ class PolaganjeElemenataUI:
         self.button.setStatusTip('Placing elements')
         core.toolbar.addWidget(self.button)
 
-class KanalizacijaUI:
-    """Drop-down 'Kanalizacija' sa akcijom 'Polaganje okana'."""
+class DuctingUI:
+    """Drop-down 'Ducting' with action 'Placing manholes'."""
     def __init__(self, core):
         from qgis.PyQt.QtWidgets import QMenu, QToolButton
         self.core = core
@@ -894,12 +894,12 @@ class KanalizacijaUI:
         core.toolbar.addWidget(self.button)
 
 
-class SelekcijaUI:
+class SelectionUI:
     """
-    Grupa za selekciju – dodate opcije:
-    - Pametna selekcija (više slojeva)
-    - Očisti selekciju (bez brisanja objekata)
-    - Briši selektovane (postojeće)
+    Selection group with added options:
+    - Smart selection (multiple layers)
+    - Clear selection (without deleting objects)
+    - Delete selected (existing)
     """
     def __init__(self, core):
         from qgis.PyQt.QtWidgets import QMenu, QToolButton
@@ -923,7 +923,7 @@ class SelekcijaUI:
         # Briši selektovane (postojeće ponašanje)
         icon_del = _load_icon('ic_delete_selected.svg')
         core.action_del = QAction(icon_del, 'Delete selected', core.iface.mainWindow())
-        core.action_del.triggered.connect(core.obrisi_selektovane)
+        core.action_del.triggered.connect(core.delete_selected)
         core.actions.append(core.action_del)
         self.menu.addAction(core.action_del)
 
@@ -1381,7 +1381,7 @@ class StuboviPlugin:
         self.toolbar = None
         self.point_tool = None
         self.actions = []
-        self.lomna_tool = None  # === DODATO ===
+        self.breakpoint_tool = None  # === DODATO ===
         self.selected_cable_type = None
         self.selected_cable_subtype = None
 
@@ -1542,7 +1542,7 @@ class StuboviPlugin:
         except Exception:
             pass
 
-    def _ensure_rezerve_layer(self):
+    def _ensure_slack_layer(self):
         """Kreira ili vrati point sloj 'Opticke_rezerve' sa potrebnim poljima."""
         from qgis.core import QgsProject, QgsVectorLayer, QgsFields, QgsField, QgsWkbTypes
         # postoji?
@@ -1698,16 +1698,16 @@ class StuboviPlugin:
                 self.iface.messageBar().pushWarning("Optical slacks", f"Failed updating slack: {e}")
             except Exception:
                 pass
-    def _start_rezerva_interaktivno(self, default_tip="Terminal"):
-        """Pokreće map-tool za interaktivno ostavljanje rezerve."""
-        dlg = RezervaDialog(self.iface.mainWindow(), default_tip=default_tip)
+    def _start_slack_interactive(self, default_tip="Terminal"):
+        """Launches map-tool for interactive slack placement."""
+        dlg = SlackDialog(self.iface.mainWindow(), default_tip=default_tip)
         if dlg.exec_() != QDialog.Accepted:
             return
         params = dlg.values()
         self._reserve_tool = ReservePlaceTool(self.iface, self, params)
         self.iface.mapCanvas().setMapTool(self._reserve_tool)
 
-    def generisi_zavrsne_rezerve_za_selektovane(self):
+    def generate_terminal_slack_for_selected(self):
         """
         Za selektovane kablove (u Kablovi_podzemni / Kablovi_vazdusni) ostavi završnu rezervu na oba kraja.
         """
@@ -1764,7 +1764,7 @@ class StuboviPlugin:
         except Exception:
             pass
 
-    def stilizuj_trasa_layer(self, trasa_layer):
+    def stylize_route_layer(self, trasa_layer):
         # Podesi alias nazive polja i user-visible naziv sloja
         try:
             self._apply_route_field_aliases(trasa_layer)
@@ -2081,13 +2081,13 @@ class StuboviPlugin:
             pass
 
 
-        # Drop-down grupe
-        self.ui_kabl = PolaganjeKablovaUI(self)
-        self.ui_trasiranje = TrasiranjeUI(self)
-        self.ui_polaganje = PolaganjeElemenataUI(self)
-        self.ui_kanalizacija = KanalizacijaUI(self)
-        self.ui_selekcija = SelekcijaUI(self)
-        self.ui_rezerve = RezerveUI(self)
+        # Drop-down groups
+        self.ui_kabl = CableLayingUI(self)
+        self.ui_trasiranje = RoutingUI(self)
+        self.ui_polaganje = ElementPlacementUI(self)
+        self.ui_kanalizacija = DuctingUI(self)
+        self.ui_selekcija = SelectionUI(self)
+        self.ui_rezerve = SlackUI(self)
 
 
         # Brza prečica: 'R' otvara interaktivnu završnu rezervu
@@ -2095,13 +2095,13 @@ class StuboviPlugin:
             self.action_rezerva_quick = QAction("Terminal slack (shortcut)", self.iface.mainWindow())
             self.action_rezerva_quick.setShortcut(QKeySequence('R'))
             self.action_rezerva_quick.setVisible(False)  # 'skrivena' akcija
-            self.action_rezerva_quick.triggered.connect(lambda: self._start_rezerva_interaktivno("Terminal"))
+            self.action_rezerva_quick.triggered.connect(lambda: self._start_slack_interactive("Terminal"))
             self.iface.mainWindow().addAction(self.action_rezerva_quick)
             self.actions.append(self.action_rezerva_quick)
         except Exception:
             pass
-        self.ui_crtezi = CrteziUI(self)
-        self.ui_objekti = ObjektiUI(self)
+        self.ui_crtezi = DrawingsUI(self)
+        self.ui_objekti = ObjectsUI(self)
         # — NOVO — Optički šematski prikaz
         self.action_schematic = QAction(_load_icon('ic_optical_schematic_view.svg'), "Optical schematic view", self.iface.mainWindow())
         self.action_schematic.triggered.connect(self.open_optical_schematic)
@@ -2482,14 +2482,14 @@ class StuboviPlugin:
 
 
     def activate_lomna_tool(self):
-        """Aktivira alat za dodavanje tačke na lom trase (LomnaTackaTool)."""
+        """Activates tool for adding breakpoint on route (BreakpointTool)."""
         if self.layer is None or sip.isdeleted(self.layer) or not self.layer.isValid():
             self.init_layer()
-        self.lomna_tool = LomnaTackaTool(self.iface.mapCanvas(), self.iface, self)
-        self.iface.mapCanvas().setMapTool(self.lomna_tool)
+        self.breakpoint_tool = BreakpointTool(self.iface.mapCanvas(), self.iface, self)
+        self.iface.mapCanvas().setMapTool(self.breakpoint_tool)
     def activate_rucna_trasu_tool(self):
-        self.rucna_trasa_tool = RucnaTrasaTool(self.iface, self)
-        self.iface.mapCanvas().setMapTool(self.rucna_trasa_tool)
+        self.manual_route_tool = ManualRouteTool(self.iface, self)
+        self.iface.mapCanvas().setMapTool(self.manual_route_tool)
 
     def activate_extension_tool(self):
         if self.layer is None or sip.isdeleted(self.layer) or not self.layer.isValid():
@@ -3400,7 +3400,7 @@ class StuboviPlugin:
 
 
 
-    def kreiraj_trasu(self):
+    def create_route(self):
         # Dozvoli kreiranje trase i kada 'Stubovi' sloj ne postoji.
         # Ako sloj stubova nije postavljen, ne blokiramo – trasa se može kreirati iz selekcije OKNA.
         try:
@@ -3520,7 +3520,7 @@ class StuboviPlugin:
         self.point_tool = PointTool(self.iface.mapCanvas(), self.layer)
         self.iface.mapCanvas().setMapTool(self.point_tool)
 
-    def obrisi_selektovane(self):
+    def delete_selected(self):
         from qgis.core import QgsProject, QgsVectorLayer, QgsVectorDataProvider
 
         obrisano = 0
@@ -3574,7 +3574,7 @@ class StuboviPlugin:
             )
 
 
-    def _stilizuj_kablovi_layer(self, kablovi_layer):
+    def _stylize_cable_layer(self, kablovi_layer):
         """
         Stilizacija kablova.
         - Podzemni: isprekidana linija.
@@ -3962,7 +3962,7 @@ class StuboviPlugin:
         except Exception:
             pass
 
-    def spoji_sve_trase(self):
+    def merge_all_routes(self):
         trasa_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
             if lyr.name() in ('Trasa', 'Route') and lyr.geometryType() == QgsWkbTypes.LineGeometry:
@@ -4096,13 +4096,13 @@ class StuboviPlugin:
         )
 
 
-    def polozi_kabl_tip(self, tip, podtip):
+    def lay_cable_type(self, tip, podtip):
         self.selected_cable_type = tip
         self.selected_cable_subtype = podtip
         self.polozi_kabl()
 
     
-    def polozi_kabl(self):
+    def lay_cable(self):
         # Prikupi selekcije sa svih slojeva elemenata (+ Stubovi + OKNA)
         relevant_names = [NASTAVAK_DEF['name']] + [d['name'] for d in ELEMENT_DEFS] + ['Stubovi', 'Poles', 'OKNA', 'Manholes']
         selected = []
@@ -4403,7 +4403,7 @@ class StuboviPlugin:
 
         QMessageBox.information(self.iface.mainWindow(), "FiberQ", "Cable has been laid along the route!")
 
-    def uvezi_trasu_iz_fajla(self):
+    def import_route_from_file(self):
         filename, _ = QFileDialog.getOpenFileName(
             self.iface.mainWindow(),
             "Choose route file (KML/KMZ/DWG/GPX/Shape)", "",
@@ -4527,7 +4527,7 @@ class StuboviPlugin:
                 "No lines found for import in the file!"
             )
 
-    def izmeni_tip_trase(self):
+    def change_route_type(self):
         # Pronađi sloj Trasa
         trasa_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
@@ -4956,7 +4956,7 @@ class StuboviPlugin:
         self._export_active_layer(only_selected=False)
 
 
-    def proveri_konzistentnost(self):
+    def check_consistency(self):
         self.popravljive_greske = []
         layers = {
             lyr.name(): lyr
@@ -5005,12 +5005,12 @@ class StuboviPlugin:
         if not self.popravljive_greske:
             QMessageBox.information(self.iface.mainWindow(), "Route correction", "No errors found!")
         else:
-            dlg = KorekcijaDialog(self.popravljive_greske, self.iface.mainWindow())
+            dlg = CorrectionDialog(self.popravljive_greske, self.iface.mainWindow())
             dlg.exec_()
 
 
         #Automatska korekcija
-    def popravi_trasa_na_stub(self, trasa_feat, must_start=True):
+    def fix_route_to_pole(self, trasa_feat, must_start=True):
             stubovi_layer = next((lyr for lyr in QgsProject.instance().mapLayers().values()
                                 if lyr.geometryType() == QgsWkbTypes.PointGeometry 
                                 and lyr.name() in ('Stubovi', 'Poles')), None)
@@ -5773,10 +5773,10 @@ class StuboviPlugin:
         except Exception:
             pass
 
-    # === CEVI: workflow-i ===
+    # === DUCTS: workflows ===
     def open_pe_cev_workflow(self):
         try:
-            dlg = PECevDialog(self)
+            dlg = PEDuctDialog(self)
             if dlg.exec_() != QDialog.Accepted:
                 return
             vals = dlg.values()
@@ -5789,7 +5789,7 @@ class StuboviPlugin:
 
     def open_prelazna_cev_workflow(self):
         try:
-            dlg = PrelaznaCevDialog(self)
+            dlg = TransitionDuctDialog(self)
             if dlg.exec_() != QDialog.Accepted:
                 return
             vals = dlg.values()
@@ -6981,7 +6981,7 @@ class ExtensionTool(QgsMapToolEmitPoint):
     
 
 # === DODATO: LomnaTackaTool za split linije ===
-class LomnaTackaTool(QgsMapToolEmitPoint):
+class BreakpointTool(QgsMapToolEmitPoint):
     def __init__(self, canvas, iface, plugin):
         super().__init__(canvas)
         self.canvas = canvas
@@ -7458,7 +7458,7 @@ class SmartMultiSelectTool(QgsMapTool):
 
 
 
-class RucnaTrasaTool(QgsMapTool):
+class ManualRouteTool(QgsMapTool):
     def __init__(self, iface, plugin):
         super().__init__(iface.mapCanvas())
         self.iface = iface
@@ -7476,7 +7476,7 @@ class RucnaTrasaTool(QgsMapTool):
 
     def canvasPressEvent(self, event):
         if event.button() == Qt.RightButton:
-            self.zavrsi_trasu()
+            self.finish_route()
             return
 
         point = self.toMapCoordinates(event.pos())
@@ -7694,9 +7694,9 @@ class RucnaTrasaTool(QgsMapTool):
 
 
     def canvasDoubleClickEvent(self, event):
-        self.zavrsi_trasu()
+        self.finish_route()
 
-    def zavrsi_trasu(self):
+    def finish_route(self):
         # počisti snap marker
         self.snap_rubber.reset(QgsWkbTypes.PointGeometry)
 
@@ -7784,7 +7784,7 @@ class RucnaTrasaTool(QgsMapTool):
         self.canvas.unsetMapTool(self)
 
 #Automatska korekcija trase
-class KorekcijaDialog(QDialog):
+class CorrectionDialog(QDialog):
     def __init__(self, greske, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Route correction - found errors")
@@ -9410,7 +9410,7 @@ class NewColorCatalogDialog(QDialog):
 
 
 # === DIALOG: Izbor kapaciteta PE cevi ===
-class PECevDialog(QDialog):
+class PEDuctDialog(QDialog):
     def __init__(self, core):
         super().__init__(core.iface.mainWindow())
         from qgis.PyQt.QtWidgets import QDialogButtonBox, QListWidget, QVBoxLayout, QLabel
@@ -9444,7 +9444,7 @@ class PECevDialog(QDialog):
         return v
 
 # === DIALOG: Izbor kapaciteta prelazne cevi (PVC/PE/Oki/FeZn) ===
-class PrelaznaCevDialog(QDialog):
+class TransitionDuctDialog(QDialog):
     def __init__(self, core):
         super().__init__(core.iface.mainWindow())
         from qgis.PyQt.QtWidgets import QDialogButtonBox, QListWidget, QVBoxLayout, QLabel
@@ -10085,7 +10085,7 @@ def _telecom_export_one_layer_to_gpkg(lyr, gpkg_path, iface):
             pass
         super().deactivate()
 
-class RezerveUI:
+class SlackUI:
     def __init__(self, core):
         from qgis.PyQt.QtWidgets import QMenu, QToolButton
         self.core = core
@@ -10094,17 +10094,17 @@ class RezerveUI:
 
         # Interaktivno: Završna
         act_zav = QAction(_load_icon('ic_slack_midspan.svg'), 'Place terminal slack (interactive)', core.iface.mainWindow())
-        act_zav.triggered.connect(lambda: core._start_rezerva_interaktivno("Terminal"))
+        act_zav.triggered.connect(lambda: core._start_slack_interactive("Terminal"))
         core.actions.append(act_zav); self.menu.addAction(act_zav)
 
         # Interaktivno: Prolazna
         act_prol = QAction(_load_icon('ic_slack_midspan.svg'), 'Place mid span slack (interactive)', core.iface.mainWindow())
-        act_prol.triggered.connect(lambda: core._start_rezerva_interaktivno("Mid span"))
+        act_prol.triggered.connect(lambda: core._start_slack_interactive("Mid span"))
         core.actions.append(act_prol); self.menu.addAction(act_prol)
 
         # Batch: završne na krajevima selektovanih
         act_batch = QAction(_load_icon('ic_slack_batch.svg'), 'Generate terminal slacks at the ends of selected cables', core.iface.mainWindow())
-        act_batch.triggered.connect(core.generisi_zavrsne_rezerve_za_selektovane)
+        act_batch.triggered.connect(core.generate_terminal_slack_for_selected)
         core.actions.append(act_batch); self.menu.addAction(act_batch)
 
         btn = QToolButton()
@@ -10118,8 +10118,8 @@ class RezerveUI:
         btn.setStatusTip('Optical slacks')
         core.toolbar.addWidget(btn)
 
-# === Dijalog za unos parametara rezerve ===
-class RezervaDialog(QDialog):
+# === Dialog for entering slack parameters ===
+class SlackDialog(QDialog):
     def __init__(self, parent=None, default_tip="Terminal"):
         super().__init__(parent)
         from qgis.PyQt.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QSpinBox, QDialogButtonBox
@@ -10381,7 +10381,7 @@ class ReservePlaceTool(QgsMapTool):
         # Rezerva 'R'
         rez_slot = None
         try:
-            rez_slot = lambda: self._start_rezerva_interaktivno('Terminal')
+            rez_slot = lambda: self._start_slack_interactive('Terminal')
         except Exception:
             rez_slot = None
         if rez_slot:
@@ -10464,7 +10464,7 @@ try:
                     # 2) Detaljna provera trasa (Route correction logika)
                     try:
                         if hasattr(self, "proveri_konzistentnost"):
-                            self.proveri_konzistentnost()
+                            self.check_consistency()
                     except Exception as e:
                         try:
                             QMessageBox.warning(
@@ -12111,8 +12111,8 @@ class DrawObject3ptTool(_BaseObjMapTool):
         tmp = [c1, c2, c3, c4]
         self._update_rb(tmp)
 
-class ObjektiUI:
-    """Drop-down button 'Crtanje objekta' with multiple drawing modes and digitize-from-selected."""
+class ObjectsUI:
+    """Drop-down button 'Object drawing' with multiple drawing modes and digitize-from-selected."""
     def __init__(self, core):
         self.core = core
         self.menu = QMenu(core.iface.mainWindow())

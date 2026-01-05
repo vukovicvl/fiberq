@@ -10,13 +10,13 @@ from qgis.gui import QgsMapTool, QgsVertexMarker
 
 class FiberBreakTool(QgsMapTool):
     """
-    Klik na kabl upisuje tačku u sloj 'Prekid vlakna' sa atributima:
+    Click on cable to record a point in 'Fiber break' layer with attributes:
     - kabl_layer_id (str)
     - kabl_fid (int)
-    - distance_m (float)  udaljenost duž polilinije do mesta prekida
-    - segments_hit (int)  heuristika (=1)
+    - distance_m (float)  distance along polyline to break location
+    - segments_hit (int)  heuristic (=1)
     - vreme (str, 'YYYY-MM-DD HH:MM')
-    Zadržava kompatibilnost sa postojećim stilom (polje 'naziv' za label).
+    Maintains compatibility with existing style (field 'naziv' for label).
     """
     def __init__(self, iface,):
         super().__init__(iface.mapCanvas())

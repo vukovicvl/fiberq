@@ -8,8 +8,8 @@ from qgis.core import (
 import os
 
 class ReserveHook(QObject):
-    """Prati sloj 'Opticke_rezerve' i ažurira slack_m/total_len_m na kablovima,
-    i automatski postavlja simboliku (završna = C, prolazna = S ili SVG ako postoji)."""
+    """Monitors 'Optical_slack' layer and updates slack_m/total_len_m on cables,
+    and automatically applies symbology (terminal = C, mid-span = S or SVG if exists)."""
     def __init__(self, iface):
         super().__init__(iface.mainWindow())
         self.iface = iface
