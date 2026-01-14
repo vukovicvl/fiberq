@@ -10,13 +10,13 @@ from qgis.gui import QgsMapTool, QgsVertexMarker
 
 class FiberBreakTool(QgsMapTool):
     """
-    Klik na kabl upisuje tačku u sloj 'Prekid vlakna' sa atributima:
+    Click on cable writes a point to layer 'Fiber break' with attributes:
     - kabl_layer_id (str)
     - kabl_fid (int)
-    - distance_m (float)  udaljenost duž polilinije do mesta prekida
-    - segments_hit (int)  heuristika (=1)
+    - distance_m (float)  distance along polyline to break point
+    - segments_hit (int)  heuristic (=1)
     - vreme (str, 'YYYY-MM-DD HH:MM')
-    Zadržava kompatibilnost sa postojećim stilom (polje 'naziv' za label).
+    Maintains compatibility with existing style (field 'naziv' for label).
     """
     def __init__(self, iface,):
         super().__init__(iface.mapCanvas())
@@ -47,7 +47,7 @@ class FiberBreakTool(QgsMapTool):
                 if idx != -1:
                     layer.setFieldAlias(idx, alias)
 
-            # nateraj UI da osveži
+            # force UI to refresh
             try:
                 layer.updateFields()
             except Exception:
@@ -64,28 +64,28 @@ class FiberBreakTool(QgsMapTool):
 
     def _apply_break_style(self, layer: QgsVectorLayer):
         """
-        Stil za 'Fiber break':
+        Style for 'Fiber break':
 
-        1) Prvo probamo da učitamo QML stil iz styles/Fiber break.qml
-            – isti onaj koji koristi Preview Map (i za koji si potvrdio da radi kako treba).
-        2) Ako to omane iz bilo kog razloga, padamo na stari "mali crni krug" u mm.
+        1) First try to load QML style from styles/Fiber break.qml
+            - the same one used by Preview Map (and which you confirmed works correctly).
+        2) If that fails for any reason, fall back to old "small black circle" in mm.
         """
         if layer is None:
             return
 
-        # --- probaj QML stil kao u Preview Map ---
+        # --- try QML style as in Preview Map ---
         try:
             import os
-            plugin_dir = os.path.dirname(os.path.dirname(__file__))  # koren plugina (gde je folder 'styles')
-            qml_path = os.path.join(plugin_dir, "styles", "Fiber break.qml")
+            plugin_dir = os.path.dirname(os.path.dirname(__file__))  # plugin root (where 'styles' folder is)
+            qml_path = os.path.join(plugin_dir, "styles", "Fiber_break.qml")
             if os.path.exists(qml_path):
                 layer.loadNamedStyle(qml_path)
                 layer.triggerRepaint()
             return
         except Exception:
-            # ako nešto pukne, nastavljamo na fallback ispod
+            # if something breaks, continue to fallback below
             pass
-        # --- fallback: ručno napravljen mali crni krug u mm ---
+        # --- fallback: manually created small black circle in mm ---
         try:
             from qgis.PyQt.QtGui import QColor
         except Exception:
@@ -99,7 +99,7 @@ class FiberBreakTool(QgsMapTool):
         try:
             marker.setShape(QgsSimpleMarkerSymbolLayer.Circle)
 
-            # ostavi mali krug, ali sada je ovo samo rezervna varijanta
+            # keep small circle, but now this is only a backup variant
             marker.setSize(2.4)
             marker.setSizeUnit(QgsUnitTypes.RenderMillimeters)
 
@@ -122,9 +122,9 @@ class FiberBreakTool(QgsMapTool):
 
     def _on_scale_changed(self):
         """
-        Više nam ne treba dinamičko skaliranje.
-        Stil je već u ekranskim jedinicama (milimetri),
-        tako da ovde namerno ne radimo ništa.
+        We no longer need dynamic scaling.
+        The style is already in screen units (millimeters),
+        so here we intentionally do nothing.
         """
         return
 
@@ -139,28 +139,21 @@ class FiberBreakTool(QgsMapTool):
         """
         proj = QgsProject.instance()
 
-        # 1) pronađi postojeći sloj
+        # 1) find existing layer
         for lyr in proj.mapLayers().values():
             if (
                 isinstance(lyr, QgsVectorLayer)
                 and lyr.geometryType() == QgsWkbTypes.PointGeometry
-                and lyr.name() in ("Prekid vlakna", "Fiber break")
+                and lyr.name() == "Fiber_break"
             ):
-                # preimenuj stari sloj ako treba
-                if lyr.name() == "Prekid vlakna":
-                    try:
-                        lyr.setName("Fiber break")
-                    except Exception:
-                        pass
-
-                # STIL pa ALIAS (stil/QML pregazi alias-e ako ide posle)
+                # Apply style and field aliases
                 self._apply_break_style(lyr)
                 self._apply_break_field_aliases(lyr)
                 return lyr
 
-        # 2) napravi novi sloj
+        # 2) create new layer
         crs_authid = self.canvas.mapSettings().destinationCrs().authid()
-        vl = QgsVectorLayer(f"Point?crs={crs_authid}", "Fiber break", "memory")
+        vl = QgsVectorLayer(f"Point?crs={crs_authid}", "Fiber_break", "memory")
         pr = vl.dataProvider()
         pr.addAttributes([
             QgsField("naziv", QVariant.String),
@@ -172,10 +165,10 @@ class FiberBreakTool(QgsMapTool):
         ])
         vl.updateFields()
 
-        # dodaj u projekat pa onda alias + stil (da UI sigurno "uhvati" promenu)
+        # add to project then alias + style (so UI definitely "catches" the change)
         proj.addMapLayer(vl)
-        self._apply_break_style(vl)          # prvo stil (loadNamedStyle)
-        self._apply_break_field_aliases(vl)  # pa tek onda alias
+        self._apply_break_style(vl)          # first style (loadNamedStyle)
+        self._apply_break_field_aliases(vl)  # then alias
         return vl
 
 
@@ -317,25 +310,25 @@ class FiberBreakTool(QgsMapTool):
         self.snap_marker.setCenter(snapped_pt if snapped_pt else map_pt)
         self.snap_marker.show()
 
-            # ---------- važno: očisti marker kad se alat ugasi ----------
+            # ---------- important: clear marker when tool is deactivated ----------
 
     def canvasPressEvent(self, event):
-        # desni klik = izlaz iz alata
+        # right click = exit tool
         if event.button() == Qt.RightButton:
             self.canvas.unsetMapTool(self)
-            # po želji prebaci na Pan alat da user može odmah da se šeta
+            # optionally switch to Pan tool so user can immediately navigate
             try:
                 self.iface.actionPan().trigger()
             except Exception:
                 pass
             return
 
-        # ovde ostavi postojeću logiku za levi klik
+        # here keep existing logic for left click
         if event.button() != Qt.LeftButton:
             return
 
     def keyPressEvent(self, event):
-        # ESC takođe gasi alat
+        # ESC also turns off the tool
         if event.key() == Qt.Key_Escape:
             self.canvas.unsetMapTool(self)
             try:
@@ -345,8 +338,8 @@ class FiberBreakTool(QgsMapTool):
 
     def deactivate(self):
         """
-        Poziva se automatski kada korisnik promeni alat.
-        Ovde sakrivamo crveni krstić da ne ostaje na mapi.
+        Called automatically when user changes tool.
+        Here we hide the red cross so it doesn't remain on the map.
         """
         try:
             if self.snap_marker is not None:
@@ -354,5 +347,5 @@ class FiberBreakTool(QgsMapTool):
         except Exception:
             pass
 
-        # pozovi i originalni deactivate
+        # call original deactivate
         super().deactivate()

@@ -2,5 +2,5 @@
 """FiberQ QGIS plugin."""
 
 def classFactory(iface):
-    from .main_plugin import StuboviPlugin
-    return StuboviPlugin(iface)
+    from .main_plugin import FiberQPlugin
+    return FiberQPlugin(iface)

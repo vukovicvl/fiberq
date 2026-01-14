@@ -5,7 +5,7 @@ from qgis.core import QgsProject, QgsVectorLayer
 class ApplyStyleDialog(QDialog):
     def __init__(self, iface, plugin_root):
         super().__init__(iface.mainWindow())
-        self.setWindowTitle("Primeni stil (.qml)")
+        self.setWindowTitle("Apply style (.qml)")
         self.iface = iface
         self.plugin_root = plugin_root
         lay = QVBoxLayout(self)
@@ -13,13 +13,13 @@ class ApplyStyleDialog(QDialog):
         for lyr in QgsProject.instance().mapLayers().values():
             if isinstance(lyr, QgsVectorLayer):
                 self.cmb_layer.addItem(lyr.name(), lyr.id())
-        lay.addWidget(QLabel("Sloj:"))
+        lay.addWidget(QLabel("Layer:"))
         lay.addWidget(self.cmb_layer)
         self.cmb_style = QComboBox()
-        self.cmb_style.addItem("Grananje/offset (branch_index)", "styles/branch_offset.qml")
-        self.cmb_style.addItem("Rezerve", "styles/reserves.qml")
-        self.cmb_style.addItem("Tipovi kablova", "styles/cables_by_type.qml")
-        lay.addWidget(QLabel("Stil:"))
+        self.cmb_style.addItem("Branch/offset (branch_index)", "styles/branch_offset.qml")
+        self.cmb_style.addItem("Reserves", "styles/reserves.qml")
+        self.cmb_style.addItem("Cable types", "styles/cables_by_type.qml")
+        lay.addWidget(QLabel("Style:"))
         lay.addWidget(self.cmb_style)
         btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         btns.accepted.connect(self.apply); btns.rejected.connect(self.reject)
