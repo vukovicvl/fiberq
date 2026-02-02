@@ -30,16 +30,16 @@ import urllib.request
 
 def _plugin_root_dir():
     """
-    Vrati osnovni folder plugina (gde se nalaze metadata.txt, main_plugin.py, config.ini...).
-    Ovaj fajl je u podfolderu addons/, zato idemo jedan nivo iznad.
+    Return the plugin root folder (where metadata.txt, main_plugin.py, config.ini... are located).
+    This file is in the addons/ subfolder, so we go one level up.
     """
     return os.path.dirname(os.path.dirname(__file__))
 
 
 def _load_postgis_config():
     """
-    Učita PostGIS parametre iz config.ini fajla u korenu plugina.
-    Očekuje [postgis] sekciju sa ključevima:
+    Load PostGIS parameters from the config.ini file in the plugin root.
+    Expects a [postgis] section with keys:
         host, port, dbname, user, password, schema
     """
     plugin_dir = _plugin_root_dir()
@@ -75,8 +75,8 @@ def _load_postgis_config():
 
 class RectSelectTool(QgsMapTool):
     """
-    Pravougaona selekcija koja radi i u starijim QGIS verzijama
-    (QgsRectangle nema bottomLeft/topRight već xMinimum/yMinimum...).
+    Rectangular selection that works in older QGIS versions
+    (QgsRectangle doesn't have bottomLeft/topRight but rather xMinimum/yMinimum...).
     """
 
     def __init__(self, canvas, get_target_layer_callback):
@@ -107,7 +107,7 @@ class RectSelectTool(QgsMapTool):
             return
         end_point = self.toMapCoordinates(event.pos())
         rect = QgsRectangle(self.start_point, end_point)
-        layers = self.get_target_layer()  # može biti sloj ili lista slojeva
+        layers = self.get_target_layer()  # can be a layer or a list of layers
         if layers is None:
             layers = []
         elif isinstance(layers, QgsVectorLayer):
@@ -122,7 +122,7 @@ class RectSelectTool(QgsMapTool):
 
     def _update_rubber_band(self, p1, p2):
         """
-        Podesi QgsRubberBand na pravougaonik definisan sa dve tačke.
+        Set the QgsRubberBand to a rectangle defined by two points.
         """
         if not self.rubber:
             return
@@ -147,8 +147,8 @@ class RectSelectTool(QgsMapTool):
 
 class PreviewLocatorDialog(QtWidgets.QDialog):
     """
-    Manji dijalog za lokator adrese u preglednoj mapi.
-    Po uzoru na glavni LocatorDialog, ali vezan za FiberQPreviewDialog.
+    Smaller dialog for address locator in the preview map.
+    Based on the main LocatorDialog, but bound to FiberQPreviewDialog.
     """
 
     def __init__(self, preview_dialog):
@@ -181,7 +181,7 @@ class PreviewLocatorDialog(QtWidgets.QDialog):
         layout.addWidget(buttons)
 
     def _on_find_clicked(self):
-        # Sastavi upit (isto kao u glavnom LocatorDialog)
+        # Compose the query (same as in main LocatorDialog)
         s = self.edit_street.text().strip()
         n = self.edit_number.text().strip()
         parts = []
@@ -210,7 +210,7 @@ class PreviewLocatorDialog(QtWidgets.QDialog):
 
         query = ", ".join(parts)
 
-        # Nominatim poziv – isti kao u main_plugin, samo sa oznakom preview-map
+        # Nominatim call - same as in main_plugin, but with preview-map identifier
         try:
             import urllib.parse, urllib.request, json, ssl
 
@@ -235,7 +235,7 @@ class PreviewLocatorDialog(QtWidgets.QDialog):
             lat = float(data[0].get("lat"))
             lon = float(data[0].get("lon"))
 
-            # centriraj PREVIEW canvas (ne glavni)
+            # Center the PREVIEW canvas (not the main one)
             self.preview._center_and_mark_wgs84(lon, lat)
             self.accept()
 
@@ -243,12 +243,12 @@ class PreviewLocatorDialog(QtWidgets.QDialog):
             QtWidgets.QMessageBox.critical(
                 self, "Error", f"Error during geocoding: {e}"
             )
-   
+
 
 
 class FiberQPreviewDialog(QtWidgets.QDialog):
     """
-    Pregledna mapa…
+    Preview map...
     """
 
     def __init__(self, iface, parent=None):
@@ -261,10 +261,10 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
         self.canvas = QgsMapCanvas()
         self.canvas.setCanvasColor(QtCore.Qt.white)
 
-        # Pokušaj da preuzmeš CRS iz glavnog QGIS canvasa,
-        # ali ako nema projekta ili je CRS geografski (stepeni),
-        # pređi na metrički CRS (EPSG:3857) da veličina teksta bude normalna.
-        dest = QgsCoordinateReferenceSystem()  # prazan CRS
+        # Try to fetch the CRS from the main QGIS canvas,
+        # but if there's no project or the CRS is geographic (degrees),
+        # switch to a metric CRS (EPSG:3857) so that text size is normal.
+        dest = QgsCoordinateReferenceSystem()  # empty CRS
 
         try:
             main_canvas = iface.mapCanvas()
@@ -273,7 +273,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
         except Exception:
             pass
 
-        # Ako nije validan ili je u stepenima -> koristi 3857
+        # If not valid or is in degrees -> use 3857
         if (not dest.isValid()) or dest.isGeographic():
             dest = QgsCoordinateReferenceSystem("EPSG:3857")
 
@@ -288,26 +288,26 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
         self.selectTool = RectSelectTool(self.canvas, self._selection_vector_layers)
         self.canvas.setMapTool(self.panTool)
 
-        # Lista slojeva
+        # Layers list
         self.layersList = QtWidgets.QListWidget()
         self.layersList.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self.layersList.itemChanged.connect(self._on_layer_toggled)
         self.layersList.currentItemChanged.connect(self._on_current_layer_changed)
 
-        # Filter slojeva
+        # Filter layers
         self.layerFilterEdit = QtWidgets.QLineEdit()
         self.layerFilterEdit.setPlaceholderText("Filter layers (e.g. TO, OTB, Route)...")
         self.layerFilterEdit.textChanged.connect(self._on_layer_filter_changed)
 
-        # Lokator ID / naziv
+        # Locator ID / name
         self.searchEdit = QtWidgets.QLineEdit()
         self.searchEdit.setPlaceholderText("Search ID / name...")
         self.searchButton = QtWidgets.QPushButton("Find")
 
-        # Lokator adrese
+        # Address locator
         self.addressButton = QtWidgets.QPushButton("Address Locator")
 
-        # Podloga
+        # Base map
         self.basemapCombo = QtWidgets.QComboBox()
         self.basemapCombo.addItem("OSM", "osm")
         self.basemapCombo.addItem("ESRI Satellites", "esri")
@@ -321,7 +321,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
         topBar.addStretch(1)
         topBar.addWidget(self.basemapCombo)
 
-        # Dugmad
+        # Buttons
         self.btnPan = QtWidgets.QPushButton("Pan")
         self.btnSelect = QtWidgets.QPushButton("Select")
         self.btnZoomToLayers = QtWidgets.QPushButton("Zoom to layer(s)")
@@ -354,7 +354,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
         self.baseLayers = []
         self.postgis_params = None
 
-        # Signali
+        # Signals
         self.searchButton.clicked.connect(self._on_search_clicked)
         self.addressButton.clicked.connect(self._on_address_locator)
         self.btnSendToProject.clicked.connect(self._send_selected_to_project)
@@ -365,7 +365,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
         self.btnFromProject.clicked.connect(self._sync_from_project)
         self.btnToProject.clicked.connect(self._sync_to_project)
 
-        # Učitavanje slojeva
+        # Loading layers
         try:
             self._init_postgis_and_layers()
         except Exception as e:
@@ -382,7 +382,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
         except Exception:
             pass
 
-    # --- PostGIS i slojevi ---
+    # --- PostGIS and layers ---
 
     def _init_postgis_and_layers(self):
         self.postgis_params = _load_postgis_config()
@@ -466,7 +466,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
             current_layers = []
 
         base_layers = getattr(self, "baseLayers", [])
-        # zadrži sve vektorske slojeve, izbaci stare basemap slojeve
+        # Keep all vector layers, discard old basemap layers
         vector_layers = [lyr for lyr in current_layers if lyr not in base_layers]
         self.baseLayers = []
 
@@ -474,7 +474,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
         if new_base and new_base.isValid():
             self.baseLayers.append(new_base)
 
-        # redosled kao kod inicijalnog učitavanja: vektori + basemap
+        # Order as in initial loading: vectors + basemap
         visible_layers = vector_layers + list(self.baseLayers)
 
         if visible_layers:
@@ -483,7 +483,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
                 self.canvas.refresh()
             except Exception:
                 pass
-   
+
 
     def _load_preview_layers(self):
         layer_defs = [
@@ -577,9 +577,9 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
                 layers_for_canvas.append(osm)
 
         proj = QgsProject.instance()
-        
-        # U preview mapi uvek učitavamo SVE slojeve direktno iz PostGIS-a,
-        # bez korišćenja slojeva iz trenutnog QGIS projekta.
+
+        # In the preview map we always load ALL layers directly from PostGIS,
+        # without using layers from the current QGIS project.
         for label, table in layer_defs:
             try:
                 uri = self._build_uri(table)
@@ -627,7 +627,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
 
                 try:
                     fc = vlayer.featureCount()
-                    item.setToolTip(f"{label} - {fc} objekata")
+                    item.setToolTip(f"{label} - {fc} objects")
                 except Exception:
                     pass
 
@@ -673,7 +673,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
                 ")"
             )
 
-            # Above line (robust kroz verzije)
+            # Above line (robust across versions)
             try:
                 if hasattr(QgsPalLayerSettings, 'LinePlacement') and hasattr(QgsPalLayerSettings.LinePlacement, 'AboveLine'):
                     s.placement = QgsPalLayerSettings.LinePlacement.AboveLine
@@ -683,7 +683,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
                 pass
 
             tf = QgsTextFormat()
-            tf.setSize(8.0)  # probaj 3.0–6.0 dok ne legne
+            tf.setSize(8.0)  # try 3.0-6.0 until it fits
             tf.setSizeUnit(QgsUnitTypes.RenderMapUnits)
 
             tf.setColor(QColor(200, 0, 0))
@@ -724,7 +724,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
                         break
                     except Exception:
                         pass
-            # Mali offset iznad
+            # Small offset above
             try:
                 s.xOffset = 0.0
                 s.yOffset = 5.0
@@ -732,7 +732,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
             except Exception:
                 pass
             tf = QgsTextFormat()
-            tf.setSize(7.0)  # probaj 3.0–6.0 dok ne legne
+            tf.setSize(7.0)  # try 3.0-6.0 until it fits
             tf.setSizeUnit(QgsUnitTypes.RenderMapUnits)
             tf.setColor(QColor(0, 0, 0))
 
@@ -754,7 +754,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
             pass
 
 
-    # --- helperi ---
+    # --- helpers ---
 
     def _refresh_layers(self):
         try:
@@ -914,7 +914,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
                 layers.append(lyr)
         return layers
 
-    # --- handleri ---
+    # --- handlers ---
 
     def _on_layer_toggled(self, item):
         vector_layers = []
@@ -945,7 +945,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
     def _set_select_mode(self):
         self.canvas.setMapTool(self.selectTool)
 
-    # --- Lokatori ---
+    # --- Locators ---
 
     def _on_search_clicked(self):
         text_value = self.searchEdit.text().strip()
@@ -954,7 +954,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
 
         layer = self._current_vector_layer()
         if not layer:
-            layer = self.previewLayers.get("Trasa")
+            layer = self.previewLayers.get("Route")
 
         if not layer:
             QtWidgets.QMessageBox.information(
@@ -1035,7 +1035,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
         """
         wgs84 = QgsCoordinateReferenceSystem(4326)
 
-        # Pokušaj da uzmeš važeći CRS canvasa; ako nije validan, forsiraj WGS84
+        # Try to get a valid CRS from the canvas; if not valid, force WGS84
         dest = self.canvas.mapSettings().destinationCrs()
         if not dest.isValid():
             dest = wgs84
@@ -1044,16 +1044,16 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
             except Exception:
                 pass
 
-        # Sigurni proračun – da ne završimo sa (lon, lat) kao metrima u 3857
+        # Safe calculation - so we don't end up with (lon, lat) as meters in 3857
         try:
             if dest == wgs84:
-                # CRS je već WGS84 – lon/lat direktno
+                # CRS is already WGS84 - lon/lat directly
                 pt = QgsPointXY(lon, lat)
             else:
                 xform = QgsCoordinateTransform(wgs84, dest, QgsProject.instance())
                 pt = xform.transform(QgsPointXY(lon, lat))
         except Exception:
-            # Ako bilo šta pukne, pređi na WGS84 i koristi sirove lon/lat
+            # If anything breaks, switch to WGS84 and use raw lon/lat
             pt = QgsPointXY(lon, lat)
             try:
                 self.canvas.setDestinationCrs(wgs84)
@@ -1068,13 +1068,13 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
             pass
 
 
-    # --- Export u projekat ---
+    # --- Export to project ---
 
     def _send_selected_to_project(self):
         """
-        Učitaj izabrane slojeve u aktivni QGIS projekat.
-        Ako postoji selekcija -> memory sloj '(izbor)' sa tim entitetima.
-        Ako nema selekcije -> ceo sloj.
+        Load selected layers into the active QGIS project.
+        If there is a selection -> memory layer '(selection)' with those entities.
+        If no selection -> the entire layer.
         """
         items = self.layersList.selectedItems()
         if not items:
@@ -1147,7 +1147,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
 
     def _sync_from_project(self):
         """
-        Crtež → mapa.
+        Drawing -> map.
         """
         try:
             mc = self.iface.mapCanvas()
@@ -1159,7 +1159,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
 
     def _sync_to_project(self):
         """
-        Mapa → crtež.
+        Map -> drawing.
         """
         try:
             extent = self.canvas.extent()
@@ -1172,7 +1172,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
 
 def open_preview_dialog(iface):
     """
-    Pomoćna funkcija koju poziva main_plugin.py.
+    Helper function called by main_plugin.py.
     """
     dlg = FiberQPreviewDialog(iface)
     dlg.exec_()

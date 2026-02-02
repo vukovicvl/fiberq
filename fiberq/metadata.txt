@@ -3,7 +3,7 @@ name=FiberQ
 description=Open-source fiber network design tools for QGIS (FTTH/GPON/FTTx)
 about=FiberQ helps telecom engineers and GIS professionals design, analyze, and document fiber optic networks inside QGIS. Some advanced features may require an activation key.
 
-version=1.0.0
+version=1.1.1
 qgisMinimumVersion=3.22
 
 author=Vladimir Vukovic
@@ -19,4 +19,4 @@ tracker=https://github.com/vukovicvl/fiberq/issues
 
 license=GPL-3.0-or-later
 
-class_name=StuboviPlugin
+class_name=FiberQPlugin

@@ -16,16 +16,16 @@ import configparser
 
 def _plugin_root_dir():
     """
-    Vrati osnovni folder plugina (gde se nalaze metadata.txt, main_plugin.py, config.ini...).
-    Ovaj fajl je u podfolderu addons/, zato idemo jedan nivo iznad.
+    Return the root folder of the plugin (where metadata.txt, main_plugin.py, config.ini are located).
+    This file is in the addons/ subfolder, so we go one level up.
     """
     return os.path.dirname(os.path.dirname(__file__))
 
 
 def _load_pg_config():
     """
-    Učita PostGIS parametre iz config.ini fajla u korenu plugina.
-    Ako nešto nije kako treba, baca izuzetak sa jasnom porukom.
+    Load PostGIS parameters from the config.ini file in the plugin root.
+    If something is not right, throws an exception with a clear message.
     """
     plugin_dir = _plugin_root_dir()
     cfg_path = os.path.join(plugin_dir, "config.ini")
@@ -58,11 +58,11 @@ def _load_pg_config():
 
 def _sanitize_table_name(name: str) -> str:
     """
-    Pojednostavljenje i čišćenje imena tabele:
-    - zamena razmaka i spec. znakova sa _
-    - uklanjanje vodećih/trailing _
-    - ako počinje cifrom, dodaj '_' napred
-    - pretvaranje u mala slova
+    Simplification and cleaning of table name:
+    - replace spaces and special chars with _
+    - remove leading/trailing _
+    - if starts with a digit, add '_' in front
+    - convert to lowercase
     """
     base = re.sub(r"[^A-Za-z0-9_]+", "_", (name or "").strip())
     base = base.strip("_") or "layer_export"
@@ -73,14 +73,14 @@ def _sanitize_table_name(name: str) -> str:
 
 def _ensure_pk_field(layer: QgsVectorLayer) -> str:
     """
-    Osiguraj da sloj ima neku integer kolonu koja se može koristiti kao primarni ključ
-    za export u PostGIS.
+    Ensure that the layer has an integer column that can be used as a primary key
+    for export to PostGIS.
 
-    Strategija:
-      1) Ako postoji integer polje sa imenom 'id', 'pk' ili 'gid' → koristi njega.
-      2) Inače, ako postoji bilo koje integer polje → koristi prvo takvo.
-      3) Ako NIŠTA od toga ne postoji → automatski kreiraj novu kolonu 'id'
-         (ili 'id_1', 'id_2', ... ako već postoji), popuni je 1..N i vrati ime te kolone.
+    Strategy:
+      1) If an integer field named 'id', 'pk' or 'gid' exists -> use it.
+      2) Otherwise, if any integer field exists -> use the first such field.
+      3) If NONE of that exists -> automatically create a new 'id' column
+         (or 'id_1', 'id_2', ... if already exists), populate it with 1..N and return that column name.
     """
     if layer is None or not isinstance(layer, QgsVectorLayer):
         raise RuntimeError("Invalid vector layer provided.")
@@ -96,15 +96,15 @@ def _ensure_pk_field(layer: QgsVectorLayer) -> str:
             if name_low in ("id", "pk", "gid"):
                 pref_candidates.append(f)
 
-    # 1) Preferirani integer PK (id/pk/gid)
+    # 1) Preferred integer PK (id/pk/gid)
     if pref_candidates:
         return pref_candidates[0].name()
 
-    # 2) Bilo koji integer field
+    # 2) Any integer field
     if int_fields:
         return int_fields[0].name()
 
-    # 3) Nema integer polja → automatski dodaj novo 'id' polje
+    # 3) No integer field -> automatically add a new 'id' field
     existing_names = {f.name().lower() for f in fields}
     base_name = "id"
     new_name = base_name
@@ -113,7 +113,7 @@ def _ensure_pk_field(layer: QgsVectorLayer) -> str:
         new_name = f"{base_name}_{i}"
         i += 1
 
-    # Pokušaj da dodaš polje i popuniš ga
+    # Try to add the field and populate it
     was_editing = layer.isEditable()
     if not was_editing:
         if not layer.startEditing():
@@ -130,7 +130,7 @@ def _ensure_pk_field(layer: QgsVectorLayer) -> str:
         if idx < 0:
             raise RuntimeError("I can't find the newly added ID column.")
 
-        # Popuni vrednosti 1..N
+        # Fill values 1..N
         value = 1
         for feat in layer.getFeatures():
             layer.changeAttributeValue(feat.id(), idx, value)
@@ -140,7 +140,7 @@ def _ensure_pk_field(layer: QgsVectorLayer) -> str:
             if not layer.commitChanges():
                 raise RuntimeError("Failed to commit the ID column to the layer.")
     finally:
-        # Ako je sloj bio u edit modu pre, ostavi ga takvim - korisnik odlučuje kada će da sačuva.
+        # If the layer was in edit mode before, leave it that way - user decides when to save.
         pass
 
     return new_name
@@ -148,13 +148,13 @@ def _ensure_pk_field(layer: QgsVectorLayer) -> str:
 
 class PublishDialog(QDialog):
     """
-    Dijalog za objavu vektorskog sloja u PostGIS.
+    Dialog for publishing a vector layer to PostGIS.
 
-    Koristi isključivo config.ini parametre – korisnik NE bira konekciju,
-    već samo:
-      - koji sloj
-      - ime tabele (i po potrebi šemu)
-      - da li da obriše postojeću tabelu (overwrite)
+    Uses only config.ini parameters - user does NOT choose the connection,
+    only:
+      - which layer
+      - table name (and schema if needed)
+      - whether to delete existing table (overwrite)
     """
 
     def __init__(self, iface):
@@ -163,7 +163,7 @@ class PublishDialog(QDialog):
         self.setWindowTitle("Publish to PostGIS")
         self.setModal(True)
 
-        # Učitavanje PG konfiguracije
+        # Loading PG configuration
         try:
             self.pg = _load_pg_config()
         except Exception as e:
@@ -176,7 +176,7 @@ class PublishDialog(QDialog):
 
         lay = QVBoxLayout(self)
 
-        # Informacija o serveru
+        # Server information
         lbl_info = QLabel()
         if self.pg:
             lbl_info.setText(
@@ -187,7 +187,7 @@ class PublishDialog(QDialog):
             lbl_info.setText("Error: no valid PostGIS configuration (config.ini).")
         lay.addWidget(lbl_info)
 
-        # Izbor sloja
+        # Layer selection
         hlayer = QHBoxLayout()
         hlayer.addWidget(QLabel("Layer:"))
         self.cmb_layer = QComboBox()
@@ -201,7 +201,7 @@ class PublishDialog(QDialog):
         hlayer.addWidget(self.cmb_layer, 1)
         lay.addLayout(hlayer)
 
-        # Podrazumevano selektuj aktivni sloj ako postoji
+        # By default select the active layer if it exists
         active = iface.activeLayer()
         if active is not None:
             for idx, lyr in enumerate(self.layers):
@@ -209,7 +209,7 @@ class PublishDialog(QDialog):
                     self.cmb_layer.setCurrentIndex(idx)
                     break
 
-        # Šema i tabela
+        # Schema and table
         hschema = QHBoxLayout()
         hschema.addWidget(QLabel("Schema:"))
         default_schema = self.pg["schema"] if self.pg else "public"
@@ -223,12 +223,12 @@ class PublishDialog(QDialog):
 
         lay.addLayout(hschema)
 
-        # Overwrite opcija
+        # Overwrite option
         self.chk_overwrite = QCheckBox("Delete existing table and recreate (overwrite)")
         self.chk_overwrite.setChecked(True)
         lay.addWidget(self.chk_overwrite)
 
-        # Dugmad
+        # Buttons
         hbtn = QHBoxLayout()
         hbtn.addStretch(1)
         btn_ok = QPushButton("Publish")
@@ -274,7 +274,7 @@ class PublishDialog(QDialog):
         if not table:
             table = "layer_export"
 
-        # Osiguraj da sloj ima integer primarni ključ
+        # Ensure the layer has an integer primary key
         try:
             pk_field = _ensure_pk_field(layer)
         except Exception as e:
@@ -285,7 +285,7 @@ class PublishDialog(QDialog):
             )
             return
 
-        # Priprema URI stringa za PostGIS export
+        # Prepare URI string for PostGIS export
         uri = (
             f"dbname='{self.pg['dbname']}' "
             f"host={self.pg['host']} "
@@ -303,7 +303,7 @@ class PublishDialog(QDialog):
             "lowercaseFieldNames": True,
         }
 
-        # Izvrši export - hvatamo samo PRAVE greške (exception).
+        # Execute export - we only catch TRUE errors (exceptions).
         try:
             QgsVectorLayerExporter.exportLayer(
                 layer,
@@ -316,7 +316,7 @@ class PublishDialog(QDialog):
                 None,
             )
         except TypeError:
-            # Fallback za starije verzije QGIS-a
+            # Fallback for older QGIS versions
             try:
                 QgsVectorLayerExporter.exportLayer(
                     layer,
@@ -339,7 +339,7 @@ class PublishDialog(QDialog):
             )
             return
 
-        # Ako nismo dobili exception, tretiramo kao uspeh.
+        # If we didn't get an exception, we treat it as success.
         QMessageBox.information(
             self.iface.mainWindow(),
             "PostGIS",
