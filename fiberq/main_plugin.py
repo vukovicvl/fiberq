@@ -374,8 +374,8 @@ def _default_fields_for(layer_name: str):
 
 def _apply_element_aliases(layer):
     """
-    Engleski alias-i za standardna polja na ODF/OTB/TB/Patch panel slojevima.
-    Ne menja nazive polja, samo ono što korisnik vidi u attribute tabeli.
+    English aliases for standard fields on ODF/OTB/TB/Patch panel layers.
+    Does not change field names, only what user sees in attribute table.
     """
     if layer is None:
         return
@@ -505,7 +505,7 @@ ELEMENT_DEFS = [
 ]
 NASTAVAK_DEF = {"name": "Joint Closures", "symbol": {"name": "diamond", "color": "red", "size": "5", "size_unit": "MapUnit"}}
 # === UI GROUPS (modular menus/buttons) ===
-class TrasiranjeUI:
+class RoutingUI:
     """
     Grupise sve akcije vezane za trasiranje u jedan drop-down.
     Ne menja logiku; samo kreira akcije/meni i povezuje na postojece metode core-a.
@@ -516,59 +516,59 @@ class TrasiranjeUI:
         self.menu = QMenu(core.iface.mainWindow())
         self.menu.setToolTipsVisible(True)
 
-        # Dodaj stub
+        # Add pole
         icon_add = _load_icon('ic_add_pole.svg')
         core.action_add = QAction(icon_add, 'Add pole', core.iface.mainWindow())
         core.action_add.triggered.connect(core.activate_point_tool)
         core.actions.append(core.action_add)
         self.menu.addAction(core.action_add)
 
-        # Kreiraj trasu
+        # Create route
         icon_trasa = _load_icon('ic_create_route.svg')
         core.action_trasa = QAction(icon_trasa, 'Create route', core.iface.mainWindow())
-        core.action_trasa.triggered.connect(core.kreiraj_trasu)
+        core.action_trasa.triggered.connect(core.create_route)
         core.actions.append(core.action_trasa)
         self.menu.addAction(core.action_trasa)
 
-        # Spoji selektovane trase
+        # Merge selected routes
         icon_spoji = _load_icon('ic_merge_selected_routes.svg')
         core.action_spoji = QAction(icon_spoji, 'Merge selected routes', core.iface.mainWindow())
-        core.action_spoji.triggered.connect(core.spoji_sve_trase)
+        core.action_spoji.triggered.connect(core.merge_all_routes)
         core.actions.append(core.action_spoji)
         self.menu.addAction(core.action_spoji)
 
-        # Uvezi trasu iz fajla
+        # Import route from file
         icon_import = _load_icon('ic_import_route_from_file.svg')
         core.action_import = QAction(icon_import, 'Import route from file', core.iface.mainWindow())
-        core.action_import.triggered.connect(core.uvezi_trasu_iz_fajla)
+        core.action_import.triggered.connect(core.import_route_from_file)
         core.actions.append(core.action_import)
         self.menu.addAction(core.action_import)
 
-        # Dodaj lomnu tačku
+        # Add breakpoint
         icon_lomna = _load_icon('ic_add_breakpoint.svg')
         core.action_lomna = QAction(icon_lomna, 'Add breakpoint', core.iface.mainWindow())
-        core.action_lomna.triggered.connect(core.activate_lomna_tool)
+        core.action_lomna.triggered.connect(core.activate_breakpoint_tool)
         core.actions.append(core.action_lomna)
         self.menu.addAction(core.action_lomna)
 
-        # Kreiraj ručno trasu
+        # Create route manually
         icon_rucna = _load_icon('ic_create_route_manually.svg')
         core.action_rucna = QAction(icon_rucna, 'Create a route manually', core.iface.mainWindow())
-        core.action_rucna.triggered.connect(core.activate_rucna_trasu_tool)
+        core.action_rucna.triggered.connect(core.activate_manual_route_tool)
         core.actions.append(core.action_rucna)
         self.menu.addAction(core.action_rucna)
 
-        # Izmeni tip trase
+        # Change route type
         icon_edit_tip_trase = _load_icon('ic_change_route_type.svg')
         core.action_edit_tip_trase = QAction(icon_edit_tip_trase, 'Change route type', core.iface.mainWindow())
-        core.action_edit_tip_trase.triggered.connect(core.izmeni_tip_trase)
+        core.action_edit_tip_trase.triggered.connect(core.change_route_type)
         core.actions.append(core.action_edit_tip_trase)
         self.menu.addAction(core.action_edit_tip_trase)
 
-        # Korekcija trase
+        # Route correction
         icon_korekcija = _load_icon('ic_route_correction.svg')
         core.action_korekcija = QAction(icon_korekcija, 'Route correction', core.iface.mainWindow())
-        core.action_korekcija.triggered.connect(core.proveri_konzistentnost)
+        core.action_korekcija.triggered.connect(core.check_consistency)
         core.actions.append(core.action_korekcija)
         self.menu.addAction(core.action_korekcija)
 
@@ -634,13 +634,13 @@ class TrasiranjeUI:
                     gpkg += ".gpkg"
                 self._set_project_gpkg_path(gpkg)
 
-            # odmah konvertuj postojeće memorijske lejere
+            # immediately convert existing memory layers
             layers = [l for l in prj.mapLayers().values() if isinstance(l, QgsVectorLayer)]
             for lyr in layers:
                 if self._is_memory_vector(lyr):
                     _telecom_export_one_layer_to_gpkg(lyr, self._project_gpkg_path(), self.core.iface)
 
-            # poveži signal
+            # connect signal
             try:
                 prj.layerWasAdded.connect(self._on_layer_added_auto_gpkg)
             except Exception:
@@ -721,14 +721,14 @@ class OpenDrawingMapTool(QgsMapToolIdentify):
                     self.core._open_drawing_path(path)
                     return
 
-                # Otvori samo ako je bar jedan od tih DWG layera još u projektu
+                # Open only if at least one of those DWG layers is still in the project
                 root = QgsProject.instance().layerTreeRoot()
 
                 def _node_present_and_visible(lid: str) -> bool:
-                    node = root.findLayer(lid)  # traži u Layers panelu
+                    node = root.findLayer(lid)  # search in Layers panel
                     if node is None:
                         return False
-                    # Ako je grupa/layer isključen (nevidljiv), tretiraj kao "nije učitano"
+                    # If the group/layer is disabled (invisible), treat as "not loaded"
                     try:
                         return node.isVisible()
                     except Exception:
@@ -762,7 +762,7 @@ class OpenDrawingMapTool(QgsMapToolIdentify):
             pass
 
 
-class CrteziUI:
+class DrawingsUI:
     """
     Drop-down 'Crteži' sa akcijama: 'Dodaj crtež' i 'Otvori crtež (klikom)'.
     """
@@ -789,41 +789,41 @@ class CrteziUI:
         self.button.setToolTip('Drawings')
         self.button.setStatusTip('Drawings')
         core.toolbar.addWidget(self.button)
-class PolaganjeKablovaUI:
+class CableLayingUI:
     """
-    Postojeći drop-down 'Položi kabl' izdvojen u posebnu klasu.
+    Existing drop-down 'Lay cable' extracted to separate class.
     """
     def __init__(self, core):
         from qgis.PyQt.QtWidgets import QMenu, QToolButton
         self.core = core
-        self.menu_kabl = QMenu("Cable laying", core.iface.mainWindow())
-        self.menu_kabl.setToolTipsVisible(True)
+        self.menu_cables = QMenu("Cable laying", core.iface.mainWindow())
+        self.menu_cables.setToolTipsVisible(True)
 
         # Podzemni
-        self.menu_kabl_podzemni = QMenu("Underground", self.menu_kabl)
-        self.menu_kabl_podzemni.setIcon(_load_icon('ic_cable_underground.svg'))
-        act_pg = QAction(_load_icon('ic_underground_backbone.svg'), "Backbone", core.iface.mainWindow()); act_pg.triggered.connect(lambda: core.polozi_kabl_tip("podzemni", "glavni")); self.menu_kabl_podzemni.addAction(act_pg)
-        act_pd = QAction(_load_icon('ic_underground_distributive.svg'), "Distributive", core.iface.mainWindow()); act_pd.triggered.connect(lambda: core.polozi_kabl_tip("podzemni", "distributivni")); self.menu_kabl_podzemni.addAction(act_pd)
-        act_pr = QAction(_load_icon('ic_underground_drop.svg'), "Drop", core.iface.mainWindow()); act_pr.triggered.connect(lambda: core.polozi_kabl_tip("podzemni", "razvodni")); self.menu_kabl_podzemni.addAction(act_pr)
+        self.menu_underground = QMenu("Underground", self.menu_cables)
+        self.menu_underground.setIcon(_load_icon('ic_cable_underground.svg'))
+        act_pg = QAction(_load_icon('ic_underground_backbone.svg'), "Backbone", core.iface.mainWindow()); act_pg.triggered.connect(lambda: core.lay_cable_by_type("podzemni", "glavni")); self.menu_underground.addAction(act_pg)
+        act_pd = QAction(_load_icon('ic_underground_distributive.svg'), "Distributive", core.iface.mainWindow()); act_pd.triggered.connect(lambda: core.lay_cable_by_type("podzemni", "distributivni")); self.menu_underground.addAction(act_pd)
+        act_pr = QAction(_load_icon('ic_underground_drop.svg'), "Drop", core.iface.mainWindow()); act_pr.triggered.connect(lambda: core.lay_cable_by_type("podzemni", "razvodni")); self.menu_underground.addAction(act_pr)
 
         # Vazdušni
-        self.menu_kabl_vazdusni = QMenu("Aerial", self.menu_kabl)
-        self.menu_kabl_vazdusni.setIcon(_load_icon('ic_cable_aerial.svg'))
-        act_vg = QAction(_load_icon('ic_aerial_backbone.svg'), "Backbone", core.iface.mainWindow()); act_vg.triggered.connect(lambda: core.polozi_kabl_tip("vazdusni", "glavni")); self.menu_kabl_vazdusni.addAction(act_vg)
-        act_vd = QAction(_load_icon('ic_aerial_distributive.svg'), "Distributive", core.iface.mainWindow()); act_vd.triggered.connect(lambda: core.polozi_kabl_tip("vazdusni", "distributivni")); self.menu_kabl_vazdusni.addAction(act_vd)
-        act_vr = QAction(_load_icon('ic_aerial_drop.svg'), "Drop", core.iface.mainWindow()); act_vr.triggered.connect(lambda: core.polozi_kabl_tip("vazdusni", "razvodni")); self.menu_kabl_vazdusni.addAction(act_vr)
+        self.menu_aerial = QMenu("Aerial", self.menu_cables)
+        self.menu_aerial.setIcon(_load_icon('ic_cable_aerial.svg'))
+        act_vg = QAction(_load_icon('ic_aerial_backbone.svg'), "Backbone", core.iface.mainWindow()); act_vg.triggered.connect(lambda: core.lay_cable_by_type("vazdusni", "glavni")); self.menu_aerial.addAction(act_vg)
+        act_vd = QAction(_load_icon('ic_aerial_distributive.svg'), "Distributive", core.iface.mainWindow()); act_vd.triggered.connect(lambda: core.lay_cable_by_type("vazdusni", "distributivni")); self.menu_aerial.addAction(act_vd)
+        act_vr = QAction(_load_icon('ic_aerial_drop.svg'), "Drop", core.iface.mainWindow()); act_vr.triggered.connect(lambda: core.lay_cable_by_type("vazdusni", "razvodni")); self.menu_aerial.addAction(act_vr)
 
-        self.menu_kabl.addMenu(self.menu_kabl_podzemni)
-        self.menu_kabl.addMenu(self.menu_kabl_vazdusni)
+        self.menu_cables.addMenu(self.menu_underground)
+        self.menu_cables.addMenu(self.menu_aerial)
 
-        self.btn_kabl = QToolButton()
-        self.btn_kabl.setText("Cable laying")
-        self.btn_kabl.setPopupMode(QToolButton.InstantPopup)
-        self.btn_kabl.setMenu(self.menu_kabl)
-        self.btn_kabl.setIcon(_load_icon('ic_laying_cable.svg'))
-        self.btn_kabl.setToolTip('Cable laying')
-        self.btn_kabl.setStatusTip('Cable laying')
-        core.toolbar.addWidget(self.btn_kabl)
+        self.btn_cables = QToolButton()
+        self.btn_cables.setText("Cable laying")
+        self.btn_cables.setPopupMode(QToolButton.InstantPopup)
+        self.btn_cables.setMenu(self.menu_cables)
+        self.btn_cables.setIcon(_load_icon('ic_laying_cable.svg'))
+        self.btn_cables.setToolTip('Cable laying')
+        self.btn_cables.setStatusTip('Cable laying')
+        core.toolbar.addWidget(self.btn_cables)
 
 
 
@@ -835,7 +835,7 @@ class PolaganjeElemenataUI:
         self.menu = QMenu(core.iface.mainWindow())
         self.menu.setToolTipsVisible(True)
 
-        # Postojeći 'Položi nastavak'
+        # Existing 'Place Joint Closure'
         action_nast = QAction(_load_icon('ic_place_jc.svg'), 'Place Joint Closure', core.iface.mainWindow())
         action_nast.triggered.connect(core.activate_extension_tool)
         core.actions.append(action_nast)
@@ -860,7 +860,7 @@ class PolaganjeElemenataUI:
         self.button.setStatusTip('Placing elements')
         core.toolbar.addWidget(self.button)
 
-class KanalizacijaUI:
+class DuctInfrastructureUI:
     """Drop-down 'Kanalizacija' sa akcijom 'Polaganje okana'."""
     def __init__(self, core):
         from qgis.PyQt.QtWidgets import QMenu, QToolButton
@@ -894,12 +894,12 @@ class KanalizacijaUI:
         core.toolbar.addWidget(self.button)
 
 
-class SelekcijaUI:
+class SelectionUI:
     """
-    Grupa za selekciju – dodate opcije:
-    - Pametna selekcija (više slojeva)
-    - Očisti selekciju (bez brisanja objekata)
-    - Briši selektovane (postojeće)
+    Selection group – added options:
+    - Smart selection (multiple layers)
+    - Clear selection (without deleting objects)
+    - Delete selected (existing behavior)
     """
     def __init__(self, core):
         from qgis.PyQt.QtWidgets import QMenu, QToolButton
@@ -914,13 +914,13 @@ class SelekcijaUI:
         core.actions.append(core.action_smart_select)
         self.menu.addAction(core.action_smart_select)
 
-        # Očisti selekciju (samo uklanja izbor sa svih slojeva)
+        # Clear selection (only removes selection from all layers)
         core.action_clear_selection = QAction(icon_sel, 'Clear selection', core.iface.mainWindow())
         core.action_clear_selection.triggered.connect(core.clear_all_selections)
         core.actions.append(core.action_clear_selection)
         self.menu.addAction(core.action_clear_selection)
 
-        # Briši selektovane (postojeće ponašanje)
+        # Delete selected (existing behavior)
         icon_del = _load_icon('ic_delete_selected.svg')
         core.action_del = QAction(icon_del, 'Delete selected', core.iface.mainWindow())
         core.action_del.triggered.connect(core.obrisi_selektovane)
@@ -937,17 +937,17 @@ class SelekcijaUI:
         self.button.setStatusTip('Selection')
         core.toolbar.addWidget(self.button)
 
-# interne vrednosti koje se upisuju u polje "tip_trase"
+# internal values that are written to the "tip_trase" field
 TRASA_TYPE_OPTIONS = ["vazdusna", "podzemna", "kroz objekat"]
 
-# etikete za prikaz u dijalogu (user view)
+# labels for display in dialog (user view)
 TRASA_TYPE_LABELS = {
     "vazdusna": "Aerial",
     "podzemna": "Underground",
     "kroz objekat": "Through the object",
 }
 
-# obrnuto mapiranje: EN labela -> SR kod
+# reverse mapping: EN label -> SR code
 TRASA_LABEL_TO_CODE = {v: k for k, v in TRASA_TYPE_LABELS.items()}
 
 
@@ -977,7 +977,7 @@ class _BOMDialog(QDialog):
         self.tabs.addTab(self.tab_layers, "By Layers")
         self.tabs.addTab(self.tab_summary, "Summary")
 
-        # Po slojevima table
+        # By layers table
         self.tbl_layers = QTableWidget(self.tab_layers)
         self.tbl_layers.setColumnCount(6)
         self.tbl_layers.setHorizontalHeaderLabels([
@@ -1204,7 +1204,7 @@ class _BOMDialog(QDialog):
         wb.close()
         QMessageBox.information(self, "Export", f"XLSX exported:\n{path}")
 
-class StuboviPlugin:
+class FiberQPlugin:
     def _ensure_plugin_svg_search_path(self):
         """Ensure plugin SVG icons resolve (styles may reference only filenames)."""
         try:
@@ -1248,7 +1248,7 @@ class StuboviPlugin:
                 pass
 
         # 2) Translate drop-down menus and buttons from UI groups if present
-        for group_name in ['ui_crtezi','ui_kabl','ui_polaganje','ui_kanalizacija','ui_selekcija','ui_rezerve']:
+        for group_name in ['ui_drawings','ui_cables','ui_placement','ui_ducts','ui_selection','ui_reserves']:
             try:
                 grp = getattr(self, group_name, None)
                 if not grp: 
@@ -1256,17 +1256,17 @@ class StuboviPlugin:
                 # menu title + actions
                 if hasattr(grp, 'menu') and grp.menu:
                     _apply_menu_language(grp.menu, lang)
-                if hasattr(grp, 'menu_kabl') and grp.menu_kabl:
-                    _apply_menu_language(grp.menu_kabl, lang)
-                if hasattr(grp, 'menu_kabl_podzemni') and grp.menu_kabl_podzemni:
-                    _apply_menu_language(grp.menu_kabl_podzemni, lang)
-                if hasattr(grp, 'menu_kabl_vazdusni') and grp.menu_kabl_vazdusni:
-                    _apply_menu_language(grp.menu_kabl_vazdusni, lang)
+                if hasattr(grp, 'menu_cables') and grp.menu_cables:
+                    _apply_menu_language(grp.menu_cables, lang)
+                if hasattr(grp, 'menu_underground') and grp.menu_underground:
+                    _apply_menu_language(grp.menu_underground, lang)
+                if hasattr(grp, 'menu_aerial') and grp.menu_aerial:
+                    _apply_menu_language(grp.menu_aerial, lang)
                 # toolbar button text/tooltip
                 if hasattr(grp, 'button') and grp.button:
                     _apply_text_and_tooltip(grp.button, lang)
-                if hasattr(grp, 'btn_kabl') and grp.btn_kabl:
-                    _apply_text_and_tooltip(grp.btn_kabl, lang)
+                if hasattr(grp, 'btn_cables') and grp.btn_cables:
+                    _apply_text_and_tooltip(grp.btn_cables, lang)
             except Exception:
                 pass
 
@@ -1306,7 +1306,7 @@ class StuboviPlugin:
     
     # === LOKATOR: pomoćne metode ===
     def open_locator_dialog(self):
-        # Otvori dijalog za unos adrese i centriranje mape.
+        # Open dialog for entering address and centering the map.
         try:
             dlg = LocatorDialog(self)
             dlg.exec_()
@@ -1314,7 +1314,7 @@ class StuboviPlugin:
             QMessageBox.critical(self.iface.mainWindow(), "Locator", f"Error opening locator: {e}")
 
     def _center_and_mark_wgs84(self, lon, lat, label=None):
-        # Pomeri mapu na zadate WGS84 koordinate (lon, lat) i postavi marker.
+        # Move map to given WGS84 coordinates (lon, lat) and set marker.
         canvas = self.iface.mapCanvas()
         try:
             from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject
@@ -1333,7 +1333,7 @@ class StuboviPlugin:
         except Exception:
             pass
 
-        # Obeleži markerom (ukloni prethodni ako postoji)
+        # Mark with marker (remove previous if exists)
         try:
             if hasattr(self, "_locator_marker") and self._locator_marker is not None:
                 try:
@@ -1478,10 +1478,10 @@ class StuboviPlugin:
             except Exception:
                 pass
 
-    # === OPTIČKE REZERVE: sloj i logika ===
+    # === OPTICAL SLACKS: layer and logic ===
 
-    def _set_rezerve_layer_alias(self, layer):
-        """Prikaži sloj 'Opticke_rezerve' kao 'Optical slack' u Layers panelu."""
+    def _set_reserves_layer_alias(self, layer):
+        """Display layer 'Opticke_rezerve' as 'Optical slack' in Layers panel."""
         try:
             from qgis.core import QgsProject
             root = QgsProject.instance().layerTreeRoot()
@@ -1489,11 +1489,11 @@ class StuboviPlugin:
             if node:
                 node.setCustomLayerName("Optical slack")
         except Exception:
-            # Ako nešto zezne (npr. layerTreeRoot još nije spreman), samo preskoči
+            # If something fails (e.g. layerTreeRoot is not ready yet), just skip
             pass
 
-    def _apply_rezerve_field_aliases(self, layer):
-        """Podesi engleske alias nazive polja + ValueMap (EN prikaz, SR vrednost u bazi)."""
+    def _apply_reserves_field_aliases(self, layer):
+        """Set English alias field names + ValueMap (EN display, SR value in database)."""
         alias_map = {
             "tip": "Type",
             "duzina_m": "Length (m)",
@@ -1542,20 +1542,20 @@ class StuboviPlugin:
         except Exception:
             pass
 
-    def _ensure_rezerve_layer(self):
-        """Kreira ili vrati point sloj 'Opticke_rezerve' sa potrebnim poljima."""
+    def _ensure_reserves_layer(self):
+        """Create or return point layer 'Opticke_rezerve' with required fields."""
         from qgis.core import QgsProject, QgsVectorLayer, QgsFields, QgsField, QgsWkbTypes
-        # postoji?
+        # exists?
         for lyr in QgsProject.instance().mapLayers().values():
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
                     and lyr.geometryType() == QgsWkbTypes.PointGeometry
-                    and lyr.name() in ("Opticke_rezerve", "Optical slack")
+                    and lyr.name() in ("Optical_reserves",)
                 ):
-                    # primeni engleske alias nazive i englesko ime sloja u panelu
-                    self._apply_rezerve_field_aliases(lyr)
-                    self._set_rezerve_layer_alias(lyr)
+                    # apply English alias names and English layer name in panel
+                    self._apply_reserves_field_aliases(lyr)
+                    self._set_reserves_layer_alias(lyr)
                     return lyr
             except Exception:
                 pass
@@ -1574,19 +1574,19 @@ class StuboviPlugin:
             QgsField("napomena", QVariant.String),
         ])
         vl.updateFields()
-        # primeni alias nazive i englesko ime sloja
-        self._apply_rezerve_field_aliases(vl)
-        self._set_rezerve_layer_alias(vl)
+        # apply alias names and English layer name
+        self._apply_reserves_field_aliases(vl)
+        self._set_reserves_layer_alias(vl)
         QgsProject.instance().addMapLayer(vl)
         try:
-            self._stilizuj_rezerve_layer(vl)
+            self._style_reserves_layer(vl)
         except Exception:
             pass
         return vl
 
 
     
-    def _stilizuj_rezerve_layer(self, vl):
+    def _style_reserves_layer(self, vl):
         """
         Jednostavan stil: sve optičke rezerve su male crvene tačke.
         Nema više C/S font markera, tako da i posle reload-a ostaju samo tačke.
@@ -1623,14 +1623,14 @@ class StuboviPlugin:
         
     def _recompute_slack_for_cable(self, kabl_layer_id: str, kabl_fid: int):
         """
-        Suma 'duzina_m' iz sloja Opticke_rezerve za dati kabl i upis u kabl:
-        - slack_m (ako postoji odgovarajuće polje: 'slack_m' / 'slack' / 'rezerva_m' / 'rezerve_m')
-        - total_len_m = geom.length() + slack_m (ako postoji polje 'total_len_m')
+        Sum 'duzina_m' from layer Opticke_rezerve for given cable and write to cable:
+        - slack_m (if corresponding field exists: 'slack_m' / 'slack' / 'rezerva_m' / 'rezerve_m')
+        - total_len_m = geom.length() + slack_m (if field 'total_len_m' exists)
         """
         try:
             from qgis.core import QgsProject, QgsFeatureRequest
             prj = QgsProject.instance()
-            rez = self._ensure_rezerve_layer()
+            rez = self._ensure_reserves_layer()
             if rez is None:
                 return
             # 1) Izračunaj slack sumu
@@ -1698,8 +1698,8 @@ class StuboviPlugin:
                 self.iface.messageBar().pushWarning("Optical slacks", f"Failed updating slack: {e}")
             except Exception:
                 pass
-    def _start_rezerva_interaktivno(self, default_tip="Terminal"):
-        """Pokreće map-tool za interaktivno ostavljanje rezerve."""
+    def _start_reserve_interactive(self, default_tip="Terminal"):
+        """Starts map-tool for interactive slack placement."""
         dlg = RezervaDialog(self.iface.mainWindow(), default_tip=default_tip)
         if dlg.exec_() != QDialog.Accepted:
             return
@@ -1707,16 +1707,16 @@ class StuboviPlugin:
         self._reserve_tool = ReservePlaceTool(self.iface, self, params)
         self.iface.mapCanvas().setMapTool(self._reserve_tool)
 
-    def generisi_zavrsne_rezerve_za_selektovane(self):
+    def generate_terminal_reserves_for_selected(self):
         """
-        Za selektovane kablove (u Kablovi_podzemni / Kablovi_vazdusni) ostavi završnu rezervu na oba kraja.
+        For selected cables (in Underground_cables / Aerial_cables) leave terminal slack at both ends.
         """
         from qgis.core import QgsWkbTypes, QgsGeometry, QgsFeature, QgsProject
-        vl = self._ensure_rezerve_layer()
+        vl = self._ensure_reserves_layer()
         kabl_layers = []
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if lyr.geometryType() == QgsWkbTypes.LineGeometry and lyr.name() in ("Kablovi_podzemni","Kablovi_vazdusni","Underground cables","Aerial cables"):
+                if lyr.geometryType() == QgsWkbTypes.LineGeometry and lyr.name() in ("Underground_cables", "Aerial_cables"):
                     kabl_layers.append(lyr)
             except Exception:
                 pass
@@ -1740,9 +1740,9 @@ class StuboviPlugin:
                     lok = "Objekat"
                     (nl, nf, nd) = ReservePlaceTool(self.iface, self, {})._nearest_node(QgsPointXY(ep))
                     if nl and nf:
-                        if nl.name() in ("Stubovi", "Poles"):
+                        if nl.name() in ("Poles",):
                             lok = "Stub"
-                        elif nl.name() in ("OKNA", "Manholes"):
+                        elif nl.name() in ("Manholes",):
                             lok = "OKNO"
                         else:
                             lok = "Objekat"
@@ -1764,8 +1764,8 @@ class StuboviPlugin:
         except Exception:
             pass
 
-    def stilizuj_trasa_layer(self, trasa_layer):
-        # Podesi alias nazive polja i user-visible naziv sloja
+    def style_route_layer(self, trasa_layer):
+        # Set alias field names and user-visible layer name
         try:
             self._apply_route_field_aliases(trasa_layer)
             self._set_route_layer_alias(trasa_layer)
@@ -1799,8 +1799,8 @@ class StuboviPlugin:
 
 
     def _build_path_across_network(self, trasa_layer, start_pt: QgsPointXY, end_pt: QgsPointXY, tol_units: float):
-        """Routing preko SVIH temena (uključujući lomne tačke) bez fizičkog spajanja feature-a.
-        Vraća listu QgsPointXY ili None ako ne postoji veza u mreži.
+        """Routing across ALL vertices (including breakpoints) without physical feature joining.
+        Returns list of QgsPointXY or None if no connection exists in network.
         """
         try:
             from qgis.core import QgsPointXY, QgsGeometry
@@ -2082,12 +2082,12 @@ class StuboviPlugin:
 
 
         # Drop-down grupe
-        self.ui_kabl = PolaganjeKablovaUI(self)
-        self.ui_trasiranje = TrasiranjeUI(self)
-        self.ui_polaganje = PolaganjeElemenataUI(self)
-        self.ui_kanalizacija = KanalizacijaUI(self)
-        self.ui_selekcija = SelekcijaUI(self)
-        self.ui_rezerve = RezerveUI(self)
+        self.ui_cables = CableLayingUI(self)
+        self.ui_trasiranje = RoutingUI(self)
+        self.ui_placement = PolaganjeElemenataUI(self)
+        self.ui_ducts = DuctInfrastructureUI(self)
+        self.ui_selection = SelectionUI(self)
+        self.ui_reserves = ReservesUI(self)
 
 
         # Brza prečica: 'R' otvara interaktivnu završnu rezervu
@@ -2095,12 +2095,12 @@ class StuboviPlugin:
             self.action_rezerva_quick = QAction("Terminal slack (shortcut)", self.iface.mainWindow())
             self.action_rezerva_quick.setShortcut(QKeySequence('R'))
             self.action_rezerva_quick.setVisible(False)  # 'skrivena' akcija
-            self.action_rezerva_quick.triggered.connect(lambda: self._start_rezerva_interaktivno("Terminal"))
+            self.action_rezerva_quick.triggered.connect(lambda: self._start_reserve_interactive("Terminal"))
             self.iface.mainWindow().addAction(self.action_rezerva_quick)
             self.actions.append(self.action_rezerva_quick)
         except Exception:
             pass
-        self.ui_crtezi = CrteziUI(self)
+        self.ui_drawings = DrawingsUI(self)
         self.ui_objekti = ObjektiUI(self)
         # — NOVO — Optički šematski prikaz
         self.action_schematic = QAction(_load_icon('ic_optical_schematic_view.svg'), "Optical schematic view", self.iface.mainWindow())
@@ -2251,7 +2251,7 @@ class StuboviPlugin:
 
 
 
-        # Katalog boja (meni za standarde boja vlakana/cevi)
+        # Color catalog (menu for fiber/tube color standards)
         self.action_color_catalog = QAction(_load_icon('ic_color_catalog.svg'), "Color catalog", self.iface.mainWindow())
         self.action_color_catalog.triggered.connect(self.open_color_catalog_manager)
         self.toolbar.addAction(self.action_color_catalog)
@@ -2266,11 +2266,11 @@ class StuboviPlugin:
         self.action_save_gpkg = QAction(icon_save_gpkg, "Save all layers to GeoPackage", self.iface.mainWindow())
         self.action_save_gpkg.setToolTip("Export all vector layers (including Temporary scratch) to a single .gpkg and redirect the project to it")
         self.action_save_gpkg.triggered.connect(lambda: _telecom_save_all_layers_to_gpkg(self.iface))
-        # Dodaj na toolbar i u listu za uredno uklanjanje
+        # Add to toolbar and to list for proper removal
         try:
             self.toolbar.addAction(self.action_save_gpkg)
         except Exception:
-            # Ako plugin nema svoju toolbar promenljivu
+            # If plugin doesn't have its own toolbar variable
             self.iface.addToolBarIcon(self.action_save_gpkg)
         try:
             self.actions.append(self.action_save_gpkg)
@@ -2315,7 +2315,7 @@ class StuboviPlugin:
             pass
 
 
-        # Razgrani kablove (offset)
+        # Separate cables (offset)
         try:
             icon_branch = _load_icon('ic_branch.svg')
         except Exception:
@@ -2342,7 +2342,7 @@ class StuboviPlugin:
         except Exception:
             pass
 
-        # Prikaži prečice (overlay)
+        # Show shortcuts (overlay)
         try:
             self.action_hotkeys = QAction("Show shortcuts", self.iface.mainWindow())
         except Exception:
@@ -2400,7 +2400,7 @@ class StuboviPlugin:
         except Exception:
             pass
 
-        # Fallback: globalne prečice
+        # Fallback: global shortcuts
         try:
             self._ensure_global_shortcuts()
         except Exception:
@@ -2421,7 +2421,7 @@ class StuboviPlugin:
         return "ColorCatalogs/catalogs_v1"
 
     def _default_color_sets(self):
-        # Standardne 12 boja za vlakna (ANSI/TIA), sa HEX vrednostima
+        # Standard 12 colors for fibers (ANSI/TIA), with HEX values
         std12 = [
             ("Blue", "#1f77b4"),
             ("Orange", "#ff7f0e"),
@@ -2442,7 +2442,7 @@ class StuboviPlugin:
 
     def _load_color_catalogs(self):
         import json
-        s = QgsProject.instance().readEntry('StuboviPlugin', self._color_catalogs_key(), '')[0]
+        s = QgsProject.instance().readEntry('FiberQPlugin', self._color_catalogs_key(), '')[0]
         if not s:
             data = {"catalogs": self._default_color_sets()}
             return data
@@ -2457,15 +2457,15 @@ class StuboviPlugin:
     def _save_color_catalogs(self, data):
         import json
         try:
-            QgsProject.instance().writeEntry('StuboviPlugin', self._color_catalogs_key(), json.dumps(data))
+            QgsProject.instance().writeEntry('FiberQPlugin', self._color_catalogs_key(), json.dumps(data))
         except Exception:
             pass
 
     def _list_color_codes(self):
-        # Vraća listu naziva kataloga za prikaz u dialogu 'Položi kabl'
+        # Returns list of catalog names for display in 'Lay cable' dialog
         data = self._load_color_catalogs()
         names = [c.get("name","") for c in data.get("catalogs", []) if c.get("name")]
-        # osiguraj da postoje tri osnovna, bez duplikata
+        # ensure three basic ones exist, without duplicates
         base = ["ANSI/EIA/TIA-598-A", "IEC 60793-2-50", "ITU-T (generički)"]
         for b in base:
             if b not in names:
@@ -2477,19 +2477,19 @@ class StuboviPlugin:
             dlg = ColorCatalogManagerDialog(self)
             dlg.exec_()
         except Exception as e:
-            QMessageBox.critical(self.iface.mainWindow(), "Katalog boja", f"Greška: {e}")
+            QMessageBox.critical(self.iface.mainWindow(), "Color catalog", f"Error: {e}")
 
 
 
-    def activate_lomna_tool(self):
-        """Aktivira alat za dodavanje tačke na lom trase (LomnaTackaTool)."""
+    def activate_breakpoint_tool(self):
+        """Activate tool for adding breakpoint to route (LomnaTackaTool)."""
         if self.layer is None or sip.isdeleted(self.layer) or not self.layer.isValid():
             self.init_layer()
         self.lomna_tool = LomnaTackaTool(self.iface.mapCanvas(), self.iface, self)
         self.iface.mapCanvas().setMapTool(self.lomna_tool)
-    def activate_rucna_trasu_tool(self):
-        self.rucna_trasa_tool = RucnaTrasaTool(self.iface, self)
-        self.iface.mapCanvas().setMapTool(self.rucna_trasa_tool)
+    def activate_manual_route_tool(self):
+        self.manual_route_tool = ManualRouteTool(self.iface, self)
+        self.iface.mapCanvas().setMapTool(self.manual_route_tool)
 
     def activate_extension_tool(self):
         if self.layer is None or sip.isdeleted(self.layer) or not self.layer.isValid():
@@ -2521,7 +2521,7 @@ class StuboviPlugin:
                     'name': 'circle',
                     'color': 'black',
                     'size': '4',
-                    'size_unit': 'MM',   # bitno: ekran, ne map units
+                    'size_unit': 'MM',   # important: screen, not map units
                 }
                 self._place_element_tool = PlaceElementTool(self.iface.mapCanvas(), "Fiber break", symbol_spec)
                 self.iface.mapCanvas().setMapTool(self._place_element_tool)
@@ -2529,7 +2529,7 @@ class StuboviPlugin:
                 QMessageBox.critical(self.iface.mainWindow(), "Fiber break", f"Error activating: {e}")
                 return
 
-        # Nakon aktiviranja alata, nađi sve slojeve za prekid i primeni fiksni stil
+        # After activating the tool, find all fiber break layers and apply fixed style
         try:
             from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes
 
@@ -2540,11 +2540,11 @@ class StuboviPlugin:
                     continue
 
                 name = (lyr.name() or "").lower()
-                # pokrivamo i engleski i srpski naziv
+                # cover both English and Serbian name
                 if "fiber break" in name or "prekid" in name:
                     self._apply_prekid_style(lyr)
 
-                    # Field aliases (EN) - user view, field names ostaju isti radi kompatibilnosti koda
+                    # Field aliases (EN) - user view, field names stay the same for code compatibility
                     try:
                         fields = lyr.fields()
                         alias_map = {
@@ -2574,19 +2574,19 @@ class StuboviPlugin:
 
                     
         except Exception:
-            # ako nešto pukne, ne ruši alat – samo preskoči stil
+            # if something fails, don't crash the tool – just skip style
             pass
 
 
     def activate_smart_select_tool(self):
-        """Uključi pametnu višeslojnu selekciju (bez promene aktivnog sloja)."""
+        """Enable smart multi-layer selection (without changing active layer)."""
         try:
             self._smart_select_tool = SmartMultiSelectTool(self.iface, self)
             self.iface.mapCanvas().setMapTool(self._smart_select_tool)
-            # kreiraj memoriju izbora ako ne postoji
+            # create selection memory if doesn't exist
             if not hasattr(self, 'smart_selection'):
                 self.smart_selection = []
-            # informacija korisniku
+            # information for user
             try:
                 self.iface.messageBar().pushInfo("Smart selection", "Click on the elements to select/deselect them. Selections on other layers are not touched.")
             except Exception:
@@ -2594,7 +2594,7 @@ class StuboviPlugin:
         except Exception as e:
             QMessageBox.critical(self.iface.mainWindow(), "Smart selection", f"Error: {e}")
     def activate_branch_info_tool(self):
-        """Aktiviraj alat: klik na kabl → info o grananju u message baru."""
+        """Activate tool: click on cable -> branch info in message bar."""
         try:
             self._branch_info_tool = BranchInfoTool(self)
             self.iface.mapCanvas().setMapTool(self._branch_info_tool)
@@ -2612,14 +2612,14 @@ class StuboviPlugin:
 
 
     def clear_all_selections(self):
-        """Skloni selekciju sa svih slojeva (ne briše objekte)."""
+        """Remove selection from all layers (does not delete objects)."""
         for lyr in QgsProject.instance().mapLayers().values():
             try:
                 if isinstance(lyr, QgsVectorLayer):
                     lyr.removeSelection()
             except Exception:
                 pass
-        # očisti i internu listu
+        # clear internal list too
         try:
             self.smart_selection = []
         except Exception:
@@ -2628,7 +2628,7 @@ class StuboviPlugin:
 
     def open_optical_schematic(self):
         try:
-            # čuvamo referencu da dijalog ne bude pokupljen od GC
+            # keep reference so dialog is not garbage collected
             if not hasattr(self, "_schematic_dlg") or self._schematic_dlg is None:
                 self._schematic_dlg = OpticalSchematicDialog(self)
             self._schematic_dlg.show()
@@ -2650,7 +2650,7 @@ class StuboviPlugin:
 
     def _load_relations(self):
         import json
-        s = QgsProject.instance().readEntry('StuboviPlugin', self._relations_storage_key(), '')[0]
+        s = QgsProject.instance().readEntry('FiberQPlugin', self._relations_storage_key(), '')[0]
         if not s:
             return {"relations": []}
         try:
@@ -2660,7 +2660,7 @@ class StuboviPlugin:
 
     def _save_relations(self, data):
         import json
-        QgsProject.instance().writeEntry('StuboviPlugin', self._relations_storage_key(), json.dumps(data))
+        QgsProject.instance().writeEntry('FiberQPlugin', self._relations_storage_key(), json.dumps(data))
 
     def _relation_by_id(self, data, rid):
         for r in data.get("relations", []):
@@ -2670,17 +2670,17 @@ class StuboviPlugin:
 
     def list_all_cables(self):
         """
-        Vrati listu SVIH položenih kablova iz slojeva
-        Kablovi_podzemni / Kablovi_vazdusni / Underground cables / Aerial cables.
-        Svaki zapis je dict sa ključevima:
+        Return list of ALL laid cables from layers
+        Underground_cables / Aerial_cables / Underground cables / Aerial cables.
+        Each record is a dict with keys:
         layer_id, layer_name, fid, opis, tip, podtip, kapacitet, color_code, od, do
         """
         items = []
 
-        # Prihvatamo i stara (srpska) i nova (engleska) imena slojeva
+        # Accept both old (Serbian) and new (English) layer names
         candidate_names = {
-            "Kablovi_podzemni",
-            "Kablovi_vazdusni",
+            "Underground_cables",
+            "Aerial_cables",
             "Underground cables",
             "Aerial cables",
         }
@@ -2698,7 +2698,7 @@ class StuboviPlugin:
 
             fields = lyr.fields()
             for feat in lyr.getFeatures():
-                # pročitaj sve atribute u dict
+                # read all attributes into dict
                 attrs = {fld.name(): feat[fld.name()] for fld in fields}
 
                 tip = attrs.get("tip") or ""
@@ -2708,7 +2708,7 @@ class StuboviPlugin:
                 od = attrs.get("od") or ""
                 do = attrs.get("do") or ""
 
-                # mapiranje za LEP PRIKAZ u tabeli (interno ostaje kod)
+                # mapping for NICE DISPLAY in table (internally code remains)
                 podtip_labels = {
                     "glavni": "Backbone",
                     "distributivni": "Distribution",
@@ -2719,14 +2719,14 @@ class StuboviPlugin:
                 }
                 podtip_label = podtip_labels.get(str(podtip_code), str(podtip_code))
 
-                # opis = ono što vidiš u koloni "Cable"
+                # opis = what you see in "Cable" column
                 opis_parts = []
                 if tip:
-                    opis_parts.append(str(tip))          # npr. "Optical"
+                    opis_parts.append(str(tip))          # e.g. "Optical"
                 if podtip_label:
-                    opis_parts.append(str(podtip_label)) # npr. "Distribution"
+                    opis_parts.append(str(podtip_label)) # e.g. "Distribution"
                 if kap:
-                    opis_parts.append(str(kap))          # npr. "1x96"
+                    opis_parts.append(str(kap))          # e.g. "1x96"
 
                 if opis_parts:
                     opis = " ".join(opis_parts)
@@ -2755,7 +2755,7 @@ class StuboviPlugin:
 
     def _load_latent(self):
         import json
-        s = QgsProject.instance().readEntry('StuboviPlugin', self._latent_storage_key(), '')[0]
+        s = QgsProject.instance().readEntry('FiberQPlugin', self._latent_storage_key(), '')[0]
         if not s:
             return {"cables": {}}
         try:
@@ -2765,7 +2765,7 @@ class StuboviPlugin:
 
     def _save_latent(self, data):
         import json
-        QgsProject.instance().writeEntry('StuboviPlugin', self._latent_storage_key(), json.dumps(data))
+        QgsProject.instance().writeEntry('FiberQPlugin', self._latent_storage_key(), json.dumps(data))
 
     def _cable_key(self, layer_id, fid):
         return f"{layer_id}:{int(fid)}"
@@ -2783,15 +2783,15 @@ class StuboviPlugin:
 
 
     def list_all_pipes(self):
-        """Vrati listu svih položenih cevi iz slojeva 'PE cevi' i 'Prelazne cevi'.
-        Svaki zapis je dict sa ključevima: layer_id, layer_name, fid, opis, tip, podtip, kapacitet, color_code, od, do
-        Napomena: 'podtip' koristimo kao 'cev' radi razlikovanja u šemi; 'kapacitet' je tekst (npr. 'Ø 40 mm' ili vrednost iz polja).
+        """Return list of all laid pipes from layers 'PE_ducts' and 'Transition_ducts'.
+        Each record is a dict with keys: layer_id, layer_name, fid, opis, tip, podtip, kapacitet, color_code, od, do
+        Note: 'podtip' is used as 'cev' for differentiation in schematic; 'kapacitet' is text (e.g. 'O 40 mm' or value from field).
         """
         items = []
         layers = []
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.LineGeometry and lyr.name() in ('PE cevi', 'Prelazne cevi', 'PE ducts', 'Transition ducts'):
+                if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.LineGeometry and lyr.name() in ('PE_ducts', 'Transition_ducts'):
                     layers.append(lyr)
             except Exception:
                 pass
@@ -2803,7 +2803,7 @@ class StuboviPlugin:
                 materijal = attrs.get('materijal', '') or ''
                 kap = attrs.get('kapacitet', '') or ''
                 fi = attrs.get('fi', '') or ''
-                # Tekst za kapacitet/oznaku u šemi
+                # Text for capacity/label in schematic
                 cap_text = ''
                 try:
                     if fi not in (None, ''):
@@ -2827,14 +2827,14 @@ class StuboviPlugin:
         return items
 
     def _find_candidate_elements_for_cable(self, cable_layer, cable_feature, tol=5.0):
-        """Pronađi sve tačkaste elemente koji leže u blizini trase kabla.
-        Vraća listu dict-ova: {layer_id, layer_name, fid, naziv, m, distance}
-        Sortirano po m (udaljenost duž linije).
-        'od' i 'do' elementi se preskaču po nazivu ako postoje."""
+        """Find all point elements that lie near the cable route.
+        Returns list of dicts: {layer_id, layer_name, fid, naziv, m, distance}
+        Sorted by m (distance along line).
+        'od' and 'do' elements are skipped by name if they exist."""
         geom = cable_feature.geometry()
         if geom is None or geom.isEmpty():
             return []
-        # Učitaj od/do nazive ako postoje
+        # Load od/do names if they exist
         try:
             od = str(cable_feature['od']) if 'od' in cable_layer.fields().names() and cable_feature['od'] is not None else ''
             do = str(cable_feature['do']) if 'do' in cable_layer.fields().names() and cable_feature['do'] is not None else ''
@@ -2847,8 +2847,8 @@ class StuboviPlugin:
                     continue
                 fields = lyr.fields()
                 has_naziv = fields.indexFromName('naziv') != -1
-                # Uzimamo slojeve koji imaju 'naziv' ili se zovu 'Stubovi'
-                if not has_naziv and lyr.name() != 'Stubovi':
+                # Take layers that have 'naziv' or are called 'Poles'
+                if not has_naziv and lyr.name() != 'Poles':
                     continue
                 for f in lyr.getFeatures():
                     pgeom = f.geometry()
@@ -2861,7 +2861,7 @@ class StuboviPlugin:
                         m = geom.lineLocatePoint(pgeom)
                         m = float(m)
                     except Exception:
-                        # Fallback: projiciraj najbližu tačku pa meri distancu od početka
+                        # Fallback: project nearest point then measure distance from start
                         nearest = geom.closestSegmentWithContext(pgeom.asPoint())[1] if hasattr(geom, 'closestSegmentWithContext') else None
                         m = float(geom.length()) if nearest is None else float(geom.lineLocatePoint(QgsGeometry.fromPointXY(QgsPointXY(nearest))))
                     name = ''
@@ -2869,7 +2869,7 @@ class StuboviPlugin:
                         val = f['naziv']
                         if val is not None:
                             name = str(val).strip()
-                    # Preskoči krajnje tačke po nazivu
+                    # Skip end points by name
                     if name and (name == od or name == do):
                         continue
                     cands.append({
@@ -2882,7 +2882,7 @@ class StuboviPlugin:
                     })
             except Exception:
                 continue
-        # Sortiraj i ukloni duplikate
+        # Sort and remove duplicates
         out = []
         seen = set()
         for it in sorted(cands, key=lambda x: x.get('m', 0.0)):
@@ -2932,7 +2932,7 @@ class StuboviPlugin:
             self.iface.removeToolBarIcon(action)
         del self.toolbar
         self.layer = None
-        # Šematski prikaz – očisti
+        # Schematic view – cleanup
         try:
             if hasattr(self, 'action_schematic') and self.action_schematic:
                 self.iface.removeToolBarIcon(self.action_schematic)
@@ -2947,19 +2947,19 @@ class StuboviPlugin:
 
 
     def _set_poles_alias(self):
-        """Prikaži sloj 'Stubovi' kao 'Poles' u Layers panelu."""
+        """Display layer 'Stubovi' as 'Poles' in Layers panel."""
         try:
             root = QgsProject.instance().layerTreeRoot()
             node = root.findLayer(self.layer.id())
             if node:
                 node.setCustomLayerName("Poles")
         except Exception:
-            # Ako nešto zezne (npr. layerTreeRoot još nije spreman), samo preskoči
+            # If something fails (e.g. layerTreeRoot is not ready yet), just skip
             pass
 
 
     def _apply_poles_field_aliases(self, layer):
-        """Podesi engleske alias nazive polja za sloj Stubovi/Poles."""
+        """Set English alias field names for layer Stubovi/Poles."""
         alias_map = {
             "tip": "Type",
             "podtip": "Subtype",
@@ -2972,23 +2972,23 @@ class StuboviPlugin:
                 if idx != -1:
                     layer.setFieldAlias(idx, alias)
         except Exception:
-            # ako nešto zezne (stari projekat itd.) samo preskoči
+            # if something fails (old project etc.) just skip
             pass
 
     def _set_route_layer_alias(self, layer):
-        """Prikaži sloj 'Trasa' kao 'Route' u Layers panelu."""
+        """Display layer 'Trasa' as 'Route' in Layers panel."""
         try:
             root = QgsProject.instance().layerTreeRoot()
             node = root.findLayer(layer.id())
             if node:
                 node.setCustomLayerName("Route")
         except Exception:
-            # ako nešto zezne (stari projekat itd.) samo preskoči
+            # if something fails (old project etc.) just skip
             pass
 
     def _apply_route_field_aliases(self, layer):
-        """Podesi engleske alias nazive polja za sloj Trasa/Route
-        i ValueMap za 'tip_trase' (SR kod, EN prikaz).
+        """Set English alias field names for layer Trasa/Route
+        and ValueMap for 'tip_trase' (SR code, EN display).
         """
         alias_map = {
             "naziv": "Route name",
@@ -3005,7 +3005,7 @@ class StuboviPlugin:
                 if idx != -1:
                     layer.setFieldAlias(idx, alias)
 
-            # ValueMap za tip_trase: value = SR, label = EN
+            # ValueMap for tip_trase: value = SR, label = EN
             idx_tip = layer.fields().indexOf("tip_trase")
             if idx_tip != -1:
                 cfg = {
@@ -3020,12 +3020,12 @@ class StuboviPlugin:
                 layer.updateFields()
 
         except Exception:
-            # ako nešto zezne (stari projekat itd.) samo preskoči
+            # if something fails (old project etc.) just skip
             pass
 
     
     def _set_okna_layer_alias(self, layer: QgsVectorLayer) -> None:
-        """Postavi user-visible naziv sloja za manholes."""
+        """Set user-visible layer name for manholes."""
         try:
             proj = QgsProject.instance()
             root = proj.layerTreeRoot()
@@ -3037,7 +3037,7 @@ class StuboviPlugin:
 
 
     def _apply_okna_field_aliases(self, layer: QgsVectorLayer) -> None:
-        """Engleski aliasi za polja okna."""
+        """English aliases for manhole fields."""
         try:
             alias_map = {
                 "broj_okna": "Manhole ID",
@@ -3068,7 +3068,7 @@ class StuboviPlugin:
         
 
     def _apply_cable_field_aliases(self, layer):
-        """Engleski aliasi za kolone kablova (user view)."""
+        """English aliases for cable columns (user view)."""
         try:
             alias_map = {
                 "tip": "Cable type",
@@ -3105,7 +3105,7 @@ class StuboviPlugin:
                 if idx >= 0:
                     layer.setFieldAlias(idx, alias)
 
-            # --- Polje 'tip' – pređi sa srpskih kodova na EN (Optical/Copper) ---
+            # --- Field 'tip' – switch from Serbian codes to EN (Optical/Copper) ---
             from qgis.core import QgsEditorWidgetSetup
 
             tip_idx = layer.fields().indexOf("tip")
@@ -3135,7 +3135,7 @@ class StuboviPlugin:
                         else:
                             layer.rollBack()
                 except Exception:
-                    # ako nešto pukne, ne rušimo plugin
+                    # if something fails, don't crash the plugin
                     pass
 
                 # 2) Editor widget: i label i vrednost su EN
@@ -3189,10 +3189,10 @@ class StuboviPlugin:
 
     def _set_cable_layer_alias(self, layer):
         """
-        Podesi engleska imena lejera za kablove.
+        Set English layer names for cables.
 
-        Interno, zbog kompatibilnosti, prihvatamo i srpska i engleska imena,
-        ali sloj na kraju uvek zovemo 'Underground cables' ili 'Aerial cables'.
+        Internally, for compatibility, we accept both Serbian and English names,
+        but layer is always called 'Underground cables' or 'Aerial cables' in the end.
         """
         if layer is None:
             return
@@ -3202,12 +3202,12 @@ class StuboviPlugin:
             return
 
         try:
-            if name in ("Kablovi_podzemni", "Underground cables"):
+            if name in ("Underground_cables",):
                 layer.setName("Underground cables")
-            elif name in ("Kablovi_vazdusni", "Aerial cables"):
+            elif name in ("Aerial_cables",):
                 layer.setName("Aerial cables")
         except Exception:
-            # ako nešto krene po zlu, ne rušimo plugin
+            # if something goes wrong, don't crash the plugin
             pass
 
     def _on_layers_added(self, layers):
@@ -3222,7 +3222,7 @@ class StuboviPlugin:
             except Exception:
                 pass
 
-        cable_names = {"Aerial cables", "Underground cables", "Kablovi_vazdusni", "Kablovi_podzemni"}
+        cable_names = {"Aerial_cables", "Underground_cables"}
 
         for layer in layers:
             if not isinstance(layer, QgsVectorLayer) or not layer.isValid():
@@ -3263,9 +3263,9 @@ class StuboviPlugin:
                 continue
 
             # 3) JOINT CLOSURES (Point)  ✅ SUŽENO da ne hvata ODF/TB/OTB/TO...
-            # Dozvoli:
-            # - po imenu sloja (Joint Closures / Nastavci / Nastavak) čak i sa sufiksima
-            # - ili ako sloj realno ima samo id,fid,naziv
+            # Allow:
+            # - by layer name (Joint Closures / Nastavci / Nastavak) even with suffixes
+            # - or if layer really has only id,fid,naziv
             if gtype == QgsWkbTypes.PointGeometry and (
                 lname_l.startswith("joint closures")
                 or lname_l.startswith("nastav")
@@ -3360,19 +3360,19 @@ class StuboviPlugin:
     def init_layer(self):
         project = QgsProject.instance()
 
-        # 1) Ako sloj već postoji – prihvati i "Stubovi" i "Poles"
+        # 1) If layer already exists – accept both "Stubovi" and "Poles"
         for lyr in project.mapLayers().values():
             if (
                 isinstance(lyr, QgsVectorLayer) and
                 lyr.geometryType() == QgsWkbTypes.PointGeometry and
-                lyr.name() in ("Stubovi", "Poles")
+                lyr.name() in ("Poles",)
             ):
                 self.layer = lyr
-                # ovde odmah primeni alias nazive polja
+                # apply alias field names immediately
                 self._apply_poles_field_aliases(self.layer)
                 return
 
-        # 2) Ako ne postoji – kreiraj novi sloj pod imenom "Poles"
+        # 2) If doesn't exist – create new layer named "Poles"
         crs = self.iface.mapCanvas().mapSettings().destinationCrs().authid()
         self.layer = QgsVectorLayer(f"Point?crs={crs}", "Poles", "memory")
         pr = self.layer.dataProvider()
@@ -3400,21 +3400,21 @@ class StuboviPlugin:
 
 
 
-    def kreiraj_trasu(self):
-        # Dozvoli kreiranje trase i kada 'Stubovi' sloj ne postoji.
-        # Ako sloj stubova nije postavljen, ne blokiramo – trasa se može kreirati iz selekcije OKNA.
+    def create_route(self):
+        # Allow route creation even when 'Stubovi' layer doesn't exist.
+        # If poles layer is not set, we don't block – route can be created from OKNA selection.
         try:
             if self.layer is None or sip.isdeleted(self.layer) or not self.layer.isValid():
-                # Nema stubova? Nije greška. Pokušaćemo da nastavimo dalje.
+                # No poles? Not an error. We'll try to continue.
                 pass
         except Exception:
             pass
-        # Dozvoli trasu i sa OKNA (pored stubova)
+        # Allow route with OKNA (in addition to poles)
         selected_features = []
-        # prikupljamo selekcije iz slojeva 'Stubovi' i 'OKNA'
+        # collect selections from 'Stubovi' and 'OKNA' layers
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if lyr.geometryType() == QgsWkbTypes.PointGeometry and lyr.name() in ('Stubovi', 'Poles','OKNA', 'Manholes'):
+                if lyr.geometryType() == QgsWkbTypes.PointGeometry and lyr.name() in ('Poles', 'Manholes'):
                     if lyr.selectedFeatureCount() > 0:
                         selected_features.extend(lyr.selectedFeatures())
             except Exception:
@@ -3425,7 +3425,7 @@ class StuboviPlugin:
 
         trasa_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
-            if lyr.name() in ('Trasa', 'Route') and lyr.geometryType() == QgsWkbTypes.LineGeometry:
+            if lyr.name() in ('Route',) and lyr.geometryType() == QgsWkbTypes.LineGeometry:
                 trasa_layer = lyr
                 break
         if trasa_layer is None:
@@ -3453,7 +3453,7 @@ class StuboviPlugin:
         trasa_layer.commitChanges()
         # === KRAJ DODATKA ===
 
-        self.stilizuj_trasa_layer(trasa_layer)
+        self.style_route_layer(trasa_layer)
 
         pts = [f.geometry().asPoint() for f in selected_features]
         if len(pts) == 2:
@@ -3504,9 +3504,9 @@ class StuboviPlugin:
         trasa_layer.startEditing()
         trasa_layer.addFeature(trasa_feat)
         trasa_layer.commitChanges()
-        self.stilizuj_trasa_layer(trasa_layer)
+        self.style_route_layer(trasa_layer)
 
-         # prikaži u poruci EN labelu, ali u bazi ostaje kod (tip_trase)
+         # show EN label in message, but code stays in database (tip_trase)
         tip_label_display = TRASA_TYPE_LABELS.get(tip_trase, tip_trase)
         QMessageBox.information(
             self.iface.mainWindow(),
@@ -3524,19 +3524,19 @@ class StuboviPlugin:
         from qgis.core import QgsProject, QgsVectorLayer, QgsVectorDataProvider
 
         obrisano = 0
-        # skup kablova na koje utiču obrisane rezerve
+        # set of cables affected by deleted reserves
         affected_cables = set()   # (kabl_layer_id, kabl_fid)
 
         for lyr in QgsProject.instance().mapLayers().values():
-            # OVO JE PROVERA KOJA KORISTI capabilities()
+            # THIS IS A CHECK THAT USES capabilities()
             if isinstance(lyr, QgsVectorLayer) and (
                 lyr.isEditable()
                 or lyr.dataProvider().capabilities() & QgsVectorDataProvider.DeleteFeatures
             ):
                 selected_feats = list(lyr.selectedFeatures())
 
-                # Ako brišemo sa sloja Opticke_rezerve - zapamti koje kablove je to dotaklo
-                if lyr.name() in ("Opticke_rezerve", "Optical slack"):
+                # If deleting from Opticke_rezerve layer - remember which cables were affected
+                if lyr.name() in ("Optical_reserves",):
                     for f in selected_feats:
                         try:
                             kabl_layer_id = f["kabl_layer_id"]
@@ -3556,7 +3556,7 @@ class StuboviPlugin:
                     lyr.triggerRepaint()
                 lyr.removeSelection()
 
-        # POSLE brisanja rezervi – ponovo izračunaj slack za pogođene kablove
+        # AFTER deleting reserves – recalculate slack for affected cables
         if affected_cables:
             for kabl_layer_id, kabl_fid in affected_cables:
                 try:
@@ -3576,10 +3576,10 @@ class StuboviPlugin:
 
     def _stilizuj_kablovi_layer(self, kablovi_layer):
         """
-        Stilizacija kablova.
-        - Podzemni: isprekidana linija.
-        - Vazdušni: puna linija (bez poprečnih crtica).
-        Labele ostaju neizmenjene.
+        Cable styling.
+        - Underground: dashed line.
+        - Aerial: solid line (without cross-hatches).
+        Labels remain unchanged.
         """
         from qgis.PyQt.QtCore import Qt
         from qgis.PyQt.QtGui import QColor
@@ -3591,7 +3591,7 @@ class StuboviPlugin:
             QgsTextFormat, QgsTextBufferSettings
         )
 
-        # širina kabla – uzmi iz trase ako postoji, pa malo deblje
+        # cable width – take from route if exists, then a bit thicker
         base_width = 0.8
         base_unit = QgsUnitTypes.RenderMetersInMapUnits
         try:
@@ -3657,7 +3657,7 @@ class StuboviPlugin:
 
         kablovi_layer.setRenderer(QgsCategorizedSymbolRenderer('podtip', categories))
 
-        # --- Labele: ostavljamo postojeće ponašanje ---
+        # --- Labels: keep existing behavior ---
         try:
             s = QgsPalLayerSettings()
             s.fieldName = (
@@ -3698,7 +3698,7 @@ class StuboviPlugin:
         except Exception:
             pass
 
-        # Engleski aliasi za kablove + englesko ime lejera u legendi
+        # English aliases for cables + English layer name in legend
         try:
             self._apply_cable_field_aliases(kablovi_layer)
             self._set_cable_layer_alias(kablovi_layer)
@@ -3712,11 +3712,11 @@ class StuboviPlugin:
 
 
     
-    # === Grananje/offset preko branch_index ===
-        # === Grananje/offset preko branch_index ===
+    # === Branching/offset via branch_index ===
+        # === Branching/offset via branch_index ===
 
     def _ensure_branch_index_field(self, layer):
-        """Obezbedi da sloj ima INT polje 'branch_index'."""
+        """Ensure layer has INT field 'branch_index'."""
         from qgis.core import QgsField
         from qgis.PyQt.QtCore import QVariant
 
@@ -3731,8 +3731,8 @@ class StuboviPlugin:
 
     def _compute_branch_indices_for_layer(self, layer, tol_m=0.3):
         """
-        Dodeli branch_index za kablove koji imaju iste krajnje tačke
-        (nezavisno od smera). tol_m je tolerancija grupisanja u metrima.
+        Assign branch_index for cables that have the same endpoints
+        (regardless of direction). tol_m is grouping tolerance in meters.
         """
         from qgis.core import QgsWkbTypes
 
@@ -3767,14 +3767,14 @@ class StuboviPlugin:
             p2 = line[-1]
             k1 = round_key(p1)
             k2 = round_key(p2)
-            # ključ nezavisan od smera
+            # key independent of direction
             key = (k1, k2) if k1 <= k2 else (k2, k1)
             groups.setdefault(key, []).append(f.id())
 
         if not groups:
             return 0, 0
 
-        # upiši branch_index vrednosti
+        # write branch_index values
         self._ensure_branch_index_field(layer)
         idx = layer.fields().indexFromName("branch_index")
         if idx == -1:
@@ -3887,10 +3887,10 @@ class StuboviPlugin:
         except Exception:
             pass
 
-    def razgrani_kablove_offset(self):
+    def separate_cables_offset(self):
         """
-        Handler za dugme 'Branch cables (offset)'.
-        Računa branch_index i primenjuje offset za aktivni line sloj.
+        Handler for 'Branch cables (offset)' button.
+        Calculate branch_index and apply offset for active line layer.
         """
         from qgis.core import QgsVectorLayer, QgsWkbTypes
 
@@ -3915,9 +3915,9 @@ class StuboviPlugin:
 
         try:
             msg = (
-                f"Grananje završeno – grupa: {groups}, "
-                f"ažuriranih kablova: {updated}. "
-                "Ako ne vidiš razdvajanje, osveži prikaz (Ctrl+R)."
+                f"Branching finished – groups: {groups}, "
+                f"updated cables: {updated}. "
+                "If you don't see separation, refresh view (Ctrl+R)."
             )
             self.iface.messageBar().pushInfo("Branch cables", msg)
         except Exception:
@@ -3962,10 +3962,10 @@ class StuboviPlugin:
         except Exception:
             pass
 
-    def spoji_sve_trase(self):
+    def merge_all_routes(self):
         trasa_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
-            if lyr.name() in ('Trasa', 'Route') and lyr.geometryType() == QgsWkbTypes.LineGeometry:
+            if lyr.name() in ('Route',) and lyr.geometryType() == QgsWkbTypes.LineGeometry:
                 trasa_layer = lyr
                 break
         if trasa_layer is None:
@@ -3994,7 +3994,7 @@ class StuboviPlugin:
 
         selected_feats = trasa_layer.selectedFeatures()
         if len(selected_feats) < 2:
-            QMessageBox.warning(self.iface.mainWindow(), "Stubovi", "Selektuj bar dve trase za spajanje!")
+            QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Select at least two routes to merge!")
             return
 
         polylines = []
@@ -4008,7 +4008,7 @@ class StuboviPlugin:
             if pts and len(pts) >= 2:
                 polylines.append(list(pts))
         if len(polylines) < 2:
-            QMessageBox.warning(self.iface.mainWindow(), "Stubovi", "Nema dovoljno validnih linija za spajanje!")
+            QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Not enough valid lines to merge!")
             return
 
         chain = polylines.pop(0)
@@ -4086,7 +4086,7 @@ class StuboviPlugin:
         feat.setAttribute("tip_trase", tip_trase)
         trasa_layer.addFeature(feat)
         trasa_layer.commitChanges()
-        self.stilizuj_trasa_layer(trasa_layer)
+        self.style_route_layer(trasa_layer)
 
         tip_label_display = TRASA_TYPE_LABELS.get(tip_trase, tip_trase)
         QMessageBox.information(
@@ -4096,15 +4096,15 @@ class StuboviPlugin:
         )
 
 
-    def polozi_kabl_tip(self, tip, podtip):
+    def lay_cable_by_type(self, tip, podtip):
         self.selected_cable_type = tip
         self.selected_cable_subtype = podtip
         self.polozi_kabl()
 
     
     def polozi_kabl(self):
-        # Prikupi selekcije sa svih slojeva elemenata (+ Stubovi + OKNA)
-        relevant_names = [NASTAVAK_DEF['name']] + [d['name'] for d in ELEMENT_DEFS] + ['Stubovi', 'Poles', 'OKNA', 'Manholes']
+        # Collect selections from all element layers (+ Poles + OKNA)
+        relevant_names = [NASTAVAK_DEF['name']] + [d['name'] for d in ELEMENT_DEFS] + ['Poles', 'Manholes']
         selected = []
         for lyr in QgsProject.instance().mapLayers().values():
             if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.PointGeometry and lyr.name() in relevant_names:
@@ -4118,7 +4118,7 @@ class StuboviPlugin:
         # Sloj trasa
         trasa_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
-            if lyr.name() in ('Trasa', 'Route') and lyr.geometryType() == QgsWkbTypes.LineGeometry:
+            if lyr.name() in ('Route',) and lyr.geometryType() == QgsWkbTypes.LineGeometry:
                 trasa_layer = lyr
                 break
         if trasa_layer is None or trasa_layer.featureCount() == 0:
@@ -4181,22 +4181,22 @@ class StuboviPlugin:
 
         layer_suffix = "vazdusni" if str(vrsta).lower().startswith("vazdu") else "podzemni"
 
-        # Prihvatamo i stara (srpska) i nova (engleska) imena slojeva
+        # Accept both old (Serbian) and new (English) layer names
         if layer_suffix == "vazdusni":
-            candidate_names = ("Kablovi_vazdusni", "Aerial cables")
+            candidate_names = ("Aerial_cables",)
         else:
-            candidate_names = ("Kablovi_podzemni", "Underground cables")
+            candidate_names = ("Underground_cables",)
 
                 # --- Izbor sloja za kablove (Aerial/Underground) ---
 
         layer_suffix = "vazdusni" if str(vrsta).lower().startswith("vazdu") else "podzemni"
 
-        # Prihvatamo i stara (srpska) i nova (engleska) imena slojeva
+        # Accept both old (Serbian) and new (English) layer names
         if layer_suffix == "vazdusni":
-            candidate_names = ("Kablovi_vazdusni", "Aerial cables")
+            candidate_names = ("Aerial_cables",)
             default_name = "Aerial cables"
         else:
-            candidate_names = ("Kablovi_podzemni", "Underground cables")
+            candidate_names = ("Underground_cables",)
             default_name = "Underground cables"
 
         kablovi_layer = None
@@ -4210,7 +4210,7 @@ class StuboviPlugin:
                     kablovi_layer = lyr
                     break
             except Exception:
-                # ako naletimo na raster ili nešto bez geometryType, samo preskoči
+                # if we encounter raster or something without geometryType, just skip
                 pass
 
         if kablovi_layer is None:
@@ -4252,7 +4252,7 @@ class StuboviPlugin:
             QgsProject.instance().addMapLayer(kablovi_layer)
             
         
-        # Osiguraj da sloj ima sva potrebna polja (ako je postojao od ranije)
+        # Ensure layer has all required fields (if it existed from before)
         needed_fields = {
             "tip": QVariant.String,
             "podtip": QVariant.String,
@@ -4314,7 +4314,7 @@ class StuboviPlugin:
                     val = feat['naziv']
                     if val is not None and str(val).strip():
                         return str(val).strip()
-                if layer.name() == 'Stubovi':
+                if layer.name() == 'Poles':
                     tip = str(feat['tip']) if 'tip' in layer.fields().names() and feat['tip'] is not None else ''
                     return ("Stub " + tip).strip() or f"Stub {int(feat.id())}"
             except Exception:
@@ -4351,7 +4351,7 @@ class StuboviPlugin:
                 break
 
         if kabl_geom is None:
-            # Novo: probaj kroz spojene delove trase (virtuelni merge)
+            # New: try through joined route parts (virtual merge)
             tol_units = self.iface.mapCanvas().mapUnitsPerPixel() * 6
             path_pts = self._build_path_across_network(trasa_layer, point1, point2, tol_units)
             if not path_pts:
@@ -4390,7 +4390,7 @@ class StuboviPlugin:
         feat.setAttribute("konstr_bez_metalnih", konstr_bez_metalnih)
         feat.setAttribute("od", od_naziv)
         feat.setAttribute("do", do_naziv)
-        # upiši dužinu
+        # write length
         try:
             feat.setAttribute("duzina_m", kabl_geom.length())
         except Exception:
@@ -4403,7 +4403,7 @@ class StuboviPlugin:
 
         QMessageBox.information(self.iface.mainWindow(), "FiberQ", "Cable has been laid along the route!")
 
-    def uvezi_trasu_iz_fajla(self):
+    def import_route_from_file(self):
         filename, _ = QFileDialog.getOpenFileName(
             self.iface.mainWindow(),
             "Choose route file (KML/KMZ/DWG/GPX/Shape)", "",
@@ -4419,7 +4419,7 @@ class StuboviPlugin:
 
         trasa_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
-            if lyr.name() in ('Trasa', 'Route') and lyr.geometryType() == QgsWkbTypes.LineGeometry:
+            if lyr.name() in ('Route',) and lyr.geometryType() == QgsWkbTypes.LineGeometry:
                 trasa_layer = lyr
                 break
         if trasa_layer is None:
@@ -4509,9 +4509,9 @@ class StuboviPlugin:
                     broj_dodatih += 1
 
         trasa_layer.commitChanges()
-        self.stilizuj_trasa_layer(trasa_layer)
+        self.style_route_layer(trasa_layer)
         
-         # prikaži EN labelu za tip
+         # show EN label for type
         tip_label_display = TRASA_TYPE_LABELS.get(tip_trase, tip_trase)
 
         if broj_dodatih:
@@ -4527,11 +4527,11 @@ class StuboviPlugin:
                 "No lines found for import in the file!"
             )
 
-    def izmeni_tip_trase(self):
-        # Pronađi sloj Trasa
+    def change_route_type(self):
+        # Find layer Trasa
         trasa_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
-            if lyr.name() in ('Trasa', 'Route') and lyr.geometryType() == QgsWkbTypes.LineGeometry:
+            if lyr.name() in ('Route',) and lyr.geometryType() == QgsWkbTypes.LineGeometry:
                 trasa_layer = lyr
                 break
         if trasa_layer is None:
@@ -4567,7 +4567,7 @@ class StuboviPlugin:
 
 
         trasa_layer.commitChanges()
-        self.stilizuj_trasa_layer(trasa_layer)
+        self.style_route_layer(trasa_layer)
 
         tip_label_display = TRASA_TYPE_LABELS.get(tip_trase, tip_trase)
 
@@ -4595,9 +4595,9 @@ class StuboviPlugin:
         if imported_layer.geometryType() != QgsWkbTypes.PointGeometry:
             QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "The selected file does not contain points!")
             return
-        # Pronađi sve postojeće point slojeve relevantne za plugin:
+        # Find all existing point layers relevant for plugin:
         # Poles/Stubovi, Manholes/OKNA + svi elementi iz Placing elements (+ Joint Closures)
-        node_layer_names = ['Stubovi', 'Poles', 'OKNA', 'Manholes']
+        node_layer_names = ['Poles', 'Manholes']
         try:
             # Joint Closures / Nastavci
             try:
@@ -4605,8 +4605,8 @@ class StuboviPlugin:
                 if nm and nm not in node_layer_names:
                     node_layer_names.append(nm)
             except Exception:
-                if 'Nastavci' not in node_layer_names:
-                    node_layer_names.append('Nastavci')
+                if 'Joint_closures' not in node_layer_names:
+                    node_layer_names.append('Joint_closures')
             # svi elementi iz Placing elements (ELEMENT_DEFS)
             for d in ELEMENT_DEFS:
                 nm = d.get("name")
@@ -4623,12 +4623,12 @@ class StuboviPlugin:
         ]
         layer_names = [lyr.name() for lyr in existing_layers]
 
-        # Dodaj opciju za kreiranje novog sloja
+        # Add option for creating new layer
         NEW_LAYER_OPTION_EN = "Create a new layer"
-        NEW_LAYER_OPTION_SR = "Kreiraj novi sloj"  # zbog kompatibilnosti sa starim projektima
+        NEW_LAYER_OPTION_SR = "Kreiraj novi sloj"  # for compatibility with old projects
         layer_names.append(NEW_LAYER_OPTION_EN)
 
-        # Dijalog za izbor sloja
+        # Dialog for layer selection
         selected_layer_name, ok = QInputDialog.getItem(
             self.iface.mainWindow(),
             "Import points",
@@ -4640,7 +4640,7 @@ class StuboviPlugin:
             return
 
         # 1) Ako je izabrana opcija za novi sloj (bilo srpska ili engleska)
-                # Ako je izabrana opcija za novi sloj (bilo srpska ili engleska)
+                # If new layer option is selected (either Serbian or English)
         if selected_layer_name in (NEW_LAYER_OPTION_EN, NEW_LAYER_OPTION_SR):
             new_layer_name, ok2 = QInputDialog.getText(
                 self.iface.mainWindow(),
@@ -4653,10 +4653,10 @@ class StuboviPlugin:
             if not new_layer_name:
                 return
 
-            # Ako korisnik traži Poles/Stubovi – koristi standardni Poles sloj iz StuboviPlugin.init_layer
-            if new_layer_name in ("Poles", "Stubovi"):
+            # If user asks for Poles/Stubovi – use standard Poles layer from StuboviPlugin.init_layer
+            if new_layer_name == "Poles":
                 try:
-                    # init_layer kreira ili pronađe Poles sloj sa ispravnim poljima i stilom
+                    # init_layer creates or finds Poles layer with correct fields and style
                     self.init_layer()
                     layer = self.layer
                     if layer is None:
@@ -4667,12 +4667,12 @@ class StuboviPlugin:
                     return
 
             else:
-                # Kreiraj novi point sloj za ostale tipove (Nastavci, ZOK, itd.)
+                # Create new point layer for other types (Nastavci, ZOK, etc.)
                 crs = self.iface.mapCanvas().mapSettings().destinationCrs().authid()
                 layer = QgsVectorLayer(f"Point?crs={crs}", new_layer_name, "memory")
                 pr = layer.dataProvider()
-                # Dodaj polja u zavisnosti od tipa sloja
-                if new_layer_name == "Nastavci":
+                # Add fields depending on layer type
+                if new_layer_name == "Joint_closures":
                     pr.addAttributes([QgsField("naziv", QVariant.String)])
                 elif new_layer_name == "ZOK":
                     pr.addAttributes([QgsField("naziv", QVariant.String)])
@@ -4700,9 +4700,9 @@ class StuboviPlugin:
                 QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Unable to find the target layer!")
                 return
         
-        # Dodatna zaštita: ako je cilj Poles/Stubovi, obezbedi da postoji polje 'tip'
+        # Additional safety: if target is Poles/Stubovi, ensure field 'tip' exists
         try:
-            if layer.name() in ("Poles", "Stubovi") and "tip" not in layer.fields().names():
+            if layer.name() == "Poles" and "tip" not in layer.fields().names():
                 layer.startEditing()
                 layer.dataProvider().addAttributes([QgsField("tip", QVariant.String)])
                 layer.updateFields()
@@ -4726,7 +4726,7 @@ class StuboviPlugin:
             if src_crs != dst_crs:
                 geom.transform(transform)
 
-            # Dodaj svaki pojedinačni Point (čak i iz MultiPoint-a)
+            # Add each individual Point (even from MultiPoint)
             if geom.type() == QgsWkbTypes.PointGeometry:
                 if geom.isMultipart():
                     for pt in geom.asMultiPoint():
@@ -4735,7 +4735,7 @@ class StuboviPlugin:
                             new_feat.setGeometry(QgsGeometry.fromPointXY(pt))
                             # Za Poles sloj podrazumevano postavi tip = "POLE"
                             try:
-                                if layer.name() in ("Poles", "Stubovi") and "tip" in layer.fields().names():
+                                if layer.name() == "Poles" and "tip" in layer.fields().names():
                                     new_feat["tip"] = "POLE"
                             except Exception:
                                 pass
@@ -4747,13 +4747,13 @@ class StuboviPlugin:
                         new_feat = QgsFeature(layer.fields())
                         new_feat.setGeometry(QgsGeometry.fromPointXY(pt))
                         try:
-                            if layer.name() in ("Poles", "Stubovi") and "tip" in layer.fields().names():
+                            if layer.name() == "Poles" and "tip" in layer.fields().names():
                                 new_feat["tip"] = "POLE"
                         except Exception:
                             pass
                         layer.addFeature(new_feat)
                         broj_dodatih += 1
-            # Ako je recimo Line ili Polygon, preskoči!
+            # If it's Line or Polygon, skip!
 
         layer.commitChanges()
         layer.triggerRepaint()
@@ -4956,7 +4956,7 @@ class StuboviPlugin:
         self._export_active_layer(only_selected=False)
 
 
-    def proveri_konzistentnost(self):
+    def check_consistency(self):
         self.popravljive_greske = []
         layers = {
             lyr.name(): lyr
@@ -4965,8 +4965,8 @@ class StuboviPlugin:
         }
 
         # podrži i srpske i engleske nazive
-        trasa_layer = layers.get("Route") or layers.get("Trasa")
-        stubovi_layer = layers.get("Poles") or layers.get("Stubovi")
+        trasa_layer = layers.get("Route")
+        stubovi_layer = layers.get("Poles")
         okna_layer = layers.get("Manholes") or layers.get("OKNA")
 
         if trasa_layer and (stubovi_layer or okna_layer):
@@ -5041,16 +5041,16 @@ class StuboviPlugin:
                     min_dist = dist
                     nearest_stub = stub_pt
 
-            # Ako je stub pronađen, pomeri početak/kraj trase na stub
+            # If pole is found, move route start/end to pole
             if nearest_stub and min_dist > 1e-2:
                 poly[idx] = QgsPointXY(nearest_stub)
                 new_geom = QgsGeometry.fromPolylineXY(poly)
 
-                # Pronađi sloj 'Trasa' u projektu (QgsFeature nema .layer())
+                # Find layer 'Trasa' in project (QgsFeature doesn't have .layer())
                 trasa_layer = next(
                     (lyr for lyr in QgsProject.instance().mapLayers().values()
                     if isinstance(lyr, QgsVectorLayer)
-                    and lyr.name() in ('Trasa', 'Route')
+                    and lyr.name() in ('Route',)
                     and lyr.geometryType() == QgsWkbTypes.LineGeometry),
                     None
                 )
@@ -5096,10 +5096,10 @@ class StuboviPlugin:
     def _ensure_crtezi_group(self, subgroup_name):
         root = QgsProject.instance().layerTreeRoot()
 
-        # Glavna grupa u panelu Layers – sada na engleskom
+        # Main group in Layers panel – now in English
         group = root.findGroup("Drawings")
         if not group:
-            # backward-compat: ako već postoji stara grupa "Crteži", preimenuj je
+            # backward-compat: if old group "Crtezi" already exists, rename it
             legacy = root.findGroup("Crteži")
             if legacy:
                 try:
@@ -5121,12 +5121,12 @@ class StuboviPlugin:
     def _guess_category_for_layer(self, layer):
         name = (layer.name() or "").lower()
 
-        # i dalje detekcija po srpskim rečima u layer name,
-        # ali vraćamo engleske nazive podgrupa
+        # still detecting by Serbian words in layer name,
+        # but returning English subgroup names
         if "nastav" in name:
-            return "Joint Closures"       # bivši "Nastavci"
+            return "Joint Closures"       # former "Nastavci"
         if "koris" in name:
-            return "Customers"     # bivši "Korisnici"
+            return "Customers"     # former "Korisnici"
         if "zok" in name:
             return "TB"
         if "odf" in name:
@@ -5309,7 +5309,7 @@ class StuboviPlugin:
         for lyr in QgsProject.instance().mapLayers().values():
             try:
                 name = lyr.name().strip()
-                if name in ("OKNA", "Manholes") and lyr.geometryType() == QgsWkbTypes.PointGeometry:
+                if name in ("Manholes",) and lyr.geometryType() == QgsWkbTypes.PointGeometry:
                     try:
                         self._apply_okna_style(lyr)
                         self._apply_okna_field_aliases(lyr)
@@ -5357,7 +5357,7 @@ class StuboviPlugin:
 
     
     def _move_layer_to_top(self, layer):
-        """Pomeri sloj na vrh u layer tree-u i u 'Custom Layer Order' (ako je uključen)."""
+        """Move layer to top in layer tree and in 'Custom Layer Order' (if enabled)."""
         try:
             proj = QgsProject.instance()
             root = proj.layerTreeRoot()
@@ -5429,7 +5429,7 @@ class StuboviPlugin:
             })
             sl = sym.symbolLayer(0)
 
-            # ključ: veličina markera u METRIMA na mapi
+            # key: marker size in METERS on map
             try:
                 sl.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
             except Exception:
@@ -5538,7 +5538,7 @@ class StuboviPlugin:
             proj = QgsProject.instance()
             root = proj.layerTreeRoot()
 
-            # ako je traženo "CEVI", pokušaj i sa engleskim imenom grupe
+            # if "CEVI" was requested, try with English group name too
             group = root.findGroup(group_name)
             if group is None and group_name == "CEVI":
                 group = root.findGroup("Pipes")
@@ -5592,8 +5592,8 @@ class StuboviPlugin:
             pass
 
     def _ensure_cevi_group(self):
-        """Vrati ili kreiraj grupu za cevi u legendi.
-        Interno i dalje koristimo naziv 'CEVI', ali korisniku prikažemo 'Pipes'.
+        """Return or create group for pipes in legend.
+        Internally we still use name 'CEVI', but display 'Pipes' to user.
         """
         proj = QgsProject.instance()
         root = proj.layerTreeRoot()
@@ -5606,7 +5606,7 @@ class StuboviPlugin:
             except Exception:
                 group = root.addGroup("Pipes")
         else:
-            # ako je još uvek staro ime, preimenuj samo za user-view
+            # if still old name, rename only for user-view
             try:
                 if group.name() == "CEVI":
                     group.setName("Pipes")
@@ -5621,7 +5621,7 @@ class StuboviPlugin:
         return group
 
     def _apply_pipe_field_aliases(self, layer):
-        """Engleski aliasi za polja slojeva PE / prelaznih cevi."""
+        """English aliases for PE / transition pipe layer fields."""
         alias_map = {
             "materijal": "Material",
             "kapacitet": "Capacity",
@@ -5640,8 +5640,8 @@ class StuboviPlugin:
 
     def _set_pipe_layer_alias(self, layer):
         """
-        Prikaži nazive slojeva cevi na engleskom.
-        Podržava i stara i nova imena, da ne kvari postojeće projekte.
+        Display pipe layer names in English.
+        Supports both old and new names, to not break existing projects.
         """
         try:
             lname = (layer.name() or "").strip()
@@ -5659,10 +5659,10 @@ class StuboviPlugin:
 
     def _ensure_pipe_layer(self, name):
         """
-        Kreiraj/vrati linijski memory sloj u grupi CEVI sa osnovnim poljima.
+        Create/return line memory layer in CEVI group with basic fields.
 
-        `name` je staro interno ime na srpskom ("PE cevi" ili "Prelazne cevi").
-        U projektu korisniku prikazujemo englesko ime, ali ovde podržavamo oba.
+        `name` is the old internal Serbian name ("PE cevi" or "Prelazne cevi").
+        In project we display English name to user, but here we support both.
         """
         prj = QgsProject.instance()
 
@@ -5674,7 +5674,7 @@ class StuboviPlugin:
         if name in alias_map:
             target_names.add(alias_map[name])
 
-        # 1) Pronađi ako već postoji sloj sa srpskim ili engleskim imenom
+        # 1) Find if layer with Serbian or English name already exists
         for lyr in prj.mapLayers().values():
             try:
                 if (
@@ -5691,7 +5691,7 @@ class StuboviPlugin:
             except Exception:
                 pass
 
-        # 2) Ako ne postoji – kreiraj novi sloj sa internim srpskim imenom
+        # 2) If doesn't exist – create new layer with internal Serbian name
         crs = self.iface.mapCanvas().mapSettings().destinationCrs().authid()
         layer = QgsVectorLayer(f"LineString?crs={crs}", name, "memory")
         pr = layer.dataProvider()
@@ -5713,7 +5713,7 @@ class StuboviPlugin:
         except Exception:
             pass
 
-        # Dodaj u grupu CEVI/Pipes
+        # Add to CEVI/Pipes group
         prj.addMapLayer(layer, False)
         try:
             group = self._ensure_cevi_group()
@@ -5727,13 +5727,13 @@ class StuboviPlugin:
         except Exception:
             pass
 
-        # Pomeri sloj na vrh u okviru grupe
+        # Move layer to top within group
         try:
             self._move_layer_to_top(layer)
         except Exception:
             pass
 
-        # aliasi polja + user-visible ime sloja
+        # field aliases + user-visible layer name
         try:
             self._apply_pipe_field_aliases(layer)
             self._set_pipe_layer_alias(layer)
@@ -5875,7 +5875,7 @@ class OknoDetailsDialog(QDialog):
         self.chk_poklop_teski = QCheckBox()
         self.chk_poklop_laki = QCheckBox()
         self.spin_br_nos = QSpinBox(); self.spin_br_nos.setRange(0, 20)
-        self.spin_debl = QLineEdit()  # čuvamo kao tekst/double
+        self.spin_debl = QLineEdit()  # keep as text/double
         self.ed_lestve = QLineEdit()
 
         form.addRow("Manhole ID:", self.ed_broj)
@@ -5949,11 +5949,11 @@ class OknoPlaceTool(QgsMapToolEmitPoint):
         snap_point = None
         min_dist = None
         
-        # Snap na trasu (verteksi + sredine segmenata)
+        # Snap to route (vertices + segment midpoints)
         trasa_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if lyr.name() in ('Trasa', 'Route') and lyr.geometryType() == QgsWkbTypes.LineGeometry:
+                if lyr.name() in ('Route',) and lyr.geometryType() == QgsWkbTypes.LineGeometry:
                     trasa_layer = lyr
                     break
             except Exception:
@@ -6038,12 +6038,12 @@ class CablePickerDialog(QDialog):
         from qgis.PyQt.QtWidgets import QFormLayout, QComboBox, QDialogButtonBox, QSpinBox, QDoubleSpinBox, QLineEdit, QCheckBox, QLabel
         self.setWindowTitle("Parametri kabla")
 
-                # --- Osnovne liste (INTERNE vrednosti ostaju na srpskom) ---
+                # --- Basic lists (INTERNAL values remain in Serbian) ---
         # kodovi
         self.vrste = ["podzemni", "vazdusni"]
         self.podtipi = ["glavni", "distributivni", "razvodni"]
 
-        # engleske etikete za prikaz u dijalogu
+        # English labels for display in dialog
         self.vrste_labels = {
             "podzemni": "Underground",
             "vazdusni": "Aerial",
@@ -6146,7 +6146,7 @@ class CablePickerDialog(QDialog):
             idx = self.cb_vrsta.findData(default_vrsta)
             if idx >= 0:
                 self.cb_vrsta.setCurrentIndex(idx)
-            # polaganje preslikano iz vrste (kod ostaje srpski)
+            # laying mapped from kind (code remains Serbian)
             pol_code = "Vazdusno" if "vazdu" in default_vrsta.lower() else "Podzemno"
             idx_pol = self.cb_polaganje.findData(pol_code)
             if idx_pol >= 0:
@@ -6253,12 +6253,12 @@ class CablePickerDialog(QDialog):
                 else:
                     broj_cevcica = 1          # neki minimalni default
         except Exception:
-            # Ako bilo šta pukne – samo ostavi što je korisnik uneo
+            # If anything fails – just leave what the user entered
             pass
 
-        # >>> OVDE JE KLJUČNA IZMJENA <<<
-        # currentData() će držati SRPSKI kod (npr. "podzemni"),
-        # a currentText() je ono što vidi korisnik (engleski).
+        # >>> THIS IS THE KEY CHANGE <<<
+        # currentData() will hold SERBIAN code (e.g. "podzemni"),
+        # and currentText() is what user sees (English).
         vrsta = self.cb_vrsta.currentData() or self.cb_vrsta.currentText()
         podtip = self.cb_podtip.currentData() or self.cb_podtip.currentText()
         tip = self.cb_tip.currentData() or self.cb_tip.currentText()
@@ -6328,7 +6328,7 @@ class PointTool(QgsMapToolEmitPoint):
     def _snap_candidate(self, point):
         trasa_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
-            if lyr.name() in ('Trasa', 'Route') and lyr.geometryType() == QgsWkbTypes.LineGeometry:
+            if lyr.name() in ('Route',) and lyr.geometryType() == QgsWkbTypes.LineGeometry:
                 trasa_layer = lyr
                 break
 
@@ -6423,9 +6423,9 @@ class PointTool(QgsMapToolEmitPoint):
 
 
 class PlaceElementTool(QgsMapToolEmitPoint):
-    """Generalizovani alat za polaganje tačkastih elemenata na trasi.
-    target_layer_name: ime sloja u koji se upisuje (automatski kreira ako ne postoji)
-    symbol_spec: dict za QgsMarkerSymbol.createSimple ili {'svg_path': '/path/to/icon.svg'}
+    """Generalized tool for placing point elements on route.
+    target_layer_name: layer name to write to (automatically creates if doesn't exist)
+    symbol_spec: dict for QgsMarkerSymbol.createSimple or {'svg_path': '/path/to/icon.svg'}
     """
     def __init__(self, canvas, target_layer_name, symbol_spec=None):
         super().__init__(canvas)
@@ -6573,7 +6573,7 @@ class PlaceElementTool(QgsMapToolEmitPoint):
         except Exception:
             existing_layer = None
 
-        # Ako je cilj 'Prekid', automatski postavi naziv bez dijaloga
+        # If target is 'Fiber break', automatically set name without dialog
         if 'prekid' in self.target_layer_name.lower():
             _attrs = {'naziv': 'Prekid'}
             ok = True
@@ -6590,7 +6590,7 @@ class PlaceElementTool(QgsMapToolEmitPoint):
             self.snap_marker.hide()
             return
 
-        # Pronađi ili kreiraj sloj
+        # Find or create layer
         elem_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
             if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.PointGeometry and lyr.name() == self.target_layer_name:
@@ -6680,11 +6680,11 @@ class PlaceElementTool(QgsMapToolEmitPoint):
             # <<< NOVO >>>
             _apply_element_aliases(elem_layer)
 
-        # Ako je ovo sloj 'Prekid vlakna', primeni specijalan stil (etiketa iznad i vrh trougla na trasi)
+        # If this is 'Fiber break' layer, apply special style (label above and triangle point on route)
         if 'prekid' in self.target_layer_name.lower():
             self._apply_prekid_style(elem_layer)
 
-        # Upis tačke
+        # Write point
         feat = QgsFeature(elem_layer.fields())
         feat.setGeometry(QgsGeometry.fromPointXY(final_point))
         name_map = {_normalize_name(f.name()): f.name() for f in elem_layer.fields()}
@@ -6814,7 +6814,7 @@ class ExtensionTool(QgsMapToolEmitPoint):
                             consider(v)
 
             except Exception:
-                # ako bilo koji sloj "poludi", preskoči ga
+                # if any layer "goes crazy", skip it
                 pass
 
         if snap_point is not None and min_dist is not None and min_dist < tol:
@@ -6882,7 +6882,7 @@ class ExtensionTool(QgsMapToolEmitPoint):
             self.snap_marker.hide()
             return
 
-        # Pronađi postojeći lejer Joint Closures (podržava i stari naziv "Nastavci")
+        # Find existing layer Joint Closures (also supports old name "Nastavci")
         nastavak_layer = None
         target_names = {
             NASTAVAK_DEF.get("name", "Joint Closures"),
@@ -6899,7 +6899,7 @@ class ExtensionTool(QgsMapToolEmitPoint):
                 break
 
 
-        # 2) Ako ne postoji – kreiraj novi
+        # 2) If doesn't exist – create new
         if nastavak_layer is None:
             crs = self.canvas.mapSettings().destinationCrs().authid()
             nastavak_layer = QgsVectorLayer(
@@ -6940,10 +6940,10 @@ class ExtensionTool(QgsMapToolEmitPoint):
             _apply_fixed_text_label(nastavak_layer, "naziv", 8.0, 5.0)
             nastavak_layer.triggerRepaint()
 
-            # odmah posle kreiranja sloja – alias-i
+            # immediately after creating layer – aliases
             self._apply_joint_closure_aliases(nastavak_layer)
 
-        # 3) Ako lejer postoji ali nema polje 'naziv' – dodaj ga + labeling + alias
+        # 3) If layer exists but doesn't have field 'naziv' – add it + labeling + alias
         elif nastavak_layer.fields().indexFromName("naziv") == -1:
             nastavak_layer.startEditing()
             nastavak_layer.dataProvider().addAttributes(
@@ -6996,7 +6996,7 @@ class LomnaTackaTool(QgsMapToolEmitPoint):
         point = self.toMapCoordinates(event.pos())
         trasa_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
-            if lyr.name() in ('Trasa', 'Route') and lyr.geometryType() == QgsWkbTypes.LineGeometry:
+            if lyr.name() in ('Route',) and lyr.geometryType() == QgsWkbTypes.LineGeometry:
                 trasa_layer = lyr
                 break
         if trasa_layer is None or trasa_layer.featureCount() == 0:
@@ -7109,7 +7109,7 @@ class LomnaTackaTool(QgsMapToolEmitPoint):
 
         trasa_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
-            if lyr.name() in ('Trasa', 'Route') and lyr.geometryType() == QgsWkbTypes.LineGeometry:
+            if lyr.name() in ('Route',) and lyr.geometryType() == QgsWkbTypes.LineGeometry:
                 trasa_layer = lyr
                 break
         if trasa_layer is None:
@@ -7138,7 +7138,7 @@ class LomnaTackaTool(QgsMapToolEmitPoint):
 
         trasa_layer.addFeatures([feat1, feat2])
         trasa_layer.commitChanges()
-        self.plugin.stilizuj_trasa_layer(trasa_layer)
+        self.plugin.style_route_layer(trasa_layer)
 
         self.rubber.reset(QgsWkbTypes.PointGeometry)
         QMessageBox.information(
@@ -7298,7 +7298,7 @@ class SmartMultiSelectTool(QgsMapTool):
                 self._marker.hide()
             return
 
-        # Ako su rastojanja vrlo bliska, daj prednost elementima nad stubom/oknom
+        # If distances are very close, give priority to elements over pole/manhole
         min_d = min(c[0] for c in candidates)
         eps = max(tol * 0.4, 0.01)
         near = [c for c in candidates if c[0] <= min_d + eps]
@@ -7395,7 +7395,7 @@ class SmartMultiSelectTool(QgsMapTool):
                 pass
 
             # 3) Stubovi / Poles i OKNA / Manholes
-            valid_point_names.update(['Stubovi', 'Poles', 'OKNA', 'Manholes'])
+            valid_point_names.update(['Poles', 'Manholes'])
 
             # --- LINE slojevi: trasa + cevi ---
             valid_line_names = {
@@ -7458,7 +7458,7 @@ class SmartMultiSelectTool(QgsMapTool):
 
 
 
-class RucnaTrasaTool(QgsMapTool):
+class ManualRouteTool(QgsMapTool):
     def __init__(self, iface, plugin):
         super().__init__(iface.mapCanvas())
         self.iface = iface
@@ -7482,7 +7482,7 @@ class RucnaTrasaTool(QgsMapTool):
         point = self.toMapCoordinates(event.pos())
 
         # SLOJEVI za snap: Stubovi, OKNA + svi iz ELEMENT_DEFS + Nastavci
-        node_layer_names = ['Stubovi', 'Poles', 'OKNA', 'Manholes']
+        node_layer_names = ['Poles', 'Manholes']
         try:
             # Nastavci
             try:
@@ -7490,8 +7490,8 @@ class RucnaTrasaTool(QgsMapTool):
                 if nm and nm not in node_layer_names:
                     node_layer_names.append(nm)
             except Exception:
-                if 'Nastavci' not in node_layer_names:
-                    node_layer_names.append('Nastavci')
+                if 'Joint_closures' not in node_layer_names:
+                    node_layer_names.append('Joint_closures')
             # svi elementi iz Polaganje elemenata
             for d in ELEMENT_DEFS:
                 nm = d.get('name')
@@ -7535,7 +7535,7 @@ class RucnaTrasaTool(QgsMapTool):
                 try:
                     if (isinstance(lyr, QgsVectorLayer)
                             and lyr.geometryType() == QgsWkbTypes.LineGeometry
-                            and lyr.name() in ('Trasa', 'Route')):
+                            and lyr.name() in ('Route',)):
                         trasa_layers.append(lyr)
                 except Exception:
                     pass
@@ -7588,15 +7588,15 @@ class RucnaTrasaTool(QgsMapTool):
         point = self.toMapCoordinates(event.pos())
 
         # SLOJEVI za snap: Stubovi, OKNA + svi iz ELEMENT_DEFS + Nastavci
-        node_layer_names = ['Stubovi', 'Poles', 'OKNA', 'Manholes']
+        node_layer_names = ['Poles', 'Manholes']
         try:
             try:
                 nm = NASTAVAK_DEF.get('name', 'Nastavci')
                 if nm and nm not in node_layer_names:
                     node_layer_names.append(nm)
             except Exception:
-                if 'Nastavci' not in node_layer_names:
-                    node_layer_names.append('Nastavci')
+                if 'Joint_closures' not in node_layer_names:
+                    node_layer_names.append('Joint_closures')
             for d in ELEMENT_DEFS:
                 nm = d.get('name')
                 if nm and nm not in node_layer_names:
@@ -7639,7 +7639,7 @@ class RucnaTrasaTool(QgsMapTool):
                 try:
                     if (isinstance(lyr, QgsVectorLayer)
                             and lyr.geometryType() == QgsWkbTypes.LineGeometry
-                            and lyr.name() in ('Trasa', 'Route')):
+                            and lyr.name() in ('Route',)):
                         trasa_layers.append(lyr)
                 except Exception:
                     pass
@@ -7679,7 +7679,7 @@ class RucnaTrasaTool(QgsMapTool):
         tol = self.canvas.mapUnitsPerPixel() * 15
         disp_point = snap_point if (min_dist is not None and min_dist < tol and snap_point is not None) else point
 
-        # Prikaži / skloni indikator snapa
+        # Show / hide snap indicator
         if snap_point is not None and min_dist is not None and min_dist < tol:
             self.snap_rubber.reset(QgsWkbTypes.PointGeometry)
             self.snap_rubber.addPoint(snap_point)
@@ -7697,10 +7697,10 @@ class RucnaTrasaTool(QgsMapTool):
         self.zavrsi_trasu()
 
     def zavrsi_trasu(self):
-        # počisti snap marker
+        # clean up snap marker
         self.snap_rubber.reset(QgsWkbTypes.PointGeometry)
 
-        # ako nema barem 2 tačke – odustani
+        # if less than 2 points – abort
         if len(self.points) < 2:
             self.rb.reset(QgsWkbTypes.LineGeometry)
             self.points = []
@@ -7710,7 +7710,7 @@ class RucnaTrasaTool(QgsMapTool):
         # nađi ili napravi sloj Route / Trasa
         trasa_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
-            if lyr.name() in ('Trasa', 'Route') and lyr.geometryType() == QgsWkbTypes.LineGeometry:
+            if lyr.name() in ('Route',) and lyr.geometryType() == QgsWkbTypes.LineGeometry:
                 trasa_layer = lyr
                 break
         if trasa_layer is None:
@@ -7732,7 +7732,7 @@ class RucnaTrasaTool(QgsMapTool):
         trasa_layer.commitChanges()
 
         # stil + aliasi za Route
-        self.plugin.stilizuj_trasa_layer(trasa_layer)
+        self.plugin.style_route_layer(trasa_layer)
 
         # geometrija + dužina
         line_geom = QgsGeometry.fromPolylineXY(self.points)
@@ -7761,14 +7761,14 @@ class RucnaTrasaTool(QgsMapTool):
         feat.setAttribute("naziv", f"Route {trasa_layer.featureCount() + 1}")
         feat.setAttribute("duzina", duzina_m)
         feat.setAttribute("duzina_km", duzina_km)
-        feat.setAttribute("tip_trase", tip_trase)   # u bazi ostaje 'vazdusna/podzemna/kroz objekat'
+        feat.setAttribute("tip_trase", tip_trase)   # in database stays 'vazdusna/podzemna/kroz objekat'
         trasa_layer.addFeature(feat)
         trasa_layer.commitChanges()
 
-        # još jednom stil (za slučaj novog sloja)
-        self.plugin.stilizuj_trasa_layer(trasa_layer)
+        # style once more (in case of new layer)
+        self.plugin.style_route_layer(trasa_layer)
 
-        # poruka korisniku – ENG labela
+        # message to user – EN label
         nice_label = TRASA_TYPE_LABELS.get(tip_trase, tip_trase)
         QMessageBox.information(
             self.iface.mainWindow(),
@@ -7795,19 +7795,19 @@ class KorekcijaDialog(QDialog):
         for g in greske:
             lbl = QLabel(g['msg'])
             vbox.addWidget(lbl)
-            # Dugme za popravku (ako postoji)
+            # Button for repair (if exists)
             if 'popravka' in g:
                 btn = QPushButton("Correct")
-                # Qt šalje bool (checked), ovde ga ignorišemo i pozivamo funkciju bez argumenata
+                # Qt sends bool (checked), here we ignore it and call function without arguments
                 btn.clicked.connect(lambda checked=False, func=g['popravka']: func())
                 vbox.addWidget(btn)
 
-            # Dugme za selektovanje na mapi (ako postoji feat i layer)
+            # Button for selecting on map (if feat and layer exist)
             if 'feat' in g and 'layer' in g:
                 btn_sel = QPushButton("Select on map")
-                # Napravi funkciju koja selektuje i zumira na feature
+                # Create function that selects and zooms to feature
                 def sel_func(feat_id=g['feat'].id(), layer=g['layer']):
-                    # Očisti selekciju svih slojeva
+                    # Clear selection on all layers
                     for lyr in QgsProject.instance().mapLayers().values():
                         if isinstance(lyr, QgsVectorLayer):
                             lyr.removeSelection()
@@ -8264,9 +8264,9 @@ class OpticalSchematicDialog(QDialog):
 
         edges_f = [e for e in edges if pass_filters(e)]
 
-        # --- MAP LAYOUT: koristi prave koordinate sa mape ---
+        # --- MAP LAYOUT: use real coordinates from map ---
         if getattr(self, 'chk_map_layout', None) and self.chk_map_layout.isChecked():
-            # Pripremi pozicije čvorova prema centroidima/tačkama
+            # Prepare node positions according to centroids/points
             pos = {}
             world_points = []
             from qgis.core import QgsGeometry
@@ -8308,13 +8308,13 @@ class OpticalSchematicDialog(QDialog):
                 except Exception:
                     continue
 
-            # Dodaj sve tačke iz geometrije kablova/cevi
+            # Add all points from cable/pipe geometry
             for e in edges_f:
                 coords = e.get('geom_coords') or []
                 for x, y in coords:
                     world_points.append((x, y))
 
-            # Ako nema tačaka, vrati prazan layout
+            # If no points, return empty layout
             if not world_points:
                 return {}, []
 
@@ -8434,11 +8434,11 @@ class OpticalSchematicDialog(QDialog):
                     continue
                 adj.setdefault(a, set()).add(b)
                 adj.setdefault(b, set()).add(a)
-            # osiguraj da se i izolovani čvorovi pojave
+            # ensure isolated nodes also appear
             for n in nodes.keys():
                 adj.setdefault(n, set())
 
-            # razbij na komponente
+            # split into components
             visited = set()
             components = []
 
@@ -8618,14 +8618,14 @@ class OpticalSchematicDialog(QDialog):
         try:
             self._rebuild_pending = True
             if getattr(self, "_rebuild_timer", None) is not None:
-                # restart timer – više promena u kratkom vremenu -> jedan rebuild
+                # restart timer – multiple changes in short time -> one rebuild
                 self._rebuild_timer.start()
             else:
-                # fallback, ako nema timera
+                # fallback, if no timer
                 self._rebuild_pending = False
                 self.rebuild()
         except Exception:
-            # ako nešto krene naopako, ne blokiramo – radimo direkt rebuild
+            # if something goes wrong, don't block – do direct rebuild
             self._rebuild_pending = False
             self.rebuild()
 
@@ -9130,7 +9130,7 @@ class ColorCatalogManagerDialog(QDialog):
                 hx = col.get("hex","#cccccc")
                 it = QListWidgetItem(name)
                 it.setBackground(QColor(hx))
-                # ako je tamna boja, tekst bele boje
+                # if dark color, use white text
                 try:
                     c = QColor(hx)
                     if c.red()*0.299 + c.green()*0.587 + c.blue()*0.114 < 140:
@@ -9144,7 +9144,7 @@ class ColorCatalogManagerDialog(QDialog):
         if dlg.exec_() == QDialog.Accepted:
             c = dlg.result_catalog()
             if c and c.get("name"):
-                # zameni ako postoji isti naziv
+                # replace if same name exists
                 names = [x.get("name","") for x in self.catalogs]
                 if c["name"] in names:
                     self.catalogs[names.index(c["name"])] = c
@@ -9317,7 +9317,7 @@ class NewColorCatalogDialog(QDialog):
         # Controls on side (+ for colors, - remove, up/down)
         row = QHBoxLayout()
         col_btns = QVBoxLayout()
-        # Standardne boje kao vertikalni niz dugmića sa +
+        # Standard colors as vertical array of buttons with +
         std = self.core._default_color_sets()[0]["colors"]
         self._std = std
         for col in std:
@@ -9398,7 +9398,7 @@ class NewColorCatalogDialog(QDialog):
             self.list.setCurrentRow(row+1)
 
     def result_catalog(self):
-        # Vraća dict {name, colors:[{name,hex},]}
+        # Returns dict {name, colors:[{name,hex},]}
         cols = []
         for i in range(self.list.count()):
             txt = self.list.item(i).text()
@@ -9554,7 +9554,7 @@ class PipePlaceTool(QgsMapTool):
         # 2) verteksi & sredine segmenata trase
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if lyr.name() in ('Trasa', 'Route') and lyr.geometryType() == QgsWkbTypes.LineGeometry:
+                if lyr.name() in ('Route',) and lyr.geometryType() == QgsWkbTypes.LineGeometry:
                     for g in lyr.getFeatures():
                         line = g.geometry().asPolyline()
                         if not line:
@@ -9640,22 +9640,22 @@ class PipePlaceTool(QgsMapTool):
 
     
     def _finish(self):
-        # Pokupi sloj 'Trasa' ako postoji – nije obavezan
+        # Get layer 'Trasa' if exists – not mandatory
         trasa_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if lyr.name() in ('Trasa', 'Route') and lyr.geometryType() == QgsWkbTypes.LineGeometry:
+                if lyr.name() in ('Route',) and lyr.geometryType() == QgsWkbTypes.LineGeometry:
                     trasa_layer = lyr
                     break
             except Exception:
                 pass
 
         p1, p2 = self.points[0], self.points[1]
-        # Geometrija po istoj trasi (ako postoji), inače direktna linija
+        # Geometry along same route (if exists), otherwise direct line
         geom = None
         if trasa_layer is not None and trasa_layer.featureCount() > 0:
             try:
-                # pokušaj da izgradiš putanju spajajući segmente više feature-a (virtuelni merge)
+                # try to build path by joining segments of multiple features (virtual merge)
                 tol_units = self.canvas.mapUnitsPerPixel() * 6
                 path_pts = self.plugin._build_path_across_network(trasa_layer, p1, p2, tol_units)
                 if not path_pts:
@@ -9666,17 +9666,17 @@ class PipePlaceTool(QgsMapTool):
                 pass
         if geom is None:
             geom = QgsGeometry.fromPolylineXY([p1, p2])
-        # Odredi ciljni sloj i stil
+        # Determine target layer and style
         if self.kind == 'PE':
             layer = self.plugin._ensure_pe_cev_layer()
-            color_hex = "#FF9900"  # narandžasta
+            color_hex = "#FF9900"  # orange
             width_mm = 1.0
         else:
             layer = self.plugin._ensure_prelazna_cev_layer()
-            color_hex = "#D0FF00"  # žuta
+            color_hex = "#D0FF00"  # yellow
             width_mm = 2.2
 
-        # Kreiraj feature
+        # Create feature
         f = QgsFeature(layer.fields())
         f.setGeometry(geom)
         f['materijal'] = self.attrs.get('materijal')
@@ -9721,7 +9721,7 @@ class PipePlaceTool(QgsMapTool):
                     val = feat['naziv']
                     if val is not None and str(val).strip():
                         return str(val).strip()
-                if layer.name() == 'Stubovi':
+                if layer.name() == 'Poles':
                     tip = str(feat['tip']) if 'tip' in layer.fields().names() and feat['tip'] is not None else ''
                     return ("Stub " + tip).strip() or f"Stub {int(feat.id())}"
             except Exception:
@@ -9751,7 +9751,7 @@ class PipePlaceTool(QgsMapTool):
         if 'do' in layer.fields().names(): f['do']=do_naziv
 
         layer.startEditing()
-        # Obezbedi polje 'duzina_m' ako ne postoji
+        # Ensure field 'duzina_m' exists if not present
         try:
             if 'duzina_m' not in layer.fields().names():
                 layer.addAttribute(QgsField('duzina_m', QVariant.Double))
@@ -9793,7 +9793,7 @@ class PipePlaceTool(QgsMapTool):
 
         self.points = []
 
-        # Ako želimo da alat ostane aktivan (repeat), ne diramo map tool
+        # If we want tool to stay active (repeat), don't touch map tool
         if not stay_active:
             try:
                 self.iface.mapCanvas().unsetMapTool(self)
@@ -9866,7 +9866,7 @@ def _open_fiberq_web(iface):
                 f"Greška pri otvaranju pregledne mape:\n{e}"
             )
         except Exception:
-            # ako čak ni QMessageBox ne radi, samo ignoriši
+            # if even QMessageBox doesn't work, just ignore
             pass
 
 
@@ -10085,7 +10085,7 @@ def _telecom_export_one_layer_to_gpkg(lyr, gpkg_path, iface):
             pass
         super().deactivate()
 
-class RezerveUI:
+class ReservesUI:
     def __init__(self, core):
         from qgis.PyQt.QtWidgets import QMenu, QToolButton
         self.core = core
@@ -10094,17 +10094,17 @@ class RezerveUI:
 
         # Interaktivno: Završna
         act_zav = QAction(_load_icon('ic_slack_midspan.svg'), 'Place terminal slack (interactive)', core.iface.mainWindow())
-        act_zav.triggered.connect(lambda: core._start_rezerva_interaktivno("Terminal"))
+        act_zav.triggered.connect(lambda: core._start_reserve_interactive("Terminal"))
         core.actions.append(act_zav); self.menu.addAction(act_zav)
 
         # Interaktivno: Prolazna
         act_prol = QAction(_load_icon('ic_slack_midspan.svg'), 'Place mid span slack (interactive)', core.iface.mainWindow())
-        act_prol.triggered.connect(lambda: core._start_rezerva_interaktivno("Mid span"))
+        act_prol.triggered.connect(lambda: core._start_reserve_interactive("Mid span"))
         core.actions.append(act_prol); self.menu.addAction(act_prol)
 
         # Batch: završne na krajevima selektovanih
         act_batch = QAction(_load_icon('ic_slack_batch.svg'), 'Generate terminal slacks at the ends of selected cables', core.iface.mainWindow())
-        act_batch.triggered.connect(core.generisi_zavrsne_rezerve_za_selektovane)
+        act_batch.triggered.connect(core.generate_terminal_reserves_for_selected)
         core.actions.append(act_batch); self.menu.addAction(act_batch)
 
         btn = QToolButton()
@@ -10133,12 +10133,12 @@ class RezervaDialog(QDialog):
         self.spn_duz = QSpinBox()
         self.spn_duz.setRange(1, 200)
         self.spn_duz.setValue(20)   
-        # Prikaz na engleskom, unutra srpski kodovi
+        # Display in English, internally Serbian codes
         self.cmb_lok = QComboBox()
-        self.cmb_lok.addItem("Auto", "Auto")          # auto detekcija
-        self.cmb_lok.addItem("Pole", "Stub")         # Stub
-        self.cmb_lok.addItem("Manhole", "OKNO")      # OKNO
-        self.cmb_lok.addItem("Object", "Objekat")    # Objekat
+        self.cmb_lok.addItem("Auto", "Auto")          # auto detection
+        self.cmb_lok.addItem("Pole", "Stub")         # pole
+        self.cmb_lok.addItem("Manhole", "OKNO")      # manhole
+        self.cmb_lok.addItem("Object", "Objekat")    # object
         lay = QVBoxLayout(self)
         row1 = QHBoxLayout(); row1.addWidget(QLabel("Type:"));      row1.addWidget(self.cmb_tip)
         row2 = QHBoxLayout(); row2.addWidget(QLabel("Length [m]:")); row2.addWidget(self.spn_duz)
@@ -10279,12 +10279,12 @@ class ReservePlaceTool(QgsMapTool):
         lok = self.params.get("lokacija", "Auto")
         if lok == "Auto":
             if nl and nf:
-                lok = "Stub" if nl.name() in ("Stubovi", "Poles") else "OKNO"
+                lok = "Stub" if nl.name() in ("Poles",) else "OKNO"
 
             else:
                 lok = "Objekat"
 
-        vl = self.plugin._ensure_rezerve_layer()
+        vl = self.plugin._ensure_reserves_layer()
         f = QgsFeature(vl.fields())
         f.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(place_pt)))
         f["tip"] = self.params.get("tip","Terminal")
@@ -10357,8 +10357,8 @@ class ReservePlaceTool(QgsMapTool):
                # Mapiranja – ka ACTION.trigger, isto kao da si kliknuo dugme
         if hasattr(self, 'action_branch'):
             add_shortcut('Ctrl+G', self.action_branch.trigger)
-        elif hasattr(self, 'razgrani_kablove_offset'):
-            add_shortcut('Ctrl+G', self.razgrani_kablove_offset)
+        elif hasattr(self, 'separate_cables_offset'):
+            add_shortcut('Ctrl+G', self.separate_cables_offset)
 
         if hasattr(self, 'action_bom'):
             add_shortcut('Ctrl+B', self.action_bom.trigger)
@@ -10381,7 +10381,7 @@ class ReservePlaceTool(QgsMapTool):
         # Rezerva 'R'
         rez_slot = None
         try:
-            rez_slot = lambda: self._start_rezerva_interaktivno('Terminal')
+            rez_slot = lambda: self._start_reserve_interactive('Terminal')
         except Exception:
             rez_slot = None
         if rez_slot:
@@ -10393,7 +10393,7 @@ class ReservePlaceTool(QgsMapTool):
 # === AUTO PATCH (safe): hotkeys + reserve hook + safe unload ===
 try:
     # ensure __init__ stores iface and basics (if missing)
-    _cls = globals().get('StuboviPlugin')
+    _cls = globals().get('FiberQPlugin')
     if _cls is not None and (not hasattr(_cls, '__init__') or _cls.__init__ is object.__init__):
         def __init__(self, iface):
             self.iface = iface
@@ -10405,7 +10405,7 @@ try:
         except Exception:
             pass
     # wrap initGui to add hotkeys & health-check & reserve hook
-    _orig_initGui = getattr(globals().get('StuboviPlugin'), 'initGui', None)
+    _orig_initGui = getattr(globals().get('FiberQPlugin'), 'initGui', None)
     if callable(_orig_initGui):
         def _patched_initGui(self, *a, **kw):
             _orig_initGui(self, *a, **kw)
@@ -10433,8 +10433,8 @@ try:
                     }
 
                         # Ključni lejeri – prihvati i srpska i engleska imena
-                    trasa_layer = layers.get("Route") or layers.get("Trasa")
-                    stubovi_layer = layers.get("Poles") or layers.get("Stubovi")
+                    trasa_layer = layers.get("Route")
+                    stubovi_layer = layers.get("Poles")
                     okna_layer = layers.get("Manholes") or layers.get("OKNA")
 
                     # Trasa – line
@@ -10461,10 +10461,10 @@ try:
                     except Exception:
                         pass
 
-                    # 2) Detaljna provera trasa (Route correction logika)
+                    # 2) Detailed route check (Route correction logic)
                     try:
-                        if hasattr(self, "proveri_konzistentnost"):
-                            self.proveri_konzistentnost()
+                        if hasattr(self, "check_consistency"):
+                            self.check_consistency()
                     except Exception as e:
                         try:
                             QMessageBox.warning(
@@ -10493,12 +10493,12 @@ try:
                 self._reserve_hook.ensure_connected()
             except Exception:
                 pass
-        _cls = globals().get('StuboviPlugin')
+        _cls = globals().get('FiberQPlugin')
         if _cls is not None:
             _cls.initGui = _patched_initGui
 
     # wrap unload to cleanup hotkeys
-    _orig_unload = getattr(globals().get('StuboviPlugin'), 'unload', None)
+    _orig_unload = getattr(globals().get('FiberQPlugin'), 'unload', None)
     if callable(_orig_unload):
         def _patched_unload(self, *a, **kw):
             try:
@@ -10511,7 +10511,7 @@ try:
             except Exception:
                 pass
             return _orig_unload(self, *a, **kw)
-        _cls = globals().get('StuboviPlugin')
+        _cls = globals().get('FiberQPlugin')
         if _cls is not None:
             _cls.unload = _patched_unload
 except Exception:
@@ -10537,8 +10537,8 @@ def _stubovi_open_publish_dialog(self):
             pass
 
 try:
-    if 'StuboviPlugin' in globals() and hasattr(StuboviPlugin, '__dict__'):
-        (_tmp_cls := globals().get('StuboviPlugin')) and (_tmp_cls and setattr(_tmp_cls, 'open_publish_dialog', _stubovi_open_publish_dialog))
+    if 'FiberQPlugin' in globals() and hasattr(StuboviPlugin, '__dict__'):
+        (_tmp_cls := globals().get('FiberQPlugin')) and (_tmp_cls and setattr(_tmp_cls, 'open_publish_dialog', _stubovi_open_publish_dialog))
 except Exception:
     pass
 
@@ -10564,10 +10564,10 @@ try:
                     QMessageBox.critical(self.iface.mainWindow(), 'Publish to PostGIS', f'Greška: {e}')
                 except Exception:
                     pass
-        (_tmp_cls := globals().get('StuboviPlugin')) and (_tmp_cls and setattr(_tmp_cls, 'open_publish_dialog', open_publish_dialog))
+        (_tmp_cls := globals().get('FiberQPlugin')) and (_tmp_cls and setattr(_tmp_cls, 'open_publish_dialog', open_publish_dialog))
 
     # Wrap initGui to ensure toolbar/menu action is added
-    _orig_initGui_pg = getattr(globals().get('StuboviPlugin'), 'initGui', None)
+    _orig_initGui_pg = getattr(globals().get('FiberQPlugin'), 'initGui', None)
     def _pg_initGui_wrapper(self, *a, **kw):
         if callable(_orig_initGui_pg):
             _orig_initGui_pg(self, *a, **kw)
@@ -10669,7 +10669,7 @@ try:
 
 
     # Patch the class method
-    _cls = globals().get('StuboviPlugin')
+    _cls = globals().get('FiberQPlugin')
     if _cls is not None:
         _cls.initGui = _pg_initGui_wrapper
 except Exception:   
@@ -10731,10 +10731,10 @@ class ChangeElementTypeTool(QgsMapToolIdentify):
         except Exception:
             pass
 
-        # Ako koristiš Joint Closures (nastavci), ostavi ovo;
-        # ako nećeš ni njega u listi, slobodno obriši ceo ovaj blok.
+        # If using Joint Closures (nastavci), leave this;
+        # if you don't want it in the list either, feel free to delete this whole block.
         try:
-            from .joint_closure_tool import NASTAVAK_DEF  # ako već postoji import, zanemari ovu liniju
+            from .joint_closure_tool import NASTAVAK_DEF  # if import already exists, ignore this line
         except Exception:
             NASTAVAK_DEF = None
 
@@ -11045,7 +11045,7 @@ _ = _change_element_type
 
 # Bind function as method on plugin class so map tool can call self.core._change_element_type(...)
 try:
-    if 'StuboviPlugin' in globals():
+    if 'FiberQPlugin' in globals():
         setattr(StuboviPlugin, '_change_element_type', _change_element_type)
 except Exception:
     pass
@@ -11062,7 +11062,7 @@ def activate_change_element_type_tool(self):
             pass
 
 try:
-    if 'StuboviPlugin' in globals():
+    if 'FiberQPlugin' in globals():
         setattr(StuboviPlugin, 'activate_change_element_type_tool', activate_change_element_type_tool)
 except Exception:
     pass
@@ -11071,7 +11071,7 @@ except Exception:
 
 # === AUTO PATCH: add "Izmena tip elementa" toolbar button ===
 try:
-    _orig_initGui_edit_elem = getattr(globals().get('StuboviPlugin'), 'initGui', None)
+    _orig_initGui_edit_elem = getattr(globals().get('FiberQPlugin'), 'initGui', None)
     def _edit_elem_initGui_wrapper(self, *a, **kw):
         if callable(_orig_initGui_edit_elem):
             _orig_initGui_edit_elem(self, *a, **kw)
@@ -11092,7 +11092,7 @@ try:
                 pass
         except Exception:
             pass
-    _cls = globals().get('StuboviPlugin')
+    _cls = globals().get('FiberQPlugin')
     if _cls is not None:
         _cls.initGui = _edit_elem_initGui_wrapper
 except Exception:
@@ -11143,7 +11143,7 @@ def _ensure_rejon_layer(core):
     """
     Ensure a polygon layer for service areas exists.
 
-    Interno smo ranije koristili ime 'Rejon', ali korisniku prikazujemo 'Service Area'.
+    Internally we previously used name 'Rejon', but display 'Service Area' to user.
     """
     try:
         proj = QgsProject.instance()
@@ -11156,7 +11156,7 @@ def _ensure_rejon_layer(core):
                     and lyr.geometryType() == QgsWkbTypes.PolygonGeometry
                     and lyr.name() in ('Rejon', 'Service Area')
                 ):
-                    # Ako je staro ime 'Rejon', preimenuj ga da korisnik vidi 'Service Area'
+                    # If old name is 'Rejon', rename it so user sees 'Service Area'
                     if lyr.name() == 'Rejon':
                         try:
                             lyr.setName('Service Area')
@@ -11166,7 +11166,7 @@ def _ensure_rejon_layer(core):
             except Exception:
                 continue
 
-        # 2) Ako ne postoji – kreiraj novi sloj sa imenom 'Service Area'
+        # 2) If doesn't exist – create new layer named 'Service Area'
         crs = proj.crs().authid() if proj and proj.crs().isValid() else 'EPSG:3857'
         rejon = QgsVectorLayer(f'Polygon?crs={crs}', 'Service Area', 'memory')
         pr = rejon.dataProvider()
@@ -11399,7 +11399,7 @@ def _create_region_from_selection(core, name: str, buf_m: float):
 
 # ---- Hook into plugin toolbar ---- KREIRANJE REJONA
 try:
-    _orig_initGui_rejon = getattr(globals().get('StuboviPlugin'), 'initGui', None)
+    _orig_initGui_rejon = getattr(globals().get('FiberQPlugin'), 'initGui', None)
     def _initGui_with_rejon(self, *args, **kwargs):
         if callable(_orig_initGui_rejon):
             _orig_initGui_rejon(self, *args, **kwargs)
@@ -11424,7 +11424,7 @@ try:
                 pass
         except Exception:
             pass
-    _cls = globals().get('StuboviPlugin')
+    _cls = globals().get('FiberQPlugin')
     if _cls is not None:
         _cls.initGui = _initGui_with_rejon
 except Exception:
@@ -11620,7 +11620,7 @@ class DrawRegionPolygonTool(QgsMapTool):
 
 # ---- Hook: add "Nacrtaj rejon ručno" button to toolbar ------------------------
 try:
-    _orig_initGui_rejon_draw = getattr(globals().get('StuboviPlugin'), 'initGui', None)
+    _orig_initGui_rejon_draw = getattr(globals().get('FiberQPlugin'), 'initGui', None)
     def _initGui_with_rejon_draw(self, *args, **kwargs):
         if callable(_orig_initGui_rejon_draw):
             _orig_initGui_rejon_draw(self, *args, **kwargs)
@@ -11648,7 +11648,7 @@ try:
                 pass
         except Exception:
             pass
-    _cls = globals().get('StuboviPlugin')
+    _cls = globals().get('FiberQPlugin')
     if _cls is not None:
         _cls.initGui = _initGui_with_rejon_draw
 except Exception:
@@ -11670,19 +11670,19 @@ except Exception:
 
 
 def _set_objects_layer_alias(layer):
-    """Prikaži sloj 'Objekti/Objects' kao 'Objects' u Layers panelu."""
+    """Display layer 'Objekti/Objects' as 'Objects' in Layers panel."""
     try:
         root = QgsProject.instance().layerTreeRoot()
         node = root.findLayer(layer.id())
         if node:
             node.setCustomLayerName("Objects")
     except Exception:
-        # ako nešto zezne (npr. layerTreeRoot još nije spreman), samo preskoči
+        # if something fails (e.g. layerTreeRoot is not ready yet), just skip
         pass
 
 
 def _apply_objects_field_aliases(layer):
-    """Podesi engleske alias nazive polja za sloj Objekti/Objects."""
+    """Set English alias field names for layer Objekti/Objects."""
     alias_map = {
         "tip": "Type",
         "spratova": "Floors above ground",
@@ -11707,7 +11707,7 @@ def _ensure_objekti_layer(core):
     try:
         prj = QgsProject.instance()
 
-        # 1) Ako sloj već postoji – prihvati i "Objekti" i "Objects"
+        # 1) If layer already exists – accept both "Objekti" and "Objects"
         for lyr in prj.mapLayers().values():
             try:
                 if (
@@ -11726,7 +11726,7 @@ def _ensure_objekti_layer(core):
             except Exception:
                 pass
 
-        # 2) Ako ne postoji – kreiraj novi sloj pod imenom "Objects"
+        # 2) If doesn't exist – create new layer named "Objects"
         crs = core.iface.mapCanvas().mapSettings().destinationCrs().authid()
         layer = QgsVectorLayer(f"Polygon?crs={crs}", "Objects", "memory")
         pr = layer.dataProvider()
@@ -11888,7 +11888,7 @@ class _BaseObjMapTool(QgsMapTool):
         if not obj_layer or geom is None:
             return
 
-        # Otvori dijalog za unos atributa
+        # Open dialog for entering attributes
         dlg = ObjectPropertiesDialog(self.iface.mainWindow())
         if dlg.exec_() != QDialog.Accepted:
             return
@@ -11907,7 +11907,7 @@ class _BaseObjMapTool(QgsMapTool):
             f = QgsFeature(obj_layer.fields())
             f.setGeometry(geom)
 
-            # upiši atribute po imenu polja
+            # write attributes by field name
             for k, v in (vals or {}).items():
                 try:
                     idx = obj_layer.fields().indexFromName(k)
@@ -11946,7 +11946,7 @@ class _BaseObjMapTool(QgsMapTool):
 
             # auto-exit tool after successful add
             try:
-                self.core.iface.actionPan().trigger()  # vrati na Pan (najbezbolnije)
+                self.core.iface.actionPan().trigger()  # return to Pan (safest)
             except Exception:
                 try:
                     self.core.iface.mapCanvas().unsetMapTool(self)
@@ -12000,7 +12000,7 @@ class DrawObjectNTool(_BaseObjMapTool):
             self.points.append(QgsPointXY(p))
             self._update_rb(self.points)
         elif e.button() == Qt.RightButton:
-            # ako ima dovoljno tačaka – završi, u svakom slučaju očisti crtež
+            # if enough points – finish, in any case clear drawing
             if len(self.points) >= 3:
                 self._finish(QgsGeometry.fromPolygonXY([self.points]))
             self._reset()
@@ -12032,7 +12032,7 @@ class DrawObjectOrthoTool(_BaseObjMapTool):
                 self.points.append(p)
             self._update_rb(self.points)
         elif e.button() == Qt.RightButton:
-            # ako ima dovoljno tačaka – završi, u svakom slučaju očisti crtež
+            # if enough points – finish, in any case clear drawing
             if len(self.points) >= 3:
                 self._finish(QgsGeometry.fromPolygonXY([self.points]))
             self._reset()
@@ -12625,10 +12625,10 @@ def _ui_move_elements(self):
 
 # Attach methods to class (if available) so they survive reloads
 try:
-    if 'StuboviPlugin' in globals():
-        setattr(StuboviPlugin, 'ui_import_image', _ui_import_image)
-        setattr(StuboviPlugin, 'ui_clear_image', _ui_clear_image)
-        setattr(StuboviPlugin, 'ui_move_elements', _ui_move_elements)
+    if 'FiberQPlugin' in globals():
+        setattr(FiberQPlugin, 'ui_import_image', _ui_import_image)
+        setattr(FiberQPlugin, 'ui_clear_image', _ui_clear_image)
+        setattr(FiberQPlugin, 'ui_move_elements', _ui_move_elements)
 except Exception:
     pass
 
@@ -12686,7 +12686,7 @@ def _initGui_add_move_and_image(self):
             pass
 
 try:
-    _cls = globals().get('StuboviPlugin')
+    _cls = globals().get('FiberQPlugin')
     if _cls is not None:
         # Keep previous chain
         if not hasattr(_cls, '_initGui_prev') and hasattr(_cls, 'initGui'):
@@ -12728,7 +12728,7 @@ class CanvasImageClickWatcher(QObject):
         return False
 # === END MOVE & IMAGE ==========================================================
 try:
-    _cls = globals().get('StuboviPlugin')
+    _cls = globals().get('FiberQPlugin')
     if _cls is not None:
         old_init = getattr(_cls, 'initGui', None)
         def _initGui_with_image_click(self):
@@ -12751,7 +12751,7 @@ except Exception:
 
 # === AUTO PATCH: bind infrastructure cut activation onto StuboviPlugin ===
 try:
-    if 'StuboviPlugin' in globals() and 'activate_infrastructure_cut_tool' in globals():
+    if 'FiberQPlugin' in globals() and 'activate_infrastructure_cut_tool' in globals():
         setattr(StuboviPlugin, 'activate_infrastructure_cut_tool', activate_infrastructure_cut_tool)
 except Exception:
     pass
