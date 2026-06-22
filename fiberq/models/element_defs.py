@@ -7,7 +7,7 @@ including their symbols, default fields, and display properties.
 
 import os
 from typing import Dict, List, Optional, Tuple, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 # Phase 5.2: Logging
 from ..utils.logger import get_logger

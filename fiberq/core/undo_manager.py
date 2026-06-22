@@ -23,7 +23,7 @@ from collections import deque
 from enum import Enum
 
 from qgis.core import (
-    QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry, QgsWkbTypes
+    QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry
 )
 
 from ..utils.logger import get_logger

@@ -20,7 +20,6 @@ from qgis.core import (
     QgsPalLayerSettings,
     QgsProject,
     QgsSimpleFillSymbolLayer,
-    QgsSingleSymbolRenderer,
     QgsTextBufferSettings,
     QgsTextFormat,
     QgsUnitTypes,
@@ -35,12 +34,14 @@ logger = get_logger(__name__)
 
 _FIBERQ_LANG_KEY = "FiberQ/lang"
 
+
 def _get_lang():
     try:
         if QSettings is None: return "en"
         return QSettings().value(_FIBERQ_LANG_KEY, "en")
     except Exception as e:
         return "en"
+
 
 def _fiberq_translate(text: str, lang: str) -> str:
     if not isinstance(text, str):
@@ -100,7 +101,7 @@ def _fiberq_translate(text: str, lang: str) -> str:
         'Nacrtaj region rucno': 'Draw region (manual)',
 
     }
-    en2sr = {v:k for k,v in sr2en.items()}
+    en2sr = {v: k for k, v in sr2en.items()}
     # Simple prefix rules
     if lang == 'en':
         if text.startswith('Place '):
@@ -111,6 +112,7 @@ def _fiberq_translate(text: str, lang: str) -> str:
             return 'Place ' + text[len('Place '):]
         return en2sr.get(text, text)
 
+
 def _map_icon_path(filename: str) -> str:
     import os as _os_mod2
     try:
@@ -119,9 +121,11 @@ def _map_icon_path(filename: str) -> str:
     except Exception as e:
         return filename
 
+
 def _normalize_name(s: str) -> str:
     try:
-        import unicodedata, re
+        import unicodedata
+        import re
         s = unicodedata.normalize("NFD", s)
         s = "".join(c for c in s if unicodedata.category(c) != "Mn")
         s = s.lower()
@@ -129,6 +133,7 @@ def _normalize_name(s: str) -> str:
         return s.strip("_")
     except Exception as e:
         return s
+
 
 def _default_fields_for(layer_name: str):
     """Return a list of (key, label, kind, default, options) for the dialog.
@@ -153,8 +158,9 @@ def _default_fields_for(layer_name: str):
     ]
     ln = (layer_name or "").lower()
     if "od ormar" in ln:
-        base = [(k,l,kind,(24 if k=="kapacitet" else d),opt) for (k,l,kind,d,opt) in base]
+        base = [(k, l, kind, (24 if k == "kapacitet" else d), opt) for (k, l, kind, d, opt) in base]
     return base
+
 
 def _apply_element_aliases(layer):
     """Apply English field aliases to element layers (ODF, OTB, TB, etc.).
@@ -163,6 +169,7 @@ def _apply_element_aliases(layer):
     """
     from .field_aliases import apply_element_aliases
     apply_element_aliases(layer)
+
 
 def _apply_fixed_text_label(layer, field_name='naziv', size_mu=8.0, yoff_mu=5.0):
     # Make labels fixed-size in screen millimeters, with a small offset above the point.
@@ -211,6 +218,7 @@ def _apply_fixed_text_label(layer, field_name='naziv', size_mu=8.0, yoff_mu=5.0)
         # Do not crash the plugin if labeling fails on some older QGIS.
         pass
 
+
 ELEMENT_DEFS = [
     {"name": "ODF", "symbol": {"svg_path": _map_icon_path("map_odf.svg"), "size": "10", "size_unit": "MapUnit"}},
     {"name": "TB", "symbol": {"svg_path": _map_icon_path("map_tb.svg"), "size": "10", "size_unit": "MapUnit"}},
@@ -229,8 +237,10 @@ ELEMENT_DEFS = [
 NASTAVAK_DEF = {"name": "Joint Closures", "symbol": {"name": "diamond", "color": "red", "size": "5", "size_unit": "MapUnit"}}
 # === UI GROUPS (modular menus/buttons) ===
 
+
 def _img_key(layer, fid):
     return f"image_map/{layer.id()}/{int(fid)}"
+
 
 def _img_get(layer, fid):
     """Get image path for a feature.
@@ -250,12 +260,14 @@ def _img_get(layer, fid):
     except Exception as e:
         return ""
 
+
 def _img_set(layer, fid, path):
     """Set image path for a feature."""
     try:
         QgsProject.instance().writeEntry("FiberQPlugin", _img_key(layer, fid), path or "")
     except Exception as e:
         pass
+
 
 def _set_objects_layer_alias(layer):
     """Set the objects layer display name to 'Objects'.
@@ -265,6 +277,7 @@ def _set_objects_layer_alias(layer):
     from .field_aliases import set_objects_layer_alias
     set_objects_layer_alias(layer)
 
+
 def _apply_objects_field_aliases(layer):
     """Apply English field aliases to an objects layer.
 
@@ -272,6 +285,7 @@ def _apply_objects_field_aliases(layer):
     """
     from .field_aliases import apply_objects_field_aliases
     apply_objects_field_aliases(layer)
+
 
 def _ensure_region_layer(core):
     """
@@ -330,6 +344,7 @@ def _ensure_region_layer(core):
             logger.debug(f"Error in _ensure_region_layer: {e}")
         return None
 
+
 def _ensure_objects_layer(core):
     """Create / return polygon layer 'Objects' with standard fields."""
     try:
@@ -379,6 +394,7 @@ def _ensure_objects_layer(core):
         return layer
     except Exception as e:
         return None
+
 
 def _stylize_objects_layer(layer):
     """Apply black solid outline + diagonal hatch inside (DWG-like). Delegates to StyleManager."""
@@ -441,6 +457,7 @@ def _stylize_objects_layer(layer):
         layer.triggerRepaint()
     except Exception as e:
         logger.debug(f"Error in _stylize_objects_layer: {e}")
+
 
 RELACIJE_KATEGORIJE = [
     "Main",

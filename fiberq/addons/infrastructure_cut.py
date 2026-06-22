@@ -149,11 +149,13 @@ class InfrastructureCutTool(QgsMapTool):
             self.iface.messageBar().pushInfo("Cutting", "Click on the line (left click) to cut it; right click/ESC aborts.")
         except Exception as e:
             logger.debug(f"Error in InfrastructureCutTool.activate: {e}")
+
     def deactivate(self):
         try:
             self._marker.hide()
         except Exception as e:
             logger.debug(f"Error in InfrastructureCutTool.deactivate: {e}")
+
     def keyPressEvent(self, e):
         if e.key() in (Qt.Key.Key_Escape,):
             self._finish()
@@ -305,14 +307,14 @@ class InfrastructureCutTool(QgsMapTool):
         def _norm(s: str) -> str:
             s = (s or '').lower()
             s = ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
-            s = s.replace('đ','dj')
-            s = re.sub(r'[^a-z]+','', s)
+            s = s.replace('đ', 'dj')
+            s = re.sub(r'[^a-z]+', '', s)
             return s
         names = {f.name(): i for i, f in enumerate(layer.fields())}
-        norm_names = { _norm(n): (n, idx) for n, idx in names.items() }
+        norm_names = {_norm(n): (n, idx) for n, idx in names.items()}
         targets = []
         for norm, (orig, idx) in norm_names.items():
-            if any(tok in norm for tok in ('duzina','duzina','duzina','length','len')):
+            if any(tok in norm for tok in ('duzina', 'duzina', 'duzina', 'length', 'len')):
                 targets.append((orig, idx))
         if not targets:
             return
@@ -332,7 +334,7 @@ class InfrastructureCutTool(QgsMapTool):
             try:
                 fdef = layer.fields()[idx]
                 tname = (fdef.typeName() or '').lower()
-                if any(k in tname for k in ('int','integer','whole','int4','int8')):
+                if any(k in tname for k in ('int', 'integer', 'whole', 'int4', 'int8')):
                     feat.setAttribute(idx, int(round(val_m)))
                 else:
                     feat.setAttribute(idx, val_m)
@@ -349,6 +351,7 @@ class InfrastructureCutTool(QgsMapTool):
                 QMessageBox.warning(self.iface.mainWindow(), "Cutting", msg)
             except Exception as e:
                 logger.debug(f"Error in InfrastructureCutTool._flash: {e}")
+
     def _finish(self):
         # Hide marker and unset tool (used on ESC / right-click)
         try:

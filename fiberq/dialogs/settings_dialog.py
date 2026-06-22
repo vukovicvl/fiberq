@@ -13,7 +13,6 @@ from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QPushButton,
     QGroupBox,
-    QFormLayout,
 )
 
 from qgis.core import QgsSettings

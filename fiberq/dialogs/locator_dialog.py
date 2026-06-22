@@ -10,11 +10,11 @@ to use QGIS's own proxy/SSL configuration.
 
 import json
 
-from qgis.PyQt.QtWidgets import (
+from qgis.PyQt.QtWidgets import (  # noqa: F401  (QLabel kept for backward compatibility with external imports)
     QDialog,
     QVBoxLayout,
     QLineEdit,
-    QLabel,  # noqa: F401  (kept for backward compatibility with external imports)
+    QLabel,
     QDialogButtonBox,
     QFormLayout,
     QPushButton,

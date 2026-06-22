@@ -20,6 +20,7 @@ class OpenDrawingMapTool(QgsMapToolIdentify):
     Map tool: click an element to open its attached drawing (DWG/DXF) in the OS default app.
     Right click or ESC cancels the command.
     """
+
     def __init__(self, core):
         super().__init__(core.iface.mapCanvas())
         self.core = core
@@ -88,7 +89,6 @@ class OpenDrawingMapTool(QgsMapToolIdentify):
 
                 self.core._open_drawing_path(path)
                 return
-
 
     def keyPressEvent(self, e):
         # ESC = exit tool

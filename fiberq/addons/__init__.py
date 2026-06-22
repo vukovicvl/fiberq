@@ -10,8 +10,6 @@ Modules:
 - infrastructure_cut.py: Infrastructure cut tool
 - publish_pg.py: PostgreSQL publishing
 - reserve_hook.py: Reserve/slack hook functionality
-- settings.py: Addon settings
-- styles.py: Additional styles
 """
 
 # Import addon modules for easy access
@@ -21,8 +19,6 @@ from . import hotkeys
 from . import infrastructure_cut
 from . import publish_pg
 from . import reserve_hook
-from . import settings
-from . import styles
 
 __all__ = [
     'fiber_break',
@@ -31,6 +27,4 @@ __all__ = [
     'infrastructure_cut',
     'publish_pg',
     'reserve_hook',
-    'settings',
-    'styles',
 ]

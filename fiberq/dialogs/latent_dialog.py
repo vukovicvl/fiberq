@@ -59,6 +59,7 @@ class LatentElementsDialog(QDialog):
             feat = None
             # Select checkbox
             chk = QCheckBox()
+
             def on_toggled(checked, lyr=layer, fid=int(c["fid"])):
                 try:
                     if lyr is None:
@@ -99,6 +100,7 @@ class LatentElementsDialog(QDialog):
                 cands = self.core._find_candidate_elements_for_cable(layer, feat)
                 can_edit = len(cands) > 0
             btn.setEnabled(can_edit)
+
             def open_edit(lyr=layer, feat=feat, cdict=c, row=row):
                 try:
                     d = CablePitstopsDialog(self.core, lyr, feat, cdict, self.data)
@@ -185,7 +187,7 @@ class CablePitstopsDialog(QDialog):
         # save to store and project
         key = self.core._cable_key(self.cable_dict["layer_id"], self.cable_dict["fid"])
         rec = {"elements": [
-            {"layer_id": e["layer_id"], "fid": int(e["fid"]), "naziv": e.get("naziv",""), "latent": bool(e.get("latent"))}
+            {"layer_id": e["layer_id"], "fid": int(e["fid"]), "naziv": e.get("naziv", ""), "latent": bool(e.get("latent"))}
             for e in self.elements
         ]}
         data = dict(self.store)

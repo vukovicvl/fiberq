@@ -11,7 +11,7 @@ extracted from main_plugin.py for better modularity.
 import os
 import re
 import unicodedata
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, List
 
 from qgis.PyQt.QtGui import QIcon, QColor
 from qgis.PyQt.QtCore import QSettings

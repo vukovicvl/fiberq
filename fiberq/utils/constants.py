@@ -9,7 +9,7 @@ for backward compatibility with existing databases and projects.
 """
 
 from enum import Enum
-from typing import Dict, List, Tuple
+from typing import Dict, List
 from qgis.PyQt.QtGui import QColor
 
 

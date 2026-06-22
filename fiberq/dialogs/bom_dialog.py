@@ -206,7 +206,7 @@ class _BOMDialog(QDialog):
         for r, row in enumerate(rows):
             for c, val in enumerate(row):
                 item = QTableWidgetItem("" if val is None else (f"{val:.3f}" if isinstance(val, float) else str(val)))
-                if c in (3,4,5):  # numeric align right
+                if c in (3, 4, 5):  # numeric align right
                     item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
                 self.tbl_layers.setItem(r, c, item)
 
@@ -258,7 +258,7 @@ class _BOMDialog(QDialog):
             # add a blank and totals
             w.writerow([])
             t = self._totals
-            w.writerow(["TOTAL","", t["points"], t["line_len"], t["line_slack"], t["line_total"]])
+            w.writerow(["TOTAL", "", t["points"], t["line_len"], t["line_slack"], t["line_total"]])
         QMessageBox.information(self, "Export", f"CSV exported:\n{path}")
 
     def _export_xlsx(self, path):
@@ -268,18 +268,18 @@ class _BOMDialog(QDialog):
         wb = xlsxwriter.Workbook(path)
         ws = wb.add_worksheet("By layers")
         headers = ["Layer", "Type", "Number", "Length_m", "Slack_m", "Total_m"]
-        for c,h in enumerate(headers):
-            ws.write(0,c,h)
-        for r,row in enumerate(self._rows, start=1):
-            for c,val in enumerate(row):
-                ws.write(r,c,val)
+        for c, h in enumerate(headers):
+            ws.write(0, c, h)
+        for r, row in enumerate(self._rows, start=1):
+            for c, val in enumerate(row):
+                ws.write(r, c, val)
         # totals sheet
         ws2 = wb.add_worksheet("Total")
         t = self._totals
-        ws2.write(0,0,"Total length of lines [m]"); ws2.write(0,1, t["line_len"])
-        ws2.write(1,0,"Total slack [m]"); ws2.write(1,1, t["line_slack"])
-        ws2.write(2,0,"Line + slack [m]"); ws2.write(2,1, t["line_total"])
-        ws2.write(3,0,"Total number of point elements"); ws2.write(3,1, t["points"])
+        ws2.write(0, 0, "Total length of lines [m]"); ws2.write(0, 1, t["line_len"])
+        ws2.write(1, 0, "Total slack [m]"); ws2.write(1, 1, t["line_slack"])
+        ws2.write(2, 0, "Line + slack [m]"); ws2.write(2, 1, t["line_total"])
+        ws2.write(3, 0, "Total number of point elements"); ws2.write(3, 1, t["points"])
         wb.close()
         QMessageBox.information(self, "Export", f"XLSX exported:\n{path}")
 

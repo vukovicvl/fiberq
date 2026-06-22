@@ -7,9 +7,8 @@ Toolbar group for route creation and management.
 import os
 
 from .base import (
-    Qt, QAction, QMenu, QToolButton, QFileDialog,
-    QgsProject, QgsVectorLayer,
-    load_icon
+    QAction, QMenu, QToolButton, QFileDialog, QgsProject,
+    QgsVectorLayer, load_icon
 )
 
 # Phase 5.2: Logging

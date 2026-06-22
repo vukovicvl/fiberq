@@ -29,7 +29,7 @@ from qgis.PyQt.QtWidgets import (
     QMessageBox,
 )
 
-from qgis.core import QgsProject
+pass
 
 from ..utils.legacy_bridge import RELACIJE_KATEGORIJE
 
@@ -145,7 +145,7 @@ class RelationsDialog(QDialog):
     def _refresh_relations_tree(self):
         self.tree.clear()
         for r in self.data.get("relations", []):
-            it = QTreeWidgetItem([r.get("name",""), r.get("category","")])
+            it = QTreeWidgetItem([r.get("name", ""), r.get("category", "")])
             it.setData(0, Qt.ItemDataRole.UserRole, r.get("id"))
             self.tree.addTopLevelItem(it)
         if self.tree.topLevelItemCount() > 0:

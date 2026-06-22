@@ -3,7 +3,7 @@ name=FiberQ
 description=Open-source fiber network design tools for QGIS (FTTH/GPON/FTTx)
 about=FiberQ helps telecom engineers and GIS professionals design, analyze, and document fiber optic networks inside QGIS. Version 1.2.1 adds full compatibility with QGIS 4 / Qt6 while keeping support for QGIS 3.22 LTR and later, and clears all findings from the QGIS repository security scan. Some advanced features may require an activation key.
 
-version=1.2.1
+version=1.2.2
 qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
 
@@ -23,6 +23,14 @@ license=GPL-3.0-or-later
 class_name=FiberQPlugin
 
 changelog=
+    1.2.2 - Housekeeping (code cleanup, no functional change)
+        * Removed dead leftover code from the v1.x monolith split:
+          extracted_classes.py (deprecated re-export shim) and two unused
+          addon modules (settings, styles).
+        * main_plugin.py: removed duplicate/unused imports and dead leftover
+          import blocks. No behavior change.
+        * Repo-wide style cleanup (unused imports, whitespace, blank lines).
+
     1.2.1 - QGIS 4 / Qt6 compatibility and repository scan compliance
         Compatibility
         * Full support for QGIS 4 / Qt6 while preserving QGIS 3.22 LTR and later.

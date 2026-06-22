@@ -8,7 +8,7 @@ This module provides slack (optical reserve) management functionality:
 - Batch slack generation
 """
 
-from typing import Optional, Any
+from typing import Optional
 
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtWidgets import QDialog, QMessageBox

@@ -1,37 +1,26 @@
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
-from logging import root
-from platform import node
-from qgis.PyQt.QtCore import Qt, QUrl
-from qgis.PyQt.QtGui import QKeySequence, QDesktopServices
-import math
+from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtGui import QKeySequence
 from qgis.PyQt.QtWidgets import (
-    QAction, QMessageBox, QInputDialog, QDialog, QVBoxLayout, QLineEdit, QLabel,
-    QDialogButtonBox, QFileDialog, QFormLayout,QCheckBox, QVBoxLayout, QHBoxLayout, QComboBox, QTreeWidget, QTreeWidgetItem, QSplitter, QHBoxLayout, QGroupBox, QComboBox, QTableWidget, QTableWidgetItem, QHeaderView, QGraphicsView, QGraphicsScene, QPushButton)
+    QAction, QMessageBox, QInputDialog, QDialog, QVBoxLayout, QLabel, QDialogButtonBox,
+    QFileDialog)
 from qgis.core import (
-    QgsVectorFileWriter, QgsCoordinateTransformContext,
-    QgsVectorLayer, QgsProject, QgsField,
-    QgsFeature, QgsGeometry, QgsPointXY,
-    QgsWkbTypes, QgsMarkerSymbol, QgsSymbol, QgsUnitTypes,
-    QgsPalLayerSettings, QgsVectorLayerSimpleLabeling,
-    QgsSimpleLineSymbolLayer, QgsMarkerLineSymbolLayer, QgsSvgMarkerSymbolLayer,
-    QgsCoordinateTransform, QgsVectorDataProvider,QgsTextFormat, QgsTextBufferSettings, QgsSingleSymbolRenderer, Qgis, QgsSettings, QgsEditorWidgetSetup,QgsRectangle, QgsFeatureRequest
+    QgsVectorFileWriter, QgsVectorLayer,
+    QgsProject, QgsField, QgsFeature,
+    QgsGeometry, QgsPointXY, QgsWkbTypes,
+    QgsSymbol, QgsUnitTypes, QgsCoordinateTransform
     )
-from qgis.PyQt.QtGui import QIcon, QDesktopServices, QPen, QColor, QPainterPath, QFont
-import textwrap
+from qgis.PyQt.QtGui import QIcon, QColor
 
 # =============================================================================
 # Phase 1.1: Icon and Translation helpers moved to utils/helpers.py
 # =============================================================================
 from .utils.helpers import (
     # Icon loading functions
-    _icon_path,
     _load_icon,
-    _map_icon_path,
-    _element_icon_for,
     # Language/i18n functions
     _get_lang,
     _set_lang,
-    _fiberq_translate,
     _apply_text_and_tooltip,
     _apply_menu_language,
 )
@@ -54,9 +43,6 @@ except Exception as e:
 # Phase 1.2: Pro License functions moved to core/license_manager.py
 # =============================================================================
 from .core.license_manager import (
-    _fiberq_is_pro_enabled,
-    _fiberq_set_pro_enabled,
-    _fiberq_validate_pro_key,
     _fiberq_check_pro,
 )
 
@@ -67,25 +53,19 @@ from .core.layer_manager import (
     # Element definitions
     ELEMENT_DEFS,
     NASTAVAK_DEF,
-    # Helper functions
-    _normalize_name,
-    _default_fields_for,
-    _apply_fixed_text_label,
     # Element layer functions
-    _element_def_by_name,
     _ensure_element_layer_with_style,
     _copy_attributes_between_layers,
     # Service area functions
-    _ensure_region_layer,
-    _collect_selected_geometries,
     _create_region_from_selection,
-    # Objects layer functions
-    _set_objects_layer_alias,
-    _apply_objects_field_aliases,
-    _ensure_objects_layer,
-    _stylize_objects_layer,
     # GeoPackage export functions
     _telecom_save_all_layers_to_gpkg,
+)
+
+# Re-exported for ui/ (objects_ui, routing_ui); pending WP2 extraction
+from .core.layer_manager import (  # noqa: F401
+    _ensure_objects_layer,
+    _stylize_objects_layer,
     _telecom_export_one_layer_to_gpkg,
 )
 
@@ -94,10 +74,8 @@ from .core.layer_manager import (
 # - _fiberq_translate, _apply_text_and_tooltip, _apply_menu_language, _element_icon_for
 # =============================================================================
 
-from qgis.gui import QgsMapToolEmitPoint, QgsRubberBand, QgsMapTool, QgsVertexMarker, QgsMapToolIdentify
-from qgis.PyQt.QtGui import QColor
-from qgis.PyQt.QtCore import QVariant, QSize, QRect
-from qgis.PyQt.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QScrollArea, QWidget, QListWidget
+from qgis.gui import QgsVertexMarker
+from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt import sip
 import os
 
@@ -107,6 +85,7 @@ import os
 # - _apply_fixed_text_label, _normalize_name, _default_fields_for
 # - ELEMENT_DEFS, NASTAVAK_DEF
 # =============================================================================
+
 
 def _apply_element_aliases(layer):
     """Apply English field aliases to element layers (ODF, OTB, TB, etc.).
@@ -130,7 +109,7 @@ def _apply_element_aliases(layer):
 # ============================================================================
 
 # PrePlaceAttributesDialog moved to dialogs/element_dialog.py (Phase 4)
-from .dialogs.element_dialog import PrePlaceAttributesDialog
+pass
 # === UI GROUPS (modular menus/buttons) ===
 # RoutingUI moved to ui/routing_ui.py (Phase 5)
 from .ui.routing_ui import RoutingUI
@@ -166,15 +145,6 @@ TRASA_LABEL_TO_CODE = {v: k for k, v in TRASA_TYPE_LABELS.items()}
 
 
 # === BOM Report dialog ===
-from qgis.PyQt.QtWidgets import (
-    QDialog, QVBoxLayout, QTabWidget, QWidget, QTableWidget,
-    QTableWidgetItem, QPushButton, QHBoxLayout, QFileDialog, QLabel
-)
-from qgis.PyQt.QtCore import Qt
-from qgis.core import (
-    QgsProject, QgsVectorLayer, QgsWkbTypes, QgsUnitTypes, QgsCoordinateTransform,
-    QgsCoordinateReferenceSystem, QgsDistanceArea, QgsCoordinateTransformContext
-)
 
 
 class FiberQPlugin:
@@ -190,9 +160,7 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Could not set SVG search path: {e}")
 
-
     def _fiberq_apply_language(self, lang):
-
         """Apply language to toolbar actions, drop-down menus, and common dialogs."""
         try:
             self._fiberq_lang = lang
@@ -208,10 +176,10 @@ class FiberQPlugin:
 
         # Also translate individual top-level actions not stored in the list (defensive)
         for name in [
-            'action_publish_pg','action_slack_quick','action_branch','action_hotkeys',
-            'action_bom','action_health_check','action_schematic','action_import_points',
-            'action_locator','action_clear_locator','action_relations','action_latent_list',
-            'action_fiber_break','action_color_catalog','action_save_gpkg','action_auto_gpkg'
+            'action_publish_pg', 'action_slack_quick', 'action_branch', 'action_hotkeys',
+            'action_bom', 'action_health_check', 'action_schematic', 'action_import_points',
+            'action_locator', 'action_clear_locator', 'action_relations', 'action_latent_list',
+            'action_fiber_break', 'action_color_catalog', 'action_save_gpkg', 'action_auto_gpkg'
         ]:
             try:
                 a = getattr(self, name, None)
@@ -220,7 +188,7 @@ class FiberQPlugin:
                 logger.debug(f"Could not translate action '{name}': {e}")
 
         # 2) Translate drop-down menus and buttons from UI groups if present
-        for group_name in ['ui_crtezi','ui_kabl','ui_polaganje','ui_kanalizacija','ui_selekcija','ui_rezerve']:
+        for group_name in ['ui_crtezi', 'ui_kabl', 'ui_polaganje', 'ui_kanalizacija', 'ui_selekcija', 'ui_rezerve']:
             try:
                 grp = getattr(self, group_name, None)
                 if not grp:
@@ -245,9 +213,9 @@ class FiberQPlugin:
         # 3) Update language toggle caption/tooltip
         try:
             if hasattr(self, '_fiberq_lang_action') and self._fiberq_lang_action:
-                self._fiberq_lang_action.setText('EN' if lang=='sr' else 'SR')
+                self._fiberq_lang_action.setText('EN' if lang == 'sr' else 'SR')
                 self._fiberq_lang_action.setToolTip(
-                    'Promeni jezik interfejsa na engleski' if lang=='sr' else 'Switch UI language to Serbian'
+                    'Promeni jezik interfejsa na engleski' if lang == 'sr' else 'Switch UI language to Serbian'
                 )
         except Exception as e:
             logger.debug(f"Could not update language toggle: {e}")
@@ -258,13 +226,13 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Could not store language preference: {e}")
 
-
     def _fiberq_toggle_language(self):
         lang = getattr(self, '_fiberq_lang', None) or _get_lang()
         lang = 'en' if lang == 'sr' else 'sr'
         _set_lang(lang)
         self._fiberq_apply_language(lang)
     # === BOM: otvori dijalog ===
+
     def open_bom_dialog(self):
         try:
             dlg = _BOMDialog(self.iface, parent=self.iface.mainWindow())
@@ -348,7 +316,6 @@ class FiberQPlugin:
                 self._locator_marker.hide()
             self._locator_marker = None
             self.iface.mapCanvas().refresh()
-
 
     def __init__(self, iface):
         self.iface = iface
@@ -473,8 +440,8 @@ class FiberQPlugin:
             logger.warning(f"Could not initialize CommandManager: {e}")
             self.command_manager = None
 
-
     # --- FiberQ Pro gating ---
+
     def check_pro(self) -> bool:
         try:
             return _fiberq_check_pro(self.iface)
@@ -482,8 +449,8 @@ class FiberQPlugin:
             logger.debug(f"Pro check failed: {e}")
             return False
 
-
     # --- Publish to PostGIS ---
+
     def open_publish_dialog(self):
         try:
             try:
@@ -763,8 +730,10 @@ class FiberQPlugin:
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.activate_infrastructure_cut_tool: {e}")
 # --- Help/About ---
+
     def _fiberq_read_metadata(self) -> dict:
-        import os, configparser
+        import os
+        import configparser
         md = {}
         try:
             md_path = os.path.join(os.path.dirname(__file__), 'metadata.txt')
@@ -777,7 +746,8 @@ class FiberQPlugin:
         return md
 
     def _fiberq_read_config_value(self, section: str, key: str, default: str = "") -> str:
-        import os, configparser
+        import os
+        import configparser
         try:
             cfg_path = os.path.join(os.path.dirname(__file__), 'config.ini')
             cp = configparser.ConfigParser()
@@ -826,7 +796,7 @@ class FiberQPlugin:
             )
 
             if about:
-                parts.append(f"<hr style='margin:10px 0'>")
+                parts.append("<hr style='margin:10px 0'>")
                 parts.append(f"<div style='white-space:pre-wrap'>{about}</div>")
 
             lbl = QLabel(''.join(parts))
@@ -866,13 +836,11 @@ class FiberQPlugin:
             return self.slack_manager.ensure_slack_layer()
         return None
 
-
     def _stylize_slack_layer(self, vl):
         """Apply simple red circle style to slack layer."""
         # Phase 3.1: Delegate to SlackManager
         if self.slack_manager:
             self.slack_manager.stylize_slack_layer(vl)
-
 
     def _recompute_slack_for_cable(self, cable_layer_id: str, cable_fid: int):
         """Compute sum of slack for cable and update cable attributes."""
@@ -920,8 +888,8 @@ class FiberQPlugin:
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.stylize_route_layer: {e}")
 
-
     # === Helper functions for 'virtual merge' of routes when laying cables ===
+
     def _round_key(self, pt: QgsPointXY, tol: float):
         """Round point coordinates for use as dict key."""
         if self.route_manager:
@@ -936,7 +904,6 @@ class FiberQPlugin:
         from .utils.geometry import get_first_last_points
         return get_first_last_points(geom)
 
-
     def _build_path_across_network(self, route_layer, start_pt: QgsPointXY, end_pt: QgsPointXY, tol_units: float):
         """Route through ALL vertices without physically merging features."""
         if self.route_manager:
@@ -950,7 +917,6 @@ class FiberQPlugin:
             return self.route_manager.build_path_across_joined_routes(route_layer, start_pt, end_pt, tol_units)
         from .utils.routing import build_path_across_joined_routes
         return build_path_across_joined_routes(route_layer, start_pt, end_pt, tol_units)
-
 
     def initGui(self):
         # Toolbar
@@ -985,7 +951,7 @@ class FiberQPlugin:
 
         # --- Undo / Redo buttons (v1.2 — Feature 2) ---
         try:
-            from qgis.PyQt.QtGui import QShortcut
+            pass
 
             # Undo button
             self.action_undo = QAction(
@@ -1088,7 +1054,6 @@ class FiberQPlugin:
 
             logger.debug(f"Error in FiberQPlugin.initGui: {e}")
 
-
         # Drop-down grupe
         self.ui_cable_laying_menu = CableLayingUI(self)
         self.ui_routing = RoutingUI(self)
@@ -1096,7 +1061,6 @@ class FiberQPlugin:
         self.ui_ducting = DuctingUI(self)
         self.ui_selection = SelectionUI(self)
         self.ui_slack = SlackUI(self)
-
 
         # Quick shortcut: 'R' opens interactive terminal slack
         try:
@@ -1122,7 +1086,6 @@ class FiberQPlugin:
         self.action_import_points.triggered.connect(self.import_points)
         self.toolbar.addAction(self.action_import_points)
         self.actions.append(self.action_import_points)
-
 
         # Export – active layer to GPX / KML/KMZ / GeoPackage
         try:
@@ -1170,7 +1133,6 @@ class FiberQPlugin:
         except Exception as e:
             # Failing to build export UI should not break plugin loading
             logger.debug(f"Could not build export UI: {e}")
-
 
         # Lokator
         icon_locator = _load_icon('ic_locator.svg')
@@ -1246,7 +1208,6 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.initGui: {e}")
 
-
         self.action_fiber_break = QAction(icon_prekid, "Fiber break", self.iface.mainWindow())
         try:
             self.action_fiber_break.setShortcut(QKeySequence('Ctrl+F'))
@@ -1255,7 +1216,6 @@ class FiberQPlugin:
         self.action_fiber_break.triggered.connect(self.activate_fiber_break_tool)
         self.toolbar.addAction(self.action_fiber_break)
         self.actions.append(self.action_fiber_break)
-
 
         # Color catalog (menu for fiber/tube color standards)
         self.action_color_catalog = QAction(_load_icon('ic_color_catalog.svg'), "Color catalog", self.iface.mainWindow())
@@ -1282,7 +1242,6 @@ class FiberQPlugin:
             self.actions.append(self.action_save_gpkg)
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.initGui: {e}")
-
 
         # === Auto-save to GeoPackage (toggle) ===
         try:
@@ -1356,7 +1315,6 @@ class FiberQPlugin:
                 logger.debug(f"Error in FiberQPlugin.initGui: {e}")
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.initGui: {e}")
-
 
         # Razgrani cables (offset)
         try:
@@ -1462,7 +1420,6 @@ class FiberQPlugin:
             QgsProject.instance().layersAdded.connect(self._on_layers_added)
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.initGui: {e}")
-
 
         # --- Hotkeys (addons/hotkeys.py) ---
         try:
@@ -1670,7 +1627,6 @@ class FiberQPlugin:
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.open_color_catalog_manager: {e}")
 
-
     def activate_breakpoint_tool(self):
         """Aktivira alat za dodavanje tačke na lom trase (BreakpointTool)."""
         if self.layer is None or sip.isdeleted(self.layer) or not self.layer.isValid():
@@ -1700,7 +1656,6 @@ class FiberQPlugin:
             self._record_cmd('place_element', layer_name=layer_name, symbol_spec=symbol_spec)
         except Exception as e:
             QMessageBox.critical(self.iface.mainWindow(), "Placing elements", f"Error: {e}")
-
 
     def activate_fiber_break_tool(self):
         """Activate the fiber-break map tool. Falls back to simple point placement if import fails."""
@@ -1768,13 +1723,11 @@ class FiberQPlugin:
                     except Exception as e:
                         logger.debug(f"Error in FiberQPlugin.activate_fiber_break_tool: {e}")
 
-
         except Exception as e:
             # if something fails, do not crash tool - just skip style
             pass
 
         self._record_cmd('fiber_break')
-
 
     def activate_smart_select_tool(self):
         """Uključi pametnu višeslojnu selekciju (bez promene aktivnog sloja)."""
@@ -1791,6 +1744,7 @@ class FiberQPlugin:
                 logger.debug(f"Error in FiberQPlugin.activate_smart_select_tool: {e}")
         except Exception as e:
             QMessageBox.critical(self.iface.mainWindow(), "Smart selection", f"Error: {e}")
+
     def activate_branch_info_tool(self):
         """Aktiviraj alat: klik na cable → info o grananju u message baru."""
         try:
@@ -1808,7 +1762,6 @@ class FiberQPlugin:
             from qgis.PyQt.QtWidgets import QMessageBox
             QMessageBox.critical(self.iface.mainWindow(), "Branch info", f"Error: {e}")
 
-
     def clear_all_selections(self):
         """Skloni selekciju sa svih slojeva (ne briše objekte)."""
         for lyr in QgsProject.instance().mapLayers().values():
@@ -1822,7 +1775,6 @@ class FiberQPlugin:
             self.smart_selection = []
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.clear_all_selections: {e}")
-
 
     def open_optical_schematic(self):
         try:
@@ -1885,8 +1837,8 @@ class FiberQPlugin:
                 logger.debug(f"Error in FiberQPlugin.list_all_cables: {e}")
         return []
 
-
     # === LATENT ELEMENTS (pass-through points) ===
+
     def _latent_storage_key(self):
         """Get latent storage key."""
         # Phase 3.4: Delegate to RelationsManager
@@ -1928,7 +1880,6 @@ class FiberQPlugin:
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin._relation_name_by_cable: {e}")
         return {}
-
 
     def list_all_pipes(self):
         """List all pipes."""
@@ -2042,7 +1993,6 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.unload: {e}")
 
-
         # Auto-cleanup for save_gpkg action (safety)
         try:
             self.iface.removeToolBarIcon(self.action_save_gpkg)
@@ -2066,7 +2016,6 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.unload: {e}")
 
-
     def _set_poles_alias(self):
         """Prikaži sloj 'Poles' kao 'Poles' u Layers panelu."""
         try:
@@ -2077,7 +2026,6 @@ class FiberQPlugin:
         except Exception as e:
             # If something fails (e.g. layerTreeRoot not ready), just skip
             pass
-
 
     def _apply_poles_field_aliases(self, layer):
         """Apply English field aliases to the poles layer.
@@ -2103,7 +2051,6 @@ class FiberQPlugin:
         from .utils.field_aliases import apply_route_field_aliases
         apply_route_field_aliases(layer)
 
-
     def _set_okna_layer_alias(self, layer: QgsVectorLayer) -> None:
         """Set the manhole layer display name to 'Manholes'.
 
@@ -2112,7 +2059,6 @@ class FiberQPlugin:
         from .utils.field_aliases import set_manhole_layer_alias
         set_manhole_layer_alias(layer)
 
-
     def _apply_manhole_field_aliases(self, layer: QgsVectorLayer) -> None:
         """Apply English field aliases to a manhole layer.
 
@@ -2120,7 +2066,6 @@ class FiberQPlugin:
         """
         from .utils.field_aliases import apply_manhole_field_aliases
         apply_manhole_field_aliases(layer)
-
 
     def _apply_cable_field_aliases(self, layer):
         """Apply English field aliases to a cable layer.
@@ -2294,7 +2239,6 @@ class FiberQPlugin:
                 layer.triggerRepaint()
                 continue
 
-
     def init_layer(self):
         """Create or return the Poles layer."""
         if self.layer_manager:
@@ -2304,7 +2248,6 @@ class FiberQPlugin:
                     self._apply_poles_field_aliases(self.layer)
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.init_layer: {e}")
-
 
     def create_route(self):
         """Create a route from selected poles/manholes."""
@@ -2378,7 +2321,6 @@ class FiberQPlugin:
                 f"Deleted {obrisano} selected features from all layers."
             )
 
-
     def _stylize_cable_layer(self, cables_layer):
         """Apply cable layer style."""
         if self.cable_manager:
@@ -2392,7 +2334,6 @@ class FiberQPlugin:
                 self.style_manager.stylize_cable_layer(cables_layer)
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin._stylize_cable_layer: {e}")
-
 
     # === Grananje/offset preko branch_index ===
 
@@ -2434,7 +2375,6 @@ class FiberQPlugin:
                 self.cable_manager.branch_cables_offset()
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.apply_cable_offset: {e}")
-
 
     def toggle_hotkeys_overlay(self):
         from qgis.PyQt.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton
@@ -2483,7 +2423,6 @@ class FiberQPlugin:
                 self._record_cmd('lay_cable', tip=tip, podtip=podtip)
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.lay_cable_type: {e}")
-
 
     def lay_cable(self):
         """Lay a cable along a route between two selected elements."""
@@ -2691,8 +2630,8 @@ class FiberQPlugin:
 
         QMessageBox.information(self.iface.mainWindow(), "FiberQ", f"Imported {broj_dodatih} points into layer '{layer.name()}'!")
 
+    # Automatska korekcija
 
-    #Automatska korekcija
     def _export_active_layer(self, only_selected: bool):
         """Helper to export active vector layer (all or only selected features)
         to one of the common exchange formats (GPX, KML/KMZ, GeoPackage)."""
@@ -2877,7 +2816,6 @@ class FiberQPlugin:
                 f"to:\n{filename}"
             )
 
-
     def export_selected_features(self):
         """Export only selected features of the active layer. Delegates to ExportManager."""
         # Phase 8: Delegate to ExportManager
@@ -2899,7 +2837,6 @@ class FiberQPlugin:
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.export_all_features: {e}")
         self._export_active_layer(only_selected=False)
-
 
     def check_consistency(self):
         self.popravljive_greske = []
@@ -2953,8 +2890,8 @@ class FiberQPlugin:
             dlg = CorrectionDialog(self.popravljive_greske, self.iface.mainWindow())
             dlg.exec()
 
+        # Automatska korekcija
 
-        #Automatska korekcija
     def fix_route_to_pole(self, route_feature, must_start=True):
             poles_layer = next((lyr for lyr in QgsProject.instance().mapLayers().values()
                                 if lyr.geometryType() == QgsWkbTypes.PointGeometry
@@ -3002,7 +2939,6 @@ class FiberQPlugin:
                 if not route_layer:
                     QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Route layer 'Route' not found!")
                     return
-
 
                 route_layer.startEditing()
                 route_layer.changeGeometry(route_feature.id(), new_geom)
@@ -3170,8 +3106,8 @@ class FiberQPlugin:
             f'Drawing link removed for {count} element(s).'
         )
 
-
     # === UNDO / REDO (v1.2 — Feature 2) ===
+
     def _on_undo(self):
         """Handle Undo toolbar button / Ctrl+Shift+Z."""
         if self.undo_manager:
@@ -3252,7 +3188,6 @@ class FiberQPlugin:
                 logger.debug(f"Error in FiberQPlugin._ensure_okna_layer: {e}")
         return None
 
-
     def _move_layer_to_top(self, layer):
         """Move layer to top of layer tree."""
         if self.layer_manager:
@@ -3260,7 +3195,6 @@ class FiberQPlugin:
                 self.layer_manager.move_layer_to_top(layer)
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin._move_layer_to_top: {e}")
-
 
     def _apply_manhole_style(self, layer):
         """Apply manhole layer style."""
@@ -3308,7 +3242,6 @@ class FiberQPlugin:
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin._set_pipe_layer_alias: {e}")
 
-
     def _ensure_pipe_layer(self, name):
         """Create or return a pipe layer."""
         if self.pipe_manager:
@@ -3317,7 +3250,6 @@ class FiberQPlugin:
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin._ensure_pipe_layer: {e}")
         return None
-
 
     def _ensure_pe_cev_layer(self):
         """Create or return the PE pipes layer."""
@@ -3336,7 +3268,6 @@ class FiberQPlugin:
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin._ensure_transition_duct_layer: {e}")
         return None
-
 
     def _apply_pipe_style(self, layer, color_hex, width_mm):
         """Apply pipe layer style."""
@@ -3375,7 +3306,7 @@ from .dialogs.manhole_dialog import ManholeTypeDialog, ManholeDetailsDialog
 
 
 # CablePickerDialog moved to dialogs/cable_dialog.py (Phase 4)
-from .dialogs.cable_dialog import CablePickerDialog
+pass
 
 
 # === DODATO: BreakpointTool za split linije ===
@@ -3386,18 +3317,10 @@ from .tools.breakpoint_tool import BreakpointTool
 # === NEW: SmartMultiSelectTool — multi-layer smart selection ===
 
 
-#Automatska korekcija trase
+# Automatska korekcija trase
 
 
 # === RELACIJE DIALOGI ===
-from qgis.PyQt.QtWidgets import (
-    QTreeWidget, QTreeWidgetItem, QSplitter, QHBoxLayout, QGroupBox, QComboBox,
-    QTableWidget, QTableWidgetItem, QHeaderView
-)
-from qgis.PyQt.QtCore import Qt
-import uuid
-import json
-from datetime import datetime
 
 
 # === NEW: Optical schematic view ===
@@ -3422,7 +3345,7 @@ RELACIJE_KATEGORIJE = [
 
 
 # PEDuctDialog and TransitionDuctDialog moved to dialogs/pipe_dialog.py (Phase 4)
-from .dialogs.pipe_dialog import PEDuctDialog, TransitionDuctDialog
+pass
 
 # === MAP TOOL: laying cevi po trasi (klik start + kraj sa 'snap on') ===
 
@@ -3460,32 +3383,9 @@ def _open_fiberq_web(iface):
 # =============================================================================
 
 
-# === UI grupa: Rezerve (drop-down dugme) ===
-    def activate(self):
-        try:
-            self.canvas.setCursor(Qt.CursorShape.CrossCursor)
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin.activate: {e}")
-        try:
-            self.rb.show()
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin.activate: {e}")
-        try:
-            self.snap_marker.show()
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin.activate: {e}")
-        super().activate()
+# (Removed: dead activate/deactivate map-tool fragment mis-pasted here during
+#  the monolith split; never called.)
 
-    def deactivate(self):
-        try:
-            self.snap_marker.hide()
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin.deactivate: {e}")
-        try:
-            self.rb.hide()
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin.deactivate: {e}")
-        super().deactivate()
 
 # SlackUI moved to ui/slack_ui.py (Phase 5)
 from .ui.slack_ui import SlackUI
@@ -3498,14 +3398,6 @@ from .dialogs.slack_dialog import SlackDialog
 
 
 # === MAP TOOL: Change element type (Izmena tipa elementa) ===
-try:
-    from qgis.gui import QgsMapTool, QgsMapToolIdentify
-    from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes, QgsFeature, QgsGeometry, QgsPointXY, QgsField, QgsVectorLayerSimpleLabeling, QgsMarkerSymbol, QgsSvgMarkerSymbolLayer, QgsPalLayerSettings, QgsUnitTypes
-    from qgis.PyQt.QtWidgets import QMessageBox, QInputDialog, QComboBox
-    from qgis.PyQt.QtCore import QVariant
-    from qgis.PyQt.QtGui import QColor
-except Exception as e:
-    logger.debug(f"Error in FiberQPlugin.deactivate: {e}")
 
 
 # =============================================================================
@@ -3518,27 +3410,9 @@ except Exception as e:
 
 
 # === Draw Region (manual polygon) ==============================================
-try:
-    from qgis.PyQt.QtCore import Qt
-    from qgis.PyQt.QtWidgets import QInputDialog
-    from qgis.gui import QgsMapTool, QgsRubberBand
-    from qgis.core import QgsPointXY, QgsGeometry, QgsWkbTypes, QgsDistanceArea
-except Exception as e:
-    logger.debug(f"Error in FiberQPlugin.deactivate: {e}")
 
 
 # === Crtanje objekta (polygon tools + dialog) ==================================
-try:
-    from qgis.gui import QgsMapTool
-    from qgis.PyQt.QtWidgets import (QMenu, QToolButton, QDialog, QFormLayout, QLineEdit,
-                                     QSpinBox, QDialogButtonBox, QRadioButton, QGroupBox, QVBoxLayout, QLabel)
-    from qgis.PyQt.QtGui import QColor
-    from qgis.PyQt.QtCore import QVariant
-    from qgis.core import (QgsProject, QgsVectorLayer, QgsWkbTypes, QgsField, QgsFeature,
-                           QgsGeometry, QgsPointXY, QgsRubberBand, QgsDistanceArea, QgsCoordinateTransformContext,
-                           QgsUnitTypes, QgsLineSymbol, QgsFillSymbol, QgsLinePatternFillSymbolLayer, QgsSimpleFillSymbolLayer, QgsSimpleLineSymbolLayer)
-except Exception as e:
-    logger.debug(f"Error in FiberQPlugin.deactivate: {e}")
 
 
 # =============================================================================
@@ -3550,18 +3424,9 @@ except Exception as e:
 from .ui.objects_ui import ObjectsUI
 
 
-try:
-    from qgis.PyQt.QtCore import Qt, QSize
-    from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox, QDialog, QVBoxLayout, QLabel, QScrollArea, QWidget
-    from qgis.PyQt.QtGui import QAction
-    from qgis.PyQt.QtGui import QIcon, QPixmap, QCursor
-    from qgis.core import QgsProject, QgsFeature, QgsGeometry, QgsPointXY, QgsWkbTypes, QgsVectorLayer, QgsRectangle
-    from qgis.gui import QgsMapTool, QgsRubberBand, QgsMapToolIdentify
-except Exception as e:
-    logger.debug(f"Error in FiberQPlugin.deactivate: {e}")
-
 def _img_key(layer, fid):
     return f"image_map/{layer.id()}/{int(fid)}"
+
 
 def _img_get(layer, fid):
     try:
@@ -3570,17 +3435,12 @@ def _img_get(layer, fid):
         logger.debug(f"Error in FiberQPlugin._img_get: {e}")
         return ""
 
+
 def _img_set(layer, fid, path):
     try:
         QgsProject.instance().writeEntry("FiberQPlugin", _img_key(layer, fid), path or "")
     except Exception as e:
         logger.debug(f"Error in FiberQPlugin._img_set: {e}")
-
-
-from collections import Counter
-from qgis.gui import QgsMapToolIdentify
-from qgis.PyQt.QtCore import Qt
-from qgis.core import QgsVectorLayer, QgsWkbTypes
 
 
 # ============================================================================
@@ -3589,11 +3449,10 @@ from qgis.core import QgsVectorLayer, QgsWkbTypes
 # The original v1.x monolith kept many QDialog/QgsMapTool classes inline.
 # In v1.0.1 refactor, those classes live in fiberq/extracted_classes.py, while
 # main_plugin.py keeps FiberQPlugin + shared helpers.
-
 # Tools already modularized elsewhere
 from .tools.manhole_tool import ManholePlaceTool
 from .tools.route_tool import ManualRouteTool
-from .tools.pipe_tool import PipePlaceTool
+pass
 from .tools.slack_tool import SlackPlaceTool
 
 # Remaining dialogs/tools extracted from the legacy monolith
@@ -3606,14 +3465,8 @@ from .tools import (
     SmartMultiSelectTool,
     ChangeElementTypeTool,
     DrawRegionPolygonTool,
-    ObjectPropertiesDialog,
-    _BaseObjMapTool,
-    DrawObjectNTool,
-    DrawObjectOrthoTool,
-    DrawObject3ptTool,
     BranchInfoTool,
     OpenImageMapTool,
-    _ImagePopup,
     MoveFeatureTool,
 )
 
@@ -3621,14 +3474,9 @@ from .dialogs import (
     _BOMDialog,
     CorrectionDialog,
     LocatorDialog,
-    SchematicView,
     OpticalSchematicDialog,
-    NewRelationDialog,
     RelationsDialog,
     LatentElementsDialog,
-    CablePitstopsDialog,
-    ColorCatalogManagerDialog,
-    NewColorCatalogDialog,
     CreateRegionDialog,
     FiberQSettingsDialog,
 )

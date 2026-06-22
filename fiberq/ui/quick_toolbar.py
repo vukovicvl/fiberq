@@ -11,7 +11,7 @@ View → Toolbars → FiberQ Quick.
 
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QKeySequence
-from qgis.PyQt.QtWidgets import QToolBar
+pass
 from qgis.PyQt.QtGui import QAction, QShortcut
 
 from qgis.core import QgsSettings
