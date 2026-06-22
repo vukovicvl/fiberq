@@ -12,8 +12,8 @@ Phase 0.1 of FiberQ Designer preparation.
 import uuid
 
 from qgis.core import (
-    QgsProject, QgsVectorLayer, QgsField, QgsWkbTypes,
-    QgsMessageLog, Qgis
+    QgsProject, QgsVectorLayer, QgsField, QgsMessageLog,
+    Qgis
 )
 from qgis.PyQt.QtCore import QVariant
 

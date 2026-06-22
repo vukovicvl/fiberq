@@ -8,7 +8,7 @@ The aliases provide an English user interface while maintaining
 backward compatibility with existing Serbian database schemas.
 """
 
-from typing import Dict, Optional, List, Any
+from typing import Dict
 from qgis.core import QgsVectorLayer, QgsEditorWidgetSetup, QgsProject
 
 # Phase 5.2: Logging

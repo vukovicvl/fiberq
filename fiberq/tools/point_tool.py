@@ -11,8 +11,8 @@ from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QMessageBox
 from qgis.core import (
-    QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
-    QgsPointXY, QgsWkbTypes, QgsSettings
+    QgsProject, QgsFeature, QgsGeometry, QgsPointXY,
+    QgsWkbTypes, QgsSettings
 )
 from qgis.gui import QgsMapToolEmitPoint, QgsVertexMarker
 

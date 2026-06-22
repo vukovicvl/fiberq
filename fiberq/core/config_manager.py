@@ -7,7 +7,7 @@ including reading config.ini, managing QSettings, and handling project-level set
 
 import os
 import configparser
-from typing import Dict, Any, Optional
+from typing import Dict, Optional
 from dataclasses import dataclass, field
 
 from qgis.PyQt.QtCore import QSettings

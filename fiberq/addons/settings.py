@@ -1,7 +1,7 @@
 
-from qgis.PyQt.QtCore import Qt, QSettings
+from qgis.PyQt.QtCore import QSettings
 from qgis.PyQt.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QLineEdit, QCheckBox,
-                                 QLabel, QDialogButtonBox)
+                                 QDialogButtonBox)
 
 # Phase 5.3: Logging
 from ..utils.logger import get_logger
@@ -11,6 +11,7 @@ ORG = "FiberQ"
 ORG_OLD = "Telecom_plugin"
 APP = "FiberQ"
 APP_OLD = "FTTx"
+
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None):

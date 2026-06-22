@@ -1,9 +1,8 @@
 from qgis.PyQt.QtCore import QObject, QVariant
 from qgis.core import (
-    QgsProject, QgsVectorLayer, QgsFeature, QgsField, QgsWkbTypes,
-    QgsGeometry, QgsRendererCategory, QgsCategorizedSymbolRenderer,
-    QgsMarkerSymbol, QgsSvgMarkerSymbolLayer, QgsUnitTypes, QgsPalLayerSettings,
-    QgsTextFormat, QgsVectorLayerSimpleLabeling
+    QgsProject, QgsVectorLayer, QgsField, QgsWkbTypes, QgsGeometry,
+    QgsRendererCategory, QgsCategorizedSymbolRenderer, QgsMarkerSymbol,
+    QgsSvgMarkerSymbolLayer, QgsUnitTypes, QgsPalLayerSettings, QgsVectorLayerSimpleLabeling
 )
 import os
 
@@ -11,9 +10,11 @@ import os
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
+
 class ReserveHook(QObject):
     """Prati sloj 'Opticke_rezerve' i ažurira slack_m/total_len_m na kablovima,
     i automatski postavlja simboliku (završna = C, prolazna = S ili SVG ako postoji)."""
+
     def __init__(self, iface):
         super().__init__(iface.mainWindow())
         self.iface = iface
@@ -32,6 +33,7 @@ class ReserveHook(QObject):
                     self._connected = True
             except Exception as e:
                 logger.debug(f"Error in ReserveHook.ensure_connected: {e}")
+
     def _layers_added(self, layers):
         try:
             for l in layers:
@@ -39,6 +41,7 @@ class ReserveHook(QObject):
                     self._connect_layer(l)
         except Exception as e:
             logger.debug(f"Error in ReserveHook._layers_added: {e}")
+
     def _connect_layer(self, lyr: QgsVectorLayer):
         if self._layer is lyr:
             return
@@ -70,6 +73,7 @@ class ReserveHook(QObject):
         except Exception as e:
             logger.debug(f"Error in ReserveHook._connect_layer: {e}")
     # --- Style for reserves layer ---
+
     def _icons_dir(self):
         base = os.path.join(os.path.dirname(__file__), '..', 'resources', 'map_icons')
         return os.path.abspath(base)
@@ -81,6 +85,7 @@ class ReserveHook(QObject):
         if not field:
             return
         # Prefer SVG icons if present, fallback to font markers
+
         def _svg_symbol(svg_name):
             s = QgsMarkerSymbol.createSimple({"name": "circle", "size": "6"})
             try:
@@ -123,6 +128,7 @@ class ReserveHook(QObject):
                 self._update_cable(kid, fid)
         except Exception as e:
             logger.debug(f"Error in ReserveHook._on_rez_added: {e}")
+
     def _on_rez_removed(self, layer_id, fids):
         try:
             rez = self._layer
@@ -142,6 +148,7 @@ class ReserveHook(QObject):
                 self._update_cable(kid, fid)
         except Exception as e:
             logger.debug(f"Error in ReserveHook._on_rez_removed: {e}")
+
     def _on_attr_changed(self, layer_id, changedAttrsMap):
         # changedAttrsMap: dict(fid -> {idx: value})
         try:
@@ -161,6 +168,7 @@ class ReserveHook(QObject):
                 self._update_cable(kid, fid)
         except Exception as e:
             logger.debug(f"Error in ReserveHook._on_attr_changed: {e}")
+
     def _on_geom_changed(self, layer_id, geomMap):
         # Just recompute for all referenced features
         try:
@@ -180,6 +188,7 @@ class ReserveHook(QObject):
                 self._update_cable(kid, fid)
         except Exception as e:
             logger.debug(f"Error in ReserveHook._on_geom_changed: {e}")
+
     def _on_editing_stopped(self):
         # Safety net: recompute all
         try:
@@ -201,6 +210,7 @@ class ReserveHook(QObject):
         except Exception as e:
             logger.debug(f"Error in ReserveHook._on_editing_stopped: {e}")
     # --- Core recompute ---
+
     def _update_cable(self, cable_layer_id, cable_fid):
         proj = QgsProject.instance()
         lyr = proj.mapLayer(cable_layer_id)

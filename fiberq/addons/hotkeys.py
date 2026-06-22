@@ -7,6 +7,7 @@ from qgis.PyQt.QtGui import QShortcut
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
+
 def show_hotkeys_help(iface):
     dlg = QDialog(iface.mainWindow())
     dlg.setWindowTitle("Prečice")
@@ -24,6 +25,7 @@ def show_hotkeys_help(iface):
     lay.addWidget(QDialogButtonBox(QDialogButtonBox.StandardButton.Close))
     dlg.exec()
 
+
 def register_hotkeys(plugin):
     """Povezuje globalne prečice sa akcijama plugina. Kreira shortcut-e i na glavnom prozoru i na mapi."""
     try:
@@ -31,6 +33,7 @@ def register_hotkeys(plugin):
         canvas = plugin.iface.mapCanvas()
         if not hasattr(plugin, '_hk_shortcuts'):
             plugin._hk_shortcuts = []
+
         def add(seq, slot):
             for parent in (win, canvas):
                 sc = QShortcut(QKeySequence(seq), parent)

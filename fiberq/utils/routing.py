@@ -13,7 +13,7 @@ The algorithms support:
 from typing import Optional, List, Dict, Tuple, Set
 from collections import defaultdict, deque
 
-from qgis.core import QgsPointXY, QgsGeometry, QgsVectorLayer
+from qgis.core import QgsPointXY, QgsVectorLayer
 
 from .geometry import (
     fuzzy_key, round_key, get_first_last_points,

@@ -8,14 +8,14 @@ Phase 7 of the modular refactoring.
 """
 
 from qgis.core import (
-    QgsProject, QgsVectorLayer, QgsWkbTypes,
-    QgsSymbol, QgsMarkerSymbol, QgsFillSymbol,
-    QgsSimpleLineSymbolLayer, QgsSimpleMarkerSymbolLayer,
-    QgsSimpleFillSymbolLayer, QgsLinePatternFillSymbolLayer,
-    QgsSingleSymbolRenderer, QgsCategorizedSymbolRenderer, QgsRendererCategory,
-    QgsVectorLayerSimpleLabeling, QgsPalLayerSettings,
-    QgsTextFormat, QgsTextBufferSettings,
-    QgsUnitTypes, QgsProperty, QgsSymbolLayer, QgsMapUnitScale,
+    QgsProject, QgsWkbTypes, QgsSymbol,
+    QgsMarkerSymbol, QgsFillSymbol, QgsSimpleLineSymbolLayer,
+    QgsSimpleMarkerSymbolLayer, QgsSimpleFillSymbolLayer,
+    QgsLinePatternFillSymbolLayer, QgsSingleSymbolRenderer,
+    QgsCategorizedSymbolRenderer, QgsRendererCategory, QgsVectorLayerSimpleLabeling,
+    QgsPalLayerSettings, QgsTextFormat,
+    QgsTextBufferSettings, QgsUnitTypes,
+    QgsProperty, QgsSymbolLayer, QgsMapUnitScale,
 )
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QColor, QFont

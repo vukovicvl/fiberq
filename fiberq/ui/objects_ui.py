@@ -6,7 +6,6 @@ Toolbar group for drawing building objects on the map.
 
 from .base import (
     Qt, QAction, QMenu, QToolButton, QMessageBox, QDialog,
-    QgsVectorLayer,
     load_icon
 )
 from qgis.core import QgsWkbTypes
@@ -40,6 +39,7 @@ class ObjectsUI:
 
         # Object in 3 points
         act_3pt = QAction(load_icon('ic_object_3p.svg'), 'Object in 3 points', core.iface.mainWindow())
+
         def _activate_3pt():
             # Import here to avoid circular imports
             from ..main_plugin import DrawObject3ptTool
@@ -51,6 +51,7 @@ class ObjectsUI:
 
         # Object in N points
         act_n = QAction(load_icon('ic_object_n.svg'), 'Object in N points', core.iface.mainWindow())
+
         def _activate_n():
             from ..main_plugin import DrawObjectNTool
             core._objn = DrawObjectNTool(core.iface, core)
@@ -61,6 +62,7 @@ class ObjectsUI:
 
         # Object in N points (90°)
         act_orth = QAction(load_icon('ic_object_ortho.svg'), 'Object in N points (90°)', core.iface.mainWindow())
+
         def _activate_ortho():
             from ..main_plugin import DrawObjectOrthoTool
             core._objo = DrawObjectOrthoTool(core.iface, core)
@@ -71,6 +73,7 @@ class ObjectsUI:
 
         # Digitized object (from selection)
         act_dig = QAction(load_icon('ic_object_dig.svg'), 'Digitized object (from selection)', core.iface.mainWindow())
+
         def _activate_digitize():
             from ..main_plugin import ObjectPropertiesDialog, _ensure_objects_layer, _stylize_objects_layer
             from qgis.core import QgsFeature

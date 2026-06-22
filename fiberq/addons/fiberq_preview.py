@@ -11,15 +11,13 @@ from qgis.core import (
     QgsPointXY,
     QgsRectangle,
     QgsWkbTypes,
-    QgsSymbol,
-    QgsSingleSymbolRenderer, QgsPalLayerSettings,
-    QgsVectorLayerSimpleLabeling,
-    QgsTextFormat,
+    QgsPalLayerSettings,
+    QgsVectorLayerSimpleLabeling, QgsTextFormat,
     QgsTextBufferSettings,
     QgsUnitTypes,
     Qgis
 )
-from qgis.gui import QgsMapCanvas, QgsMapTool, QgsMapToolPan, QgsRubberBand, QgsProjectionSelectionDialog
+from qgis.gui import QgsMapCanvas, QgsMapTool, QgsMapToolPan, QgsRubberBand
 import os
 import configparser
 import json
@@ -449,7 +447,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
                 if auth_id:
                     self.crsLabel.setText(f"CRS: {auth_id}")
                 else:
-                    self.crsLabel.setText(f"CRS: Custom")
+                    self.crsLabel.setText("CRS: Custom")
             else:
                 self.crsLabel.setText("CRS: Unknown")
         except Exception as e:
@@ -786,7 +784,6 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
             except Exception as e:
                 continue
 
-
         if layers_for_canvas:
             vector_layers = [lyr for lyr in layers_for_canvas if lyr not in self.baseLayers]
             ordered_layers = vector_layers + list(self.baseLayers)
@@ -802,7 +799,6 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
             self.canvas.refresh()
             if "Route" in self.previewLayers:
                 self.canvas.setCurrentLayer(self.previewLayers["Route"])
-
 
     def _apply_preview_cable_labels(self, layer):
         try:

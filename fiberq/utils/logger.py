@@ -46,6 +46,7 @@ try:
 except ImportError:
     QGIS_AVAILABLE = False
     # Define fallback constants for testing outside QGIS
+
     class Qgis:
         Info = 0
         Warning = 1
@@ -70,6 +71,7 @@ PLUGIN_NAME = 'FiberQ'
 # =============================================================================
 # QGIS Log Handler
 # =============================================================================
+
 
 class QgsLogHandler(logging.Handler):
     """

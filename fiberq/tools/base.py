@@ -36,15 +36,19 @@ logger = get_logger(__name__)
 
 # Plugin imports - these need to be imported when the tool is instantiated
 # to avoid circular imports
+
+
 def get_element_defs():
     """Get ELEMENT_DEFS from models module."""
     from ..models.element_defs import ELEMENT_DEFS
     return ELEMENT_DEFS
 
+
 def get_joint_closure_def():
     """Get NASTAVAK_DEF (joint closure definition) from models module."""
     from ..models.element_defs import NASTAVAK_DEF
     return NASTAVAK_DEF
+
 
 def get_route_type_options():
     """Get route type options from constants module."""

@@ -116,7 +116,7 @@ class ColorCatalogManagerDialog(QDialog):
     def _refresh_catalog_list(self):
         self.list_catalogs.clear()
         for c in self.catalogs:
-            it = QListWidgetItem(c.get("name",""))
+            it = QListWidgetItem(c.get("name", ""))
             self.list_catalogs.addItem(it)
 
     def _on_select_catalog(self, row):
@@ -124,15 +124,15 @@ class ColorCatalogManagerDialog(QDialog):
         if 0 <= row < len(self.catalogs):
             cols = self.catalogs[row].get("colors", [])
             for col in cols:
-                name = col.get("name","")
-                hx = col.get("hex","#cccccc")
+                name = col.get("name", "")
+                hx = col.get("hex", "#cccccc")
                 it = QListWidgetItem(name)
                 it.setBackground(QColor(hx))
                 # if dark color, use white text
                 try:
                     c = QColor(hx)
                     if c.red()*0.299 + c.green()*0.587 + c.blue()*0.114 < 140:
-                        it.setForeground(QColor(255,255,255))
+                        it.setForeground(QColor(255, 255, 255))
                 except Exception as e:
                     logger.debug(f"Error in ColorCatalogManagerDialog._on_select_catalog: {e}")
                 self.list_colors.addItem(it)
@@ -143,7 +143,7 @@ class ColorCatalogManagerDialog(QDialog):
             c = dlg.result_catalog()
             if c and c.get("name"):
                 # replace if same name exists
-                names = [x.get("name","") for x in self.catalogs]
+                names = [x.get("name", "") for x in self.catalogs]
                 if c["name"] in names:
                     self.catalogs[names.index(c["name"])] = c
                 else:
@@ -159,7 +159,7 @@ class ColorCatalogManagerDialog(QDialog):
             if dlg.exec() == QDialog.DialogCode.Accepted:
                 updated = dlg.result_catalog()
                 if updated and updated.get("name"):
-                    names = [x.get("name","") for x in self.catalogs]
+                    names = [x.get("name", "") for x in self.catalogs]
                     if updated["name"] in names and names.index(updated["name"]) != row:
                         self.catalogs[names.index(updated["name"])] = updated
                         del self.catalogs[row]
@@ -176,7 +176,7 @@ class ColorCatalogManagerDialog(QDialog):
             QMessageBox.warning(self, "Export", "Select a catalog to export.")
             return
         cat = self.catalogs[row]
-        path, _ = QFileDialog.getSaveFileName(self, "Save catalog", f"{cat.get('name','catalog')}.json", "JSON (*.json)")
+        path, _ = QFileDialog.getSaveFileName(self, "Save catalog", f"{cat.get('name', 'catalog')}.json", "JSON (*.json)")
         if not path:
             return
         try:
@@ -195,7 +195,7 @@ class ColorCatalogManagerDialog(QDialog):
                 cat = json.load(f)
             if not isinstance(cat, dict) or 'name' not in cat or 'colors' not in cat:
                 raise ValueError('Unknown JSON format')
-            names = [x.get('name','') for x in self.catalogs]
+            names = [x.get('name', '') for x in self.catalogs]
             if cat['name'] in names:
                 self.catalogs[names.index(cat['name'])] = cat
             else:
@@ -271,7 +271,7 @@ class NewColorCatalogDialog(QDialog):
 
         # Prepopulate: if editing – use existing values, otherwise standard 12 colors
         if self._initial:
-            self.edit_name.setText(self._initial.get('name',''))
+            self.edit_name.setText(self._initial.get('name', ''))
             for c in self._initial.get('colors', []):
                 self._add_color(c)
         else:
@@ -279,13 +279,13 @@ class NewColorCatalogDialog(QDialog):
                 self._add_color(c)
 
     def _add_color(self, col):
-        it = QListWidgetItem(col.get("name",""))
-        hx = col.get("hex","#cccccc")
+        it = QListWidgetItem(col.get("name", ""))
+        hx = col.get("hex", "#cccccc")
         it.setBackground(QColor(hx))
         try:
             c = QColor(hx)
             if c.red()*0.299 + c.green()*0.587 + c.blue()*0.114 < 140:
-                it.setForeground(QColor(255,255,255))
+                it.setForeground(QColor(255, 255, 255))
         except Exception as e:
             logger.debug(f"Error in NewColorCatalogDialog._add_color: {e}")
         self.list.addItem(it)
@@ -315,7 +315,7 @@ class NewColorCatalogDialog(QDialog):
         for i in range(self.list.count()):
             txt = self.list.item(i).text()
             # find HEX from standard table
-            hex_val = next((c.get("hex") for c in self._std if c.get("name")==txt), "#cccccc")
+            hex_val = next((c.get("hex") for c in self._std if c.get("name") == txt), "#cccccc")
             cols.append({"name": txt, "hex": hex_val})
         return {"name": self.edit_name.text().strip(), "colors": cols}
 

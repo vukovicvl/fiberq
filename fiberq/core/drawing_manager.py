@@ -11,7 +11,7 @@ Phase 5.2: Added logging infrastructure
 
 import os
 import re
-from typing import Optional, List
+from typing import List
 
 from qgis.PyQt.QtCore import QUrl
 from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox, QInputDialog

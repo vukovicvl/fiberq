@@ -1,10 +1,11 @@
 
-from qgis.PyQt.QtWidgets import QDialog, QVBoxLayout, QComboBox, QLabel, QPushButton, QDialogButtonBox
+from qgis.PyQt.QtWidgets import QDialog, QVBoxLayout, QComboBox, QLabel, QDialogButtonBox
 from qgis.core import QgsProject, QgsVectorLayer
 
 # Phase 5.3: Logging
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
+
 
 class ApplyStyleDialog(QDialog):
     def __init__(self, iface, plugin_root):
@@ -35,7 +36,7 @@ class ApplyStyleDialog(QDialog):
         lyr = QgsProject.instance().mapLayer(lyr_id)
         if lyr:
             import os
-            qml_path = os.path.join(self.plugin_root, qml_rel).replace("\\","/")
+            qml_path = os.path.join(self.plugin_root, qml_rel).replace("\\", "/")
             lyr.loadNamedStyle(qml_path)
             lyr.triggerRepaint()
         self.accept()

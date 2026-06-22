@@ -14,7 +14,7 @@ Design:
 
 import time
 
-from qgis.PyQt.QtCore import Qt, QObject, QEvent, QTimer
+from qgis.PyQt.QtCore import Qt, QObject, QEvent
 from qgis.PyQt.QtWidgets import QLabel
 
 from ..utils.logger import get_logger

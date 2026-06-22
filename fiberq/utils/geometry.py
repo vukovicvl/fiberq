@@ -5,8 +5,8 @@ This module contains geometry utility functions for point manipulation,
 snapping, distance calculations, and coordinate transformations.
 """
 
-from typing import Optional, Tuple, List, Dict, Any
-from qgis.core import QgsPointXY, QgsGeometry, QgsVectorLayer, QgsWkbTypes
+from typing import Optional, Tuple, List, Dict
+from qgis.core import QgsPointXY, QgsGeometry, QgsVectorLayer
 
 # Phase 5.2: Logging
 from .logger import get_logger

@@ -281,8 +281,9 @@ class OpticalSchematicDialog(QDialog):
             self.view.centerOn(x, y)
             # highlight momentarily
             r = 12.0
-            item = self.scene.addEllipse(x-r, y-r, 2*r, 2*r, QPen(QColor(255,165,0), 2.4), Qt.BrushStyle.NoBrush)
+            item = self.scene.addEllipse(x-r, y-r, 2*r, 2*r, QPen(QColor(255, 165, 0), 2.4), Qt.BrushStyle.NoBrush)
             item.setZValue(10)
+
             def _remove():
                 self.scene.removeItem(item)
             QTimer.singleShot(1300, _remove)
@@ -774,7 +775,7 @@ class OpticalSchematicDialog(QDialog):
                 rect = ti.mapRectToScene(ti.boundingRect())
                 if not any(rect.intersects(r) for r in occupied):
                     bg = rect.adjusted(-2, -1, 2, 2)
-                    self.scene.addRect(bg, QPen(Qt.PenStyle.NoPen), QColor(255,255,255,210)).setZValue(ti.zValue()-1)
+                    self.scene.addRect(bg, QPen(Qt.PenStyle.NoPen), QColor(255, 255, 255, 210)).setZValue(ti.zValue()-1)
                     occupied.append(bg)
                     return
             occupied.append(ti.mapRectToScene(ti.boundingRect()))
@@ -798,25 +799,25 @@ class OpticalSchematicDialog(QDialog):
             if self.chk_labels.isChecked():
                 mid_idx = len(path) // 2
                 mx, my = path[mid_idx]
-                text = f"{e.get('kapacitet','')}".strip()
+                text = f"{e.get('kapacitet', '')}".strip()
                 if e.get('length', 0.0):
-                    text = (text + (" / " if text else "")) + f"{round(e['length'],1)} m"
+                    text = (text + (" / " if text else "")) + f"{round(e['length'], 1)} m"
                 place_text(mx, my, text, pen.color())
 
         # nodes + labels
         for name, meta in nodes.items():
             x, y = pos.get(name, (0.0, 0.0))
             r = 6.0
-            self.scene.addEllipse(x-r, y-r, 2*r, 2*r, QPen(Qt.GlobalColor.black), QColor(240,240,240))
+            self.scene.addEllipse(x-r, y-r, 2*r, 2*r, QPen(Qt.GlobalColor.black), QColor(240, 240, 240))
             if self.chk_labels.isChecked():
-                place_text(x, y, str(name), QColor(10,10,10))
+                place_text(x, y, str(name), QColor(10, 10, 10))
 
         self._fit()
 
     # ---------- EXPORT ----------
     def _export_png(self):
         from qgis.PyQt.QtGui import QImage, QPainter
-        rect = self.scene.itemsBoundingRect().adjusted(10,10,10,10)
+        rect = self.scene.itemsBoundingRect().adjusted(10, 10, 10, 10)
         img = QImage(int(rect.width())+40, int(rect.height())+40, QImage.Format.Format_ARGB32)
         img.fill(0x00ffffff)
         p = QPainter(img)
@@ -829,7 +830,7 @@ class OpticalSchematicDialog(QDialog):
 
     def _export_jpg(self):
         from qgis.PyQt.QtGui import QImage, QPainter
-        rect = self.scene.itemsBoundingRect().adjusted(10,10,10,10)
+        rect = self.scene.itemsBoundingRect().adjusted(10, 10, 10, 10)
         img = QImage(int(rect.width())+40, int(rect.height())+40, QImage.Format.Format_RGB32)
         img.fill(0xffffffff)
         p = QPainter(img)
@@ -847,14 +848,14 @@ class OpticalSchematicDialog(QDialog):
 
         except Exception as e:
             return
-        rect = self.scene.itemsBoundingRect().adjusted(10,10,10,10)
+        rect = self.scene.itemsBoundingRect().adjusted(10, 10, 10, 10)
         fn, _ = QFileDialog.getSaveFileName(self, "Save SVG", "optical_schematic.svg", "SVG (*.svg)")
         if not fn:
             return
         gen = QSvgGenerator()
         gen.setFileName(fn)
         gen.setSize(QSize(int(rect.width())+40, int(rect.height())+40))
-        gen.setViewBox(QRect(0,0,int(rect.width())+40,int(rect.height())+40))
+        gen.setViewBox(QRect(0, 0, int(rect.width())+40, int(rect.height())+40))
         p = QPainter(gen)
         p.translate(-rect.x()+20, -rect.y()+20)
         self.scene.render(p)

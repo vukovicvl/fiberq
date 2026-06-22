@@ -29,7 +29,7 @@ class CanvasImageClickWatcher(QObject):
                 canvas = self.core.iface.mapCanvas()
                 # Don't interfere while our explicit tools are active
                 active = canvas.mapTool()
-                if active and (active.__class__.__name__ in ("MoveFeatureTool","OpenImageMapTool")):
+                if active and (active.__class__.__name__ in ("MoveFeatureTool", "OpenImageMapTool")):
                     return False
                 ident = QgsMapToolIdentify(canvas)
                 res = ident.identify(event.x(), event.y(), ident.TopDownAll, ident.VectorLayer)

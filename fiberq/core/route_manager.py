@@ -11,7 +11,7 @@ This module provides route management functionality:
 Phase 5.2: Added logging infrastructure
 """
 
-from typing import Optional, List, Tuple, Any
+from typing import Optional, List, Tuple
 
 from qgis.PyQt.QtCore import QVariant, Qt
 from qgis.PyQt.QtWidgets import QMessageBox, QInputDialog, QFileDialog

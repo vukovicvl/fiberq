@@ -10,7 +10,7 @@ This module provides cable management functionality:
 Phase 5.2: Added logging infrastructure
 """
 
-from typing import Optional, List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple
 
 from qgis.PyQt.QtCore import QVariant, Qt
 from qgis.PyQt.QtWidgets import QMessageBox, QDialog
@@ -35,7 +35,6 @@ from qgis.core import (
     QgsTextBufferSettings,
     QgsProperty,
     QgsSymbolLayer,
-    QgsSingleSymbolRenderer,
 )
 
 # Phase 5.2: Logging
@@ -43,7 +42,7 @@ from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
 # Phase 0.1: UUID support for FiberQ Designer
-from ..utils.uuid_utils import FIBERQ_UUID_FIELD, generate_uuid, ensure_uuid_field
+from ..utils.uuid_utils import FIBERQ_UUID_FIELD, generate_uuid
 
 
 class CableManager:

@@ -44,6 +44,7 @@ class CorrectionDialog(QDialog):
             if 'feat' in g and 'layer' in g:
                 btn_sel = QPushButton("Select on map")
                 # Create function that selects and zooms to feature
+
                 def sel_func(feat_id=g['feat'].id(), layer=g['layer']):
                     # Clear selection on all layers
                     for lyr in QgsProject.instance().mapLayers().values():
