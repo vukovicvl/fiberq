@@ -20,6 +20,10 @@ from qgis.core import (
 )
 from qgis.gui import QgsMapTool, QgsVertexMarker
 
+# Phase 5.3: Logging
+from ..utils.logger import get_logger
+logger = get_logger(__name__)
+
 
 ELIGIBLE_HINTS = (
     'kabl', 'kabel', 'fiber', 'fo', 'trasa', 'route', 'duct', 'cev', 'cevi', 'pipe',
@@ -32,7 +36,7 @@ class InfrastructureCutTool(QgsMapTool):
         self.iface = iface
         self.plugin = plugin
         self.canvas = iface.mapCanvas()
-        self.setCursor(QCursor(Qt.CrossCursor))
+        self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
 
         self._tol_px = 12  # pixel tolerance for picking / preview
         # Marker for live snap preview
@@ -53,7 +57,7 @@ class InfrastructureCutTool(QgsMapTool):
     def _map_tol(self):
         try:
             return self._tol_px * self.canvas.mapSettings().mapUnitsPerPixel()
-        except Exception:
+        except Exception as e:
             return 1.0
 
     def _candidate_layers(self):
@@ -143,17 +147,15 @@ class InfrastructureCutTool(QgsMapTool):
     def activate(self):
         try:
             self.iface.messageBar().pushInfo("Cutting", "Click on the line (left click) to cut it; right click/ESC aborts.")
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Error in InfrastructureCutTool.activate: {e}")
     def deactivate(self):
         try:
             self._marker.hide()
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Error in InfrastructureCutTool.deactivate: {e}")
     def keyPressEvent(self, e):
-        if e.key() in (Qt.Key_Escape,):
+        if e.key() in (Qt.Key.Key_Escape,):
             self._finish()
 
     def canvasMoveEvent(self, e):
@@ -186,10 +188,10 @@ class InfrastructureCutTool(QgsMapTool):
         except Exception as ex:
             self._flash(f'Error in release event: {ex}')
             return
-        if e.button() == Qt.RightButton:
+        if e.button() == Qt.MouseButton.RightButton:
             self._finish()
             return
-        if e.button() != Qt.LeftButton:
+        if e.button() != Qt.MouseButton.LeftButton:
             return
 
         if not self._last_preview_ok:
@@ -209,14 +211,14 @@ class InfrastructureCutTool(QgsMapTool):
 
         if not layer.isEditable():
             try: layer.startEditing()
-            except Exception: pass
+            except Exception as e: logger.debug(f"Error in InfrastructureCutTool.canvasReleaseEvent: {e}")
 
         ok = self._split_feature_at_point(layer, feat, cp)
         if ok:
             try:
                 self.iface.messageBar().pushSuccess("Cutting", f"Cut in layer: {layer.name()}")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Error in InfrastructureCutTool.canvasReleaseEvent: {e}")
         else:
             self._flash("Cutting failed (maybe the click is too far or the geometry is not supported).")
 
@@ -318,13 +320,13 @@ class InfrastructureCutTool(QgsMapTool):
         da.setSourceCrs(layer.crs(), QgsProject.instance().transformContext())
         try:
             da.setEllipsoid(QgsProject.instance().ellipsoid())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Error in InfrastructureCutTool._norm: {e}")
         L = da.measureLength(feat.geometry())
         try:
             L = da.convertLengthMeasurement(L, QgsUnitTypes.DistanceMeters)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Error in InfrastructureCutTool._norm: {e}")
         val_m = round(float(L or 0.0), 3)
         for orig, idx in targets:
             try:
@@ -334,28 +336,26 @@ class InfrastructureCutTool(QgsMapTool):
                     feat.setAttribute(idx, int(round(val_m)))
                 else:
                     feat.setAttribute(idx, val_m)
-            except Exception:
+            except Exception as e:
                 try: feat.setAttribute(idx, val_m)
-                except Exception: pass
+                except Exception as e: logger.debug(f"Error in InfrastructureCutTool._norm: {e}")
 
     # ------------- Misc UI helpers -------------
     def _flash(self, msg: str):
         try:
             self.iface.messageBar().pushWarning("Cutting", msg)
-        except Exception:
+        except Exception as e:
             try:
                 QMessageBox.warning(self.iface.mainWindow(), "Cutting", msg)
-            except Exception:
-                pass
-
+            except Exception as e:
+                logger.debug(f"Error in InfrastructureCutTool._flash: {e}")
     def _finish(self):
         # Hide marker and unset tool (used on ESC / right-click)
         try:
             self._marker.hide()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Error in InfrastructureCutTool._finish: {e}")
         try:
             self.canvas.unsetMapTool(self)
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Error in InfrastructureCutTool._finish: {e}")

@@ -7,6 +7,10 @@ from qgis.core import (
 )
 import os
 
+# Phase 5.3: Logging
+from ..utils.logger import get_logger
+logger = get_logger(__name__)
+
 class ReserveHook(QObject):
     """Prati sloj 'Opticke_rezerve' i ažurira slack_m/total_len_m na kablovima,
     i automatski postavlja simboliku (završna = C, prolazna = S ili SVG ako postoji)."""
@@ -26,17 +30,15 @@ class ReserveHook(QObject):
                 if isinstance(l, QgsVectorLayer) and l.geometryType() == QgsWkbTypes.PointGeometry and l.name().lower().startswith('opticke_rezerve'):
                     self._connect_layer(l)
                     self._connected = True
-            except Exception:
-                pass
-
+            except Exception as e:
+                logger.debug(f"Error in ReserveHook.ensure_connected: {e}")
     def _layers_added(self, layers):
         try:
             for l in layers:
                 if isinstance(l, QgsVectorLayer) and l.geometryType() == QgsWkbTypes.PointGeometry and l.name().lower().startswith('opticke_rezerve'):
                     self._connect_layer(l)
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Error in ReserveHook._layers_added: {e}")
     def _connect_layer(self, lyr: QgsVectorLayer):
         if self._layer is lyr:
             return
@@ -44,30 +46,29 @@ class ReserveHook(QObject):
         # hook signals
         try:
             lyr.committedFeaturesAdded.connect(self._on_rez_added)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Error in ReserveHook._connect_layer: {e}")
         try:
             lyr.committedFeaturesRemoved.connect(self._on_rez_removed)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Error in ReserveHook._connect_layer: {e}")
         try:
             lyr.committedAttributeValuesChanges.connect(self._on_attr_changed)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Error in ReserveHook._connect_layer: {e}")
         try:
             lyr.committedGeometriesChanges.connect(self._on_geom_changed)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Error in ReserveHook._connect_layer: {e}")
         try:
             lyr.editingStopped.connect(self._on_editing_stopped)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Error in ReserveHook._connect_layer: {e}")
         # style
         try:
             self._apply_style(lyr)
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Error in ReserveHook._connect_layer: {e}")
     # --- Style for reserves layer ---
     def _icons_dir(self):
         base = os.path.join(os.path.dirname(__file__), '..', 'resources', 'map_icons')
@@ -90,7 +91,7 @@ class ReserveHook(QObject):
                     s.changeSymbolLayer(0, sl)
                 else:
                     s.setSizeUnit(QgsUnitTypes.RenderMapUnits)
-            except Exception:
+            except Exception as e:
                 s.setSizeUnit(QgsUnitTypes.RenderMapUnits)
             return s
         cats = [
@@ -107,8 +108,8 @@ class ReserveHook(QObject):
             rez = self._layer
             if not isinstance(rez, QgsVectorLayer):
                 return
-            idx_kid = rez.fields().indexFromName('kabl_layer_id')
-            idx_fid = rez.fields().indexFromName('kabl_fid')
+            idx_kid = rez.fields().indexFromName('cable_layer_id')
+            idx_fid = rez.fields().indexFromName('cable_fid')
             if idx_kid == -1 or idx_fid == -1:
                 return
             touched = set()
@@ -120,37 +121,35 @@ class ReserveHook(QObject):
                 touched.add((kid, int(fid)))
             for kid, fid in touched:
                 self._update_cable(kid, fid)
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Error in ReserveHook._on_rez_added: {e}")
     def _on_rez_removed(self, layer_id, fids):
         try:
             rez = self._layer
             if not isinstance(rez, QgsVectorLayer):
                 return
             # Find impacted cables by scanning remaining features (cheap unless many)
-            idx_kid = rez.fields().indexFromName('kabl_layer_id')
-            idx_fid = rez.fields().indexFromName('kabl_fid')
+            idx_kid = rez.fields().indexFromName('cable_layer_id')
+            idx_fid = rez.fields().indexFromName('cable_fid')
             impacted = set()
             for f in rez.getFeatures():
                 try:
                     impacted.add((f.attribute(idx_kid), int(f.attribute(idx_fid))))
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Error in ReserveHook._on_rez_removed: {e}")
             # Unique set ensures we recompute all current ones; removed ones will be ignored safely
             for kid, fid in impacted:
                 self._update_cable(kid, fid)
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Error in ReserveHook._on_rez_removed: {e}")
     def _on_attr_changed(self, layer_id, changedAttrsMap):
         # changedAttrsMap: dict(fid -> {idx: value})
         try:
             rez = self._layer
             if not isinstance(rez, QgsVectorLayer):
                 return
-            idx_kid = rez.fields().indexFromName('kabl_layer_id')
-            idx_fid = rez.fields().indexFromName('kabl_fid')
+            idx_kid = rez.fields().indexFromName('cable_layer_id')
+            idx_fid = rez.fields().indexFromName('cable_fid')
             touched = set()
             for fid in changedAttrsMap.keys():
                 f = next(rez.getFeatures(f'id={int(fid)}'), None)
@@ -160,17 +159,16 @@ class ReserveHook(QObject):
                         touched.add((kid, int(kfid)))
             for kid, fid in touched:
                 self._update_cable(kid, fid)
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Error in ReserveHook._on_attr_changed: {e}")
     def _on_geom_changed(self, layer_id, geomMap):
         # Just recompute for all referenced features
         try:
             rez = self._layer
             if not isinstance(rez, QgsVectorLayer):
                 return
-            idx_kid = rez.fields().indexFromName('kabl_layer_id')
-            idx_fid = rez.fields().indexFromName('kabl_fid')
+            idx_kid = rez.fields().indexFromName('cable_layer_id')
+            idx_fid = rez.fields().indexFromName('cable_fid')
             touched = set()
             for fid in geomMap.keys():
                 f = next(rez.getFeatures(f'id={int(fid)}'), None)
@@ -180,34 +178,32 @@ class ReserveHook(QObject):
                         touched.add((kid, int(kfid)))
             for kid, fid in touched:
                 self._update_cable(kid, fid)
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Error in ReserveHook._on_geom_changed: {e}")
     def _on_editing_stopped(self):
         # Safety net: recompute all
         try:
             rez = self._layer
             if not isinstance(rez, QgsVectorLayer):
                 return
-            idx_kid = rez.fields().indexFromName('kabl_layer_id')
-            idx_fid = rez.fields().indexFromName('kabl_fid')
+            idx_kid = rez.fields().indexFromName('cable_layer_id')
+            idx_fid = rez.fields().indexFromName('cable_fid')
             touched = set()
             for f in rez.getFeatures():
                 try:
                     kid = f.attribute(idx_kid); kfid = f.attribute(idx_fid)
                     if kid is not None and kfid is not None:
                         touched.add((kid, int(kfid)))
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Error in ReserveHook._on_editing_stopped: {e}")
             for kid, fid in touched:
                 self._update_cable(kid, fid)
-        except Exception:
-            pass
-
+        except Exception as e:
+            logger.debug(f"Error in ReserveHook._on_editing_stopped: {e}")
     # --- Core recompute ---
-    def _update_cable(self, kabl_layer_id, kabl_fid):
+    def _update_cable(self, cable_layer_id, cable_fid):
         proj = QgsProject.instance()
-        lyr = proj.mapLayer(kabl_layer_id)
+        lyr = proj.mapLayer(cable_layer_id)
         if not isinstance(lyr, QgsVectorLayer):
             return
 
@@ -219,22 +215,21 @@ class ReserveHook(QObject):
         if rez is None:
             return
 
-        idx_kid = rez.fields().indexFromName('kabl_layer_id')
-        idx_fid = rez.fields().indexFromName('kabl_fid')
+        idx_kid = rez.fields().indexFromName('cable_layer_id')
+        idx_fid = rez.fields().indexFromName('cable_fid')
         idx_len = rez.fields().indexFromName('duzina_m')
         total_slack = 0.0
         for f in rez.getFeatures():
             try:
-                if f.attribute(idx_kid) == kabl_layer_id and int(f.attribute(idx_fid)) == int(kabl_fid):
+                if f.attribute(idx_kid) == cable_layer_id and int(f.attribute(idx_fid)) == int(cable_fid):
                     val = f.attribute(idx_len) if idx_len != -1 else f.attribute('slack_m')
                     total_slack += float(val or 0.0)
-            except Exception:
-                pass
-
+            except Exception as e:
+                logger.debug(f"Error in ReserveHook._update_cable: {e}")
         # Geometry length (meters)
         g_m = 0.0
         try:
-            kf = next(lyr.getFeatures(f'id={int(kabl_fid)}'))
+            kf = next(lyr.getFeatures(f'id={int(cable_fid)}'))
             geom = kf.geometry()
             g_m = geom.length() if isinstance(geom, QgsGeometry) else 0.0
         except StopIteration:
@@ -256,8 +251,8 @@ class ReserveHook(QObject):
         # Write values
         lyr.startEditing()
         try:
-            lyr.changeAttributeValue(int(kabl_fid), slack_idx, round(total_slack, 2))
-            lyr.changeAttributeValue(int(kabl_fid), tot_idx, round((g_m or 0) + total_slack, 2))
+            lyr.changeAttributeValue(int(cable_fid), slack_idx, round(total_slack, 2))
+            lyr.changeAttributeValue(int(cable_fid), tot_idx, round((g_m or 0) + total_slack, 2))
         finally:
             lyr.commitChanges(); lyr.triggerRepaint()
 
@@ -268,5 +263,5 @@ class ReserveHook(QObject):
             lbl = QgsVectorLayerSimpleLabeling(s)
             lyr.setLabeling(lbl)
             lyr.setLabelsEnabled(True)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Error in ReserveHook._update_cable: {e}")

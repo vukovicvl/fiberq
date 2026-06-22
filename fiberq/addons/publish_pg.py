@@ -13,6 +13,10 @@ import os
 import re
 import configparser
 
+# Phase 5.3: Logging
+from ..utils.logger import get_logger
+logger = get_logger(__name__)
+
 
 def _plugin_root_dir():
     """
@@ -113,7 +117,7 @@ def _ensure_pk_field(layer: QgsVectorLayer) -> str:
         new_name = f"{base_name}_{i}"
         i += 1
 
-    # Pokušaj da dodaš polje i popuniš ga
+    # Try to add field and populate it
     was_editing = layer.isEditable()
     if not was_editing:
         if not layer.startEditing():
@@ -140,7 +144,7 @@ def _ensure_pk_field(layer: QgsVectorLayer) -> str:
             if not layer.commitChanges():
                 raise RuntimeError("Failed to commit the ID column to the layer.")
     finally:
-        # Ako je sloj bio u edit modu pre, ostavi ga takvim - korisnik odlučuje kada će da sačuva.
+        # If layer was in edit mode before, leave it - user decides when to save.
         pass
 
     return new_name
@@ -158,12 +162,12 @@ class PublishDialog(QDialog):
     """
 
     def __init__(self, iface):
-        super().__init__(iface.mainWindow(), flags=Qt.Window)
+        super().__init__(iface.mainWindow(), flags=Qt.WindowType.Window)
         self.iface = iface
         self.setWindowTitle("Publish to PostGIS")
         self.setModal(True)
 
-        # Učitavanje PG konfiguracije
+        # Load PG configuration
         try:
             self.pg = _load_pg_config()
         except Exception as e:
@@ -209,7 +213,7 @@ class PublishDialog(QDialog):
                     self.cmb_layer.setCurrentIndex(idx)
                     break
 
-        # Šema i tabela
+        # Schema and table
         hschema = QHBoxLayout()
         hschema.addWidget(QLabel("Schema:"))
         default_schema = self.pg["schema"] if self.pg else "public"
@@ -274,7 +278,7 @@ class PublishDialog(QDialog):
         if not table:
             table = "layer_export"
 
-        # Osiguraj da sloj ima integer primarni ključ
+        # Ensure layer has integer primary key
         try:
             pk_field = _ensure_pk_field(layer)
         except Exception as e:
@@ -303,7 +307,7 @@ class PublishDialog(QDialog):
             "lowercaseFieldNames": True,
         }
 
-        # Izvrši export - hvatamo samo PRAVE greške (exception).
+        # Execute export - catch only REAL errors (exceptions).
         try:
             QgsVectorLayerExporter.exportLayer(
                 layer,
@@ -352,4 +356,4 @@ class PublishDialog(QDialog):
 
 def open_publish_dialog(iface):
     dlg = PublishDialog(iface)
-    dlg.exec_()
+    dlg.exec()

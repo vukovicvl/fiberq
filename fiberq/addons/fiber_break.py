@@ -1,24 +1,41 @@
+from datetime import datetime
 
 from qgis.PyQt.QtCore import Qt, QVariant
 from qgis.PyQt.QtWidgets import QMessageBox
 from qgis.core import (
-    QgsProject, QgsVectorLayer, QgsWkbTypes, QgsField, QgsFeature,
-    QgsGeometry, QgsDistanceArea, QgsUnitTypes, QgsPointXY, QgsCoordinateTransformContext,
-    QgsMarkerSymbol, QgsSimpleMarkerSymbolLayer, QgsSingleSymbolRenderer
+    QgsDistanceArea,
+    QgsFeature,
+    QgsField,
+    QgsGeometry,
+    QgsMarkerSymbol,
+    QgsPointXY,
+    QgsProject,
+    QgsSimpleMarkerSymbolLayer,
+    QgsSingleSymbolRenderer,
+    QgsUnitTypes,
+    QgsVectorLayer,
+    QgsWkbTypes,
 )
 from qgis.gui import QgsMapTool, QgsVertexMarker
 
+from ..utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+
 class FiberBreakTool(QgsMapTool):
     """
-    Klik na kabl upisuje tačku u sloj 'Prekid vlakna' sa atributima:
-    - kabl_layer_id (str)
-    - kabl_fid (int)
+    Klik na kabl upisuje tačku u sloj 'Fiber break' sa atributima:
+    - cable_layer_id (str)
+    - cable_fid (int)
     - distance_m (float)  udaljenost duž polilinije do mesta prekida
     - segments_hit (int)  heuristika (=1)
     - vreme (str, 'YYYY-MM-DD HH:MM')
+
     Zadržava kompatibilnost sa postojećim stilom (polje 'naziv' za label).
     """
-    def __init__(self, iface,):
+
+    def __init__(self, iface):
         super().__init__(iface.mapCanvas())
         self.iface = iface
         self.canvas = iface.mapCanvas()
@@ -32,11 +49,12 @@ class FiberBreakTool(QgsMapTool):
         """Set English field aliases for the Fiber break layer (user view)."""
         if layer is None:
             return
+
         try:
             alias_map = {
                 "naziv": "Name",
-                "kabl_layer_id": "Cable layer ID",
-                "kabl_fid": "Cable feature ID",
+                "cable_layer_id": "Cable layer ID",
+                "cable_fid": "Cable feature ID",
                 "distance_m": "Distance (m)",
                 "segments_hit": "Segments hit",
                 "vreme": "Time",
@@ -47,45 +65,41 @@ class FiberBreakTool(QgsMapTool):
                 if idx != -1:
                     layer.setFieldAlias(idx, alias)
 
-            # nateraj UI da osveži
             try:
                 layer.updateFields()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"Error in FiberBreakTool._apply_break_field_aliases: {exc}")
+
             try:
                 layer.triggerRepaint()
-            except Exception:
-                pass
-
-        except Exception:
-            pass
-
-
+            except Exception as exc:
+                logger.debug(f"Error in FiberBreakTool._apply_break_field_aliases: {exc}")
+        except Exception as exc:
+            logger.debug(f"Error in FiberBreakTool._apply_break_field_aliases: {exc}")
 
     def _apply_break_style(self, layer: QgsVectorLayer):
         """
         Stil za 'Fiber break':
 
         1) Prvo probamo da učitamo QML stil iz styles/Fiber break.qml
-            – isti onaj koji koristi Preview Map (i za koji si potvrdio da radi kako treba).
+           – isti onaj koji koristi Preview Map.
         2) Ako to omane iz bilo kog razloga, padamo na stari "mali crni krug" u mm.
         """
         if layer is None:
             return
 
-        # --- probaj QML stil kao u Preview Map ---
         try:
             import os
-            plugin_dir = os.path.dirname(os.path.dirname(__file__))  # koren plugina (gde je folder 'styles')
+
+            plugin_dir = os.path.dirname(os.path.dirname(__file__))
             qml_path = os.path.join(plugin_dir, "styles", "Fiber break.qml")
             if os.path.exists(qml_path):
                 layer.loadNamedStyle(qml_path)
                 layer.triggerRepaint()
-            return
+                return
         except Exception:
-            # ako nešto pukne, nastavljamo na fallback ispod
             pass
-        # --- fallback: ručno napravljen mali crni krug u mm ---
+
         try:
             from qgis.PyQt.QtGui import QColor
         except Exception:
@@ -93,16 +107,9 @@ class FiberBreakTool(QgsMapTool):
 
         try:
             marker = QgsSimpleMarkerSymbolLayer()
-        except Exception:
-            return
-
-        try:
             marker.setShape(QgsSimpleMarkerSymbolLayer.Circle)
-
-            # ostavi mali krug, ali sada je ovo samo rezervna varijanta
             marker.setSize(2.4)
             marker.setSizeUnit(QgsUnitTypes.RenderMillimeters)
-
             marker.setColor(QColor(0, 0, 0))
             marker.setOutlineColor(QColor(0, 0, 0))
             marker.setOutlineWidth(0.2)
@@ -114,11 +121,8 @@ class FiberBreakTool(QgsMapTool):
             layer.setRenderer(QgsSingleSymbolRenderer(sym))
             layer.setLabelsEnabled(False)
             layer.triggerRepaint()
-        except Exception:
-            pass
-
-
-
+        except Exception as exc:
+            logger.debug(f"Error in FiberBreakTool._apply_break_style: {exc}")
 
     def _on_scale_changed(self):
         """
@@ -128,9 +132,6 @@ class FiberBreakTool(QgsMapTool):
         """
         return
 
-
-
-    # ---------- helpers ----------
     def _ensure_break_layer(self) -> QgsVectorLayer:
         """
         Return existing Fiber break layer or create it.
@@ -139,50 +140,65 @@ class FiberBreakTool(QgsMapTool):
         """
         proj = QgsProject.instance()
 
-        # 1) pronađi postojeći sloj
         for lyr in proj.mapLayers().values():
-            if (
-                isinstance(lyr, QgsVectorLayer)
-                and lyr.geometryType() == QgsWkbTypes.PointGeometry
-                and lyr.name() in ("Prekid vlakna", "Fiber break")
-            ):
-                # preimenuj stari sloj ako treba
+            try:
+                is_break_layer = (
+                    isinstance(lyr, QgsVectorLayer)
+                    and lyr.geometryType() == QgsWkbTypes.PointGeometry
+                    and lyr.name() in ("Prekid vlakna", "Fiber break")
+                )
+                if not is_break_layer:
+                    continue
+
                 if lyr.name() == "Prekid vlakna":
                     try:
                         lyr.setName("Fiber break")
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug(f"Error in FiberBreakTool._ensure_break_layer: {exc}")
 
-                # STIL pa ALIAS (stil/QML pregazi alias-e ako ide posle)
                 self._apply_break_style(lyr)
                 self._apply_break_field_aliases(lyr)
-                return lyr
 
-        # 2) napravi novi sloj
+                try:
+                    from ..utils.uuid_utils import ensure_uuid_field
+
+                    ensure_uuid_field(lyr)
+                except Exception:
+                    pass
+
+                return lyr
+            except Exception:
+                continue
+
         crs_authid = self.canvas.mapSettings().destinationCrs().authid()
         vl = QgsVectorLayer(f"Point?crs={crs_authid}", "Fiber break", "memory")
         pr = vl.dataProvider()
-        pr.addAttributes([
-            QgsField("naziv", QVariant.String),
-            QgsField("kabl_layer_id", QVariant.String),
-            QgsField("kabl_fid", QVariant.Int),
-            QgsField("distance_m", QVariant.Double),
-            QgsField("segments_hit", QVariant.Int),
-            QgsField("vreme", QVariant.String),
-        ])
+        pr.addAttributes(
+            [
+                QgsField("naziv", QVariant.String),
+                QgsField("cable_layer_id", QVariant.String),
+                QgsField("cable_fid", QVariant.Int),
+                QgsField("distance_m", QVariant.Double),
+                QgsField("segments_hit", QVariant.Int),
+                QgsField("vreme", QVariant.String),
+                QgsField("fiberq_uuid", QVariant.String),
+            ]
+        )
         vl.updateFields()
 
-        # dodaj u projekat pa onda alias + stil (da UI sigurno "uhvati" promenu)
         proj.addMapLayer(vl)
-        self._apply_break_style(vl)          # prvo stil (loadNamedStyle)
-        self._apply_break_field_aliases(vl)  # pa tek onda alias
+        self._apply_break_style(vl)
+        self._apply_break_field_aliases(vl)
         return vl
-
 
     def _iter_line_layers(self):
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.LineGeometry and lyr.isValid():
+                if (
+                    isinstance(lyr, QgsVectorLayer)
+                    and lyr.geometryType() == QgsWkbTypes.LineGeometry
+                    and lyr.isValid()
+                ):
                     yield lyr
             except Exception:
                 continue
@@ -191,55 +207,63 @@ class FiberBreakTool(QgsMapTool):
         """Return list of QgsPointXY vertices for (Multi)LineString geometry; empty list otherwise."""
         try:
             if geom.isMultipart():
-                m = geom.asMultiPolyline()
-                if m and len(m) > 0:
-                    return [QgsPointXY(p) for p in m[0]]
+                multi = geom.asMultiPolyline()
+                if multi and len(multi) > 0:
+                    return [QgsPointXY(p) for p in multi[0]]
                 return []
-            else:
-                pl = geom.asPolyline()
-                return [QgsPointXY(p) for p in pl] if pl else []
+
+            polyline = geom.asPolyline()
+            return [QgsPointXY(p) for p in polyline] if polyline else []
         except Exception:
             return []
 
     def _measure_line(self, pts):
         da = QgsDistanceArea()
         try:
-            da.setSourceCrs(self.canvas.mapSettings().destinationCrs(), QgsProject.instance().transformContext())
-        except Exception:
-            pass
+            da.setSourceCrs(
+                self.canvas.mapSettings().destinationCrs(),
+                QgsProject.instance().transformContext(),
+            )
+        except Exception as exc:
+            logger.debug(f"Error in FiberBreakTool._measure_line: {exc}")
+
         try:
             da.setEllipsoid(self.canvas.mapSettings().destinationCrs().ellipsoidAcronym())
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"Error in FiberBreakTool._measure_line: {exc}")
+
         total = 0.0
         for i in range(1, len(pts)):
-            total += da.measureLine(pts[i-1], pts[i])
+            total += da.measureLine(pts[i - 1], pts[i])
         return total, da
 
-    # ---------- map tool ----------
-    def canvasMoveEvent(self, e):
-        p = self.toMapCoordinates(e.pos())
-        self.snap_marker.setCenter(p)
+    def canvasMoveEvent(self, event):
+        point = self.toMapCoordinates(event.pos())
+        self.snap_marker.setCenter(point)
         self.snap_marker.show()
 
-    def canvasReleaseEvent(self, e):
-        if e.button() != Qt.LeftButton:
+    def canvasReleaseEvent(self, event):
+        if event.button() != Qt.MouseButton.LeftButton:
             return
-        map_pt = self.toMapCoordinates(e.pos())
+
+        map_pt = self.toMapCoordinates(event.pos())
         map_pt_geom = QgsGeometry.fromPointXY(map_pt)
 
-        # Find nearest line feature among all visible line layers
         nearest = None
         nearest_dist = None
         for lyr in self._iter_line_layers():
             for feat in lyr.getFeatures():
                 try:
-                    d = feat.geometry().distance(map_pt_geom)
+                    geom = feat.geometry()
+                    if geom is None:
+                        continue
+                    dist = geom.distance(map_pt_geom)
                 except Exception:
                     continue
-                if nearest_dist is None or (d is not None and d < nearest_dist):
+
+                if nearest_dist is None or (dist is not None and dist < nearest_dist):
                     nearest = (lyr, feat)
-                    nearest_dist = d
+                    nearest_dist = dist
 
         if not nearest:
             QMessageBox.warning(self.iface.mainWindow(), "Fiber break", "No cable found nearby.")
@@ -248,29 +272,31 @@ class FiberBreakTool(QgsMapTool):
         lyr, feat = nearest
         geom = feat.geometry()
 
-        # Snap to closest segment and compute distance along the polyline
         try:
-            dist_to_seg, snapped_pt, v_after, seg_index = geom.closestSegmentWithContext(map_pt)
+            _, snapped_pt, _, seg_index = geom.closestSegmentWithContext(map_pt)
         except Exception:
-            # fallback: no segment context
             snapped_pt = map_pt
             seg_index = 0
 
         pts = self._flatten_polyline(geom)
         if not pts:
-            QMessageBox.warning(self.iface.mainWindow(), "Fiber break", "Cable geometry is not a line.")
+            QMessageBox.warning(
+                self.iface.mainWindow(),
+                "Fiber break",
+                "Cable geometry is not a line.",
+            )
             return
 
-        # cumulative distance up to segment start
-        # measure using QgsDistanceArea in map/project CRS
         total_len_to_seg = 0.0
-        total_len, da = self._measure_line(pts)
+        _, da = self._measure_line(pts)
+
         if seg_index is None or seg_index < 0:
             seg_index = 0
         seg_index = min(seg_index, max(0, len(pts) - 2))
+
         for i in range(1, seg_index + 1):
-            total_len_to_seg += da.measureLine(pts[i-1], pts[i])
-        # add partial distance from segment start to snapped point
+            total_len_to_seg += da.measureLine(pts[i - 1], pts[i])
+
         try:
             seg_start = pts[seg_index]
             partial = da.measureLine(seg_start, snapped_pt)
@@ -279,27 +305,33 @@ class FiberBreakTool(QgsMapTool):
 
         distance_m = float(total_len_to_seg + partial)
 
-        # Write event feature
         ev_layer = self._ensure_break_layer()
         ev = QgsFeature(ev_layer.fields())
         ev.setGeometry(QgsGeometry.fromPointXY(snapped_pt if snapped_pt else map_pt))
-        from datetime import datetime
-        ev['naziv'] = 'Fiber break'
-        ev['kabl_layer_id'] = lyr.id()
+        ev["naziv"] = "Fiber break"
+        ev["cable_layer_id"] = lyr.id()
+
         try:
-            ev['kabl_fid'] = int(feat.id())
+            ev["cable_fid"] = int(feat.id())
         except Exception:
-            ev['kabl_fid'] = -1
-        ev['distance_m'] = round(distance_m, 3)
-        ev['segments_hit'] = 1
-        ev['vreme'] = datetime.now().strftime('%Y-%m-%d %H:%M')
+            ev["cable_fid"] = -1
+
+        ev["distance_m"] = round(distance_m, 3)
+        ev["segments_hit"] = 1
+        ev["vreme"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+        try:
+            from ..utils.uuid_utils import set_feature_uuid
+
+            set_feature_uuid(ev)
+        except Exception:
+            pass
 
         ev_layer.startEditing()
-        ok = ev_layer.addFeature(ev)
+        ev_layer.addFeature(ev)
         ev_layer.commitChanges()
         ev_layer.triggerRepaint()
 
-        # Mini report
         seg_count = max(0, len(pts) - 1)
         msg = (
             f"Cable layer: {lyr.name()} • "
@@ -312,47 +344,38 @@ class FiberBreakTool(QgsMapTool):
         except Exception:
             QMessageBox.information(self.iface.mainWindow(), "Fiber break", msg)
 
-
-        # keep tool active (do not unset)
         self.snap_marker.setCenter(snapped_pt if snapped_pt else map_pt)
         self.snap_marker.show()
 
-            # ---------- važno: očisti marker kad se alat ugasi ----------
-
     def canvasPressEvent(self, event):
-        # desni klik = izlaz iz alata
-        if event.button() == Qt.RightButton:
+        if event.button() == Qt.MouseButton.RightButton:
             self.canvas.unsetMapTool(self)
-            # po želji prebaci na Pan alat da user može odmah da se šeta
             try:
                 self.iface.actionPan().trigger()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"Error in FiberBreakTool.canvasPressEvent: {exc}")
             return
 
-        # ovde ostavi postojeću logiku za levi klik
-        if event.button() != Qt.LeftButton:
+        if event.button() != Qt.MouseButton.LeftButton:
             return
 
     def keyPressEvent(self, event):
-        # ESC takođe gasi alat
-        if event.key() == Qt.Key_Escape:
+        if event.key() == Qt.Key.Key_Escape:
             self.canvas.unsetMapTool(self)
             try:
                 self.iface.actionPan().trigger()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(f"Error in FiberBreakTool.keyPressEvent: {exc}")
 
     def deactivate(self):
         """
         Poziva se automatski kada korisnik promeni alat.
-        Ovde sakrivamo crveni krstić da ne ostaje na mapi.
+        Ovde sakrivamo krstić da ne ostaje na mapi.
         """
         try:
             if self.snap_marker is not None:
                 self.snap_marker.hide()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"Error in FiberBreakTool.deactivate: {exc}")
 
-        # pozovi i originalni deactivate
         super().deactivate()

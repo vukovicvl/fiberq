@@ -1,0 +1,33 @@
+[flake8]
+# FiberQ flake8 configuration.
+# The QGIS plugin repo runs flake8 with defaults (79 chars, all rules) which
+# produces ~1300 E501 warnings on our codebase. We use a 120-char limit
+# which is the common convention for QGIS plugins and most modern Python
+# projects, and we silence a few noisy cosmetic rules that aren't worth
+# chasing across 50+ files of working code.
+
+max-line-length = 120
+
+# Rules silenced with rationale:
+#   E501  covered by max-line-length above -- this entry is redundant but
+#         kept for clarity
+#   E203  whitespace before ':' -- conflicts with PEP 8 for slices
+#   E402  module level import not at top of file -- we do conditional Qt
+#         imports inside try/except, which is correct
+#   W503  line break before binary operator -- PEP 8 now prefers this style
+#   E731  lambda assigned to name -- sometimes the clearest expression
+#   E741  ambiguous variable name (l/I/O) -- too many false positives in
+#         short one-line contexts
+extend-ignore = E203, E402, W503, E731, E741
+
+# Exclude generated/cache directories
+exclude =
+    .git,
+    __pycache__,
+    build,
+    dist,
+    *.egg-info
+
+# Per-file rules we accept only where unavoidable
+per-file-ignores =
+    __init__.py:F401

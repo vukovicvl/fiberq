@@ -2,6 +2,10 @@
 from qgis.PyQt.QtWidgets import QDialog, QVBoxLayout, QComboBox, QLabel, QPushButton, QDialogButtonBox
 from qgis.core import QgsProject, QgsVectorLayer
 
+# Phase 5.3: Logging
+from ..utils.logger import get_logger
+logger = get_logger(__name__)
+
 class ApplyStyleDialog(QDialog):
     def __init__(self, iface, plugin_root):
         super().__init__(iface.mainWindow())
@@ -21,7 +25,7 @@ class ApplyStyleDialog(QDialog):
         self.cmb_style.addItem("Tipovi kablova", "styles/cables_by_type.qml")
         lay.addWidget(QLabel("Stil:"))
         lay.addWidget(self.cmb_style)
-        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         btns.accepted.connect(self.apply); btns.rejected.connect(self.reject)
         lay.addWidget(btns)
 

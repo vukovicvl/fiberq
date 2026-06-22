@@ -3,6 +3,10 @@ from qgis.PyQt.QtCore import Qt, QSettings
 from qgis.PyQt.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QLineEdit, QCheckBox,
                                  QLabel, QDialogButtonBox)
 
+# Phase 5.3: Logging
+from ..utils.logger import get_logger
+logger = get_logger(__name__)
+
 ORG = "FiberQ"
 ORG_OLD = "Telecom_plugin"
 APP = "FiberQ"
@@ -27,7 +31,7 @@ class SettingsDialog(QDialog):
         form.addRow("Default updated_by:", self.ed_updated_by)
         form.addRow("", self.chk_lower)
         lay.addLayout(form)
-        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         btns.accepted.connect(self.accept); btns.rejected.connect(self.reject)
         lay.addWidget(btns)
         self._load()

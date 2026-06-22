@@ -1,17 +1,18 @@
 [general]
 name=FiberQ
 description=Open-source fiber network design tools for QGIS (FTTH/GPON/FTTx)
-about=FiberQ helps telecom engineers and GIS professionals design, analyze, and document fiber optic networks inside QGIS. Some advanced features may require an activation key.
+about=FiberQ helps telecom engineers and GIS professionals design, analyze, and document fiber optic networks inside QGIS. Version 1.2.1 adds full compatibility with QGIS 4 / Qt6 while keeping support for QGIS 3.22 LTR and later, and clears all findings from the QGIS repository security scan. Some advanced features may require an activation key.
 
-version=1.0.0
+version=1.2.1
 qgisMinimumVersion=3.22
+qgisMaximumVersion=4.99
 
 author=Vladimir Vukovic
 email=vukovicvl@fiberq.net
 
 icon=icons/fiberq.svg
-category=Network
-tags=fiber,ftth,gpon,fttx,telecom,postgis
+category=Vector
+tags=fiber,ftth,gpon,fttx,telecom,postgis,network,design
 
 homepage=https://www.fiberq.net/
 repository=https://github.com/vukovicvl/fiberq
@@ -19,4 +20,46 @@ tracker=https://github.com/vukovicvl/fiberq/issues
 
 license=GPL-3.0-or-later
 
-class_name=StuboviPlugin
+class_name=FiberQPlugin
+
+changelog=
+    1.2.1 - QGIS 4 / Qt6 compatibility and repository scan compliance
+        Compatibility
+        * Full support for QGIS 4 / Qt6 while preserving QGIS 3.22 LTR and later.
+        * Replaced 29 QDialog.exec_() call sites with exec() across 16 files;
+          the underscored alias is gone in PyQt6 and previously caused
+          "object has no attribute 'exec_'" errors on QGIS 4.
+        * Fixed "QgsMapMouseEvent object has no attribute 'x'" in five map
+          tools (Move Elements, Branch Info, Drawing, Image, Element
+          placement). Replaced the Qt5-only event.x() / .y() with pos().x()
+          / pos().y(), which works on both Qt5 and Qt6.
+        * Fixed "QTableWidget object has no attribute SelectRows" crash when
+          opening the List of Latent Elements dialog on Qt6. Now uses the
+          Qt6-scoped QAbstractItemView.SelectionBehavior.SelectRows.
+        * Fixed Drawing map tool right-click and Escape on Qt6. Replaced the
+          flat Qt5 enums with Qt.MouseButton.RightButton and Qt.Key.Key_Escape.
+        * Fixed sip imports for QGIS 4 / PyQt6, and Qt enum usage affecting
+          QToolButton and QImage on QGIS 4.
+
+        Optical schematic view
+        * PE pipes and Transition pipes were always filtered out by the cable
+          subtype filter and never drawn. Pipes are now detected from the
+          source layer name (English and legacy Serbian names supported) and
+          are always included when the Underground checkbox is on. Dashed
+          rendering is applied via the same flag instead of a
+          language-specific substring check.
+        * Pan button: reworked so left-button drag panning works identically
+          on Qt5 and Qt6. Replaced the built-in QGraphicsView.ScrollHandDrag
+          (behaviour diverged across Qt versions) with explicit mouse
+          handlers. Scroll-bar deltas are cast to int for PyQt6's stricter
+          setValue() signature.
+
+        Repository security scan
+        * Replaced urllib.request.urlopen with QgsBlockingNetworkRequest in
+          the Locator dialog and preview map. Eliminates the last two Bandit
+          B310 findings and routes geocoding through QGIS's native network
+          stack (proxy and SSL aware). Removed the now-unused urllib.request
+          and ssl imports.
+        * Added URL scheme validation for remote requests (http / https only).
+        * Cleaned formatting issues relevant to repository scanning (trailing
+          whitespace, blank-line whitespace).
