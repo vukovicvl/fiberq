@@ -1,12 +1,12 @@
 """
-FiberQ v1.3 - QGIS Plugin for Fiber Optic Network Design
+FiberQ - QGIS Plugin for Fiber Optic Network Design
 
 This plugin provides tools for designing and documenting fiber optic networks
 including route planning, cable laying, element placement, and documentation.
 
 Supported QGIS Versions: 3.22 LTR - 4.x (Qt5 and Qt6)
 
-Version: 1.2.1 (QGIS Repo)
+Version: 1.2.2 (QGIS Repo)
 """
 
 # Minimum supported QGIS version
@@ -123,7 +123,7 @@ class _FiberQStub:
 # PACKAGE INFO
 # =============================================================================
 
-__version__ = "1.2.1"
+__version__ = "1.2.2"
 __author__ = "Vladimir Vukovic"
 __email__ = "vukovicvl@fiberq.net"
 __license__ = "GPL-3.0-or-later"
