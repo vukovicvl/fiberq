@@ -42,7 +42,7 @@ from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
 # Phase 0.1: UUID support for FiberQ Designer
-from ..utils.uuid_utils import FIBERQ_UUID_FIELD, generate_uuid
+from ..utils.uuid_utils import FIBERQ_UUID_FIELD, generate_uuid  # noqa: E402
 
 
 class CableManager:
@@ -220,7 +220,7 @@ class CableManager:
                 (
                     lyr for lyr in QgsProject.instance().mapLayers().values()
                     if lyr.name().lower().strip() in ("trasa", "route")
-                    and lyr.geometryType() == QgsWkbTypes.LineGeometry
+                    and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
                 ),
                 None
             )
@@ -359,7 +359,7 @@ class CableManager:
                     line = g.asMultiPolyline()[0]
                 else:
                     line = g.asPolyline()
-            except Exception as e:
+            except Exception:
                 continue
 
             if len(line) < 2:
@@ -462,7 +462,7 @@ class CableManager:
             if hasattr(renderer, "symbol"):
                 try:
                     sym = renderer.symbol()
-                except Exception as e:
+                except Exception:
                     sym = None
             if sym is not None:
                 apply_on_symbol(sym)
@@ -484,11 +484,11 @@ class CableManager:
         """
         try:
             layer = self.iface.activeLayer()
-        except Exception as e:
+        except Exception:
             layer = None
 
         if not (layer and isinstance(layer, QgsVectorLayer)
-                and layer.geometryType() == QgsWkbTypes.LineGeometry):
+                and layer.geometryType() == QgsWkbTypes.LineGeometry):  # noqa: W503
             try:
                 self.iface.messageBar().pushWarning(
                     "Branch cables",
@@ -542,11 +542,11 @@ class CableManager:
             try:
                 if (
                     not isinstance(lyr, QgsVectorLayer)
-                    or lyr.geometryType() != QgsWkbTypes.LineGeometry
-                    or lyr.name() not in candidate_names
+                    or lyr.geometryType() != QgsWkbTypes.LineGeometry  # noqa: W503
+                    or lyr.name() not in candidate_names  # noqa: W503
                 ):
                     continue
-            except Exception as e:
+            except Exception:
                 continue
 
             fields = lyr.fields()
@@ -715,8 +715,8 @@ class CableManager:
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.LineGeometry
-                    and lyr.name() in candidate_names
+                    and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
+                    and lyr.name() in candidate_names  # noqa: W503
                 ):
                     cables_layer = lyr
                     break
@@ -859,9 +859,9 @@ class CableManager:
             idx2 = dists2.index(min_dist2)
             if min_dist1 < 1 and min_dist2 < 1 and idx1 != idx2:
                 if idx1 < idx2:
-                    cable_geom = QgsGeometry.fromPolylineXY(line[idx1:idx2+1])
+                    cable_geom = QgsGeometry.fromPolylineXY(line[idx1:idx2 + 1])
                 else:
-                    cable_geom = QgsGeometry.fromPolylineXY(list(reversed(line[idx2:idx1+1])))
+                    cable_geom = QgsGeometry.fromPolylineXY(list(reversed(line[idx2:idx1 + 1])))
                 break
 
         if cable_geom is None:

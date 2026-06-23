@@ -42,7 +42,7 @@ def _fiberq_is_pro_enabled() -> bool:
     try:
         s = QSettings(_FIBERQ_PRO_SETTINGS_ORG, _FIBERQ_PRO_SETTINGS_APP)
         return s.value(_FIBERQ_PRO_ENABLED_KEY, False, type=bool)
-    except Exception as e:
+    except Exception:
         return False
 
 
@@ -75,7 +75,7 @@ def _fiberq_validate_pro_key(key: str) -> bool:
             return False
         k = key.strip().upper()
         return k == _FIBERQ_PRO_MASTER_KEY
-    except Exception as e:
+    except Exception:
         return False
 
 
@@ -143,7 +143,7 @@ def _fiberq_check_pro(iface, feature_label: str = "FiberQ Pro") -> bool:
             )
             return False
 
-    except Exception as e:
+    except Exception:
         return False
 
 

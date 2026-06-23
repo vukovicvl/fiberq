@@ -204,7 +204,7 @@ def is_route_layer(layer_name: str) -> bool:
 
 def is_cable_layer(layer_name: str) -> bool:
     """Check if layer name matches any cable layer."""
-    return (layer_name in get_aerial_cable_names() or
+    return (layer_name in get_aerial_cable_names() or  # noqa: W504
             layer_name in get_underground_cable_names())
 
 

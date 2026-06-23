@@ -152,7 +152,7 @@ class ObjectsUI:
 
         try:
             core.toolbar.addWidget(btn)
-        except Exception as e:
+        except Exception:
             # Fallback
             act_root = QAction(load_icon('ic_drawing_object.svg'), 'Drawing object', core.iface.mainWindow())
             act_root.setMenu(self.menu)

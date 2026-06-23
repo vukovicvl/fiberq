@@ -74,7 +74,7 @@ class SchematicView(QGraphicsView):
 
     def wheelEvent(self, event):
         """Zoom with mouse wheel."""
-        factor = 1.15 if event.angleDelta().y() > 0 else 1/1.15
+        factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
         self.scale(factor, factor)
 
     def mousePressEvent(self, event):
@@ -281,7 +281,7 @@ class OpticalSchematicDialog(QDialog):
             self.view.centerOn(x, y)
             # highlight momentarily
             r = 12.0
-            item = self.scene.addEllipse(x-r, y-r, 2*r, 2*r, QPen(QColor(255, 165, 0), 2.4), Qt.BrushStyle.NoBrush)
+            item = self.scene.addEllipse(x - r, y - r, 2 * r, 2 * r, QPen(QColor(255, 165, 0), 2.4), Qt.BrushStyle.NoBrush)
             item.setZValue(10)
 
             def _remove():
@@ -327,7 +327,7 @@ class OpticalSchematicDialog(QDialog):
                                     if fields.indexFromName('tip') != -1 and f['tip'] is not None
                                     else ''
                                 )
-                            except Exception as e:
+                            except Exception:
                                 tip = ''
                             nm = ("Pole " + tip).strip() or f"Pole {int(f.id())}"  # Stub -> Pole
 
@@ -337,7 +337,7 @@ class OpticalSchematicDialog(QDialog):
                                 "layer_name": lname,
                                 "fid": int(f.id()),
                             }
-            except Exception as e:
+            except Exception:
                 continue
         return nodes
 
@@ -375,11 +375,11 @@ class OpticalSchematicDialog(QDialog):
                     for p in pl:
                         pt = xform.transform(QgsPointXY(p.x(), p.y()))
                         coords.append((pt.x(), pt.y()))
-            except Exception as e:
+            except Exception:
                 coords = []
             try:
                 length_m = float(geom.length())
-            except Exception as e:
+            except Exception:
                 length_m = 0.0
 
             lname = (it.get('layer_name') or lyr.name() or '').lower()
@@ -400,14 +400,14 @@ class OpticalSchematicDialog(QDialog):
             low_lname = raw_lname.lower()
             is_pipe = (
                 'cevi' in low_lname
-                or 'pipe' in low_lname
-                or 'duct' in low_lname
-                or (it.get('tip') or '').lower() == 'pipe'
+                or 'pipe' in low_lname  # noqa: W503
+                or 'duct' in low_lname  # noqa: W503
+                or (it.get('tip') or '').lower() == 'pipe'  # noqa: W503
             )
 
             edges.append({
                 "from": str(gv('od')).strip(),
-                "to":   str(gv('do')).strip(),
+                "to": str(gv('do')).strip(),
                 "podtip": str(gv('podtip')).lower(),
                 "kapacitet": gv('kapacitet'),
                 "geom_coords": coords,
@@ -534,13 +534,13 @@ class OpticalSchematicDialog(QDialog):
                         try:
                             d = g.length()
                             pt = g.interpolate(d / 2.0).asPoint()
-                        except Exception as e:
+                        except Exception:
                             ps = g.asPolyline()
                             pt = ps[len(ps) // 2] if ps else None
                     else:
                         try:
                             pt = g.centroid().asPoint()
-                        except Exception as e:
+                        except Exception:
                             pt = None
                     if pt is None:
                         continue
@@ -551,7 +551,7 @@ class OpticalSchematicDialog(QDialog):
                     ptt = tr.transform(QgsPointXY(pt.x(), pt.y()))
                     pos[name] = (ptt.x(), ptt.y())
                     world_points.append((ptt.x(), ptt.y()))
-                except Exception as e:
+                except Exception:
                     continue
 
             # Add all points from cable/pipe geometry
@@ -775,7 +775,7 @@ class OpticalSchematicDialog(QDialog):
                 rect = ti.mapRectToScene(ti.boundingRect())
                 if not any(rect.intersects(r) for r in occupied):
                     bg = rect.adjusted(-2, -1, 2, 2)
-                    self.scene.addRect(bg, QPen(Qt.PenStyle.NoPen), QColor(255, 255, 255, 210)).setZValue(ti.zValue()-1)
+                    self.scene.addRect(bg, QPen(Qt.PenStyle.NoPen), QColor(255, 255, 255, 210)).setZValue(ti.zValue() - 1)
                     occupied.append(bg)
                     return
             occupied.append(ti.mapRectToScene(ti.boundingRect()))
@@ -808,7 +808,7 @@ class OpticalSchematicDialog(QDialog):
         for name, meta in nodes.items():
             x, y = pos.get(name, (0.0, 0.0))
             r = 6.0
-            self.scene.addEllipse(x-r, y-r, 2*r, 2*r, QPen(Qt.GlobalColor.black), QColor(240, 240, 240))
+            self.scene.addEllipse(x - r, y - r, 2 * r, 2 * r, QPen(Qt.GlobalColor.black), QColor(240, 240, 240))
             if self.chk_labels.isChecked():
                 place_text(x, y, str(name), QColor(10, 10, 10))
 
@@ -818,10 +818,10 @@ class OpticalSchematicDialog(QDialog):
     def _export_png(self):
         from qgis.PyQt.QtGui import QImage, QPainter
         rect = self.scene.itemsBoundingRect().adjusted(10, 10, 10, 10)
-        img = QImage(int(rect.width())+40, int(rect.height())+40, QImage.Format.Format_ARGB32)
+        img = QImage(int(rect.width()) + 40, int(rect.height()) + 40, QImage.Format.Format_ARGB32)
         img.fill(0x00ffffff)
         p = QPainter(img)
-        p.translate(-rect.x()+20, -rect.y()+20)
+        p.translate(-rect.x() + 20, -rect.y() + 20)
         self.scene.render(p)
         p.end()
         fn, _ = QFileDialog.getSaveFileName(self, "Save PNG", "optical_schematic.png", "PNG (*.png)")
@@ -831,10 +831,10 @@ class OpticalSchematicDialog(QDialog):
     def _export_jpg(self):
         from qgis.PyQt.QtGui import QImage, QPainter
         rect = self.scene.itemsBoundingRect().adjusted(10, 10, 10, 10)
-        img = QImage(int(rect.width())+40, int(rect.height())+40, QImage.Format.Format_RGB32)
+        img = QImage(int(rect.width()) + 40, int(rect.height()) + 40, QImage.Format.Format_RGB32)
         img.fill(0xffffffff)
         p = QPainter(img)
-        p.translate(-rect.x()+20, -rect.y()+20)
+        p.translate(-rect.x() + 20, -rect.y() + 20)
         self.scene.render(p)
         p.end()
         fn, _ = QFileDialog.getSaveFileName(self, "Save JPG", "optical_schematic.jpg", "JPG (*.jpg)")
@@ -846,7 +846,7 @@ class OpticalSchematicDialog(QDialog):
             from qgis.PyQt.QtSvg import QSvgGenerator
             from qgis.PyQt.QtGui import QPainter
 
-        except Exception as e:
+        except Exception:
             return
         rect = self.scene.itemsBoundingRect().adjusted(10, 10, 10, 10)
         fn, _ = QFileDialog.getSaveFileName(self, "Save SVG", "optical_schematic.svg", "SVG (*.svg)")
@@ -854,10 +854,10 @@ class OpticalSchematicDialog(QDialog):
             return
         gen = QSvgGenerator()
         gen.setFileName(fn)
-        gen.setSize(QSize(int(rect.width())+40, int(rect.height())+40))
-        gen.setViewBox(QRect(0, 0, int(rect.width())+40, int(rect.height())+40))
+        gen.setSize(QSize(int(rect.width()) + 40, int(rect.height()) + 40))
+        gen.setViewBox(QRect(0, 0, int(rect.width()) + 40, int(rect.height()) + 40))
         p = QPainter(gen)
-        p.translate(-rect.x()+20, -rect.y()+20)
+        p.translate(-rect.x() + 20, -rect.y() + 20)
         self.scene.render(p)
         p.end()
 
@@ -872,7 +872,7 @@ class OpticalSchematicDialog(QDialog):
                 # fallback, if no timer
                 self._rebuild_pending = False
                 self.rebuild()
-        except Exception as e:
+        except Exception:
             # if something goes wrong, don't block – do direct rebuild
             self._rebuild_pending = False
             self.rebuild()

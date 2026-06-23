@@ -604,7 +604,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
 
         try:
             current_layers = list(self.canvas.layers())
-        except Exception as e:
+        except Exception:
             current_layers = []
 
         base_layers = getattr(self, "baseLayers", [])
@@ -720,7 +720,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
                     self.baseLayers.append(osm)
                     layers_for_canvas.append(osm)
 
-        proj = QgsProject.instance()
+        proj = QgsProject.instance()  # noqa: F841
 
         # Load ALL layers directly from PostGIS with project CRS
         for label, table in layer_defs:
@@ -753,7 +753,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
                                 self._apply_preview_manhole_labels(vlayer)
                             vlayer.triggerRepaint()
                             applied_style = True
-                except Exception as e:
+                except Exception:
                     applied_style = False
 
                 if not applied_style:
@@ -781,7 +781,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
                 item.setCheckState(QtCore.Qt.CheckState.Checked)
                 self.layersList.addItem(item)
 
-            except Exception as e:
+            except Exception:
                 continue
 
         if layers_for_canvas:
@@ -794,7 +794,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
                     self.canvas.setExtent(main_canvas.extent())
                 else:
                     self.canvas.setExtent(layers_for_canvas[-1].extent())
-            except Exception as e:
+            except Exception:
                 self.canvas.setExtent(layers_for_canvas[-1].extent())
             self.canvas.refresh()
             if "Route" in self.previewLayers:
@@ -901,7 +901,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
     def _refresh_layers(self):
         try:
             current_extent = self.canvas.extent()
-        except Exception as e:
+        except Exception:
             current_extent = None
 
         try:
@@ -963,7 +963,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
                 continue
             try:
                 ext = layer.extent()
-            except Exception as e:
+            except Exception:
                 continue
             if not ext or ext.isEmpty():
                 continue
@@ -1016,7 +1016,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
                 s = str(v).strip()
                 if s:
                     values.add(s)
-        except Exception as e:
+        except Exception:
             self.searchEdit.setCompleter(None)
             return
 
@@ -1127,7 +1127,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
 
         try:
             req = QgsFeatureRequest().setFilterExpression(expr)
-        except Exception as e:
+        except Exception:
             QtWidgets.QMessageBox.warning(
                 self, "Locator", "Invalid search expression."
             )

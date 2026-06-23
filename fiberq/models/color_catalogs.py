@@ -185,7 +185,7 @@ class ColorCatalogManager:
 
         except (json.JSONDecodeError, TypeError):
             return {"catalogs": get_default_color_sets()}
-        except Exception as e:
+        except Exception:
             return {"catalogs": get_default_color_sets()}
 
     def save_catalogs(self, data: Dict[str, Any]) -> bool:
@@ -209,7 +209,7 @@ class ColorCatalogManager:
             )
             self._catalogs = data
             return True
-        except Exception as e:
+        except Exception:
             return False
 
     def get_catalog_names(self) -> List[str]:

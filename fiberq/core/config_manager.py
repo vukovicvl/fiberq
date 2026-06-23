@@ -193,7 +193,7 @@ class ConfigManager:
                 parser = configparser.ConfigParser()
                 parser.read(self.config_file_path, encoding='utf-8')
                 self._config_parser = parser
-        except Exception as e:
+        except Exception:
             self._config_parser = None
 
     def _get_ini_value(
@@ -217,8 +217,8 @@ class ConfigManager:
             return default
 
         try:
-            if (self._config_parser.has_section(section) and
-                self._config_parser.has_option(section, key)):
+            if (self._config_parser.has_section(section) and  # noqa: W504
+                    self._config_parser.has_option(section, key)):
                 return self._config_parser.get(section, key)
         except Exception as e:
             logger.debug(f"Error in ConfigManager._get_ini_value: {e}")
@@ -259,7 +259,7 @@ class ConfigManager:
         """
         try:
             return QSettings().value(self.KEY_LANGUAGE, "en")
-        except Exception as e:
+        except Exception:
             return "en"
 
     def set_language(self, lang: str) -> None:
@@ -288,7 +288,7 @@ class ConfigManager:
         try:
             settings = QSettings(self.SETTINGS_ORG, self.SETTINGS_APP)
             return settings.value(self.KEY_PRO_ENABLED, False, type=bool)
-        except Exception as e:
+        except Exception:
             return False
 
     def set_pro_enabled(self, enabled: bool) -> None:
@@ -320,7 +320,7 @@ class ConfigManager:
         try:
             cleaned_key = key.strip().upper()
             return cleaned_key == self.PRO_MASTER_KEY
-        except Exception as e:
+        except Exception:
             return False
 
     # -------------------------------------------------------------------------
@@ -348,7 +348,7 @@ class ConfigManager:
             project = QgsProject.instance()
             value, success = project.readEntry(scope, key, default)
             return value if success else default
-        except Exception as e:
+        except Exception:
             return default
 
     def set_project_setting(
@@ -371,7 +371,7 @@ class ConfigManager:
         try:
             project = QgsProject.instance()
             return project.writeEntry(scope, key, value)
-        except Exception as e:
+        except Exception:
             return False
 
 

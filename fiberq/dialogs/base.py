@@ -41,7 +41,7 @@ def normalize_name(s: str) -> str:
         s = s.lower()
         s = re.sub(r"[^a-z0-9_]+", "_", s)
         return s.strip("_")
-    except Exception as e:
+    except Exception:
         return s
 
 

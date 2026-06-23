@@ -62,9 +62,9 @@ class SlackPlaceTool(QgsMapTool):
         }
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if (isinstance(lyr, QgsVectorLayer) and
-                    lyr.geometryType() == QgsWkbTypes.LineGeometry and
-                    lyr.name() in cable_names):
+                if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                    lyr.geometryType() == QgsWkbTypes.LineGeometry and  # noqa: W504
+                        lyr.name() in cable_names):
                     yield lyr
             except Exception as e:
                 logger.debug(f"Error in SlackPlaceTool._iter_cable_layers: {e}")
@@ -74,9 +74,9 @@ class SlackPlaceTool(QgsMapTool):
         node_names = {"Poles", "Stubovi", "OKNA", "Manholes"}
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if (isinstance(lyr, QgsVectorLayer) and
-                    lyr.geometryType() == QgsWkbTypes.PointGeometry and
-                    lyr.name() in node_names):
+                if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                    lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
+                        lyr.name() in node_names):
                     yield lyr
             except Exception as e:
                 logger.debug(f"Error in SlackPlaceTool._iter_node_layers: {e}")
@@ -211,9 +211,9 @@ class SlackPlaceTool(QgsMapTool):
         if vl is None:
             # Fallback: find existing slack layer
             for lyr in QgsProject.instance().mapLayers().values():
-                if (isinstance(lyr, QgsVectorLayer) and
-                    lyr.geometryType() == QgsWkbTypes.PointGeometry and
-                    lyr.name() in ("Opticke_rezerve", "Optical slacks", "Optical slack")):
+                if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                    lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
+                        lyr.name() in ("Opticke_rezerve", "Optical slacks", "Optical slack")):
                     vl = lyr
                     break
 

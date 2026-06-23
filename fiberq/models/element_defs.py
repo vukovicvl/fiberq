@@ -23,7 +23,7 @@ def _map_icon_path(filename: str) -> str:
     """Get the full path to a map icon file."""
     try:
         return os.path.join(_get_plugin_dir(), 'resources', 'map_icons', filename)
-    except Exception as e:
+    except Exception:
         return filename
 
 
@@ -31,7 +31,7 @@ def _toolbar_icon_path(filename: str) -> str:
     """Get the full path to a toolbar icon file."""
     try:
         return os.path.join(_get_plugin_dir(), 'icons', filename)
-    except Exception as e:
+    except Exception:
         return filename
 
 
@@ -356,7 +356,7 @@ def apply_element_aliases(layer) -> None:
 
     try:
         fields = layer.fields()
-    except Exception as e:
+    except Exception:
         return
 
     for field_name, alias in ELEMENT_FIELD_ALIASES.items():
@@ -364,7 +364,7 @@ def apply_element_aliases(layer) -> None:
             idx = fields.indexFromName(field_name)
             if idx != -1:
                 layer.setFieldAlias(idx, alias)
-        except Exception as e:
+        except Exception:
             continue
 
 

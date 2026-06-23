@@ -12,12 +12,12 @@ View → Toolbars → FiberQ Quick.
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QKeySequence
 pass
-from qgis.PyQt.QtGui import QAction, QShortcut
+from qgis.PyQt.QtGui import QAction, QShortcut  # noqa: E402
 
-from qgis.core import QgsSettings
+from qgis.core import QgsSettings  # noqa: E402
 
-from .base import load_icon
-from ..utils.logger import get_logger
+from .base import load_icon  # noqa: E402
+from ..utils.logger import get_logger  # noqa: E402
 logger = get_logger(__name__)
 
 
@@ -317,13 +317,13 @@ class QuickToolbar:
                 pass
 
         QgsSettings().setValue(SETTING_ENABLE_SHORTCUTS,
-                              'true' if enabled else 'false')
+                               'true' if enabled else 'false')
 
     def set_visible(self, visible):
         """Show or hide the toolbar and persist the setting."""
         self.toolbar.setVisible(visible)
         QgsSettings().setValue(SETTING_SHOW_TOOLBAR,
-                              'true' if visible else 'false')
+                               'true' if visible else 'false')
 
     # ────────────────────────────────────────────────────
     # Cleanup

@@ -42,9 +42,9 @@ class BreakpointTool(QgsMapToolEmitPoint):
     def _find_route_layer(self):
         """Find the Route layer in the project."""
         for lyr in QgsProject.instance().mapLayers().values():
-            if (isinstance(lyr, QgsVectorLayer) and
-                lyr.name() in ('Route', 'Trasa') and
-                lyr.geometryType() == QgsWkbTypes.LineGeometry):
+            if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                lyr.name() in ('Route', 'Trasa') and  # noqa: W504
+                    lyr.geometryType() == QgsWkbTypes.LineGeometry):
                 return lyr
         return None
 
@@ -115,7 +115,7 @@ class BreakpointTool(QgsMapToolEmitPoint):
         min_feat = self.snap_info['feat']
         min_geom = self.snap_info['geom']
         snapped_point = self.snap_info['point']
-        min_seg_idx = self.snap_info['seg_idx']
+        min_seg_idx = self.snap_info['seg_idx']  # noqa: F841
 
         # Handle multipart geometry
         if min_geom.isMultipart():
@@ -142,8 +142,8 @@ class BreakpointTool(QgsMapToolEmitPoint):
             tol = self.canvas.mapUnitsPerPixel() * 2
 
             # Check if split point is too close to endpoints
-            if (QgsGeometry.fromPointXY(snapped_point).distance(QgsGeometry.fromPointXY(p0)) < tol or
-                QgsGeometry.fromPointXY(snapped_point).distance(QgsGeometry.fromPointXY(p1)) < tol):
+            if (QgsGeometry.fromPointXY(snapped_point).distance(QgsGeometry.fromPointXY(p0)) < tol or  # noqa: W504
+                    QgsGeometry.fromPointXY(snapped_point).distance(QgsGeometry.fromPointXY(p1)) < tol):
                 QMessageBox.warning(
                     self.iface.mainWindow(),
                     "Split route",

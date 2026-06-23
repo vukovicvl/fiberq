@@ -30,7 +30,7 @@ class BranchInfoTool(QgsMapToolIdentify):
         """Return first populated field from list of names."""
         try:
             field_names = f.fields().names()
-        except Exception as e:
+        except Exception:
             field_names = []
         for n in names:
             if n in field_names:
@@ -81,7 +81,7 @@ class BranchInfoTool(QgsMapToolIdentify):
 
         for f in feats:
             tip = self._attr(f, ["tip", "Tip", "TIP"], "n/a")
-            br_c = self._attr(f, ["broj_cevcica", "cevi"], "")
+            br_c = self._attr(f, ["broj_cevcica", "cevi"], "")  # noqa: F841
             br_v = self._attr(f, ["broj_vlakana", "vlakna"], "")
             cap = f"{br_v}f" if br_v else ""  # Issue #3: Show just fiber count with 'f'
             key = f"{tip} {cap}".strip() or "unknown"
@@ -99,7 +99,7 @@ class BranchInfoTool(QgsMapToolIdentify):
         if parts:
             msg += " | " + "; ".join(parts)
         if total_len > 0:
-            msg += f" | Length of those segments: {total_len:.0f} m ({total_len/1000.0:.2f} km)"
+            msg += f" | Length of those segments: {total_len:.0f} m ({total_len / 1000.0:.2f} km)"
         self.iface.messageBar().pushInfo("Branch info", msg)
 
     def keyPressEvent(self, e):

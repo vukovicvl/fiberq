@@ -142,7 +142,7 @@ class LocatorDialog(QDialog):
             from urllib.parse import quote
             url = (
                 "https://nominatim.openstreetmap.org/search?format=json&limit=1&q="
-                + quote(query)
+                + quote(query)  # noqa: W503
             )
             data = _http_get_json(
                 url,

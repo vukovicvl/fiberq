@@ -144,8 +144,8 @@ class FiberBreakTool(QgsMapTool):
             try:
                 is_break_layer = (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.PointGeometry
-                    and lyr.name() in ("Prekid vlakna", "Fiber break")
+                    and lyr.geometryType() == QgsWkbTypes.PointGeometry  # noqa: W503
+                    and lyr.name() in ("Prekid vlakna", "Fiber break")  # noqa: W503
                 )
                 if not is_break_layer:
                     continue
@@ -196,8 +196,8 @@ class FiberBreakTool(QgsMapTool):
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.LineGeometry
-                    and lyr.isValid()
+                    and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
+                    and lyr.isValid()  # noqa: W503
                 ):
                     yield lyr
             except Exception:

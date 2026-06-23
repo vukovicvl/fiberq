@@ -99,9 +99,9 @@ class ExtensionTool(QgsMapToolEmitPoint):
                 # --- POINT layers (poles/manholes + optionally cut marker layer) ---
                 is_node_layer = (
                     lyr.name() in ("Poles", "Poles", "OKNA", "Okna", "Manholes")
-                    or "infrastructure cut" in lname
-                    or "infrastructure cuts" in lname
-                    or lname.strip() in ("cuts", "cut")
+                    or "infrastructure cut" in lname  # noqa: W503
+                    or "infrastructure cuts" in lname  # noqa: W503
+                    or lname.strip() in ("cuts", "cut")  # noqa: W503
                 )
 
                 if gtype == QgsWkbTypes.PointGeometry and is_node_layer:
@@ -118,8 +118,8 @@ class ExtensionTool(QgsMapToolEmitPoint):
                 # --- LINE layers of cables (vertex at cut location) ---
                 is_cable_layer = (
                     "cable" in lname
-                    or "kabl" in lname
-                    or lyr.name() in ("Route", "Route")
+                    or "kabl" in lname  # noqa: W503
+                    or lyr.name() in ("Route", "Route")  # noqa: W503
                 )
 
                 if gtype == QgsWkbTypes.LineGeometry and is_cable_layer:
@@ -131,7 +131,7 @@ class ExtensionTool(QgsMapToolEmitPoint):
                         for v in geom.vertices():
                             consider(v)
 
-            except Exception as e:
+            except Exception:
                 # if any layer fails, skip it
                 pass
 
@@ -194,8 +194,8 @@ class ExtensionTool(QgsMapToolEmitPoint):
         for lyr in QgsProject.instance().mapLayers().values():
             if (
                 isinstance(lyr, QgsVectorLayer)
-                and lyr.geometryType() == QgsWkbTypes.PointGeometry
-                and lyr.name() in target_names
+                and lyr.geometryType() == QgsWkbTypes.PointGeometry  # noqa: W503
+                and lyr.name() in target_names  # noqa: W503
             ):
                 nastavak_layer = lyr
                 self._apply_joint_closure_aliases(nastavak_layer)
@@ -233,7 +233,7 @@ class ExtensionTool(QgsMapToolEmitPoint):
                 svg_layer.setSize(10)
                 try:
                     svg_layer.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
-                except Exception as e:
+                except Exception:
                     svg_layer.setSizeUnit(QgsUnitTypes.RenderMapUnits)
                 symbol.changeSymbolLayer(0, svg_layer)
             except Exception as e:

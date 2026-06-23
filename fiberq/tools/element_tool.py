@@ -124,7 +124,7 @@ class PlaceElementTool(QgsMapToolEmitPoint):
                     continue
                 try:
                     pt = geom.asPoint()
-                except Exception as e:
+                except Exception:
                     continue
                 d = QgsPointXY(point).distance(QgsPointXY(pt))
                 if min_dist is None or d < min_dist:
@@ -167,7 +167,7 @@ class PlaceElementTool(QgsMapToolEmitPoint):
                 if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.PointGeometry and lyr.name() == self.target_layer_name:
                     existing_layer = lyr
                     break
-        except Exception as e:
+        except Exception:
             existing_layer = None
 
         # If target is 'Prekid', automatically set name without dialog
@@ -179,7 +179,7 @@ class PlaceElementTool(QgsMapToolEmitPoint):
                 dlg = PrePlaceAttributesDialog(self.target_layer_name, existing_layer)
                 ok = (dlg.exec() == QDialog.DialogCode.Accepted)
                 _attrs = dlg.values() if ok else {}
-            except Exception as e:
+            except Exception:
                 naziv, ok = QInputDialog.getText(None, "Placing elements", f"Name ({self.target_layer_name}):")
                 _attrs = {'naziv': naziv} if ok and naziv else {}
 
@@ -203,7 +203,7 @@ class PlaceElementTool(QgsMapToolEmitPoint):
             # Add fields based on dialog spec
             try:
                 specs = _default_fields_for(self.target_layer_name)
-            except Exception as e:
+            except Exception:
                 specs = [("naziv", "Naziv", "text", "", None)]
 
             fields = []
@@ -237,7 +237,7 @@ class PlaceElementTool(QgsMapToolEmitPoint):
                         logger.debug(f"Error in PlaceElementTool.canvasPressEvent: {e}")
                     try:
                         svg_layer.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
-                    except Exception as e:
+                    except Exception:
                         svg_layer.setSizeUnit(QgsUnitTypes.RenderMapUnits)
                     symbol.changeSymbolLayer(0, svg_layer)
                 except Exception as e:
@@ -260,7 +260,7 @@ class PlaceElementTool(QgsMapToolEmitPoint):
             # Ensure all fields used by the dialog exist on the layer
             try:
                 specs = _default_fields_for(self.target_layer_name)
-            except Exception as e:
+            except Exception:
                 specs = [("naziv", "Naziv", "text", "", None)]
 
             to_add = []
@@ -349,7 +349,7 @@ class ChangeElementTypeTool(QgsMapToolIdentify):
             self.snap_marker.setIconSize(14)
             self.snap_marker.setColor(QColor(0, 200, 0))
             self.snap_marker.hide()
-        except Exception as e:
+        except Exception:
             self.snap_marker = None
 
     def activate(self):
@@ -404,7 +404,7 @@ class ChangeElementTypeTool(QgsMapToolIdentify):
 
             # Legacy Serbian names for old projects
             return name in ("Nastavci", "Nastavak")
-        except Exception as e:
+        except Exception:
             return False
 
     def canvasReleaseEvent(self, e):
@@ -425,7 +425,7 @@ class ChangeElementTypeTool(QgsMapToolIdentify):
                 hit_layer = layer
                 try:
                     hit_fid = int(feature.id())
-                except Exception as e:
+                except Exception:
                     hit_fid = feature.id()
                 break
 
@@ -440,14 +440,14 @@ class ChangeElementTypeTool(QgsMapToolIdentify):
         names = self._element_names()
         try:
             current = hit_layer.name()
-        except Exception as e:
+        except Exception:
             current = ""
         try:
             new_name, ok = QInputDialog.getItem(
                 self.iface.mainWindow(), "Change element type", "New type:",
                 names, max(0, names.index(current)) if current in names else 0, False
             )
-        except Exception as e:
+        except Exception:
             new_name, ok = (names[0] if names else "", True)
 
         if not ok or not new_name or new_name == current:

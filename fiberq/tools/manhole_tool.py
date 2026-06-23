@@ -184,9 +184,9 @@ class ManholePlaceTool(QgsMapToolEmitPoint):
         """Find the Manholes layer in the project."""
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if (isinstance(lyr, QgsVectorLayer) and
-                    lyr.name() in ('Manholes', 'OKNA') and
-                    lyr.geometryType() == QgsWkbTypes.PointGeometry):
+                if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                    lyr.name() in ('Manholes', 'OKNA') and  # noqa: W504
+                        lyr.geometryType() == QgsWkbTypes.PointGeometry):
                     return lyr
             except Exception as e:
                 logger.debug(f"Error in ManholePlaceTool._find_manhole_layer: {e}")
@@ -196,9 +196,9 @@ class ManholePlaceTool(QgsMapToolEmitPoint):
         """Find the Route layer in the project."""
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if (isinstance(lyr, QgsVectorLayer) and
-                    lyr.name() in ('Route', 'Trasa') and
-                    lyr.geometryType() == QgsWkbTypes.LineGeometry):
+                if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                    lyr.name() in ('Route', 'Trasa') and  # noqa: W504
+                        lyr.geometryType() == QgsWkbTypes.LineGeometry):
                     return lyr
             except Exception as e:
                 logger.debug(f"Error in ManholePlaceTool._find_route_layer: {e}")
@@ -302,7 +302,7 @@ class ManholePlaceTool(QgsMapToolEmitPoint):
             layer.startEditing()
             layer.addFeature(f)
             layer.commitChanges()
-        except Exception as e:
+        except Exception:
             layer.dataProvider().addFeatures([f])
 
         layer.updateExtents()

@@ -274,7 +274,7 @@ def migrate_project_uuids():
             # Match by name OR by having FiberQ-characteristic fields
             is_fiberq = (
                 layer_name in fiberq_layer_names
-                or bool(field_names & fiberq_field_signatures)
+                or bool(field_names & fiberq_field_signatures)  # noqa: W503
             )
 
             if not is_fiberq:

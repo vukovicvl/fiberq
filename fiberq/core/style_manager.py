@@ -102,7 +102,7 @@ class StyleManager:
                     (
                         lyr for lyr in QgsProject.instance().mapLayers().values()
                         if lyr.name().lower().strip() in ("trasa", "route")
-                        and lyr.geometryType() == QgsWkbTypes.LineGeometry
+                        and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
                     ),
                     None
                 )
@@ -119,7 +119,7 @@ class StyleManager:
 
             name_l = layer.name().lower()
             is_underground = "podzem" in name_l or "underground" in name_l
-            is_aerial = "vazdus" in name_l or "vazduš" in name_l or "aerial" in name_l
+            is_aerial = "vazdus" in name_l or "vazduš" in name_l or "aerial" in name_l  # noqa: F841
 
             # Colors for cable types
             COLOR_BACKBONE = QColor(0, 51, 153)
@@ -272,13 +272,13 @@ class StyleManager:
             # Size in meters on map
             try:
                 sl.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
-            except Exception as e:
+            except Exception:
                 sl.setSizeUnit(QgsUnitTypes.RenderMapUnits)
 
             # Outline in mm (constant width)
             try:
                 sl.setOutlineWidthUnit(QgsUnitTypes.RenderMillimeters)
-            except Exception as e:
+            except Exception:
                 try:
                     sl.setStrokeWidthUnit(QgsUnitTypes.RenderMillimeters)
                 except Exception as e:
@@ -343,7 +343,7 @@ class StyleManager:
                     if enum_val is None and Qgis:
                         try:
                             enum_val = getattr(Qgis, 'LabelQuadrantPosition').Above
-                        except Exception as e:
+                        except Exception:
                             enum_val = None
                     if enum_val is not None:
                         try:
@@ -479,7 +479,7 @@ class StyleManager:
             try:
                 try:
                     hatch.setLineAngle(60.0)
-                except Exception as e:
+                except Exception:
                     try:
                         hatch.setAngle(60.0)
                     except Exception as e:
@@ -581,7 +581,7 @@ class StyleManager:
                 if hasattr(renderer, "symbol"):
                     try:
                         sym = renderer.symbol()
-                    except Exception as e:
+                    except Exception:
                         sym = None
                 if sym is not None:
                     apply_on_symbol(sym)
@@ -631,7 +631,7 @@ class StyleManager:
                         logger.debug(f"Error in StyleManager.stylize_element_layer: {e}")
                     try:
                         svg_layer.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
-                    except Exception as e:
+                    except Exception:
                         svg_layer.setSizeUnit(QgsUnitTypes.RenderMapUnits)
                     symbol.changeSymbolLayer(0, svg_layer)
                 except Exception as e:

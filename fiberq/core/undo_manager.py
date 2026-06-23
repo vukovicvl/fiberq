@@ -550,7 +550,7 @@ class FiberQUndoManager:
                     # Prefer the highest FID (most recently added)
                     if best_fid is None or f.id() > best_fid:
                         best_fid = f.id()
-                        best_dist = d
+                        best_dist = d  # noqa: F841
 
         return best_fid
 

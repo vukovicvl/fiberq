@@ -109,7 +109,7 @@ def _load_icon(filename: str) -> QIcon:
     try:
         p = _icon_path(filename)
         return QIcon(p) if os.path.exists(p) else QIcon()
-    except Exception as e:
+    except Exception:
         return QIcon()
 
 
@@ -128,7 +128,7 @@ def _map_icon_path(filename: str) -> str:
     """
     try:
         return os.path.join(get_plugin_dir(), 'resources', 'map_icons', filename)
-    except Exception as e:
+    except Exception:
         return filename
 
 
@@ -240,7 +240,7 @@ def normalize_name(text: str) -> str:
         text = re.sub(r"[^a-z0-9_]+", "_", text)
 
         return text.strip("_")
-    except Exception as e:
+    except Exception:
         return text
 
 
@@ -260,7 +260,7 @@ def clean_layer_name(name: str) -> str:
         cleaned = re.sub(r'\s+', '_', cleaned)
         cleaned = cleaned.strip('_')
         return cleaned if cleaned else 'unnamed_layer'
-    except Exception as e:
+    except Exception:
         return 'unnamed_layer'
 
 
@@ -350,7 +350,7 @@ def apply_fixed_text_label(
 
         return True
 
-    except Exception as e:
+    except Exception:
         return False
 
 
@@ -377,7 +377,7 @@ def apply_field_aliases(
 
     try:
         fields = layer.fields()
-    except Exception as e:
+    except Exception:
         return 0
 
     applied_count = 0
@@ -388,7 +388,7 @@ def apply_field_aliases(
             if idx != -1:
                 layer.setFieldAlias(idx, alias)
                 applied_count += 1
-        except Exception as e:
+        except Exception:
             continue
 
     return applied_count
@@ -413,7 +413,7 @@ def _get_lang() -> str:
     """
     try:
         return QSettings().value(_FIBERQ_LANG_KEY, "en")
-    except Exception as e:
+    except Exception:
         return "en"
 
 
@@ -442,7 +442,7 @@ def get_language() -> str:
     """
     try:
         return QSettings().value(_FIBERQ_LANG_KEY, "en")
-    except Exception as e:
+    except Exception:
         return "en"
 
 
@@ -706,7 +706,7 @@ def is_route_layer(layer: QgsVectorLayer) -> bool:
         is_line = layer.geometryType() == QgsWkbTypes.LineGeometry
 
         return is_line and name in ('trasa', 'route', 'routes')
-    except Exception as e:
+    except Exception:
         return False
 
 
@@ -731,7 +731,7 @@ def is_cable_layer(layer: QgsVectorLayer) -> bool:
 
         cable_keywords = ['kabl', 'cable', 'kablo']
         return is_line and any(kw in name for kw in cable_keywords)
-    except Exception as e:
+    except Exception:
         return False
 
 
@@ -755,7 +755,7 @@ def is_pole_layer(layer: QgsVectorLayer) -> bool:
         is_point = layer.geometryType() == QgsWkbTypes.PointGeometry
 
         return is_point and name in ('stubovi', 'poles', 'pole')
-    except Exception as e:
+    except Exception:
         return False
 
 

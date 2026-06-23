@@ -246,7 +246,7 @@ def points_equal(p1: QgsPointXY, p2: QgsPointXY, tolerance: float = 1e-9) -> boo
         True if points are equal within tolerance
     """
     return (
-        abs(p1.x() - p2.x()) < tolerance and
+        abs(p1.x() - p2.x()) < tolerance and  # noqa: W504
         abs(p1.y() - p2.y()) < tolerance
     )
 
@@ -326,8 +326,8 @@ def split_line_at_point(
         p0, p1 = QgsPointXY(line_points[0]), QgsPointXY(line_points[1])
 
         # Check if split point is too close to endpoints
-        if (point_distance(split_point, p0) < tolerance or
-            point_distance(split_point, p1) < tolerance):
+        if (point_distance(split_point, p0) < tolerance or  # noqa: W504
+                point_distance(split_point, p1) < tolerance):
             return None, None
 
         geom1 = QgsGeometry.fromPolylineXY([p0, split_point])
@@ -399,7 +399,7 @@ def get_layer_extent_center(layer: QgsVectorLayer) -> Optional[QgsPointXY]:
         if extent.isEmpty():
             return None
         return extent.center()
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -418,5 +418,5 @@ def calculate_geometry_length(geom: QgsGeometry) -> float:
 
     try:
         return geom.length()
-    except Exception as e:
+    except Exception:
         return 0.0

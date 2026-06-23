@@ -121,7 +121,7 @@ class ColorManager:
             if not isinstance(obj, dict) or "catalogs" not in obj:
                 obj = {"catalogs": self.get_default_color_sets()}
             return obj
-        except Exception as e:
+        except Exception:
             return {"catalogs": self.get_default_color_sets()}
 
     def save_color_catalogs(self, data: Dict[str, Any]) -> None:

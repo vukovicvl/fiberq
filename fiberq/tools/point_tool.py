@@ -50,7 +50,7 @@ class PointTool(QgsMapToolEmitPoint):
         try:
             s = QgsSettings()
             snap_px = int(s.value("FiberQ/default_snap_distance", "20"))
-        except Exception as e:
+        except Exception:
             snap_px = 20
 
         snap_tolerance = self.canvas.mapUnitsPerPixel() * snap_px
@@ -74,10 +74,10 @@ class PointTool(QgsMapToolEmitPoint):
                             snap_point = QgsPointXY(pt)
 
                     # Also keep segment midpoints
-                    for i in range(len(line)-1):
+                    for i in range(len(line) - 1):
                         mid = QgsPointXY(
-                            (line[i].x() + line[i+1].x()) / 2,
-                            (line[i].y() + line[i+1].y()) / 2
+                            (line[i].x() + line[i + 1].x()) / 2,
+                            (line[i].y() + line[i + 1].y()) / 2
                         )
                         dist = QgsPointXY(point).distance(mid)
                         if min_dist is None or dist < min_dist:
@@ -141,7 +141,7 @@ class PointTool(QgsMapToolEmitPoint):
         try:
             if hasattr(self, 'plugin') and self.plugin and hasattr(self.plugin, 'undo_manager') and self.plugin.undo_manager:
                 self.plugin.undo_manager.record_add(self.layer, feature)
-        except Exception as e:
+        except Exception:
             pass  # PointTool may not always have plugin reference
 
 

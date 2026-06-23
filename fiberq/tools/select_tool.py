@@ -45,7 +45,7 @@ class SmartMultiSelectTool(QgsMapTool):
             self._marker.setIconSize(12)
             self._marker.setPenWidth(3)
             self._marker.hide()
-        except Exception as e:
+        except Exception:
             self._marker = None
 
     def _layer_priority(self, lyr):
@@ -60,7 +60,7 @@ class SmartMultiSelectTool(QgsMapTool):
         try:
             name = (lyr.name() or "").lower()
             gtype = lyr.geometryType()
-        except Exception as e:
+        except Exception:
             return 100
 
         # 1) elements + joint closures (highest priority)
@@ -68,7 +68,7 @@ class SmartMultiSelectTool(QgsMapTool):
         try:
             try:
                 element_names.add(NASTAVAK_DEF.get('name', 'Nastavci').lower())
-            except Exception as e:
+            except Exception:
                 element_names.add('nastavci')
             try:
                 for d in ELEMENT_DEFS:
@@ -101,9 +101,9 @@ class SmartMultiSelectTool(QgsMapTool):
     def _nearest_feature(self, lyr, pt, tol):
         """Return (fid, geom) of nearest feature within tolerance in map units; otherwise (None, None)."""
         try:
-            rect = QgsRectangle(pt.x()-tol, pt.y()-tol, pt.x()+tol, pt.y()+tol)
+            rect = QgsRectangle(pt.x() - tol, pt.y() - tol, pt.x() + tol, pt.y() + tol)
             req = QgsFeatureRequest().setFilterRect(rect)
-        except Exception as e:
+        except Exception:
             req = None
 
         gpt = QgsGeometry.fromPointXY(pt)
@@ -117,7 +117,7 @@ class SmartMultiSelectTool(QgsMapTool):
                 d = geom.distance(gpt)
                 if d <= tol and (best[0] is None or d < best[0]):
                     best = (d, f.id(), geom)
-            except Exception as e:
+            except Exception:
                 continue
         return (best[1], best[2]) if best[1] is not None else (None, None)
 
@@ -140,13 +140,13 @@ class SmartMultiSelectTool(QgsMapTool):
 
         try:
             pt = self.toMapCoordinates(e.pos())
-        except Exception as e:
+        except Exception:
             return
 
         # Tolerance ~10 px
         try:
             tol = self.canvas.extent().width() / max(1, self.canvas.width()) * 10.0
-        except Exception as e:
+        except Exception:
             tol = 5.0
 
         gpt = QgsGeometry.fromPointXY(pt)
@@ -159,7 +159,7 @@ class SmartMultiSelectTool(QgsMapTool):
                 continue
             try:
                 d = float(geom.distance(gpt))
-            except Exception as e:
+            except Exception:
                 d = 0.0
             candidates.append((d, self._layer_priority(lyr), lyr, fid, geom))
 
@@ -187,7 +187,7 @@ class SmartMultiSelectTool(QgsMapTool):
         # Visual feedback
         try:
             cen = geom.asPoint() if geom.isGeosValid() and geom.isSingle() else geom.centroid().asPoint()
-        except Exception as e:
+        except Exception:
             cen = pt
         if self._marker:
             self._marker.setCenter(QgsPointXY(cen))
@@ -250,7 +250,7 @@ class SmartMultiSelectTool(QgsMapTool):
             # 1) Joint Closure
             try:
                 valid_point_names.add(NASTAVAK_DEF.get('name', 'Nastavci'))
-            except Exception as e:
+            except Exception:
                 valid_point_names.add('Nastavci')
 
             # 2) All elements from ELEMENT_DEFS
@@ -304,7 +304,7 @@ class SmartMultiSelectTool(QgsMapTool):
                     elif gtype == QgsWkbTypes.PolygonGeometry:
                         if name in valid_poly_names or lname in low_poly:
                             layers.append(lyr)
-                except Exception as e:
+                except Exception:
                     continue
 
             return layers

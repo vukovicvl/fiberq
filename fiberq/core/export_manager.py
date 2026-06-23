@@ -155,7 +155,7 @@ class ExportManager:
         driver_name = ""
         try:
             driver_name = QgsVectorFileWriter.driverForExtension(lower_ext)
-        except Exception as e:
+        except Exception:
             driver_name = ""
 
         if not driver_name:
@@ -267,7 +267,7 @@ class ExportManager:
                 logger.debug(f"Error in ExportManager.save_all_layers_to_gpkg: {e}")
 
             # Get all vector layers
-            layers = [l for l in prj.mapLayers().values() if isinstance(l, QgsVectorLayer)]
+            layers = [l for l in prj.mapLayers().values() if isinstance(l, QgsVectorLayer)]  # noqa: E741
             if not layers:
                 self.iface.messageBar().pushWarning("GPKG export", "No vector layers to save.")
                 return
@@ -285,7 +285,7 @@ class ExportManager:
 
             for idx, lyr in enumerate(layers):
                 # Generate unique layer name
-                base = re.sub(r"[^A-Za-z0-9_]+", "_", lyr.name()).strip("_") or f"layer_{idx+1}"
+                base = re.sub(r"[^A-Za-z0-9_]+", "_", lyr.name()).strip("_") or f"layer_{idx + 1}"
                 name = base
                 c = 1
                 while name in used:
@@ -326,7 +326,7 @@ class ExportManager:
                         lyr.saveStyleToDatabase("default", "auto-saved by FiberQ", True, "")
                     except Exception as e:
                         logger.debug(f"Error in ExportManager.save_all_layers_to_gpkg: {e}")
-                except Exception as e:
+                except Exception:
                     # Fallback: add new layer
                     new_lyr = QgsVectorLayer(uri, lyr.name(), "ogr")
                     if new_lyr and new_lyr.isValid():
@@ -429,7 +429,7 @@ class ExportManager:
             except Exception as e:
                 logger.debug(f"Error in ExportManager.export_one_layer_to_gpkg: {e}")
             return True
-        except Exception as e:
+        except Exception:
             return False
 
     # =========================================================================
