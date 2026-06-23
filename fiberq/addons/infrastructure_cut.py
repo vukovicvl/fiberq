@@ -57,7 +57,7 @@ class InfrastructureCutTool(QgsMapTool):
     def _map_tol(self):
         try:
             return self._tol_px * self.canvas.mapSettings().mapUnitsPerPixel()
-        except Exception as e:
+        except Exception:
             return 1.0
 
     def _candidate_layers(self):
@@ -90,7 +90,7 @@ class InfrastructureCutTool(QgsMapTool):
         apx, apy = px - ax, py - ay
         ab2 = abx * abx + aby * aby
         if ab2 == 0.0:
-            return (ax, ay, 0.0, (px-ax)**2 + (py-ay)**2)
+            return (ax, ay, 0.0, (px - ax)**2 + (py - ay)**2)
         t = max(0.0, min(1.0, (apx * abx + apy * aby) / ab2))
         cx, cy = ax + t * abx, ay + t * aby
         d2 = (px - cx) ** 2 + (py - cy) ** 2
@@ -128,8 +128,9 @@ class InfrastructureCutTool(QgsMapTool):
                     continue
                 # Walk segments
                 best_seg = None  # (cx, cy, i, t, d2)
-                for i in range(len(poly)-1):
-                    a = poly[i]; b = poly[i+1]
+                for i in range(len(poly) - 1):
+                    a = poly[i]
+                    b = poly[i + 1]
                     cx, cy, t, d2 = self._closest_point_on_segment(map_pt.x(), map_pt.y(), a.x(), a.y(), b.x(), b.y())
                     if best_seg is None or d2 < best_seg[-1]:
                         best_seg = (cx, cy, i, t, d2)
@@ -212,8 +213,10 @@ class InfrastructureCutTool(QgsMapTool):
             return
 
         if not layer.isEditable():
-            try: layer.startEditing()
-            except Exception as e: logger.debug(f"Error in InfrastructureCutTool.canvasReleaseEvent: {e}")
+            try:
+                layer.startEditing()
+            except Exception as e:
+                logger.debug(f"Error in InfrastructureCutTool.canvasReleaseEvent: {e}")
 
         ok = self._split_feature_at_point(layer, feat, cp)
         if ok:
@@ -237,7 +240,8 @@ class InfrastructureCutTool(QgsMapTool):
         # Find nearest segment and insert the cut point
         best = None  # (i, t, d2, cp)
         for i in range(len(poly) - 1):
-            a = poly[i]; b = poly[i+1]
+            a = poly[i]
+            b = poly[i + 1]
             cx, cy, t, d2 = self._closest_point_on_segment(cut_pt.x(), cut_pt.y(), a.x(), a.y(), b.x(), b.y())
             if best is None or d2 < best[2]:
                 best = (i, t, d2, QgsPointXY(cx, cy))
@@ -254,10 +258,10 @@ class InfrastructureCutTool(QgsMapTool):
         if t <= EPS:
             cp = poly[i]
         elif t >= 1.0 - EPS:
-            cp = poly[i+1]
+            cp = poly[i + 1]
         else:
             # Insert new vertex at position i+1
-            poly.insert(i+1, cp)
+            poly.insert(i + 1, cp)
 
         # Recompute index of cp in list (ensure it exists)
         # Find first occurrence by coordinates
@@ -270,16 +274,20 @@ class InfrastructureCutTool(QgsMapTool):
             # splitting at ends creates an empty part -> abort
             return False
 
-        part1 = poly[:idx+1]
-        part2 = [poly[idx]] + poly[idx+1:]
+        part1 = poly[:idx + 1]
+        part2 = [poly[idx]] + poly[idx + 1:]
 
         g1 = QgsGeometry.fromPolylineXY(part1)
         g2 = QgsGeometry.fromPolylineXY(part2)
 
         # Prepare new features
         attrs = feat.attributes()
-        f1 = QgsFeature(layer.fields()); f1.setAttributes(attrs); f1.setGeometry(g1)
-        f2 = QgsFeature(layer.fields()); f2.setAttributes(attrs); f2.setGeometry(g2)
+        f1 = QgsFeature(layer.fields())
+        f1.setAttributes(attrs)
+        f1.setGeometry(g1)
+        f2 = QgsFeature(layer.fields())
+        f2.setAttributes(attrs)
+        f2.setGeometry(g2)
 
         # Update length fields if present
         self._update_length_fields(layer, f1)
@@ -338,15 +346,17 @@ class InfrastructureCutTool(QgsMapTool):
                     feat.setAttribute(idx, int(round(val_m)))
                 else:
                     feat.setAttribute(idx, val_m)
-            except Exception as e:
-                try: feat.setAttribute(idx, val_m)
-                except Exception as e: logger.debug(f"Error in InfrastructureCutTool._norm: {e}")
+            except Exception:
+                try:
+                    feat.setAttribute(idx, val_m)
+                except Exception as e:
+                    logger.debug(f"Error in InfrastructureCutTool._norm: {e}")
 
     # ------------- Misc UI helpers -------------
     def _flash(self, msg: str):
         try:
             self.iface.messageBar().pushWarning("Cutting", msg)
-        except Exception as e:
+        except Exception:
             try:
                 QMessageBox.warning(self.iface.mainWindow(), "Cutting", msg)
             except Exception as e:

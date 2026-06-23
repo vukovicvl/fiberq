@@ -190,7 +190,7 @@ class DrawingManager:
         def norm(p: str) -> str:
             try:
                 return os.path.normcase(os.path.abspath(p)).replace("\\", "/")
-            except Exception as e:
+            except Exception:
                 return (p or "").replace("\\", "/")
 
         target = norm(path)
@@ -219,7 +219,7 @@ class DrawingManager:
                 if target_base and target_base.lower() in src_norm.lower():
                     return True
 
-            except Exception as e:
+            except Exception:
                 continue
 
         return False
@@ -260,7 +260,7 @@ class DrawingManager:
             sublayers = []
             try:
                 sublayers = tmp.dataProvider().subLayers() or tmp.subLayers() or []
-            except Exception as e:
+            except Exception:
                 sublayers = tmp.subLayers() if hasattr(tmp, "subLayers") else []
 
             if not sublayers:
@@ -336,7 +336,7 @@ class DrawingManager:
                 self.CATEGORIES.index(default_cat) if default_cat in self.CATEGORIES else 0,
                 False
             )
-        except Exception as e:
+        except Exception:
             ok = True
             cat = default_cat
         if not ok:

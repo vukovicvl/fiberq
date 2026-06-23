@@ -98,8 +98,8 @@ class SlackManager:
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.PointGeometry
-                    and lyr.name() in ("Opticke_rezerve", "Optical slacks", "Optical slack")
+                    and lyr.geometryType() == QgsWkbTypes.PointGeometry  # noqa: W503
+                    and lyr.name() in ("Opticke_rezerve", "Optical slacks", "Optical slack")  # noqa: W503
                 ):
                     self.apply_slack_field_aliases(lyr)
                     self.set_slack_layer_alias(lyr)
@@ -182,7 +182,7 @@ class SlackManager:
             expr = f'"cable_layer_id" = \'{cable_layer_id}\' AND "cable_fid" = {int(cable_fid)}'
             try:
                 it = rez.getFeatures(QgsFeatureRequest().setFilterExpression(expr))
-            except Exception as e:
+            except Exception:
                 it = rez.getFeatures()
             for f in it:
                 try:
@@ -219,7 +219,7 @@ class SlackManager:
             if has_total:
                 try:
                     geom_len = float(cable_f.geometry().length())
-                except Exception as e:
+                except Exception:
                     geom_len = 0.0
                 cable_f["total_len_m"] = geom_len + float(slack)
             cable_lyr.updateFeature(cable_f)

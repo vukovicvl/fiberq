@@ -63,7 +63,7 @@ class DataManager:
             return {"relations": []}
         try:
             return json.loads(s)
-        except Exception as e:
+        except Exception:
             return {"relations": []}
 
     def save_relations(self, data):
@@ -132,7 +132,7 @@ class DataManager:
             return {"cables": {}}
         try:
             return json.loads(s)
-        except Exception as e:
+        except Exception:
             return {"cables": {}}
 
     def save_latent(self, data):
@@ -211,7 +211,7 @@ class DataManager:
             if not isinstance(obj, dict) or "catalogs" not in obj:
                 obj = {"catalogs": self.get_default_color_sets()}
             return obj
-        except Exception as e:
+        except Exception:
             return {"catalogs": self.get_default_color_sets()}
 
     def save_color_catalogs(self, data):
@@ -395,11 +395,11 @@ class DataManager:
             try:
                 if (
                     not isinstance(lyr, QgsVectorLayer)
-                    or lyr.geometryType() != QgsWkbTypes.LineGeometry
-                    or lyr.name() not in candidate_names
+                    or lyr.geometryType() != QgsWkbTypes.LineGeometry  # noqa: W503
+                    or lyr.name() not in candidate_names  # noqa: W503
                 ):
                     continue
-            except Exception as e:
+            except Exception:
                 continue
 
             fields = lyr.fields()
@@ -466,8 +466,8 @@ class DataManager:
         for lyr in QgsProject.instance().mapLayers().values():
             try:
                 if (isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.LineGeometry
-                    and lyr.name() in pipe_names):
+                    and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
+                        and lyr.name() in pipe_names):  # noqa: W503
                     layers.append(lyr)
             except Exception as e:
                 logger.debug(f"Error in DataManager.list_all_pipes: {e}")
@@ -540,7 +540,7 @@ class DataManager:
         try:
             od = str(cable_feature['od']) if 'od' in cable_layer.fields().names() and cable_feature['od'] is not None else ''
             do = str(cable_feature['do']) if 'do' in cable_layer.fields().names() and cable_feature['do'] is not None else ''
-        except Exception as e:
+        except Exception:
             od = ''
             do = ''
 
@@ -569,7 +569,7 @@ class DataManager:
                     try:
                         m = geom.lineLocatePoint(pgeom)
                         m = float(m)
-                    except Exception as e:
+                    except Exception:
                         nearest = geom.closestSegmentWithContext(pgeom.asPoint())[1] if hasattr(geom, 'closestSegmentWithContext') else None
                         m = float(geom.length()) if nearest is None else float(geom.lineLocatePoint(QgsGeometry.fromPointXY(QgsPointXY(nearest))))
 
@@ -591,7 +591,7 @@ class DataManager:
                         "m": m,
                         "distance": float(d),
                     })
-            except Exception as e:
+            except Exception:
                 continue
 
         # Sort and deduplicate

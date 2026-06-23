@@ -64,9 +64,9 @@ def find_route_layer():
     """Find the Route layer in the project."""
     for lyr in QgsProject.instance().mapLayers().values():
         try:
-            if (isinstance(lyr, QgsVectorLayer) and
-                lyr.geometryType() == QgsWkbTypes.LineGeometry and
-                lyr.name() in ('Route', 'Trasa')):
+            if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                lyr.geometryType() == QgsWkbTypes.LineGeometry and  # noqa: W504
+                    lyr.name() in ('Route', 'Trasa')):
                 return lyr
         except Exception as e:
             logger.debug(f"Error in find_route_layer: {e}")
@@ -82,9 +82,9 @@ def find_cable_layers():
     layers = []
     for lyr in QgsProject.instance().mapLayers().values():
         try:
-            if (isinstance(lyr, QgsVectorLayer) and
-                lyr.geometryType() == QgsWkbTypes.LineGeometry and
-                lyr.name() in cable_names):
+            if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                lyr.geometryType() == QgsWkbTypes.LineGeometry and  # noqa: W504
+                    lyr.name() in cable_names):
                 layers.append(lyr)
         except Exception as e:
             logger.debug(f"Error in find_cable_layers: {e}")
@@ -97,9 +97,9 @@ def find_node_layers():
     layers = []
     for lyr in QgsProject.instance().mapLayers().values():
         try:
-            if (isinstance(lyr, QgsVectorLayer) and
-                lyr.geometryType() == QgsWkbTypes.PointGeometry and
-                lyr.name() in node_names):
+            if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
+                    lyr.name() in node_names):
                 layers.append(lyr)
         except Exception as e:
             logger.debug(f"Error in find_node_layers: {e}")
@@ -111,7 +111,7 @@ def find_element_layers():
     try:
         element_defs = get_element_defs()
         element_names = {d.get('name') for d in element_defs if d.get('name')}
-    except Exception as e:
+    except Exception:
         element_names = set()
 
     # Add joint closure
@@ -125,9 +125,9 @@ def find_element_layers():
     layers = []
     for lyr in QgsProject.instance().mapLayers().values():
         try:
-            if (isinstance(lyr, QgsVectorLayer) and
-                lyr.geometryType() == QgsWkbTypes.PointGeometry and
-                lyr.name() in element_names):
+            if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
+                    lyr.name() in element_names):
                 layers.append(lyr)
         except Exception as e:
             logger.debug(f"Error in find_element_layers: {e}")
@@ -180,7 +180,7 @@ def snap_to_point_layers(point, layers, tolerance):
                 if min_dist is None or d < min_dist:
                     min_dist = d
                     snapped_point = QgsPointXY(pt)
-            except Exception as e:
+            except Exception:
                 continue
 
     if snapped_point and min_dist is not None and min_dist <= tolerance:

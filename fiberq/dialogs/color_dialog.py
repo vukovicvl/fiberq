@@ -131,7 +131,7 @@ class ColorCatalogManagerDialog(QDialog):
                 # if dark color, use white text
                 try:
                     c = QColor(hx)
-                    if c.red()*0.299 + c.green()*0.587 + c.blue()*0.114 < 140:
+                    if c.red() * 0.299 + c.green() * 0.587 + c.blue() * 0.114 < 140:
                         it.setForeground(QColor(255, 255, 255))
                 except Exception as e:
                     logger.debug(f"Error in ColorCatalogManagerDialog._on_select_catalog: {e}")
@@ -149,7 +149,7 @@ class ColorCatalogManagerDialog(QDialog):
                 else:
                     self.catalogs.append(c)
                 self._refresh_catalog_list()
-                self.list_catalogs.setCurrentRow(len(self.catalogs)-1)
+                self.list_catalogs.setCurrentRow(len(self.catalogs) - 1)
 
     def _on_edit_catalog(self):
         row = self.list_catalogs.currentRow()
@@ -201,7 +201,7 @@ class ColorCatalogManagerDialog(QDialog):
             else:
                 self.catalogs.append(cat)
             self._refresh_catalog_list()
-            self.list_catalogs.setCurrentRow(max(0, len(self.catalogs)-1))
+            self.list_catalogs.setCurrentRow(max(0, len(self.catalogs) - 1))
             QMessageBox.information(self, "Import", "Catalog imported.")
         except Exception as e:
             QMessageBox.critical(self, "Import", f"Error: {e}")
@@ -284,7 +284,7 @@ class NewColorCatalogDialog(QDialog):
         it.setBackground(QColor(hx))
         try:
             c = QColor(hx)
-            if c.red()*0.299 + c.green()*0.587 + c.blue()*0.114 < 140:
+            if c.red() * 0.299 + c.green() * 0.587 + c.blue() * 0.114 < 140:
                 it.setForeground(QColor(255, 255, 255))
         except Exception as e:
             logger.debug(f"Error in NewColorCatalogDialog._add_color: {e}")
@@ -299,15 +299,15 @@ class NewColorCatalogDialog(QDialog):
         row = self.list.currentRow()
         if row > 0:
             it = self.list.takeItem(row)
-            self.list.insertItem(row-1, it)
-            self.list.setCurrentRow(row-1)
+            self.list.insertItem(row - 1, it)
+            self.list.setCurrentRow(row - 1)
 
     def _move_down(self):
         row = self.list.currentRow()
-        if 0 <= row < self.list.count()-1:
+        if 0 <= row < self.list.count() - 1:
             it = self.list.takeItem(row)
-            self.list.insertItem(row+1, it)
-            self.list.setCurrentRow(row+1)
+            self.list.insertItem(row + 1, it)
+            self.list.setCurrentRow(row + 1)
 
     def result_catalog(self):
         """Returns dict {name, colors:[{name,hex},]}"""

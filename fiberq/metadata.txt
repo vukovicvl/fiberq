@@ -3,7 +3,7 @@ name=FiberQ
 description=Open-source fiber network design tools for QGIS (FTTH/GPON/FTTx)
 about=FiberQ helps telecom engineers and GIS professionals design, analyze, and document fiber optic networks inside QGIS. FiberQ supports QGIS 4 / Qt6 while keeping support for QGIS 3.22 LTR and later, and clears all findings from the QGIS repository security scan. Some advanced features may require an activation key.
 
-version=1.2.2
+version=1.2.3
 qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
 
@@ -23,6 +23,21 @@ license=GPL-3.0-or-later
 class_name=FiberQPlugin
 
 changelog=
+    1.2.3 - Repository scan: zero findings (code hygiene, no functional change)
+        * The plugin now scans clean on the plugins.qgis.org Security & Quality
+          scan: flake8 (--max-line-length=120 --ignore=E501) and Bandit
+          (medium/high) both report 0 findings.
+        * Removed unused exception variables (except ... as e where e was never
+          used). The handlers still catch the same exceptions; behavior unchanged.
+        * Normalized whitespace around operators, continuation-line indentation,
+          and split a few compound statements (autopep8). No logic change.
+        * Removed a duplicate LayerNames / is_route_layer / is_cable_layer import
+          in utils (kept the definitions already active at runtime; no change).
+        * Annotated intentional multi-line conditions, conditional imports and
+          accepted names with targeted "# noqa" instead of rewriting working code.
+        * Packaging: the development flake8 config is no longer shipped inside
+          the plugin package.
+
     1.2.2 - Housekeeping (code cleanup, no functional change)
         * Removed dead leftover code from the v1.x monolith split:
           extracted_classes.py (deprecated re-export shim) and two unused

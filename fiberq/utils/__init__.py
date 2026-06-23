@@ -53,9 +53,9 @@ from .helpers import (
     # Layer detection
     find_layer_by_name,
     find_layers_by_names,
-    is_route_layer,
-    is_cable_layer,
     is_pole_layer,
+    # NOTE: is_route_layer / is_cable_layer are re-exported below from
+    # .layer_names (Phase 6.1), which already shadowed these at runtime.
 )
 
 from .constants import (
@@ -87,7 +87,8 @@ from .constants import (
     FIELD_ALIASES,
 
     # Layer names
-    LayerNames,
+    # NOTE: LayerNames is re-exported below from .layer_names (Phase 6.1),
+    # which already shadowed the .constants version at runtime.
     LAYER_NAME_MAPPING,
 
     # Status

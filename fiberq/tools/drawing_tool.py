@@ -74,17 +74,17 @@ class OpenDrawingMapTool(QgsMapToolIdentify):
                     # If group/layer is off (invisible), treat as "not loaded"
                     try:
                         return node.isVisible()
-                    except Exception as e:
+                    except Exception:
                         try:
                             return node.itemVisibilityChecked()
-                        except Exception as e:
+                        except Exception:
                             return True
 
                 any_loaded = any(_node_present_and_visible(lid) for lid in ids)
 
                 if not any_loaded:
                     QMessageBox.information(self.core.iface.mainWindow(), "Drawing",
-                                "This drawing is linked, but its DWG/DXF layer is not loaded in the project anymore (layer was removed).")
+                                            "This drawing is linked, but its DWG/DXF layer is not loaded in the project anymore (layer was removed).")
                     return
 
                 self.core._open_drawing_path(path)

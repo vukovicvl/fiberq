@@ -65,7 +65,7 @@ class RelationsManager:
             return {"relations": []}
         try:
             return json.loads(s)
-        except Exception as e:
+        except Exception:
             return {"relations": []}
 
     def save_relations(self, data: Dict[str, Any]) -> None:
@@ -168,7 +168,7 @@ class RelationsManager:
         return False
 
     def update_relation(self, rid: Any, name: Optional[str] = None,
-                       cables: Optional[List[Dict[str, Any]]] = None) -> bool:
+                        cables: Optional[List[Dict[str, Any]]] = None) -> bool:
         """
         Update an existing relation.
 
@@ -217,7 +217,7 @@ class RelationsManager:
             return {"cables": {}}
         try:
             return json.loads(s)
-        except Exception as e:
+        except Exception:
             return {"cables": {}}
 
     def save_latent(self, data: Dict[str, Any]) -> None:
@@ -269,7 +269,7 @@ class RelationsManager:
         return data.get("cables", {}).get(key, [])
 
     def add_latent_to_cable(self, layer_id: str, fid: int,
-                           element: Dict[str, Any]) -> None:
+                            element: Dict[str, Any]) -> None:
         """
         Add a latent element to a cable.
 
@@ -364,7 +364,7 @@ class RelationsManager:
         try:
             od = str(cable_feature['od']) if 'od' in cable_layer.fields().names() and cable_feature['od'] is not None else ''
             do = str(cable_feature['do']) if 'do' in cable_layer.fields().names() and cable_feature['do'] is not None else ''
-        except Exception as e:
+        except Exception:
             od = ''
             do = ''
 
@@ -393,7 +393,7 @@ class RelationsManager:
                     try:
                         m = geom.lineLocatePoint(pgeom)
                         m = float(m)
-                    except Exception as e:
+                    except Exception:
                         # Fallback: project nearest point and measure distance from start
                         nearest = geom.closestSegmentWithContext(pgeom.asPoint())[1] if hasattr(geom, 'closestSegmentWithContext') else None
                         m = float(geom.length()) if nearest is None else float(geom.lineLocatePoint(QgsGeometry.fromPointXY(QgsPointXY(nearest))))
@@ -416,7 +416,7 @@ class RelationsManager:
                         "m": m,
                         "distance": float(d),
                     })
-            except Exception as e:
+            except Exception:
                 continue
 
         # Sort and remove duplicates

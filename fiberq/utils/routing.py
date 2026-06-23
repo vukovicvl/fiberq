@@ -226,7 +226,7 @@ def build_path_across_network(
         # Convert keys back to points
         return [key_to_point[k] for k in path_keys]
 
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -335,8 +335,8 @@ def build_path_across_joined_routes(
             if not path_pts:
                 path_pts.extend(seq)
             else:
-                if (path_pts[-1].x() == seq[0].x() and
-                    path_pts[-1].y() == seq[0].y()):
+                if (path_pts[-1].x() == seq[0].x() and  # noqa: W504
+                        path_pts[-1].y() == seq[0].y()):
                     path_pts.extend(seq[1:])
                 else:
                     path_pts.extend(seq)
@@ -347,7 +347,7 @@ def build_path_across_joined_routes(
 
         return path_pts
 
-    except Exception as e:
+    except Exception:
         return None
 
 

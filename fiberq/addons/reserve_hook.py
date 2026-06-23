@@ -26,7 +26,7 @@ class ReserveHook(QObject):
     def ensure_connected(self):
         if self._connected:
             return
-        for l in QgsProject.instance().mapLayers().values():
+        for l in QgsProject.instance().mapLayers().values():  # noqa: E741
             try:
                 if isinstance(l, QgsVectorLayer) and l.geometryType() == QgsWkbTypes.PointGeometry and l.name().lower().startswith('opticke_rezerve'):
                     self._connect_layer(l)
@@ -36,7 +36,7 @@ class ReserveHook(QObject):
 
     def _layers_added(self, layers):
         try:
-            for l in layers:
+            for l in layers:  # noqa: E741
                 if isinstance(l, QgsVectorLayer) and l.geometryType() == QgsWkbTypes.PointGeometry and l.name().lower().startswith('opticke_rezerve'):
                     self._connect_layer(l)
         except Exception as e:
@@ -96,7 +96,7 @@ class ReserveHook(QObject):
                     s.changeSymbolLayer(0, sl)
                 else:
                     s.setSizeUnit(QgsUnitTypes.RenderMapUnits)
-            except Exception as e:
+            except Exception:
                 s.setSizeUnit(QgsUnitTypes.RenderMapUnits)
             return s
         cats = [
@@ -161,7 +161,8 @@ class ReserveHook(QObject):
             for fid in changedAttrsMap.keys():
                 f = next(rez.getFeatures(f'id={int(fid)}'), None)
                 if f:
-                    kid = f.attribute(idx_kid); kfid = f.attribute(idx_fid)
+                    kid = f.attribute(idx_kid)
+                    kfid = f.attribute(idx_fid)
                     if kid is not None and kfid is not None:
                         touched.add((kid, int(kfid)))
             for kid, fid in touched:
@@ -181,7 +182,8 @@ class ReserveHook(QObject):
             for fid in geomMap.keys():
                 f = next(rez.getFeatures(f'id={int(fid)}'), None)
                 if f:
-                    kid = f.attribute(idx_kid); kfid = f.attribute(idx_fid)
+                    kid = f.attribute(idx_kid)
+                    kfid = f.attribute(idx_fid)
                     if kid is not None and kfid is not None:
                         touched.add((kid, int(kfid)))
             for kid, fid in touched:
@@ -200,7 +202,8 @@ class ReserveHook(QObject):
             touched = set()
             for f in rez.getFeatures():
                 try:
-                    kid = f.attribute(idx_kid); kfid = f.attribute(idx_fid)
+                    kid = f.attribute(idx_kid)
+                    kfid = f.attribute(idx_fid)
                     if kid is not None and kfid is not None:
                         touched.add((kid, int(kfid)))
                 except Exception as e:
@@ -219,9 +222,10 @@ class ReserveHook(QObject):
 
         # Sum slack from all reserves for this cable
         rez = None
-        for l in proj.mapLayers().values():
+        for l in proj.mapLayers().values():  # noqa: E741
             if isinstance(l, QgsVectorLayer) and l.name().lower().startswith('opticke_rezerve'):
-                rez = l; break
+                rez = l
+                break
         if rez is None:
             return
 
@@ -254,7 +258,10 @@ class ReserveHook(QObject):
         if tot_idx == -1:
             attrs_to_add.append(QgsField('total_len_m', QVariant.Double))
         if attrs_to_add:
-            lyr.startEditing(); lyr.dataProvider().addAttributes(attrs_to_add); lyr.updateFields(); lyr.commitChanges()
+            lyr.startEditing()
+            lyr.dataProvider().addAttributes(attrs_to_add)
+            lyr.updateFields()
+            lyr.commitChanges()
             slack_idx = lyr.fields().indexFromName('slack_m')
             tot_idx = lyr.fields().indexFromName('total_len_m')
 
@@ -264,7 +271,8 @@ class ReserveHook(QObject):
             lyr.changeAttributeValue(int(cable_fid), slack_idx, round(total_slack, 2))
             lyr.changeAttributeValue(int(cable_fid), tot_idx, round((g_m or 0) + total_slack, 2))
         finally:
-            lyr.commitChanges(); lyr.triggerRepaint()
+            lyr.commitChanges()
+            lyr.triggerRepaint()
 
         # Ensure labeling on total_len_m so the user sees the update
         try:

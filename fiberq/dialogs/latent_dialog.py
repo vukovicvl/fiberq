@@ -66,7 +66,7 @@ class LatentElementsDialog(QDialog):
                         return
                     if checked:
                         # deselect others
-                        for l in QgsProject.instance().mapLayers().values():
+                        for l in QgsProject.instance().mapLayers().values():  # noqa: E741
                             if isinstance(l, QgsVectorLayer):
                                 l.removeSelection()
                         lyr.selectByIds([fid])
@@ -173,9 +173,9 @@ class CablePitstopsDialog(QDialog):
         for i, it in enumerate(cands, start=1):
             latent = saved.get((it["layer_id"], it["fid"]), False)
             self.elements.append({**it, "latent": latent})
-            self.tbl.setItem(i-1, 0, QTableWidgetItem(str(i)))
-            self.tbl.setItem(i-1, 1, QTableWidgetItem(it.get("naziv", f"{it['layer_name']}:{it['fid']}")))
-            self.tbl.setItem(i-1, 2, QTableWidgetItem("YES" if latent else "NO"))
+            self.tbl.setItem(i - 1, 0, QTableWidgetItem(str(i)))
+            self.tbl.setItem(i - 1, 1, QTableWidgetItem(it.get("naziv", f"{it['layer_name']}:{it['fid']}")))
+            self.tbl.setItem(i - 1, 2, QTableWidgetItem("YES" if latent else "NO"))
 
     def _toggle_row(self, item):
         row = item.row()

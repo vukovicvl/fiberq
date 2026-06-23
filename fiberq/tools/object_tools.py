@@ -109,7 +109,7 @@ class _BaseObjMapTool(QgsMapTool):
         self.points = []
         try:
             self._update_rb([])
-        except Exception as e:
+        except Exception:
             try:
                 self.rb.reset(QgsWkbTypes.PolygonGeometry)
             except Exception as e:
@@ -129,7 +129,7 @@ class _BaseObjMapTool(QgsMapTool):
 
         try:
             was_editing = obj_layer.isEditable()
-        except Exception as e:
+        except Exception:
             was_editing = False
 
         try:
@@ -195,7 +195,7 @@ class _BaseObjMapTool(QgsMapTool):
             # Auto-exit tool after successful add
             try:
                 self.core.iface.actionPan().trigger()  # return to Pan (easiest)
-            except Exception as e:
+            except Exception:
                 try:
                     self.core.iface.mapCanvas().unsetMapTool(self)
                 except Exception as e:

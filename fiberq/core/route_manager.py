@@ -128,8 +128,8 @@ class RouteManager:
         return get_first_last_points(geom)
 
     def build_path_across_network(self, route_layer: QgsVectorLayer,
-                                   start_pt: QgsPointXY, end_pt: QgsPointXY,
-                                   tol_units: float) -> Optional[List[QgsPointXY]]:
+                                  start_pt: QgsPointXY, end_pt: QgsPointXY,
+                                  tol_units: float) -> Optional[List[QgsPointXY]]:
         """Route through ALL vertices (including breakpoints) without physically merging features.
 
         Returns list of QgsPointXY or None if no path exists in the network.
@@ -215,8 +215,8 @@ class RouteManager:
         selected_features = []
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if (lyr.geometryType() == QgsWkbTypes.PointGeometry and
-                    lyr.name() in ('Poles', 'Stubovi', 'OKNA', 'Manholes')):
+                if (lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
+                        lyr.name() in ('Poles', 'Stubovi', 'OKNA', 'Manholes')):
                     if lyr.selectedFeatureCount() > 0:
                         selected_features.extend(lyr.selectedFeatures())
             except Exception as e:

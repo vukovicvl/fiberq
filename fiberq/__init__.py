@@ -6,7 +6,7 @@ including route planning, cable laying, element placement, and documentation.
 
 Supported QGIS Versions: 3.22 LTR - 4.x (Qt5 and Qt6)
 
-Version: 1.2.2 (QGIS Repo)
+Version: 1.2.3 (QGIS Repo)
 """
 
 # Minimum supported QGIS version
@@ -123,7 +123,7 @@ class _FiberQStub:
 # PACKAGE INFO
 # =============================================================================
 
-__version__ = "1.2.2"
+__version__ = "1.2.3"
 __author__ = "Vladimir Vukovic"
 __email__ = "vukovicvl@fiberq.net"
 __license__ = "GPL-3.0-or-later"

@@ -100,7 +100,7 @@ class _BOMDialog(QDialog):
                 logger.debug(f"Error in _BOMDialog.apply_language: {e}")
             # Export button (last widget in root layout)
             try:
-                for i in range(self.layout().count()-1, -1, -1):
+                for i in range(self.layout().count() - 1, -1, -1):
                     w = self.layout().itemAt(i).widget()
                     if isinstance(w, QPushButton):
                         w.setText(_fiberq_translate("Export (.xlsx / .csv)", lang))
@@ -116,7 +116,7 @@ class _BOMDialog(QDialog):
         try:
             d.setSourceCrs(self.iface.mapCanvas().mapSettings().destinationCrs(),
                            QgsProject.instance().transformContext())
-        except Exception as e:
+        except Exception:
             try:
                 d.setSourceCrs(QgsProject.instance().crs(),
                                QgsProject.instance().transformContext())
@@ -128,7 +128,7 @@ class _BOMDialog(QDialog):
     def _build(self):
         """Build the BOM data from project layers."""
         project = QgsProject.instance()
-        layers = [l for l in project.mapLayers().values() if isinstance(l, QgsVectorLayer)]
+        layers = [l for l in project.mapLayers().values() if isinstance(l, QgsVectorLayer)]  # noqa: E741
         d = self._distance_area()
 
         rows = []
@@ -142,7 +142,7 @@ class _BOMDialog(QDialog):
         for lyr in layers:
             try:
                 gtype = lyr.geometryType()
-            except Exception as e:
+            except Exception:
                 continue
 
             # Gather stats
@@ -168,14 +168,14 @@ class _BOMDialog(QDialog):
                     if attr_duz is not None:
                         try:
                             val_len = float(f[attr_duz]) if f[attr_duz] is not None else None
-                        except Exception as e:
+                        except Exception:
                             val_len = None
                     if val_len is None or not (val_len >= 0):
                         try:
                             geom = f.geometry()
                             if geom is not None:
                                 val_len = d.measureLength(geom)
-                        except Exception as e:
+                        except Exception:
                             val_len = 0.0
                     length_m += (val_len or 0.0)
 
@@ -229,7 +229,7 @@ class _BOMDialog(QDialog):
         try:
             import xlsxwriter  # noqa: F401
             has_xlsx = True
-        except Exception as e:
+        except Exception:
             has_xlsx = False
 
         if has_xlsx:
@@ -276,10 +276,14 @@ class _BOMDialog(QDialog):
         # totals sheet
         ws2 = wb.add_worksheet("Total")
         t = self._totals
-        ws2.write(0, 0, "Total length of lines [m]"); ws2.write(0, 1, t["line_len"])
-        ws2.write(1, 0, "Total slack [m]"); ws2.write(1, 1, t["line_slack"])
-        ws2.write(2, 0, "Line + slack [m]"); ws2.write(2, 1, t["line_total"])
-        ws2.write(3, 0, "Total number of point elements"); ws2.write(3, 1, t["points"])
+        ws2.write(0, 0, "Total length of lines [m]")
+        ws2.write(0, 1, t["line_len"])
+        ws2.write(1, 0, "Total slack [m]")
+        ws2.write(1, 1, t["line_slack"])
+        ws2.write(2, 0, "Line + slack [m]")
+        ws2.write(2, 1, t["line_total"])
+        ws2.write(3, 0, "Total number of point elements")
+        ws2.write(3, 1, t["points"])
         wb.close()
         QMessageBox.information(self, "Export", f"XLSX exported:\n{path}")
 

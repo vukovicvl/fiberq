@@ -33,7 +33,7 @@ from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
 # Phase 0.1: UUID support for FiberQ Designer
-from ..utils.uuid_utils import FIBERQ_UUID_FIELD, ensure_uuid_field
+from ..utils.uuid_utils import FIBERQ_UUID_FIELD, ensure_uuid_field  # noqa: E402
 
 
 # =============================================================================
@@ -45,7 +45,7 @@ def _get_map_icon_path(filename: str) -> str:
     try:
         base = os.path.dirname(os.path.dirname(__file__))
         return os.path.join(base, 'resources', 'map_icons', filename)
-    except Exception as e:
+    except Exception:
         return filename
 
 
@@ -80,7 +80,7 @@ def _normalize_name(s: str) -> str:
         s = s.lower()
         s = re.sub(r"[^a-z0-9_]+", "_", s)
         return s.strip("_")
-    except Exception as e:
+    except Exception:
         return s
 
 
@@ -204,7 +204,7 @@ def _ensure_element_layer_with_style(plugin, layer_name: str):
         # Add default attrs for that element
         try:
             specs = _default_fields_for(layer_name)
-        except Exception as e:
+        except Exception:
             specs = [("naziv", "Naziv", "text", "", None)]
 
         fields = []
@@ -241,7 +241,7 @@ def _ensure_element_layer_with_style(plugin, layer_name: str):
                     logger.debug(f"Error in element layer creation: {e}")
                 try:
                     svg_layer.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
-                except Exception as e:
+                except Exception:
                     svg_layer.setSizeUnit(QgsUnitTypes.RenderMapUnits)
                 symbol.changeSymbolLayer(0, svg_layer)
             except Exception as e:
@@ -259,7 +259,7 @@ def _ensure_element_layer_with_style(plugin, layer_name: str):
         # Apply labels
         try:
             _apply_fixed_text_label(elem_layer, 'naziv', 8.0, 5.0)
-        except Exception as e:
+        except Exception:
             try:
                 s = QgsPalLayerSettings()
                 s.fieldName = "naziv"
@@ -326,7 +326,7 @@ def _copy_attributes_between_layers(src_feat, dst_layer):
         if key not in dst_map:
             try:
                 to_add.append(QgsField(f.name(), f.type() if hasattr(f, "type") else QVariant.String))
-            except Exception as e:
+            except Exception:
                 to_add.append(QgsField(f.name(), QVariant.String))
 
     if to_add and allow_schema_change:
@@ -371,8 +371,8 @@ def _ensure_region_layer(core):
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.PolygonGeometry
-                    and lyr.name() in ('Rejon', 'Service Area')
+                    and lyr.geometryType() == QgsWkbTypes.PolygonGeometry  # noqa: W503
+                    and lyr.name() in ('Rejon', 'Service Area')  # noqa: W503
                 ):
                     # Rename old 'Rejon' to 'Service Area'
                     if lyr.name() == 'Rejon':
@@ -382,7 +382,7 @@ def _ensure_region_layer(core):
                             logger.debug(f"Error in _ensure_region_layer: {e}")
                     ensure_uuid_field(lyr)
                     return lyr
-            except Exception as e:
+            except Exception:
                 continue
 
         # Create new layer
@@ -440,7 +440,7 @@ def _collect_selected_geometries(core):
                     if not g or g.isEmpty():
                         continue
                     geoms.append((lyr, f, g))
-            except Exception as e:
+            except Exception:
                 continue
     except Exception as e:
         logger.debug(f"Error in _collect_selected_geometries: {e}")
@@ -463,7 +463,7 @@ def _create_region_from_selection(core, name: str, buf_m: float):
     if not geoms:
         try:
             QMessageBox.information(core.iface.mainWindow(), 'Create Service Area',
-                                   'No selected objects. Select cables/elements and try again.')
+                                    'No selected objects. Select cables/elements and try again.')
         except Exception as e:
             logger.debug(f"Error in _create_region_from_selection: {e}")
         return False
@@ -484,7 +484,7 @@ def _create_region_from_selection(core, name: str, buf_m: float):
                     polys.append(g.buffer(buf_m, 8))
                 else:
                     polys.append(g)
-        except Exception as e:
+        except Exception:
             continue
 
     if not polys:
@@ -497,7 +497,7 @@ def _create_region_from_selection(core, name: str, buf_m: float):
     # Union/Dissolve all
     try:
         u = QgsGeometry.unaryUnion(polys)
-    except Exception as e:
+    except Exception:
         u = None
         for p in polys:
             if u is None:
@@ -533,7 +533,7 @@ def _create_region_from_selection(core, name: str, buf_m: float):
                     logger.debug(f"Error in _create_region_from_selection: {e}")
         else:
             parts.append(u)
-    except Exception as e:
+    except Exception:
         parts = [u]
 
     region = _ensure_region_layer(core)
@@ -587,7 +587,7 @@ def _create_region_from_selection(core, name: str, buf_m: float):
 
     try:
         QMessageBox.information(core.iface.mainWindow(), 'Create Service Area',
-                               f'Created: {added} polygon(s) in "Service Area" layer.')
+                                f'Created: {added} polygon(s) in "Service Area" layer.')
     except Exception as e:
         logger.debug(f"Error in _create_region_from_selection: {e}")
     return True
@@ -633,13 +633,13 @@ def _ensure_objects_layer(core):
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.wkbType() in (
+                    and lyr.wkbType() in (  # noqa: W503
                         QgsWkbTypes.Polygon,
                         QgsWkbTypes.MultiPolygon,
                         QgsWkbTypes.PolygonZM,
                         QgsWkbTypes.MultiPolygonZM,
                     )
-                    and lyr.name() in ("Objekti", "Objects")
+                    and lyr.name() in ("Objekti", "Objects")  # noqa: W503
                 ):
                     _apply_objects_field_aliases(lyr)
                     _set_objects_layer_alias(lyr)
@@ -671,7 +671,7 @@ def _ensure_objects_layer(core):
         _set_objects_layer_alias(layer)
 
         return layer
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -697,7 +697,7 @@ def _stylize_objects_layer(layer):
         try:
             try:
                 hatch.setLineAngle(60.0)
-            except Exception as e:
+            except Exception:
                 try:
                     hatch.setAngle(60.0)
                 except Exception as e:
@@ -777,7 +777,7 @@ def _telecom_save_all_layers_to_gpkg(iface):
         except Exception as e:
             logger.debug(f"Error in _telecom_save_all_layers_to_gpkg: {e}")
 
-        layers = [l for l in prj.mapLayers().values() if isinstance(l, QgsVectorLayer)]
+        layers = [l for l in prj.mapLayers().values() if isinstance(l, QgsVectorLayer)]  # noqa: E741
         if not layers:
             iface.messageBar().pushWarning("GPKG export", "No vector layers to save.")
             return
@@ -794,7 +794,7 @@ def _telecom_save_all_layers_to_gpkg(iface):
         errors = []
 
         for idx, lyr in enumerate(layers):
-            base = re.sub(r"[^A-Za-z0-9_]+", "_", lyr.name()).strip("_") or f"layer_{idx+1}"
+            base = re.sub(r"[^A-Za-z0-9_]+", "_", lyr.name()).strip("_") or f"layer_{idx + 1}"
             name = base
             c = 1
             while name in used:
@@ -832,7 +832,7 @@ def _telecom_save_all_layers_to_gpkg(iface):
                     lyr.saveStyleToDatabase("default", "auto-saved by Telecom plugin", True, "")
                 except Exception as e:
                     logger.debug(f"Error in _telecom_save_all_layers_to_gpkg: {e}")
-            except Exception as e:
+            except Exception:
                 new_lyr = QgsVectorLayer(uri, lyr.name(), "ogr")
                 if new_lyr and new_lyr.isValid():
                     parent = prj.layerTreeRoot().findLayer(lyr.id()).parent()
@@ -921,7 +921,7 @@ def _telecom_export_one_layer_to_gpkg(lyr, gpkg_path, iface):
         except Exception as e:
             logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")
         return True
-    except Exception as e:
+    except Exception:
         new_lyr = QgsVectorLayer(uri, lyr.name(), "ogr")
         if new_lyr and new_lyr.isValid():
             prj = QgsProject.instance()
@@ -968,7 +968,7 @@ class LayerManager:
         """Get the current map CRS authority ID."""
         try:
             return self.iface.mapCanvas().mapSettings().destinationCrs().authid()
-        except Exception as e:
+        except Exception:
             return 'EPSG:3857'
 
     # =========================================================================
@@ -987,8 +987,8 @@ class LayerManager:
         # Check if layer exists
         for lyr in project.mapLayers().values():
             if (
-                isinstance(lyr, QgsVectorLayer) and
-                lyr.geometryType() == QgsWkbTypes.PointGeometry and
+                isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
                 lyr.name() in ("Poles", "Stubovi")
             ):
                 self._apply_poles_aliases(lyr)
@@ -1051,8 +1051,8 @@ class LayerManager:
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.PointGeometry
-                    and lyr.name() in ("Opticke_rezerve", "Optical slacks", "Optical slack")
+                    and lyr.geometryType() == QgsWkbTypes.PointGeometry  # noqa: W503
+                    and lyr.name() in ("Opticke_rezerve", "Optical slacks", "Optical slack")  # noqa: W503
                 ):
                     self._apply_slack_aliases(lyr)
                     ensure_uuid_field(lyr)
@@ -1134,7 +1134,7 @@ class LayerManager:
                     ensure_uuid_field(lyr)
                     self.move_layer_to_top(lyr)
                     return lyr
-            except Exception as e:
+            except Exception:
                 continue
 
         # Create new layer
@@ -1205,7 +1205,7 @@ class LayerManager:
         if group is None:
             try:
                 group = root.insertGroup(0, "Pipes")
-            except Exception as e:
+            except Exception:
                 group = root.addGroup("Pipes")
         else:
             # Rename old group if needed
@@ -1243,8 +1243,8 @@ class LayerManager:
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.LineGeometry
-                    and lyr.name() in target_names
+                    and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
+                    and lyr.name() in target_names  # noqa: W503
                 ):
                     self._apply_pipe_aliases(lyr)
                     ensure_uuid_field(lyr)
@@ -1280,7 +1280,7 @@ class LayerManager:
         try:
             group = self.ensure_pipes_group()
             group.addLayer(layer)
-        except Exception as e:
+        except Exception:
             prj.addMapLayer(layer, True)
 
         self.move_group_to_top("Pipes")
@@ -1362,8 +1362,8 @@ class LayerManager:
                 try:
                     if (
                         isinstance(lyr, QgsVectorLayer)
-                        and lyr.geometryType() == QgsWkbTypes.PolygonGeometry
-                        and lyr.name() in ('Rejon', 'Service Area')
+                        and lyr.geometryType() == QgsWkbTypes.PolygonGeometry  # noqa: W503
+                        and lyr.name() in ('Rejon', 'Service Area')  # noqa: W503
                     ):
                         if lyr.name() == 'Rejon':
                             try:
@@ -1372,7 +1372,7 @@ class LayerManager:
                                 logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")
                         ensure_uuid_field(lyr)
                         return lyr
-                except Exception as e:
+                except Exception:
                     continue
 
             # Create new layer
@@ -1399,7 +1399,7 @@ class LayerManager:
             proj.addMapLayer(region)
             return region
 
-        except Exception as e:
+        except Exception:
             return None
 
     # =========================================================================
@@ -1421,13 +1421,13 @@ class LayerManager:
                 try:
                     if (
                         isinstance(lyr, QgsVectorLayer)
-                        and lyr.wkbType() in (
+                        and lyr.wkbType() in (  # noqa: W503
                             QgsWkbTypes.Polygon,
                             QgsWkbTypes.MultiPolygon,
                             QgsWkbTypes.PolygonZM,
                             QgsWkbTypes.MultiPolygonZM,
                         )
-                        and lyr.name() in ("Objekti", "Objects")
+                        and lyr.name() in ("Objekti", "Objects")  # noqa: W503
                     ):
                         self._apply_objects_aliases(lyr)
                         ensure_uuid_field(lyr)
@@ -1455,7 +1455,7 @@ class LayerManager:
             self._apply_objects_aliases(layer)
 
             return layer
-        except Exception as e:
+        except Exception:
             return None
 
     def _apply_objects_aliases(self, layer):
@@ -1488,8 +1488,8 @@ class LayerManager:
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.PointGeometry
-                    and lyr.name() == layer_name
+                    and lyr.geometryType() == QgsWkbTypes.PointGeometry  # noqa: W503
+                    and lyr.name() == layer_name  # noqa: W503
                 ):
                     self._apply_element_aliases(lyr)
                     ensure_uuid_field(lyr)
@@ -1530,7 +1530,7 @@ class LayerManager:
         try:
             from ..dialogs.base import default_fields_for
             specs = default_fields_for(layer_name)
-        except Exception as e:
+        except Exception:
             specs = [("naziv", "Naziv", "text", "", None)]
 
         fields = []
@@ -1572,7 +1572,7 @@ class LayerManager:
                         logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")
                     try:
                         svg_layer.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
-                    except Exception as e:
+                    except Exception:
                         svg_layer.setSizeUnit(QgsUnitTypes.RenderMapUnits)
                     symbol.changeSymbolLayer(0, svg_layer)
                 except Exception as e:
@@ -1614,8 +1614,8 @@ class LayerManager:
         for lyr in prj.mapLayers().values():
             if (
                 isinstance(lyr, QgsVectorLayer)
-                and lyr.name() in ('Route', 'Trasa')
-                and lyr.geometryType() == QgsWkbTypes.LineGeometry
+                and lyr.name() in ('Route', 'Trasa')  # noqa: W503
+                and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
             ):
                 ensure_uuid_field(lyr)
                 return lyr
@@ -1676,12 +1676,12 @@ class LayerManager:
             try:
                 if root.hasCustomLayerOrder():
                     order = list(root.customLayerOrder())
-                    order = [l for l in order if l and l.id() != layer.id()]
+                    order = [l for l in order if l and l.id() != layer.id()]  # noqa: E741
                     order.insert(0, layer)
                     root.setCustomLayerOrder(order)
             except Exception as e:
                 logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")
-        except Exception as e:
+        except Exception:
             try:
                 QgsProject.instance().addMapLayer(layer, True)
             except Exception as e:
@@ -1715,7 +1715,7 @@ class LayerManager:
             idx = None
             try:
                 gname = group.name()
-            except Exception as e:
+            except Exception:
                 gname = group_name
 
             for i, ch in enumerate(children):
@@ -1748,7 +1748,7 @@ class LayerManager:
                         return out
 
                     group_layers = _collect_layers(group)
-                    keep = [l for l in order if l not in group_layers]
+                    keep = [l for l in order if l not in group_layers]  # noqa: E741
                     root.setCustomLayerOrder(list(group_layers) + keep)
             except Exception as e:
                 logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")

@@ -115,7 +115,7 @@ class RoutingUI:
         try:
             val = QgsProject.instance().readEntry("TelecomPlugin", "gpkg_path", "")[0]
             return val or ""
-        except Exception as e:
+        except Exception:
             return ""
 
     def _set_project_gpkg_path(self, path):
@@ -141,7 +141,7 @@ class RoutingUI:
             except Exception as e:
                 logger.debug(f"Error in RoutingUI._is_memory_vector: {e}")
             return ('memory' in prov) or st.startswith('memory')
-        except Exception as e:
+        except Exception:
             return False
 
     def _toggle_auto_gpkg(self, enabled):
@@ -172,7 +172,7 @@ class RoutingUI:
                 self._set_project_gpkg_path(gpkg)
 
             # Convert existing memory layers
-            layers = [l for l in prj.mapLayers().values() if isinstance(l, QgsVectorLayer)]
+            layers = [l for l in prj.mapLayers().values() if isinstance(l, QgsVectorLayer)]  # noqa: E741
             for lyr in layers:
                 if self._is_memory_vector(lyr):
                     _telecom_export_one_layer_to_gpkg(lyr, self._project_gpkg_path(), self.core.iface)

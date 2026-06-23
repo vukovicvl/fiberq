@@ -42,7 +42,7 @@ def load_icon(filename: str) -> QIcon:
         if os.path.exists(icon_path):
             return QIcon(icon_path)
         return QIcon()
-    except Exception as e:
+    except Exception:
         return QIcon()
 
 

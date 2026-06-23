@@ -9,7 +9,7 @@ from qgis.core import (
     QgsProject, QgsField, QgsFeature,
     QgsGeometry, QgsPointXY, QgsWkbTypes,
     QgsSymbol, QgsUnitTypes, QgsCoordinateTransform
-    )
+)
 from qgis.PyQt.QtGui import QIcon, QColor
 
 # =============================================================================
@@ -36,20 +36,20 @@ logger = get_logger(__name__)
 # For backward compatibility with QSettings import
 try:
     from qgis.PyQt.QtCore import QSettings
-except Exception as e:
+except Exception:
     QSettings = None
 
 # =============================================================================
 # Phase 1.2: Pro License functions moved to core/license_manager.py
 # =============================================================================
-from .core.license_manager import (
+from .core.license_manager import (  # noqa: E402
     _fiberq_check_pro,
 )
 
 # =============================================================================
 # Phase 1.3: Layer utility functions moved to core/layer_manager.py
 # =============================================================================
-from .core.layer_manager import (
+from .core.layer_manager import (  # noqa: E402
     # Element definitions
     ELEMENT_DEFS,
     NASTAVAK_DEF,
@@ -63,7 +63,7 @@ from .core.layer_manager import (
 )
 
 # Re-exported for ui/ (objects_ui, routing_ui); pending WP2 extraction
-from .core.layer_manager import (  # noqa: F401
+from .core.layer_manager import (  # noqa: E402, F401
     _ensure_objects_layer,
     _stylize_objects_layer,
     _telecom_export_one_layer_to_gpkg,
@@ -74,10 +74,10 @@ from .core.layer_manager import (  # noqa: F401
 # - _fiberq_translate, _apply_text_and_tooltip, _apply_menu_language, _element_icon_for
 # =============================================================================
 
-from qgis.gui import QgsVertexMarker
-from qgis.PyQt.QtCore import QVariant
-from qgis.PyQt import sip
-import os
+from qgis.gui import QgsVertexMarker  # noqa: E402
+from qgis.PyQt.QtCore import QVariant  # noqa: E402
+from qgis.PyQt import sip  # noqa: E402
+import os  # noqa: E402
 
 # === FIXED LABEL UTILITY (screen-fixed text in mm) ===
 # =============================================================================
@@ -112,23 +112,23 @@ def _apply_element_aliases(layer):
 pass
 # === UI GROUPS (modular menus/buttons) ===
 # RoutingUI moved to ui/routing_ui.py (Phase 5)
-from .ui.routing_ui import RoutingUI
+from .ui.routing_ui import RoutingUI  # noqa: E402
 
 
 # DrawingsUI moved to ui/drawings_ui.py (Phase 5)
-from .ui.drawings_ui import DrawingsUI
+from .ui.drawings_ui import DrawingsUI  # noqa: E402
 
 # CableLayingUI moved to ui/cable_ui.py (Phase 5)
-from .ui.cable_ui import CableLayingUI
+from .ui.cable_ui import CableLayingUI  # noqa: E402
 
 # ElementPlacementUI moved to ui/elements_ui.py (Phase 5)
-from .ui.elements_ui import ElementPlacementUI
+from .ui.elements_ui import ElementPlacementUI  # noqa: E402
 
 # DuctingUI moved to ui/ducting_ui.py (Phase 5)
-from .ui.ducting_ui import DuctingUI
+from .ui.ducting_ui import DuctingUI  # noqa: E402
 
 # SelectionUI moved to ui/selection_ui.py (Phase 5)
-from .ui.selection_ui import SelectionUI
+from .ui.selection_ui import SelectionUI  # noqa: E402
 
 # Internal values written to field "tip_trase"
 TRASA_TYPE_OPTIONS = ["vazdusna", "podzemna", "kroz objekat"]
@@ -183,7 +183,8 @@ class FiberQPlugin:
         ]:
             try:
                 a = getattr(self, name, None)
-                if a: _apply_text_and_tooltip(a, lang)
+                if a:
+                    _apply_text_and_tooltip(a, lang)
             except Exception as e:
                 logger.debug(f"Could not translate action '{name}': {e}")
 
@@ -532,67 +533,67 @@ class FiberQPlugin:
 
     # --- Change element type ---
     def _change_element_type(self, src_layer, src_fid, new_name: str):
-            """Move feature from src_layer to target layer `new_name`.
-            Safe against PK/UNIQUE constraints (won't copy fid; won't delete source if insert fails).
-            """
-            from qgis.core import QgsFeature, QgsGeometry
+        """Move feature from src_layer to target layer `new_name`.
+        Safe against PK/UNIQUE constraints (won't copy fid; won't delete source if insert fails).
+        """
+        from qgis.core import QgsFeature, QgsGeometry
 
-            # get source feature
-            f = None
-            for feat in src_layer.getFeatures():
-                if int(feat.id()) == int(src_fid):
-                    f = feat
-                    break
-            if f is None:
-                raise RuntimeError("Selected element was not found.")
+        # get source feature
+        f = None
+        for feat in src_layer.getFeatures():
+            if int(feat.id()) == int(src_fid):
+                f = feat
+                break
+        if f is None:
+            raise RuntimeError("Selected element was not found.")
 
-            # ensure target layer
-            dst_layer = _ensure_element_layer_with_style(self, new_name)
+        # ensure target layer
+        dst_layer = _ensure_element_layer_with_style(self, new_name)
 
-            # copy attributes (without PK fields)
-            vals = _copy_attributes_between_layers(f, dst_layer)
+        # copy attributes (without PK fields)
+        vals = _copy_attributes_between_layers(f, dst_layer)
 
-            # create new feature
-            new_f = QgsFeature(dst_layer.fields())
+        # create new feature
+        new_f = QgsFeature(dst_layer.fields())
+        try:
+            new_f.setGeometry(QgsGeometry(f.geometry()))
+        except Exception as e:
+            logger.debug(f"Could not create geometry copy, using original: {e}")
+            new_f.setGeometry(f.geometry())
+
+        for k, v in vals.items():
             try:
-                new_f.setGeometry(QgsGeometry(f.geometry()))
-            except Exception as e:
-                logger.debug(f"Could not create geometry copy, using original: {e}")
-                new_f.setGeometry(f.geometry())
-
-            for k, v in vals.items():
-                try:
-                    new_f.setAttribute(k, v)
-                except Exception as e:
-                    logger.debug(f"Error in FiberQPlugin._change_element_type: {e}")
-
-            # INSERT into destination (check success!)
-            dst_layer.startEditing()
-            ok = dst_layer.addFeature(new_f)
-            if not ok:
-                try:
-                    dst_layer.rollBack()
-                except Exception as e:
-                    logger.debug(f"Error in FiberQPlugin._change_element_type: {e}")
-                raise RuntimeError("Failed to insert into target layer (constraint/PK conflict).")
-
-            if not dst_layer.commitChanges():
-                try:
-                    dst_layer.rollBack()
-                except Exception as e:
-                    logger.debug(f"Error in FiberQPlugin._change_element_type: {e}")
-                raise RuntimeError("Failed to commit changes to target layer.")
-
-            dst_layer.triggerRepaint()
-
-            # delete old only after successful insert
-            try:
-                src_layer.startEditing()
-                src_layer.deleteFeature(int(src_fid))
-                src_layer.commitChanges()
-                src_layer.triggerRepaint()
+                new_f.setAttribute(k, v)
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin._change_element_type: {e}")
+
+        # INSERT into destination (check success!)
+        dst_layer.startEditing()
+        ok = dst_layer.addFeature(new_f)
+        if not ok:
+            try:
+                dst_layer.rollBack()
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin._change_element_type: {e}")
+            raise RuntimeError("Failed to insert into target layer (constraint/PK conflict).")
+
+        if not dst_layer.commitChanges():
+            try:
+                dst_layer.rollBack()
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin._change_element_type: {e}")
+            raise RuntimeError("Failed to commit changes to target layer.")
+
+        dst_layer.triggerRepaint()
+
+        # delete old only after successful insert
+        try:
+            src_layer.startEditing()
+            src_layer.deleteFeature(int(src_fid))
+            src_layer.commitChanges()
+            src_layer.triggerRepaint()
+        except Exception as e:
+            logger.debug(f"Error in FiberQPlugin._change_element_type: {e}")
 
     def activate_change_element_type_tool(self):
         try:
@@ -1163,7 +1164,7 @@ class FiberQPlugin:
         # Cut infrastructure (new tool)
         try:
             icon_sec = _load_icon('ic_infrastructure_cut.svg')
-        except Exception as e:
+        except Exception:
             try:
                 from qgis.PyQt.QtGui import QIcon as _QIconTmp
                 icon_sec = _QIconTmp()
@@ -1172,7 +1173,7 @@ class FiberQPlugin:
                 icon_sec = None
         try:
             self.action_infra_cut = QAction(icon_sec, "Cut infrastructure", self.iface.mainWindow())
-        except Exception as e:
+        except Exception:
             self.action_infra_cut = QAction("Cut infrastructure")
         try:
             self.action_infra_cut.setObjectName("action_infrastructure_cut")
@@ -1226,7 +1227,7 @@ class FiberQPlugin:
         # === Auto-added button: Save all layers to GeoPackage ===
         try:
             icon_save_gpkg = _load_icon('ic_save_gpkg.svg')
-        except Exception as e:
+        except Exception:
             from qgis.PyQt.QtGui import QIcon as _QIconTmp
             icon_save_gpkg = _QIconTmp()
         self.action_save_gpkg = QAction(icon_save_gpkg, "Save all layers to GeoPackage", self.iface.mainWindow())
@@ -1235,7 +1236,7 @@ class FiberQPlugin:
         # Add to toolbar and list for clean removal
         try:
             self.toolbar.addAction(self.action_save_gpkg)
-        except Exception as e:
+        except Exception:
             # Ako plugin nema svoju toolbar promenljivu
             self.iface.addToolBarIcon(self.action_save_gpkg)
         try:
@@ -1275,7 +1276,7 @@ class FiberQPlugin:
         self.action_open_fiberq_web.triggered.connect(self.open_fiberq_web)
         try:
             self.toolbar.addAction(self.action_open_fiberq_web)
-        except Exception as e:
+        except Exception:
             self.iface.addToolBarIcon(self.action_open_fiberq_web)
         try:
             self.actions.append(self.action_open_fiberq_web)
@@ -1290,7 +1291,7 @@ class FiberQPlugin:
             self.action_create_region.triggered.connect(self.run_create_service_area)
             try:
                 self.toolbar.addAction(self.action_create_region)
-            except Exception as e:
+            except Exception:
                 self.iface.addToolBarIcon(self.action_create_region)
             try:
                 self.actions.append(self.action_create_region)
@@ -1366,7 +1367,7 @@ class FiberQPlugin:
             logger.debug(f"Error in FiberQPlugin.initGui: {e}")
         try:
             self.toolbar.addAction(self.action_hotkeys)
-        except Exception as e:
+        except Exception:
             try:
                 self.iface.addToolBarIcon(self.action_hotkeys)
             except Exception as e:
@@ -1383,7 +1384,7 @@ class FiberQPlugin:
                 self.action_bom.setIcon(_load_icon('ic_bom.svg'))
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.initGui: {e}")
-        except Exception as e:
+        except Exception:
             # fallback if QAction construction with parent fails
             self.action_bom = QAction("BOM izveštaj (XLSX/CSV)")
 
@@ -1398,7 +1399,7 @@ class FiberQPlugin:
             logger.debug(f"Error in FiberQPlugin.initGui: {e}")
         try:
             self.toolbar.addAction(self.action_bom)
-        except Exception as e:
+        except Exception:
             self.iface.addToolBarIcon(self.action_bom)
         try:
             self.actions.append(self.action_bom)
@@ -1495,7 +1496,7 @@ class FiberQPlugin:
                 self.action_change_element_type.triggered.connect(self.activate_change_element_type_tool)
                 try:
                     self.toolbar.addAction(self.action_change_element_type)
-                except Exception as e:
+                except Exception:
                     try:
                         self.iface.addToolBarIcon(self.action_change_element_type)
                     except Exception as e:
@@ -1529,7 +1530,7 @@ class FiberQPlugin:
                 self.toolbar.addAction(self.action_move_elements)
                 self.toolbar.addAction(self.action_import_image)
                 self.toolbar.addAction(self.action_clear_image)
-            except Exception as e:
+            except Exception:
                 try:
                     self.iface.addToolBarIcon(self.action_move_elements)
                     self.iface.addToolBarIcon(self.action_import_image)
@@ -1664,7 +1665,7 @@ class FiberQPlugin:
             from .addons.fiber_break import FiberBreakTool
             self._fiber_break_tool = FiberBreakTool(self.iface)
             self.iface.mapCanvas().setMapTool(self._fiber_break_tool)
-        except Exception as e:
+        except Exception:
             try:
                 # fallback keeps previous behavior (compatibility)
                 symbol_spec = {
@@ -1723,7 +1724,7 @@ class FiberQPlugin:
                     except Exception as e:
                         logger.debug(f"Error in FiberQPlugin.activate_fiber_break_tool: {e}")
 
-        except Exception as e:
+        except Exception:
             # if something fails, do not crash tool - just skip style
             pass
 
@@ -2023,7 +2024,7 @@ class FiberQPlugin:
             node = root.findLayer(self.layer.id())
             if node:
                 node.setCustomLayerName("Poles")
-        except Exception as e:
+        except Exception:
             # If something fails (e.g. layerTreeRoot not ready), just skip
             pass
 
@@ -2151,8 +2152,8 @@ class FiberQPlugin:
             # - or if layer actually has only id,fid,naziv fields
             if gtype == QgsWkbTypes.PointGeometry and (
                 lname_l.startswith("joint closures")
-                or lname_l.startswith("nastav")
-                or fset.issubset({"id", "fid", "naziv"})
+                or lname_l.startswith("nastav")  # noqa: W503
+                or fset.issubset({"id", "fid", "naziv"})  # noqa: W503
             ):
                 alias_map = {
                     "id": "ID",
@@ -2171,8 +2172,8 @@ class FiberQPlugin:
             # 3.5) ROUTE (Line) – EN field aliases + EN layer name (posle export/import iz Preview Map)
             if gtype == QgsWkbTypes.LineGeometry and (
                 lname_l.startswith("route")
-                or lname_l.startswith("trasa")
-                or {"naziv", "duzina", "tip_trase"}.issubset(fset)
+                or lname_l.startswith("trasa")  # noqa: W503
+                or {"naziv", "duzina", "tip_trase"}.issubset(fset)  # noqa: W503
             ):
                 try:
                     self._apply_route_field_aliases(layer)   # EN user view (aliases + valuemap)
@@ -2185,8 +2186,8 @@ class FiberQPlugin:
             # 3.6) POLES (Point) – EN field aliases + EN layer name
             if gtype == QgsWkbTypes.PointGeometry and (
                 lname_l.startswith("poles")
-                or lname_l.startswith("stubov")
-                or {"tip", "podtip", "visina", "materijal"}.issubset(fset)
+                or lname_l.startswith("stubov")  # noqa: W503
+                or {"tip", "podtip", "visina", "materijal"}.issubset(fset)  # noqa: W503
             ):
                 try:
                     self._apply_poles_field_aliases(layer)   # EN user view
@@ -2199,8 +2200,8 @@ class FiberQPlugin:
             # 3.7) MANHOLES / OKNA (Point) – EN field aliases + EN layer name
             if gtype == QgsWkbTypes.PointGeometry and (
                 lname_l.startswith("manholes")
-                or lname_l.startswith("okna")
-                or {"broj_okna", "tip_okna"}.issubset(fset)
+                or lname_l.startswith("okna")  # noqa: W503
+                or {"broj_okna", "tip_okna"}.issubset(fset)  # noqa: W503
             ):
                 try:
                     self._apply_manhole_field_aliases(layer)    # EN user view
@@ -2213,14 +2214,14 @@ class FiberQPlugin:
             # 4) GENERIC “Placing elements” (ODF/TB/OTB/TO/Patch panel/Optical slacks…)
             if (
                 gtype in (QgsWkbTypes.PointGeometry, QgsWkbTypes.PolygonGeometry)
-                and (
+                and (  # noqa: W503
                     "proizvodjac" in fset
-                    or "kapacitet" in fset
-                    or "oznaka" in fset
-                    or "address_id" in fset
-                    or "naziv_objekta" in fset
-                    or "adresa_ulica" in fset
-                    or "stanje" in fset
+                    or "kapacitet" in fset  # noqa: W503
+                    or "oznaka" in fset  # noqa: W503
+                    or "address_id" in fset  # noqa: W503
+                    or "naziv_objekta" in fset  # noqa: W503
+                    or "adresa_ulica" in fset  # noqa: W503
+                    or "stanje" in fset  # noqa: W503
                 )
             ):
                 # SR->EN field aliases (user view)
@@ -2279,7 +2280,7 @@ class FiberQPlugin:
             # THIS IS A CHECK THAT USES capabilities()
             if isinstance(lyr, QgsVectorLayer) and (
                 lyr.isEditable()
-                or lyr.dataProvider().capabilities() & QgsVectorDataProvider.DeleteFeatures
+                or lyr.dataProvider().capabilities() & QgsVectorDataProvider.DeleteFeatures  # noqa: W503
             ):
                 selected_feats = list(lyr.selectedFeatures())
 
@@ -2474,7 +2475,7 @@ class FiberQPlugin:
                 nm = NASTAVAK_DEF.get("name", "Joint Closures")
                 if nm and nm not in node_layer_names:
                     node_layer_names.append(nm)
-            except Exception as e:
+            except Exception:
                 if 'Nastavci' not in node_layer_names:
                     node_layer_names.append('Nastavci')
             # all elements from Placing elements (ELEMENT_DEFS)
@@ -2488,8 +2489,8 @@ class FiberQPlugin:
         existing_layers = [
             lyr for lyr in QgsProject.instance().mapLayers().values()
             if isinstance(lyr, QgsVectorLayer)
-            and lyr.geometryType() == QgsWkbTypes.PointGeometry
-            and lyr.name() in node_layer_names
+            and lyr.geometryType() == QgsWkbTypes.PointGeometry  # noqa: W503
+            and lyr.name() in node_layer_names  # noqa: W503
         ]
         layer_names = [lyr.name() for lyr in existing_layers]
 
@@ -2510,7 +2511,6 @@ class FiberQPlugin:
             return
 
         # 1) If new layer option selected (Serbian or English)
-                # If new layer option selected (Serbian or English)
         if selected_layer_name in (NEW_LAYER_OPTION_EN, NEW_LAYER_OPTION_SR):
             new_layer_name, ok2 = QInputDialog.getText(
                 self.iface.mainWindow(),
@@ -2532,7 +2532,7 @@ class FiberQPlugin:
                     if layer is None:
                         QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Unable to create or find 'Poles' layer!")
                         return
-                except Exception as e:
+                except Exception:
                     QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Unable to create or find 'Poles' layer!")
                     return
 
@@ -2565,7 +2565,7 @@ class FiberQPlugin:
         else:
 
             # Find layer by name
-            layer = next((l for l in existing_layers if l.name() == selected_layer_name), None)
+            layer = next((l for l in existing_layers if l.name() == selected_layer_name), None)  # noqa: E741
             if layer is None:
                 QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Unable to find the target layer!")
                 return
@@ -2740,7 +2740,6 @@ class FiberQPlugin:
             return
 
         # Perform export using the best available API
-                # Perform export using the best available API
         try:
             result = None
 
@@ -2893,62 +2892,62 @@ class FiberQPlugin:
         # Automatska korekcija
 
     def fix_route_to_pole(self, route_feature, must_start=True):
-            poles_layer = next((lyr for lyr in QgsProject.instance().mapLayers().values()
-                                if lyr.geometryType() == QgsWkbTypes.PointGeometry
-                                and lyr.name() in ('Poles', 'Poles')), None)
+        poles_layer = next((lyr for lyr in QgsProject.instance().mapLayers().values()
+                            if lyr.geometryType() == QgsWkbTypes.PointGeometry
+                            and lyr.name() in ('Poles', 'Poles')), None)  # noqa: W503
 
-            if not poles_layer:
-                QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Layer 'Poles' not found!")
+        if not poles_layer:
+            QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Layer 'Poles' not found!")
+            return
+
+        geom = route_feature.geometry()
+        poly = geom.asPolyline()
+        if not poly:
+            return
+
+        # Find nearest pole for start/end
+        if must_start:
+            route_point = poly[0]
+            idx = 0
+        else:
+            route_point = poly[-1]
+            idx = -1
+
+        min_dist = None
+        nearest_stub = None
+        for pole_feat in poles_layer.getFeatures():
+            pole_pt = pole_feat.geometry().asPoint()
+            dist = QgsPointXY(pole_pt).distance(route_point)
+            if min_dist is None or dist < min_dist:
+                min_dist = dist
+                nearest_stub = pole_pt
+
+        # If pole found, move start/end of route to pole
+        if nearest_stub and min_dist > 1e-2:
+            poly[idx] = QgsPointXY(nearest_stub)
+            new_geom = QgsGeometry.fromPolylineXY(poly)
+
+            # Find 'Route' layer in project (QgsFeature doesn't have .layer())
+            route_layer = next(
+                (lyr for lyr in QgsProject.instance().mapLayers().values()
+                 if isinstance(lyr, QgsVectorLayer)
+                 and lyr.name() in ('Route', 'Route')  # noqa: W503
+                 and lyr.geometryType() == QgsWkbTypes.LineGeometry),  # noqa: W503
+                None
+            )
+            if not route_layer:
+                QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Route layer 'Route' not found!")
                 return
 
-            geom = route_feature.geometry()
-            poly = geom.asPolyline()
-            if not poly:
-                return
-
-            # Find nearest pole for start/end
-            if must_start:
-                route_point = poly[0]
-                idx = 0
-            else:
-                route_point = poly[-1]
-                idx = -1
-
-            min_dist = None
-            nearest_stub = None
-            for pole_feat in poles_layer.getFeatures():
-                pole_pt = pole_feat.geometry().asPoint()
-                dist = QgsPointXY(pole_pt).distance(route_point)
-                if min_dist is None or dist < min_dist:
-                    min_dist = dist
-                    nearest_stub = pole_pt
-
-            # If pole found, move start/end of route to pole
-            if nearest_stub and min_dist > 1e-2:
-                poly[idx] = QgsPointXY(nearest_stub)
-                new_geom = QgsGeometry.fromPolylineXY(poly)
-
-                # Find 'Route' layer in project (QgsFeature doesn't have .layer())
-                route_layer = next(
-                    (lyr for lyr in QgsProject.instance().mapLayers().values()
-                    if isinstance(lyr, QgsVectorLayer)
-                    and lyr.name() in ('Route', 'Route')
-                    and lyr.geometryType() == QgsWkbTypes.LineGeometry),
-                    None
-                )
-                if not route_layer:
-                    QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Route layer 'Route' not found!")
-                    return
-
-                route_layer.startEditing()
-                route_layer.changeGeometry(route_feature.id(), new_geom)
-                route_layer.commitChanges()
-                route_layer.triggerRepaint()
-                QMessageBox.information(
-                    self.iface.mainWindow(),
-                    "FiberQ",
-                    "Route has been automatically attached to a pole."
-                )
+            route_layer.startEditing()
+            route_layer.changeGeometry(route_feature.id(), new_geom)
+            route_layer.commitChanges()
+            route_layer.triggerRepaint()
+            QMessageBox.information(
+                self.iface.mainWindow(),
+                "FiberQ",
+                "Route has been automatically attached to a pole."
+            )
 
     # === DRAWINGS / ATTACHMENTS (DWG/DXF) ===
     def _drawing_key(self, layer, fid):
@@ -3158,10 +3157,10 @@ class FiberQPlugin:
                 )
                 # Record with auto-increment state for repeat (v1.2 Feature 3)
                 self._record_cmd('place_manhole',
-                    auto_increment=True,
-                    last_counter=self._manhole_place_tool._id_counter,
-                    id_prefix=self._manhole_place_tool._id_prefix,
-                    id_pad_width=self._manhole_place_tool._id_pad_width)
+                                 auto_increment=True,
+                                 last_counter=self._manhole_place_tool._id_counter,
+                                 id_prefix=self._manhole_place_tool._id_prefix,
+                                 id_pad_width=self._manhole_place_tool._id_pad_width)
             else:
                 self.iface.mapCanvas().setMapTool(self._manhole_place_tool)
                 self.iface.messageBar().pushInfo("Placing manhole", "Click on the map to place the manhole (ESC to exit).")
@@ -3302,7 +3301,7 @@ class FiberQPlugin:
 
 
 # ManholeTypeDialog and ManholeDetailsDialog moved to dialogs/manhole_dialog.py (Phase 4)
-from .dialogs.manhole_dialog import ManholeTypeDialog, ManholeDetailsDialog
+from .dialogs.manhole_dialog import ManholeTypeDialog, ManholeDetailsDialog  # noqa: E402
 
 
 # CablePickerDialog moved to dialogs/cable_dialog.py (Phase 4)
@@ -3311,7 +3310,7 @@ pass
 
 # === DODATO: BreakpointTool za split linije ===
 # BreakpointTool moved to tools/breakpoint_tool.py (Phase 3)
-from .tools.breakpoint_tool import BreakpointTool
+from .tools.breakpoint_tool import BreakpointTool  # noqa: E402
 
 
 # === NEW: SmartMultiSelectTool — multi-layer smart selection ===
@@ -3372,7 +3371,7 @@ def _open_fiberq_web(iface):
                 "FiberQ – pregledna mapa",
                 f"Greška pri otvaranju pregledne mape:\n{e}"
             )
-        except Exception as e:
+        except Exception:
             # if even QMessageBox fails, just ignore
             pass
 
@@ -3388,10 +3387,10 @@ def _open_fiberq_web(iface):
 
 
 # SlackUI moved to ui/slack_ui.py (Phase 5)
-from .ui.slack_ui import SlackUI
+from .ui.slack_ui import SlackUI  # noqa: E402
 
 # SlackDialog moved to dialogs/slack_dialog.py (Phase 4)
-from .dialogs.slack_dialog import SlackDialog
+from .dialogs.slack_dialog import SlackDialog  # noqa: E402
 
 
 # === Map alat za laying rezerve ===
@@ -3421,7 +3420,7 @@ from .dialogs.slack_dialog import SlackDialog
 # =============================================================================
 
 # ObjectsUI moved to ui/objects_ui.py (Phase 5)
-from .ui.objects_ui import ObjectsUI
+from .ui.objects_ui import ObjectsUI  # noqa: E402
 
 
 def _img_key(layer, fid):
@@ -3450,14 +3449,14 @@ def _img_set(layer, fid, path):
 # In v1.0.1 refactor, those classes live in fiberq/extracted_classes.py, while
 # main_plugin.py keeps FiberQPlugin + shared helpers.
 # Tools already modularized elsewhere
-from .tools.manhole_tool import ManholePlaceTool
-from .tools.route_tool import ManualRouteTool
+from .tools.manhole_tool import ManholePlaceTool  # noqa: E402
+from .tools.route_tool import ManualRouteTool  # noqa: E402
 pass
-from .tools.slack_tool import SlackPlaceTool
+from .tools.slack_tool import SlackPlaceTool  # noqa: E402
 
 # Remaining dialogs/tools extracted from the legacy monolith
 # Phase 4.2: Import from dedicated packages instead of extracted_classes
-from .tools import (
+from .tools import (  # noqa: E402
     OpenDrawingMapTool,
     PointTool,
     PlaceElementTool,
@@ -3470,7 +3469,7 @@ from .tools import (
     MoveFeatureTool,
 )
 
-from .dialogs import (
+from .dialogs import (  # noqa: E402
     _BOMDialog,
     CorrectionDialog,
     LocatorDialog,
@@ -3481,7 +3480,7 @@ from .dialogs import (
     FiberQSettingsDialog,
 )
 
-from .utils.image_watcher import CanvasImageClickWatcher
+from .utils.image_watcher import CanvasImageClickWatcher  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

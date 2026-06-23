@@ -88,7 +88,7 @@ class MoveFeatureTool(QgsMapTool):
             self.rb = QgsRubberBand(self.canvas, self.layer.geometryType())
             self.rb.setWidth(2)
             self.rb.setColor(QColor(59, 130, 246, 100))  # blue-ish, semi
-        except Exception as e:
+        except Exception:
             self.rb = None
 
         self.dragging = True
@@ -115,12 +115,12 @@ class MoveFeatureTool(QgsMapTool):
         geom = QgsGeometry(self.orig_geom)
         try:
             geom.translate(dx, dy)
-        except Exception as e:
+        except Exception:
             # Fallback manual translate
             try:
                 geom = QgsGeometry.fromWkt(self.orig_geom.asWkt())
                 geom.translate(dx, dy)
-            except Exception as e:
+            except Exception:
                 return
         if self.rb:
             try:

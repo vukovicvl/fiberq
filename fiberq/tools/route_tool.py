@@ -56,7 +56,7 @@ class ManualRouteTool(QgsMapTool):
             nm = jc_def.get('name', 'Joint Closures')
             if nm and nm not in names:
                 names.append(nm)
-        except Exception as e:
+        except Exception:
             if 'Nastavci' not in names:
                 names.append('Nastavci')
 
@@ -89,9 +89,9 @@ class ManualRouteTool(QgsMapTool):
         node_layers = []
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if (isinstance(lyr, QgsVectorLayer) and
-                    lyr.geometryType() == QgsWkbTypes.PointGeometry and
-                    lyr.name() in node_layer_names):
+                if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                    lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
+                        lyr.name() in node_layer_names):
                     node_layers.append(lyr)
             except Exception as e:
                 logger.debug(f"Error in ManualRouteTool._find_snap_point: {e}")
@@ -108,16 +108,16 @@ class ManualRouteTool(QgsMapTool):
                     if min_dist is None or d < min_dist:
                         min_dist = d
                         snap_point = QgsPointXY(pt)
-                except Exception as e:
+                except Exception:
                     continue
 
         # Snap to existing routes (vertices and segment midpoints)
         try:
             for lyr in QgsProject.instance().mapLayers().values():
                 try:
-                    if (isinstance(lyr, QgsVectorLayer) and
-                        lyr.geometryType() == QgsWkbTypes.LineGeometry and
-                        lyr.name() in ('Route', 'Trasa')):
+                    if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                        lyr.geometryType() == QgsWkbTypes.LineGeometry and  # noqa: W504
+                            lyr.name() in ('Route', 'Trasa')):
 
                         for feat in lyr.getFeatures():
                             geom = feat.geometry()
@@ -218,9 +218,9 @@ class ManualRouteTool(QgsMapTool):
         # Find or create Route layer
         route_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
-            if (isinstance(lyr, QgsVectorLayer) and
-                lyr.name() in ('Route', 'Trasa') and
-                lyr.geometryType() == QgsWkbTypes.LineGeometry):
+            if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                lyr.name() in ('Route', 'Trasa') and  # noqa: W504
+                    lyr.geometryType() == QgsWkbTypes.LineGeometry):
                 route_layer = lyr
                 break
 
@@ -254,7 +254,7 @@ class ManualRouteTool(QgsMapTool):
         # Get route type options
         try:
             TRASA_TYPE_OPTIONS, TRASA_TYPE_LABELS, TRASA_LABEL_TO_CODE = get_route_type_options()
-        except Exception as e:
+        except Exception:
             TRASA_TYPE_OPTIONS = ['vazdusna', 'podzemna', 'kroz objekat']
             TRASA_TYPE_LABELS = {'vazdusna': 'Aerial', 'podzemna': 'Underground', 'kroz objekat': 'Through the object'}
             TRASA_LABEL_TO_CODE = {'Aerial': 'vazdusna', 'Underground': 'podzemna', 'Through the object': 'kroz objekat'}
@@ -287,7 +287,7 @@ class ManualRouteTool(QgsMapTool):
         try:
             from ..utils.uuid_utils import set_feature_uuid
             set_feature_uuid(feat)
-        except Exception as e:
+        except Exception:
             pass
         route_layer.addFeature(feat)
         route_layer.commitChanges()

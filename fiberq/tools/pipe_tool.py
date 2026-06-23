@@ -64,10 +64,10 @@ class PipePlaceTool(QgsMapTool):
             # QGIS 3.22+
             mp = event.mapPoint()
             return QgsPointXY(mp)
-        except Exception as e:
+        except Exception:
             try:
                 return self.toMapCoordinates(event.pos())
-            except Exception as e:
+            except Exception:
                 return QgsPointXY(0, 0)
 
     def _snap_via_utils(self, qpt):
@@ -96,9 +96,9 @@ class PipePlaceTool(QgsMapTool):
         node_names = {"Poles", "Stubovi", "OKNA", "Manholes"}
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if (isinstance(lyr, QgsVectorLayer) and
-                    lyr.geometryType() == QgsWkbTypes.PointGeometry and
-                    lyr.name() in node_names):
+                if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                    lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
+                        lyr.name() in node_names):
                     for f in lyr.getFeatures():
                         p = f.geometry().asPoint()
                         d = QgsPointXY(point).distance(QgsPointXY(p))
@@ -111,9 +111,9 @@ class PipePlaceTool(QgsMapTool):
         # 2) Snap to route vertices and segment midpoints
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if (isinstance(lyr, QgsVectorLayer) and
-                    lyr.name() in ('Route', 'Trasa') and
-                    lyr.geometryType() == QgsWkbTypes.LineGeometry):
+                if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                    lyr.name() in ('Route', 'Trasa') and  # noqa: W504
+                        lyr.geometryType() == QgsWkbTypes.LineGeometry):
 
                     for g in lyr.getFeatures():
                         geom = g.geometry()
@@ -212,9 +212,9 @@ class PipePlaceTool(QgsMapTool):
         """Find the Route layer in the project."""
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if (isinstance(lyr, QgsVectorLayer) and
-                    lyr.name() in ('Route', 'Trasa') and
-                    lyr.geometryType() == QgsWkbTypes.LineGeometry):
+                if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                    lyr.name() in ('Route', 'Trasa') and  # noqa: W504
+                        lyr.geometryType() == QgsWkbTypes.LineGeometry):
                     return lyr
             except Exception as e:
                 logger.debug(f"Error in PipePlaceTool._find_route_layer: {e}")
@@ -244,7 +244,7 @@ class PipePlaceTool(QgsMapTool):
 
     def _find_nearest_name(self, pt, node_layers):
         """Find the display name of the nearest node to a point."""
-        best = None
+        best = None  # noqa: F841
         best_dist = None
         best_layer = None
         best_feat = None
@@ -304,7 +304,7 @@ class PipePlaceTool(QgsMapTool):
 
         try:
             f['fi'] = int(self.attrs.get('fi')) if self.attrs.get('fi') is not None else None
-        except Exception as e:
+        except Exception:
             f['fi'] = None
 
         # Calculate length
@@ -313,7 +313,7 @@ class PipePlaceTool(QgsMapTool):
                 d = QgsDistanceArea()
                 try:
                     d.setSourceCrs(layer.crs(), QgsProject.instance().transformContext())
-                except Exception as e:
+                except Exception:
                     try:
                         d.setSourceCrs(
                             self.iface.mapCanvas().mapSettings().destinationCrs(),
@@ -326,10 +326,10 @@ class PipePlaceTool(QgsMapTool):
             else:
                 length_m = geom.length() if geom is not None else 0.0
             f['duzina_m'] = float(length_m) if length_m else 0.0
-        except Exception as e:
+        except Exception:
             try:
                 f['duzina_m'] = float(geom.length()) if geom is not None else None
-            except Exception as e:
+            except Exception:
                 f['duzina_m'] = None
 
         # Find FROM/TO names
@@ -337,9 +337,9 @@ class PipePlaceTool(QgsMapTool):
         node_layers = []
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if (isinstance(lyr, QgsVectorLayer) and
-                    lyr.geometryType() == QgsWkbTypes.PointGeometry and
-                    lyr.name() in node_names):
+                if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
+                    lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
+                        lyr.name() in node_names):
                     node_layers.append(lyr)
             except Exception as e:
                 logger.debug(f"Error in PipePlaceTool._finish: {e}")
@@ -395,7 +395,7 @@ class PipePlaceTool(QgsMapTool):
             if getattr(self, "snap_marker", None) is not None:
                 try:
                     self.canvas.scene().removeItem(self.snap_marker)
-                except Exception as e:
+                except Exception:
                     try:
                         self.snap_marker.hide()
                     except Exception as e:

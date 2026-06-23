@@ -37,9 +37,10 @@ _FIBERQ_LANG_KEY = "FiberQ/lang"
 
 def _get_lang():
     try:
-        if QSettings is None: return "en"
+        if QSettings is None:
+            return "en"
         return QSettings().value(_FIBERQ_LANG_KEY, "en")
-    except Exception as e:
+    except Exception:
         return "en"
 
 
@@ -57,7 +58,7 @@ def _fiberq_translate(text: str, lang: str) -> str:
         'Check (health check)': 'Health check',
         'Cable laying': 'Cable laying',
         'Underground': 'Underground',
-        'Aerial': 'Aerial',        'Main': 'Main',
+        'Aerial': 'Aerial', 'Main': 'Main',
         'Distribution': 'Distribution',
         'Drop': 'Drop',
 
@@ -118,7 +119,7 @@ def _map_icon_path(filename: str) -> str:
     try:
         base = _os_mod2.path.dirname(_os_mod2.path.dirname(__file__))  # plugin root
         return _os_mod2.path.join(base, 'resources', 'map_icons', filename)
-    except Exception as e:
+    except Exception:
         return filename
 
 
@@ -131,7 +132,7 @@ def _normalize_name(s: str) -> str:
         s = s.lower()
         s = re.sub(r"[^a-z0-9_]+", "_", s)
         return s.strip("_")
-    except Exception as e:
+    except Exception:
         return s
 
 
@@ -214,7 +215,7 @@ def _apply_fixed_text_label(layer, field_name='naziv', size_mu=8.0, yoff_mu=5.0)
         layer.setLabeling(QgsVectorLayerSimpleLabeling(s))
         layer.setLabelsEnabled(True)
         layer.triggerRepaint()
-    except Exception as e:
+    except Exception:
         # Do not crash the plugin if labeling fails on some older QGIS.
         pass
 
@@ -257,7 +258,7 @@ def _img_get(layer, fid):
         # Fall back to legacy key for backward compatibility
         path = QgsProject.instance().readEntry("StuboviPlugin", key, "")[0]
         return path
-    except Exception as e:
+    except Exception:
         return ""
 
 
@@ -265,7 +266,7 @@ def _img_set(layer, fid, path):
     """Set image path for a feature."""
     try:
         QgsProject.instance().writeEntry("FiberQPlugin", _img_key(layer, fid), path or "")
-    except Exception as e:
+    except Exception:
         pass
 
 
@@ -301,8 +302,8 @@ def _ensure_region_layer(core):
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.PolygonGeometry
-                    and lyr.name() in ('Rejon', 'Service Area')
+                    and lyr.geometryType() == QgsWkbTypes.PolygonGeometry  # noqa: W503
+                    and lyr.name() in ('Rejon', 'Service Area')  # noqa: W503
                 ):
                     # If old name 'Rejon', rename so user sees 'Service Area'
                     if lyr.name() == 'Rejon':
@@ -311,7 +312,7 @@ def _ensure_region_layer(core):
                         except Exception as e:
                             logger.debug(f"Error in _ensure_region_layer: {e}")
                     return lyr
-            except Exception as e:
+            except Exception:
                 continue
 
         # 2) If doesn't exist – create new layer named 'Service Area'
@@ -355,13 +356,13 @@ def _ensure_objects_layer(core):
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.wkbType() in (
+                    and lyr.wkbType() in (  # noqa: W503
                         QgsWkbTypes.Polygon,
                         QgsWkbTypes.MultiPolygon,
                         QgsWkbTypes.PolygonZM,
                         QgsWkbTypes.MultiPolygonZM,
                     )
-                    and lyr.name() in ("Objekti", "Objects")
+                    and lyr.name() in ("Objekti", "Objects")  # noqa: W503
                 ):
                     _apply_objects_field_aliases(lyr)
                     _set_objects_layer_alias(lyr)
@@ -392,7 +393,7 @@ def _ensure_objects_layer(core):
         _set_objects_layer_alias(layer)
 
         return layer
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -418,7 +419,7 @@ def _stylize_objects_layer(layer):
         try:
             try:
                 hatch.setLineAngle(60.0)
-            except Exception as e:
+            except Exception:
                 try:
                     hatch.setAngle(60.0)
                 except Exception as e:

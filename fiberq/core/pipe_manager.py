@@ -96,7 +96,7 @@ class PipeManager:
             idx = None
             try:
                 gname = group.name()
-            except Exception as e:
+            except Exception:
                 gname = group_name
             for i, ch in enumerate(children):
                 try:
@@ -126,7 +126,7 @@ class PipeManager:
                         return out
 
                     group_layers = _collect_layers(group)
-                    keep = [l for l in order if l not in group_layers]
+                    keep = [l for l in order if l not in group_layers]  # noqa: E741
                     root.setCustomLayerOrder(list(group_layers) + keep)
             except Exception as e:
                 logger.debug(f"Error in PipeManager._collect_layers: {e}")
@@ -155,7 +155,7 @@ class PipeManager:
         if group is None:
             try:
                 group = root.insertGroup(0, "Pipes")
-            except Exception as e:
+            except Exception:
                 group = root.addGroup("Pipes")
         else:
             try:
@@ -229,8 +229,8 @@ class PipeManager:
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.LineGeometry
-                    and lyr.name() in target_names
+                    and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
+                    and lyr.name() in target_names  # noqa: W503
                 ):
                     try:
                         self.apply_pipe_field_aliases(lyr)
@@ -265,7 +265,7 @@ class PipeManager:
         try:
             group = self.ensure_pipes_group()
             group.addLayer(layer)
-        except Exception as e:
+        except Exception:
             prj.addMapLayer(layer, True)
 
         try:
@@ -353,8 +353,8 @@ class PipeManager:
         for lyr in QgsProject.instance().mapLayers().values():
             try:
                 if (isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.LineGeometry
-                    and lyr.name() in self.PIPE_LAYER_NAMES):
+                    and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
+                        and lyr.name() in self.PIPE_LAYER_NAMES):  # noqa: W503
                     layers.append(lyr)
             except Exception as e:
                 logger.debug(f"Error in PipeManager.list_all_pipes: {e}")

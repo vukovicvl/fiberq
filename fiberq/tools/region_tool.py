@@ -46,7 +46,7 @@ class DrawRegionPolygonTool(QgsMapTool):
             c = QColor('#60a5fa')  # blue-400
             c.setAlpha(60)
             self.rb.setFillColor(c)
-        except Exception as e:
+        except Exception:
             self.rb = None
 
     def activate(self):
@@ -141,7 +141,7 @@ class DrawRegionPolygonTool(QgsMapTool):
             # Ask for name
             try:
                 name, ok = QInputDialog.getText(self.iface.mainWindow(), 'Service Area', 'Name:')
-            except Exception as e:
+            except Exception:
                 name, ok = ('Rejon', True)
             if not ok:
                 return

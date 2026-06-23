@@ -53,7 +53,7 @@ class CreateRegionDialog(QDialog):
         """Get the buffer/margin value in meters."""
         try:
             return float(self.spin_buffer.value())
-        except Exception as e:
+        except Exception:
             return 0.0
 
     def region_name(self) -> str:

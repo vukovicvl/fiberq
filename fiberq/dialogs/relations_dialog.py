@@ -31,10 +31,10 @@ from qgis.PyQt.QtWidgets import (
 
 pass
 
-from ..utils.legacy_bridge import RELACIJE_KATEGORIJE
+from ..utils.legacy_bridge import RELACIJE_KATEGORIJE  # noqa: E402
 
 # Phase 5.2: Logging
-from ..utils.logger import get_logger
+from ..utils.logger import get_logger  # noqa: E402
 logger = get_logger(__name__)
 
 
@@ -190,7 +190,7 @@ class RelationsDialog(QDialog):
         # Defensive guard if dialog reopened before cables are loaded
         if not hasattr(self, 'cables') or self.cables is None:
             self.cables = []
-        rid = self._current_relation_id()
+        rid = self._current_relation_id()  # noqa: F841
         # Show assigned relation names for all cables (not only the selected relation).
         rel_name_by_cable = {}
         for r in self.data.get("relations", []):

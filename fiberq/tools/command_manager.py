@@ -27,20 +27,20 @@ logger = get_logger(__name__)
 
 # Human-readable labels for commands
 COMMAND_LABELS = {
-    'place_pole':             'Place Pole',
-    'place_manhole':          'Place Manhole',
-    'place_joint_closure':    'Place Joint Closure',
-    'place_element':          'Place Element',
-    'create_route':           'Create Route',
-    'manual_route':           'Manual Route',
-    'lay_cable':              'Lay Cable',
-    'place_slack':            'Place Slack',
-    'place_pe_duct':          'Place PE Duct',
-    'place_transition_duct':  'Place Transition Duct',
-    'draw_service_area':      'Draw Service Area',
-    'place_object':           'Place Object',
-    'fiber_break':            'Place Fiber Break',
-    'split_route':            'Split Route',
+    'place_pole': 'Place Pole',
+    'place_manhole': 'Place Manhole',
+    'place_joint_closure': 'Place Joint Closure',
+    'place_element': 'Place Element',
+    'create_route': 'Create Route',
+    'manual_route': 'Manual Route',
+    'lay_cable': 'Lay Cable',
+    'place_slack': 'Place Slack',
+    'place_pe_duct': 'Place PE Duct',
+    'place_transition_duct': 'Place Transition Duct',
+    'draw_service_area': 'Draw Service Area',
+    'place_object': 'Place Object',
+    'fiber_break': 'Place Fiber Break',
+    'split_route': 'Split Route',
 }
 
 
@@ -199,7 +199,7 @@ class CommandManager:
         label = COMMAND_LABELS.get(self._last_command, self._last_command)
         element_name = self._last_params.get('layer_name', '')
         if element_name and self._last_command == 'place_element':
-            label = f"Place {element_name}"
+            label = f"Place {element_name}"  # noqa: F841
 
         logger.debug(f"Repeating command: {self._last_command}")
         self._execute(self._last_command, self._last_params)
