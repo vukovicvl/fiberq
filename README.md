@@ -1,12 +1,12 @@
 fiberq
 
-New realase v1.2.1 - 07.04.2026.
+New realase v1.2.3 - 23.06.2026.
 
-Check out the new version (v1.2.1)
+Check out the new version (v1.2.3)
 
 I just added on GitHub as a new realase.
 
-You can also auto update in QGIS or donwload manually folder from GitHub realase.
+You can also auto update in QGIS or download manually folder from GitHub realase.
 
 Download User Guide:
 https://www.fiberq.net/documentation/
