@@ -208,10 +208,18 @@ __marimo__/
 
 # FiberQ — internal/agent/grant docs. NEVER publish to the public repo
 # (CLAUDE.md references the private Designer repo; the MoU has budget/day-rates;
-#  the build plan has commercial-boundary notes). Keep these local only.
+#  the build plan has commercial-boundary notes; intake notes hold meeting
+#  strategy). Private planning material lives in docs/private/ — keep it local.
+# Public WP deliverable docs (docs/schema.md, docs/releasing.md, …) ARE tracked.
 /CLAUDE.md
-/docs/FiberQ-MoU-project-plan.md
-/docs/FiberQ-plugin-build-plan.md
+/docs/private/
+
+# Plugin build artifact + QGIS/OS local cruft (the packaged zip lands in dist/,
+# already ignored above; this also guards stray zips and editor/OS backups)
+*.zip
+*.qgs~
+*.qgz~
+.DS_Store
 
 # Local dev helpers (not shipped in the plugin zip)
 /dev/
