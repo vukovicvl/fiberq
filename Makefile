@@ -47,7 +47,7 @@ version:
 
 # ---- tooling ----------------------------------------------------------------
 deps:
-	$(PYTHON) -m pip install $(PIP_FLAGS) -U pytest pytest-cov "pytest-qgis>=3.0,<5" flake8 "bandit[toml]"
+	$(PYTHON) -m pip install $(PIP_FLAGS) --ignore-installed pytest pytest-cov "pytest-qgis>=3.0,<5" flake8 "bandit[toml]"
 
 # ---- lint (mirror of the repository Security & Quality scan) ----------------
 lint: flake8 bandit
