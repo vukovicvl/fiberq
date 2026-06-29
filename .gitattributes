@@ -1,0 +1,5 @@
+# Keep line endings deterministic across Windows/Linux. The Makefile's recipe
+# lines break when `make` runs with CRLF inside the Linux QGIS containers, so
+# force LF for build/shell files regardless of the checkout platform.
+Makefile text eol=lf
+*.sh text eol=lf

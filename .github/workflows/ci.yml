@@ -1,0 +1,61 @@
+# Thin CI wrapper. It does NOT contain build/test logic - it only runs the
+# Makefile targets inside an official QGIS container. The same `make` commands
+# run locally and on any other forge; porting to GitLab/Codeberg means rewriting
+# this YAML wrapper only, not the logic.
+#
+# Pattern: checkout runs on the host runner (which has git), then we mount the
+# workspace into the qgis/qgis image and run `make` there, so QGIS Python
+# bindings are available. We install `make` in the container first because the
+# image ships QGIS + Python but not necessarily make.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-and-test:
+    name: QGIS ${{ matrix.qgis }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Pin to tags that exist on https://hub.docker.com/r/qgis/qgis/tags .
+        # Two images cover both binding stacks the plugin supports:
+        #   3.44-trixie -> QGIS 3 line (Qt5)
+        #   4.0-trixie  -> QGIS 4 (Qt6)
+        # Re-pin these as the LTR/stable lines advance.
+        qgis:
+          - "3.44-trixie"
+          - "4.0-trixie"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint and test inside the QGIS container
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/src" -w /src \
+            -e QT_QPA_PLATFORM=offscreen \
+            -e PIP_FLAGS=--break-system-packages \
+            "qgis/qgis:${{ matrix.qgis }}" \
+            bash -c "apt-get update -qq && apt-get install -y --no-install-recommends make >/dev/null && make deps && make lint && make test"
+
+  # Build the plugin zip on every push so packaging breakage is caught early.
+  # Does not publish - publishing is a manual, tag-driven step (see RELEASE.md).
+  package:
+    name: Package (build zip)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history so `git archive HEAD` works
+      - name: Build plugin zip
+        run: make package
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fiberq-plugin
+          path: dist/*.zip
+          if-no-files-found: error

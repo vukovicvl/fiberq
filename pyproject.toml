@@ -1,0 +1,30 @@
+# Tool configuration for FiberQ dev tooling.
+# NOTE: flake8 does NOT read pyproject.toml - its config lives in .flake8.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+# Make the repo root importable so `import fiberq` works (plugin package is fiberq/).
+pythonpath = ["."]
+addopts = "-ra"
+markers = [
+    "qgis: test needs a running QgsApplication (provided by pytest-qgis)",
+]
+
+[tool.coverage.run]
+source = ["fiberq"]
+omit = [
+    "fiberq/__init__.py",
+    "*/resources/*",
+    "*/styles/*",
+    "*/icons/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+
+[tool.bandit]
+# Severity threshold is set on the CLI (-ll = medium/high), matching the
+# plugins.qgis.org scan. List B-IDs here only if a finding ever needs skipping.
+exclude_dirs = ["tests", "build", "dist", ".venv"]
