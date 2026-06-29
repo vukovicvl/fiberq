@@ -221,5 +221,8 @@ __marimo__/
 *.qgz~
 .DS_Store
 
+# QGIS profile written by headless pytest-qgis runs (test artifact, not source)
+.qgis-settings/
+
 # Local dev helpers (not shipped in the plugin zip)
 /dev/
