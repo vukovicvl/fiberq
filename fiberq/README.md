@@ -144,6 +144,14 @@ v1.2 maintains full backward compatibility with v1.0 and v1.1 projects:
 - Repository: https://github.com/vukovicvl/fiberq
 - Issues: https://github.com/vukovicvl/fiberq/issues
 
+## Use of Generative AI
+
+Parts of FiberQ are developed with the help of generative AI tools (Anthropic's
+Claude) — for example code, tests, refactoring, and documentation. All AI-assisted
+changes are reviewed and tested by the maintainer before release, and AI-assisted
+commits carry an `Assisted-by:` trailer. FiberQ remains human-authored and
+human-reviewed software, released under GPL-3.0-or-later.
+
 ## License
 
 GPL-3.0-or-later
