@@ -27,7 +27,10 @@ FIBERQ_UUID_FIELD = "fiberq_uuid"
 
 def _log(msg):
     """Log to both FiberQ logger and QGIS Message Log panel."""
-    _log(msg)
+    try:
+        logger.debug(msg)
+    except Exception:
+        pass
     try:
         QgsMessageLog.logMessage(msg, "FiberQ UUID", Qgis.MessageLevel.Info)
     except Exception:

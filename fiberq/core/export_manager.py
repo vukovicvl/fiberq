@@ -21,6 +21,10 @@ from qgis.core import (
 )
 from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox, QInputDialog
 
+# WP1a: canonical schema version + project marker
+from ..models.schema import SCHEMA_VERSION
+from .schema_version import mark_project_current
+
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
@@ -446,8 +450,10 @@ class ExportManager:
         prj = QgsProject.instance()
         metadata = {}
 
-        # 1. Project version
-        metadata["project_version"] = "1.3.0"
+        # 1. Schema version (canonical). project_version is kept in sync for
+        # backward-compat of the metadata table; both now track SCHEMA_VERSION.
+        metadata["schema_version"] = SCHEMA_VERSION
+        metadata["project_version"] = SCHEMA_VERSION
 
         # 2. Relations data
         try:
@@ -556,6 +562,13 @@ class ExportManager:
             return False
 
         metadata = self._collect_metadata()
+
+        # WP1a: also stamp the in-memory project so the schema version lives in
+        # the .qgs project too (the metadata table below carries it in the GPKG).
+        try:
+            mark_project_current()
+        except Exception as e:
+            logger.debug(f"Could not stamp project schema version: {e}")
 
         try:
             conn = sqlite3.connect(gpkg_path)
