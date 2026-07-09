@@ -66,6 +66,17 @@ def set_feature_uuid(feature, force_new=False):
         _log(f"Error in set_feature_uuid: {e}")
 
 
+class UuidMigrationError(RuntimeError):
+    """A FiberQ layer's fiberq_uuid field could not be added or persisted.
+
+    Raised by :func:`migrate_project_uuids` (and :func:`migrate_layer_uuids`) so
+    the WP1b migration runner can withhold the schema-version stamp and retry on
+    the next project load, instead of marking a project migrated while some layer
+    never actually received its identity field on disk (a routine GPKG lock /
+    read-only / no-ALTER condition).
+    """
+
+
 def ensure_uuid_field(layer):
     """
     Ensure a layer has the fiberq_uuid field. Add it if missing.
@@ -170,20 +181,25 @@ def migrate_layer_uuids(layer):
 
     Returns:
         int: Number of features that were assigned new UUIDs
+
+    Raises:
+        UuidMigrationError: if the backfill could not be committed to the layer
+            (e.g. a locked / read-only GeoPackage). The caller must treat this as
+            a failed layer so the migration is retried rather than stamped done.
     """
     if not isinstance(layer, QgsVectorLayer):
         return 0
 
+    field_names = [f.name() for f in layer.fields()]
+    if FIBERQ_UUID_FIELD not in field_names:
+        return 0
+
+    field_idx = layer.fields().indexFromName(FIBERQ_UUID_FIELD)
+    if field_idx < 0:
+        return 0
+
+    # Scan for features missing a UUID. A scan error is non-fatal (return 0).
     try:
-        field_names = [f.name() for f in layer.fields()]
-        if FIBERQ_UUID_FIELD not in field_names:
-            return 0
-
-        field_idx = layer.fields().indexFromName(FIBERQ_UUID_FIELD)
-        if field_idx < 0:
-            return 0
-
-        # Find features missing UUID
         count = 0
         features_to_update = {}
         for feat in layer.getFeatures():
@@ -191,48 +207,65 @@ def migrate_layer_uuids(layer):
             if val is None or (hasattr(val, 'isNull') and val.isNull()) or str(val).strip() == '':
                 features_to_update[feat.id()] = generate_uuid()
                 count += 1
+    except Exception as e:
+        _log(f"Error scanning UUIDs in '{layer.name()}': {e}")
+        return 0
 
-        if count == 0:
-            return 0
+    if count == 0:
+        return 0
 
-        # Batch update
-        was_editing = layer.isEditable()
+    # Apply + persist. A failure here MUST propagate (not be swallowed): otherwise
+    # the runner would stamp the project migrated while the UUIDs never reached
+    # disk, and the marker gate would stop it ever retrying.
+    was_editing = layer.isEditable()
+    try:
         if not was_editing:
             layer.startEditing()
-
         for fid, new_uuid in features_to_update.items():
             layer.changeAttributeValue(fid, field_idx, new_uuid)
-
         if not was_editing:
-            layer.commitChanges()
-
-        _log(f"Migrated {count} features with UUID in layer '{layer.name()}'")
-        return count
+            if not layer.commitChanges():
+                errors = layer.commitErrors()
+                layer.rollBack()
+                raise UuidMigrationError(
+                    f"commit failed for '{layer.name()}': {errors}"
+                )
+    except UuidMigrationError:
+        raise
     except Exception as e:
-        _log(f"Error migrating UUIDs in '{layer.name()}': {e}")
+        _log(f"Error persisting UUIDs in '{layer.name()}': {e}")
         try:
             if layer.isEditable():
                 layer.rollBack()
         except Exception:
             pass
-        return 0
+        raise UuidMigrationError(f"error persisting UUIDs in '{layer.name()}': {e}")
+
+    _log(f"Migrated {count} features with UUID in layer '{layer.name()}'")
+    return count
 
 
-def migrate_project_uuids():
+def migrate_project_uuids(project=None):
     """
-    Run UUID migration on all FiberQ-managed layers in the current project.
+    Run UUID migration on all FiberQ-managed layers in a project.
 
     This should be called once on project load. It:
     1. Identifies all vector layers that are FiberQ-managed
     2. Adds fiberq_uuid field if missing
     3. Backfills UUIDs for features that don't have one
 
+    Args:
+        project: the QgsProject to migrate; defaults to the current instance.
+                 Explicit projects let the WP1b migration runner (and tests)
+                 target a project other than the singleton.
+
     Returns:
         dict: {layer_name: count_migrated} for layers that were updated
     """
-    project = QgsProject.instance()
+    project = project if project is not None else QgsProject.instance()
     results = {}
     field_added_layers = []
+    failed_layers = []
 
     # FiberQ layer names (English and Serbian legacy, all known variants)
     fiberq_layer_names = {
@@ -295,13 +328,18 @@ def migrate_project_uuids():
                     _log(f"UUID migration: added field to '{layer_name}'")
                 else:
                     _log(f"UUID migration: FAILED to add field to '{layer_name}'")
+                    failed_layers.append(layer_name)
                     continue
 
-            # Backfill missing UUIDs
+            # Backfill missing UUIDs (raises UuidMigrationError if it can't persist)
             count = migrate_layer_uuids(layer)
             if count > 0:
                 results[layer_name] = count
         except Exception as e:
+            try:
+                failed_layers.append(layer.name())
+            except Exception:
+                failed_layers.append("<unknown>")
             _log(f"Error migrating layer: {e}")
 
     if field_added_layers:
@@ -312,6 +350,14 @@ def migrate_project_uuids():
     if results:
         total = sum(results.values())
         _log(f"UUID migration complete: {total} features across {len(results)} layers")
+
+    if failed_layers:
+        # Surface partial failure so the migration runner does NOT stamp the
+        # project as migrated (it would otherwise never retry these layers).
+        raise UuidMigrationError(
+            "could not add/persist fiberq_uuid on %d layer(s): %s"
+            % (len(failed_layers), ", ".join(failed_layers))
+        )
 
     return results
 
