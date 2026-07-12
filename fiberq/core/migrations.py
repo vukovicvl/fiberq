@@ -199,6 +199,17 @@ def run_migrations(project=None) -> MigrationReport:
     stored = read_project_schema_version(project)
     report = MigrationReport(from_version=stored, to_version=SCHEMA_VERSION)
 
+    if stored == BASELINE_VERSION:
+        # An unmarked project with no FiberQ content is not a FiberQ project:
+        # leave it completely alone (no stamp, no dirty flag, no "Upgraded"
+        # message). Without this, the blank startup project -- or any unrelated
+        # project the user opens -- would get our marker written into it and a
+        # phantom upgrade toast. A project that already carries a marker, or that
+        # actually contains FiberQ layers, still migrates below.
+        from ..utils.uuid_utils import project_has_fiberq_layers
+        if not project_has_fiberq_layers(project):
+            return report
+
     if not _is_valid_version(stored):
         # A foreign / decorated marker we can't order -- refuse to touch it rather
         # than coerce it and risk downgrading a genuinely newer project.

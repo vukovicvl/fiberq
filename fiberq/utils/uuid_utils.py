@@ -24,6 +24,70 @@ logger = get_logger(__name__)
 # Field name constant — used everywhere
 FIBERQ_UUID_FIELD = "fiberq_uuid"
 
+# FiberQ layer recognition — the single source of truth shared by the uuid
+# backfill (which layers to touch) and the WP1b migration runner's
+# "is this a FiberQ project?" guard (project_has_fiberq_layers). Names cover the
+# English and Serbian-legacy variants; the field signatures also catch renamed or
+# custom layers that carry characteristic FiberQ fields.
+FIBERQ_LAYER_NAMES = frozenset({
+    # Point layers
+    "Poles", "Stubovi",
+    "Manholes", "OKNA",
+    "ODF", "TB", "Patch panel", "Patch Panel",
+    "OTB", "Indoor OTB", "Outdoor OTB", "Pole OTB",
+    "TO", "Indoor TO", "Outdoor TO", "Pole TO", "Joint Closure TO",
+    "Joint Closures", "Nastavci",
+    "Optical slacks", "Opticke_rezerve", "Optical slack",
+    "Fiber break", "Prekid vlakna",
+    # Line layers
+    "Route", "Trasa",
+    "Aerial cables", "Kablovi_vazdusni",
+    "Underground cables", "Kablovi_podzemni",
+    "PE pipes", "PE cevi",
+    "Transition pipes", "Prelazne cevi",
+    # Polygon layers
+    "Objects", "Objekti",
+    "Service Area", "Service area", "Rejon",
+})
+
+FIBERQ_FIELD_SIGNATURES = frozenset({
+    "naziv", "broj_okna", "tip_trase", "tip_kabla",
+    "cable_layer_id", "broj_cevcica", "kapacitet",
+    "fibers_per_tube", "total_fibers", "color_standard",
+})
+
+
+def layer_is_fiberq(layer) -> bool:
+    """True if ``layer`` is a FiberQ-managed vector layer.
+
+    Recognised by its (English or Serbian-legacy) name or by carrying
+    characteristic FiberQ fields -- the same test the uuid backfill uses to
+    decide which layers to touch. Non-vector layers are never FiberQ.
+    """
+    if not isinstance(layer, QgsVectorLayer):
+        return False
+    try:
+        if layer.name() in FIBERQ_LAYER_NAMES:
+            return True
+        field_names = {f.name() for f in layer.fields()}
+        return bool(field_names & FIBERQ_FIELD_SIGNATURES)
+    except Exception:
+        return False
+
+
+def project_has_fiberq_layers(project=None) -> bool:
+    """True if ``project`` contains at least one FiberQ-managed layer.
+
+    The WP1b migration runner uses this to avoid stamping / announcing on a blank
+    or non-FiberQ project: an unmarked project with no FiberQ layers is left
+    completely untouched (no marker written, no dirty flag, no message).
+    """
+    project = project if project is not None else QgsProject.instance()
+    try:
+        return any(layer_is_fiberq(lyr) for lyr in project.mapLayers().values())
+    except Exception:
+        return False
+
 
 def _log(msg):
     """Log to both FiberQ logger and QGIS Message Log panel."""
@@ -267,36 +331,6 @@ def migrate_project_uuids(project=None):
     field_added_layers = []
     failed_layers = []
 
-    # FiberQ layer names (English and Serbian legacy, all known variants)
-    fiberq_layer_names = {
-        # Point layers
-        "Poles", "Stubovi",
-        "Manholes", "OKNA",
-        "ODF", "TB", "Patch panel", "Patch Panel",
-        "OTB", "Indoor OTB", "Outdoor OTB", "Pole OTB",
-        "TO", "Indoor TO", "Outdoor TO", "Pole TO", "Joint Closure TO",
-        "Joint Closures", "Nastavci",
-        "Optical slacks", "Opticke_rezerve", "Optical slack",
-        "Fiber break", "Prekid vlakna",
-        # Line layers
-        "Route", "Trasa",
-        "Aerial cables", "Kablovi_vazdusni",
-        "Underground cables", "Kablovi_podzemni",
-        "PE pipes", "PE cevi",
-        "Transition pipes", "Prelazne cevi",
-        # Polygon layers
-        "Objects", "Objekti",
-        "Service Area", "Service area", "Rejon",
-    }
-
-    # Also detect FiberQ layers by checking for known FiberQ field names
-    # This catches layers that were renamed or custom layers with FiberQ fields
-    fiberq_field_signatures = {
-        "naziv", "broj_okna", "tip_trase", "tip_kabla",
-        "cable_layer_id", "broj_cevcica", "kapacitet",
-        "fibers_per_tube", "total_fibers", "color_standard",
-    }
-
     all_vector_layers = []
     for layer in project.mapLayers().values():
         try:
@@ -307,13 +341,9 @@ def migrate_project_uuids(project=None):
             field_names = {f.name() for f in layer.fields()}
             all_vector_layers.append(layer_name)
 
-            # Match by name OR by having FiberQ-characteristic fields
-            is_fiberq = (
-                layer_name in fiberq_layer_names
-                or bool(field_names & fiberq_field_signatures)  # noqa: W503
-            )
-
-            if not is_fiberq:
+            # Match by name OR by FiberQ-characteristic fields -- shared
+            # recognition, see layer_is_fiberq / FIBERQ_LAYER_NAMES above.
+            if not layer_is_fiberq(layer):
                 _log(f"UUID migration: SKIPPING '{layer_name}' (not recognized as FiberQ layer)")
                 continue
 
@@ -364,6 +394,10 @@ def migrate_project_uuids(project=None):
 
 __all__ = [
     'FIBERQ_UUID_FIELD',
+    'FIBERQ_LAYER_NAMES',
+    'FIBERQ_FIELD_SIGNATURES',
+    'layer_is_fiberq',
+    'project_has_fiberq_layers',
     'generate_uuid',
     'set_feature_uuid',
     'ensure_uuid_field',

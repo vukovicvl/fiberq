@@ -220,6 +220,39 @@ def test_equal_but_aliased_marker_is_canonicalised(qgis_app):
 
 
 # ---------------------------------------------------------------------------
+# Non-FiberQ / blank projects: never stamped, dirtied, or announced
+# ---------------------------------------------------------------------------
+
+def test_blank_project_is_not_stamped_or_announced(qgis_app):
+    """An unmarked, empty project (the blank startup project) is not a FiberQ
+    project: the runner must leave it completely alone -- no stamp, no message."""
+    p = QgsProject()
+    report = m.run_migrations(p)
+    assert report.ran is False
+    assert report.steps == []
+    assert not report.errors
+    # Still unmarked -> nothing was written, so QGIS never marks it dirty for us.
+    assert sv.read_project_schema_version(p) == sv.BASELINE_VERSION
+
+
+def test_non_fiberq_project_is_left_alone(qgis_app):
+    """An unmarked project whose only layer is not a FiberQ layer must not be
+    stamped, and that foreign layer must not gain a fiberq_uuid field."""
+    p = QgsProject()
+    other = QgsVectorLayer("Point?crs=EPSG:4326&field=city:string", "Cities", "memory")
+    assert other.isValid()
+    p.addMapLayer(other)
+
+    report = m.run_migrations(p)
+
+    assert report.ran is False
+    assert report.steps == []
+    assert not report.errors
+    assert sv.read_project_schema_version(p) == sv.BASELINE_VERSION
+    assert other.fields().indexOf("fiberq_uuid") < 0   # foreign layer untouched
+
+
+# ---------------------------------------------------------------------------
 # Durability: prove the backfill reaches disk, not just the edit buffer
 # ---------------------------------------------------------------------------
 
@@ -262,6 +295,12 @@ def test_failed_step_withholds_stamp(qgis_app, monkeypatch):
     next load retries instead of leaving the marker lying."""
     p = QgsProject()
     sv.write_project_schema_version("0", p)
+    # A recognised FiberQ layer so the runner treats this as a FiberQ project --
+    # an unmarked project with no FiberQ layers is now a deliberate no-op and
+    # would never reach the (monkeypatched) failing step.
+    fq = QgsVectorLayer("Point?crs=EPSG:4326", "ODF", "memory")
+    assert fq.isValid()
+    p.addMapLayer(fq)
 
     def _boom(project=None):
         raise RuntimeError("simulated locked layer")
