@@ -1,5 +1,28 @@
-# Keep line endings deterministic across Windows/Linux. The Makefile's recipe
-# lines break when `make` runs with CRLF inside the Linux QGIS containers, so
-# force LF for build/shell files regardless of the checkout platform.
+# Keep line endings deterministic across Windows/Linux.
+#
+# All text files are normalized to LF in the repository AND checked out as LF on
+# every platform (eol=lf), so a Windows editor can no longer introduce CRLF
+# churn: whatever a checkout looks like, `git add` stores LF. Binary types are
+# listed explicitly so git never applies text/eol conversion to them.
+
+# Default: treat everything as text, store LF, check out LF everywhere.
+* text=auto eol=lf
+
+# Build/shell files must stay LF — Makefile recipe lines and POSIX scripts break
+# when `make` runs with CRLF inside the Linux QGIS containers. Redundant with the
+# rule above, kept explicit for clarity.
 Makefile text eol=lf
 *.sh text eol=lf
+
+# Binary assets — never apply line-ending or text conversion. (None are tracked
+# today; listed defensively so future icons/translations/fixtures stay intact.)
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.qm   binary
+*.qgz  binary
+*.gpkg binary
+*.zip  binary
+*.pdf  binary
