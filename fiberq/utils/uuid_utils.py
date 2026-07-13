@@ -23,6 +23,10 @@ logger = get_logger(__name__)
 
 # Field name constant — used everywhere
 FIBERQ_UUID_FIELD = "fiberq_uuid"
+# Canonical display alias for the identity field. Applied consistently on every
+# FiberQ layer via ensure_uuid_field so the attribute table never shows the raw
+# column name on some layers and the alias on others.
+FIBERQ_UUID_ALIAS = "FiberQ UUID"
 
 # FiberQ layer recognition — the single source of truth shared by the uuid
 # backfill (which layers to touch) and the WP1b migration runner's
@@ -141,6 +145,20 @@ class UuidMigrationError(RuntimeError):
     """
 
 
+def _set_uuid_alias(layer):
+    """Apply the canonical 'FiberQ UUID' display alias to the identity column.
+
+    Only writes when the alias actually differs, so re-running on an already
+    aliased layer does not needlessly mark the project modified.
+    """
+    try:
+        idx = layer.fields().indexOf(FIBERQ_UUID_FIELD)
+        if idx >= 0 and layer.attributeAlias(idx) != FIBERQ_UUID_ALIAS:
+            layer.setFieldAlias(idx, FIBERQ_UUID_ALIAS)
+    except Exception:
+        pass
+
+
 def ensure_uuid_field(layer):
     """
     Ensure a layer has the fiberq_uuid field. Add it if missing.
@@ -160,6 +178,7 @@ def ensure_uuid_field(layer):
         # Check current fields
         current_fields = [f.name() for f in layer.fields()]
         if FIBERQ_UUID_FIELD in current_fields:
+            _set_uuid_alias(layer)
             return True
 
         provider_type = (layer.dataProvider().name() if layer.dataProvider() else "unknown")
@@ -182,6 +201,7 @@ def ensure_uuid_field(layer):
                         updated_fields = [f.name() for f in layer.fields()]
                         if FIBERQ_UUID_FIELD in updated_fields:
                             _log(f"  Method 1: SUCCESS - field added to '{layer.name()}'")
+                            _set_uuid_alias(layer)
                             return True
                         else:
                             _log(f"  Method 1: addAttributes ok but field not in layer.fields()! updated_fields={updated_fields}")
@@ -216,6 +236,7 @@ def ensure_uuid_field(layer):
             final_fields = [f.name() for f in layer.fields()]
             if FIBERQ_UUID_FIELD in final_fields:
                 _log(f"  Method 2: SUCCESS - field added to '{layer.name()}'")
+                _set_uuid_alias(layer)
                 return True
             else:
                 _log(f"  Method 2: field NOT found after commit. final_fields={final_fields}")
@@ -349,17 +370,18 @@ def migrate_project_uuids(project=None):
 
             _log(f"UUID migration: processing '{layer_name}' (fields: {sorted(field_names)})")
 
-            # Ensure field exists
+            # Ensure the field exists (idempotent) and stamp the display alias.
+            # Run unconditionally so layers that already have the column still get
+            # the 'FiberQ UUID' alias applied on load, not only at first creation.
             had_field = FIBERQ_UUID_FIELD in field_names
+            added = ensure_uuid_field(layer)
+            if not added:
+                _log(f"UUID migration: FAILED to add field to '{layer_name}'")
+                failed_layers.append(layer_name)
+                continue
             if not had_field:
-                added = ensure_uuid_field(layer)
-                if added:
-                    field_added_layers.append(layer_name)
-                    _log(f"UUID migration: added field to '{layer_name}'")
-                else:
-                    _log(f"UUID migration: FAILED to add field to '{layer_name}'")
-                    failed_layers.append(layer_name)
-                    continue
+                field_added_layers.append(layer_name)
+                _log(f"UUID migration: added field to '{layer_name}'")
 
             # Backfill missing UUIDs (raises UuidMigrationError if it can't persist)
             count = migrate_layer_uuids(layer)
@@ -394,6 +416,7 @@ def migrate_project_uuids(project=None):
 
 __all__ = [
     'FIBERQ_UUID_FIELD',
+    'FIBERQ_UUID_ALIAS',
     'FIBERQ_LAYER_NAMES',
     'FIBERQ_FIELD_SIGNATURES',
     'layer_is_fiberq',

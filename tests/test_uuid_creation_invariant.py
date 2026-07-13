@@ -24,6 +24,19 @@ def _clear():
     QgsProject.instance().removeAllMapLayers()
 
 
+def test_ensure_uuid_field_sets_display_alias(qgis_app):
+    """ensure_uuid_field must also stamp the canonical 'FiberQ UUID' display alias
+    so every layer shows the identity field with the same label."""
+    from fiberq.utils.uuid_utils import (
+        ensure_uuid_field, FIBERQ_UUID_FIELD, FIBERQ_UUID_ALIAS,
+    )
+    vl = QgsVectorLayer("Point?crs=EPSG:4326&field=naziv:string", "ODF", "memory")
+    assert ensure_uuid_field(vl)
+    idx = vl.fields().indexOf(FIBERQ_UUID_FIELD)
+    assert idx >= 0
+    assert vl.attributeAlias(idx) == FIBERQ_UUID_ALIAS
+
+
 def test_route_layer_created_with_uuid(qgis_app, qgis_iface):
     from fiberq.core.route_manager import RouteManager
     _clear()

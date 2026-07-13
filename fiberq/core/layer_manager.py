@@ -33,7 +33,7 @@ from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
 # Phase 0.1: UUID support for FiberQ Designer
-from ..utils.uuid_utils import FIBERQ_UUID_FIELD, ensure_uuid_field  # noqa: E402
+from ..utils.uuid_utils import FIBERQ_UUID_FIELD, ensure_uuid_field, set_feature_uuid  # noqa: E402
 
 
 # =============================================================================
@@ -552,6 +552,13 @@ def _create_region_from_selection(core, name: str, buf_m: float):
             f['area_m2'] = float(area)
             f['perim_m'] = float(peri)
             f['count'] = len(geoms)
+            # WP1b identity invariant: stamp a uuid on each part before adding it,
+            # matching the manual-draw path (the from-selection path previously
+            # persisted Service Area features with a NULL fiberq_uuid).
+            try:
+                set_feature_uuid(f)
+            except Exception as e:
+                logger.debug(f"Error in _create_region_from_selection: {e}")
             region.addFeature(f)
             added += 1
         region.commitChanges()
