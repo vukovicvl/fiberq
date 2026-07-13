@@ -1271,8 +1271,8 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Could not load fiberq_web icon: {e}")
             icon_fiberq = QIcon()
-        self.action_open_fiberq_web = QAction(icon_fiberq, "Open FiberQ web", self.iface.mainWindow())
-        self.action_open_fiberq_web.setToolTip("Open FiberQ web browser (URL from config.ini)")
+        self.action_open_fiberq_web = QAction(icon_fiberq, "Preview Map", self.iface.mainWindow())
+        self.action_open_fiberq_web.setToolTip("Open the FiberQ Preview Map (PostGIS connection from config.ini)")
         self.action_open_fiberq_web.triggered.connect(self.open_fiberq_web)
         try:
             self.toolbar.addAction(self.action_open_fiberq_web)
