@@ -121,6 +121,12 @@ class SlackManager:
             QgsField("napomena", QVariant.String),
         ])
         vl.updateFields()
+        # WP1b identity invariant: ensure the fiberq_uuid column exists.
+        try:
+            from ..utils.uuid_utils import ensure_uuid_field
+            ensure_uuid_field(vl)
+        except Exception as e:
+            logger.debug(f"Error ensuring fiberq_uuid on slack layer: {e}")
         self.apply_slack_field_aliases(vl)
         self.set_slack_layer_alias(vl)
         QgsProject.instance().addMapLayer(vl)

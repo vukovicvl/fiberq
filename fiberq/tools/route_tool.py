@@ -242,6 +242,14 @@ class ManualRouteTool(QgsMapTool):
         route_layer.updateFields()
         route_layer.commitChanges()
 
+        # WP1b identity invariant: ensure the fiberq_uuid column exists before
+        # features are added, so set_feature_uuid() below actually stamps it.
+        try:
+            from ..utils.uuid_utils import ensure_uuid_field
+            ensure_uuid_field(route_layer)
+        except Exception as e:
+            logger.debug(f"Error ensuring fiberq_uuid on route layer: {e}")
+
         # Apply style
         if self.plugin:
             self.plugin.stylize_route_layer(route_layer)

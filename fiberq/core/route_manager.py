@@ -190,6 +190,16 @@ class RouteManager:
             route_layer.updateFields()
         route_layer.commitChanges()
 
+        # WP1b identity invariant: ensure the fiberq_uuid column exists on the
+        # Route layer (both freshly created and found-existing layers reach here
+        # via _ensure_route_layer), so the set_feature_uuid() calls at feature
+        # creation actually stamp a value instead of silently no-opping.
+        try:
+            from ..utils.uuid_utils import ensure_uuid_field
+            ensure_uuid_field(route_layer)
+        except Exception as e:
+            logger.debug(f"Error ensuring fiberq_uuid on route layer: {e}")
+
     def _ask_route_type(self, title: str = "Route type",
                         label: str = "Select route type:") -> Optional[str]:
         """Show dialog to select route type. Returns type code or None if cancelled."""

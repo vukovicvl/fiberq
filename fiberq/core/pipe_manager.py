@@ -254,6 +254,13 @@ class PipeManager:
         ])
         layer.updateFields()
 
+        # WP1b identity invariant: ensure the fiberq_uuid column exists.
+        try:
+            from ..utils.uuid_utils import ensure_uuid_field
+            ensure_uuid_field(layer)
+        except Exception as e:
+            logger.debug(f"Error ensuring fiberq_uuid on pipe layer: {e}")
+
         try:
             layer.setMapTipTemplate(
                 "<b>[% \"materijal\" %] [% \"kapacitet\" %]</b><br/>Ø [% \"fi\" %] mm"

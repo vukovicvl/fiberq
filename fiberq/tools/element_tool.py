@@ -287,6 +287,16 @@ class PlaceElementTool(QgsMapToolEmitPoint):
         if 'prekid' in self.target_layer_name.lower():
             self._apply_prekid_style(elem_layer)
 
+        # WP1b identity invariant: ensure the fiberq_uuid column exists on the
+        # element layer (covers both the newly created and found-existing
+        # branches above) before building the feature, so set_feature_uuid()
+        # below actually stamps it instead of silently no-opping.
+        try:
+            from ..utils.uuid_utils import ensure_uuid_field
+            ensure_uuid_field(elem_layer)
+        except Exception as e:
+            logger.debug(f"Error ensuring fiberq_uuid on element layer: {e}")
+
         # Write point
         feat = QgsFeature(elem_layer.fields())
         feat.setGeometry(QgsGeometry.fromPointXY(final_point))

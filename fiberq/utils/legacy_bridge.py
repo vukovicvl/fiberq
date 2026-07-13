@@ -293,6 +293,11 @@ def _ensure_region_layer(core):
                             lyr.setName('Service Area')
                         except Exception as e:
                             logger.debug(f"Error in _ensure_region_layer: {e}")
+                    try:
+                        from .uuid_utils import ensure_uuid_field
+                        ensure_uuid_field(lyr)
+                    except Exception as e:
+                        logger.debug(f"Error ensuring fiberq_uuid on Service Area layer: {e}")
                     return lyr
             except Exception:
                 continue
@@ -309,6 +314,14 @@ def _ensure_region_layer(core):
             QgsField('count', QVariant.Int),
         ])
         region.updateFields()
+
+        # WP1b identity invariant: ensure the fiberq_uuid column exists on the
+        # freshly created Service Area layer.
+        try:
+            from .uuid_utils import ensure_uuid_field
+            ensure_uuid_field(region)
+        except Exception as e:
+            logger.debug(f"Error ensuring fiberq_uuid on Service Area layer: {e}")
 
         # Simple semi-transparent style
         try:
@@ -348,6 +361,11 @@ def _ensure_objects_layer(core):
                 ):
                     _apply_objects_field_aliases(lyr)
                     _set_objects_layer_alias(lyr)
+                    try:
+                        from .uuid_utils import ensure_uuid_field
+                        ensure_uuid_field(lyr)
+                    except Exception as e:
+                        logger.debug(f"Error ensuring fiberq_uuid on Objects layer: {e}")
                     return lyr
             except Exception as e:
                 logger.debug(f"Error in _ensure_objects_layer: {e}")
@@ -366,6 +384,14 @@ def _ensure_objects_layer(core):
             QgsField("napomena", QVariant.String),
         ])
         layer.updateFields()
+
+        # WP1b identity invariant: ensure the fiberq_uuid column exists on the
+        # freshly created Objects layer.
+        try:
+            from .uuid_utils import ensure_uuid_field
+            ensure_uuid_field(layer)
+        except Exception as e:
+            logger.debug(f"Error ensuring fiberq_uuid on Objects layer: {e}")
 
         prj.addMapLayer(layer)
         _stylize_objects_layer(layer)
