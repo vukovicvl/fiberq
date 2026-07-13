@@ -107,6 +107,11 @@ class CablePickerDialog(QDialog):
         self.sb_vlakna = QSpinBox()
         self.sb_vlakna.setRange(0, 864)
         self.sb_vlakna.setValue(0)
+        # Track whether the user has manually edited "Number of fibers". Until they
+        # do, it auto-follows the computed total (tubes x fibers-per-tube) instead
+        # of freezing at an intermediate keystroke value.
+        self._vlakna_manual = False
+        self.sb_vlakna.valueChanged.connect(lambda _: setattr(self, '_vlakna_manual', True))
 
         # Phase 0.3: Fiber schema fields for FiberQ Designer
         self.sb_fibers_per_tube = QSpinBox()
@@ -133,9 +138,13 @@ class CablePickerDialog(QDialog):
             fpt = self.sb_fibers_per_tube.value()
             total = tubes * fpt
             self.lbl_total_fibers.setText(str(total))
-            # Also sync to the legacy "Number of fibers" field if user hasn't manually set it
-            if self.sb_vlakna.value() == 0 and total > 0:
+            # Sync the legacy "Number of fibers" field to the computed total until
+            # the user manually overrides it. blockSignals so our own setValue does
+            # not trip the manual-edit flag.
+            if not self._vlakna_manual and total > 0:
+                self.sb_vlakna.blockSignals(True)
                 self.sb_vlakna.setValue(total)
+                self.sb_vlakna.blockSignals(False)
 
         self.sb_cevcice.valueChanged.connect(lambda _: _recompute_total())
         self.sb_fibers_per_tube.valueChanged.connect(lambda _: _recompute_total())
