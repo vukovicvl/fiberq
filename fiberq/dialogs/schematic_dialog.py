@@ -757,7 +757,10 @@ class OpticalSchematicDialog(QDialog):
                 return QColor(204, 0, 0)
             if 'razvod' in t:
                 return QColor(165, 42, 42)
-            if 'cev' in t or 'cevi' in lname:
+            # Pipes: key off the same is_pipe flag the dash logic uses so
+            # English-named layers ("PE pipes", "ducts") get the legend orange
+            # too, not just Serbian "cev"/"cevi".
+            if e.get('is_pipe') or 'cev' in t or 'cevi' in lname:
                 return QColor(255, 140, 0)
             return QColor(60, 60, 60)
 
