@@ -289,6 +289,27 @@ class InfrastructureCutTool(QgsMapTool):
         f2.setAttributes(attrs)
         f2.setGeometry(g2)
 
+        # Do NOT reuse the parent's GPKG primary key: setAttributes above copied
+        # the parent's 'fid' onto both parts, which collides on insert
+        # ("UNIQUE constraint failed: <layer>.fid" -> 1 deleted, 2 not added).
+        # Clear it so OGR assigns a fresh fid to each part.
+        dp = layer.dataProvider()
+        pk_idxs = dp.pkAttributeIndexes() if dp else []
+        fid_idx = pk_idxs[0] if pk_idxs else layer.fields().indexOf('fid')
+        if fid_idx is not None and fid_idx >= 0:
+            f1.setAttribute(fid_idx, None)
+            f2.setAttribute(fid_idx, None)
+
+        # Each half is a new element -> its own fresh identity. force_new because
+        # setAttributes copied the parent's fiberq_uuid onto both, which would
+        # otherwise leave the two halves sharing a single uuid.
+        try:
+            from ..utils.uuid_utils import set_feature_uuid
+            set_feature_uuid(f1, force_new=True)
+            set_feature_uuid(f2, force_new=True)
+        except Exception as e:
+            logger.debug(f"Error setting uuid on cut parts: {e}")
+
         # Update length fields if present
         self._update_length_fields(layer, f1)
         self._update_length_fields(layer, f2)

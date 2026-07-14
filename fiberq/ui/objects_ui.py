@@ -42,7 +42,7 @@ class ObjectsUI:
 
         def _activate_3pt():
             # Import here to avoid circular imports
-            from ..main_plugin import DrawObject3ptTool
+            from ..tools import DrawObject3ptTool
             core._obj3 = DrawObject3ptTool(core.iface, core)
             core.iface.mapCanvas().setMapTool(core._obj3)
         act_3pt.triggered.connect(_activate_3pt)
@@ -53,7 +53,7 @@ class ObjectsUI:
         act_n = QAction(load_icon('ic_object_n.svg'), 'Object in N points', core.iface.mainWindow())
 
         def _activate_n():
-            from ..main_plugin import DrawObjectNTool
+            from ..tools import DrawObjectNTool
             core._objn = DrawObjectNTool(core.iface, core)
             core.iface.mapCanvas().setMapTool(core._objn)
         act_n.triggered.connect(_activate_n)
@@ -64,7 +64,7 @@ class ObjectsUI:
         act_orth = QAction(load_icon('ic_object_ortho.svg'), 'Object in N points (90°)', core.iface.mainWindow())
 
         def _activate_ortho():
-            from ..main_plugin import DrawObjectOrthoTool
+            from ..tools import DrawObjectOrthoTool
             core._objo = DrawObjectOrthoTool(core.iface, core)
             core.iface.mapCanvas().setMapTool(core._objo)
         act_orth.triggered.connect(_activate_ortho)
@@ -75,7 +75,8 @@ class ObjectsUI:
         act_dig = QAction(load_icon('ic_object_dig.svg'), 'Digitized object (from selection)', core.iface.mainWindow())
 
         def _activate_digitize():
-            from ..main_plugin import ObjectPropertiesDialog, _ensure_objects_layer, _stylize_objects_layer
+            from ..tools import ObjectPropertiesDialog
+            from ..core.layer_manager import _ensure_objects_layer, _stylize_objects_layer
             from qgis.core import QgsFeature
 
             lyr = core.iface.activeLayer()
