@@ -301,20 +301,9 @@ def get_default_fields_for_layer(layer_name: str) -> List[Tuple[str, str, str, A
     Returns:
         List of tuples: (key, label, field_type, default, options)
     """
-    fields = [
-        (f.key, f.label, f.field_type, f.default, f.options)
-        for f in DEFAULT_ELEMENT_FIELDS
-    ]
-
-    # Adjust default capacity for OD cabinets
-    layer_name_lower = (layer_name or "").lower()
-    if "od ormar" in layer_name_lower:
-        fields = [
-            (key, label, ftype, (24 if key == "kapacitet" else default), opts)
-            for (key, label, ftype, default, opts) in fields
-        ]
-
-    return fields
+    # Delegates to the canonical schema (single source of truth, WP1a).
+    from .schema import get_default_fields_for_layer as _schema_fields
+    return _schema_fields(layer_name)
 
 
 # =============================================================================

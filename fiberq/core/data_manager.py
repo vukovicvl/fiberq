@@ -15,6 +15,9 @@ import json
 import os
 from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes
 
+# WP1a: schema version marker
+from .schema_version import write_project_schema_version
+
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
@@ -363,7 +366,19 @@ class DataManager:
                 results["color_catalogs"] = False
                 logger.debug(f"Error restoring color catalogs: {e}")
 
-        # 4. Log other metadata (informational, not restored to project storage)
+        # 4. Restore the schema version into the project marker (WP1a). Prefer the
+        #    dedicated schema_version key; fall back to legacy project_version.
+        version = metadata.get("schema_version") or metadata.get("project_version")
+        if version:
+            try:
+                write_project_schema_version(version, prj)
+                results["schema_version"] = True
+                logger.debug(f"Restored schema_version = {version} from GPKG metadata")
+            except Exception as e:
+                results["schema_version"] = False
+                logger.debug(f"Error restoring schema_version: {e}")
+
+        # 5. Log other metadata (informational, not restored to project storage)
         for key in ("project_version", "crs_epsg", "export_timestamp", "color_standard"):
             if key in metadata:
                 logger.debug(f"GPKG metadata: {key} = {metadata[key]}")
