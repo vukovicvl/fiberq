@@ -410,7 +410,7 @@ class DataManager:
             try:
                 if (
                     not isinstance(lyr, QgsVectorLayer)
-                    or lyr.geometryType() != QgsWkbTypes.LineGeometry  # noqa: W503
+                    or lyr.geometryType() != QgsWkbTypes.GeometryType.LineGeometry  # noqa: W503
                     or lyr.name() not in candidate_names  # noqa: W503
                 ):
                     continue
@@ -482,7 +482,7 @@ class DataManager:
         for lyr in QgsProject.instance().mapLayers().values():
             try:
                 if (isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
+                    and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry  # noqa: W503
                         and lyr.name() in pipe_names):  # noqa: W503
                     layers.append(lyr)
             except Exception as e:
@@ -563,7 +563,7 @@ class DataManager:
         cands = []
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if lyr.geometryType() != QgsWkbTypes.PointGeometry:
+                if lyr.geometryType() != QgsWkbTypes.GeometryType.PointGeometry:
                     continue
 
                 # Issue #5: Only include layers from "Placing elements"

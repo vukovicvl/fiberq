@@ -40,7 +40,7 @@ class FiberBreakTool(QgsMapTool):
         self.iface = iface
         self.canvas = iface.mapCanvas()
         self.snap_marker = QgsVertexMarker(self.canvas)
-        self.snap_marker.setIconType(QgsVertexMarker.ICON_CROSS)
+        self.snap_marker.setIconType(QgsVertexMarker.IconType.ICON_CROSS)
         self.snap_marker.setPenWidth(2)
         self.snap_marker.setIconSize(12)
         self.snap_marker.hide()
@@ -107,13 +107,13 @@ class FiberBreakTool(QgsMapTool):
 
         try:
             marker = QgsSimpleMarkerSymbolLayer()
-            marker.setShape(QgsSimpleMarkerSymbolLayer.Circle)
+            marker.setShape(QgsSimpleMarkerSymbolLayer.Shape.Circle)
             marker.setSize(2.4)
-            marker.setSizeUnit(QgsUnitTypes.RenderMillimeters)
+            marker.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
             marker.setColor(QColor(0, 0, 0))
             marker.setOutlineColor(QColor(0, 0, 0))
             marker.setOutlineWidth(0.2)
-            marker.setOutlineWidthUnit(QgsUnitTypes.RenderMillimeters)
+            marker.setOutlineWidthUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
 
             sym = QgsMarkerSymbol()
             sym.changeSymbolLayer(0, marker)
@@ -144,7 +144,7 @@ class FiberBreakTool(QgsMapTool):
             try:
                 is_break_layer = (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.PointGeometry  # noqa: W503
+                    and lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry  # noqa: W503
                     and lyr.name() in ("Prekid vlakna", "Fiber break")  # noqa: W503
                 )
                 if not is_break_layer:
@@ -197,7 +197,7 @@ class FiberBreakTool(QgsMapTool):
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
+                    and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry  # noqa: W503
                     and lyr.isValid()  # noqa: W503
                 ):
                     yield lyr

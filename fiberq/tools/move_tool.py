@@ -39,7 +39,7 @@ class MoveFeatureTool(QgsMapTool):
     def _clear(self):
         try:
             if self.rb:
-                self.rb.reset(QgsWkbTypes.PolygonGeometry)
+                self.rb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
                 self.canvas.scene().removeItem(self.rb)
         except Exception as e:
             logger.debug(f"Error in MoveFeatureTool._clear: {e}")

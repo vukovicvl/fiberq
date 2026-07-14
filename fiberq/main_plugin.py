@@ -290,7 +290,7 @@ class FiberQPlugin:
 
             m = QgsVertexMarker(canvas)
             m.setCenter(pt)
-            m.setIconType(QgsVertexMarker.ICON_CROSS)
+            m.setIconType(QgsVertexMarker.IconType.ICON_CROSS)
             m.setIconSize(18)
             m.setPenWidth(3)
             try:
@@ -491,13 +491,13 @@ class FiberQPlugin:
             manholes_layer = layers.get("Manholes") or layers.get("OKNA")
 
             # Route – line
-            if route_layer and route_layer.geometryType() == QgsWkbTypes.LineGeometry:
+            if route_layer and route_layer.geometryType() == QgsWkbTypes.GeometryType.LineGeometry:
                 msgs.append("Routes: OK")
             else:
                 msgs.append("Routes: MISSING or wrong type")
 
             # Poles – point
-            if poles_layer and poles_layer.geometryType() == QgsWkbTypes.PointGeometry:
+            if poles_layer and poles_layer.geometryType() == QgsWkbTypes.GeometryType.PointGeometry:
                 msgs.append("Poles: OK")
             else:
                 msgs.append("Poles: MISSING or wrong type")
@@ -1700,7 +1700,7 @@ class FiberQPlugin:
             for lyr in QgsProject.instance().mapLayers().values():
                 if not isinstance(lyr, QgsVectorLayer):
                     continue
-                if lyr.geometryType() != QgsWkbTypes.PointGeometry:
+                if lyr.geometryType() != QgsWkbTypes.GeometryType.PointGeometry:
                     continue
 
                 name = (lyr.name() or "").lower()
@@ -2171,7 +2171,7 @@ class FiberQPlugin:
             fset = {f.name() for f in layer.fields()}
 
             # 1) CABLES (Line)
-            if gtype == QgsWkbTypes.LineGeometry and lname in cable_names:
+            if gtype == QgsWkbTypes.GeometryType.LineGeometry and lname in cable_names:
                 self._stylize_cable_layer(layer)      # EN legend labels
                 self._apply_cable_field_aliases(layer)   # EN user view
                 self._set_cable_layer_alias(layer)       # EN layer name
@@ -2179,7 +2179,7 @@ class FiberQPlugin:
                 continue
 
             # 2) FIBER BREAK (Point)
-            if gtype == QgsWkbTypes.PointGeometry and {
+            if gtype == QgsWkbTypes.GeometryType.PointGeometry and {
                 "cable_layer_id", "cable_fid", "distance_m", "segments_hit", "vreme"
             }.issubset(fset):
                 alias_map = {
@@ -2203,7 +2203,7 @@ class FiberQPlugin:
             # Dozvoli:
             # - by layer name (Joint Closures) even with suffixes
             # - or if layer actually has only id,fid,naziv fields
-            if gtype == QgsWkbTypes.PointGeometry and (
+            if gtype == QgsWkbTypes.GeometryType.PointGeometry and (
                 lname_l.startswith("joint closures")
                 or lname_l.startswith("nastav")  # noqa: W503
                 or fset.issubset({"id", "fid", "naziv"})  # noqa: W503
@@ -2223,7 +2223,7 @@ class FiberQPlugin:
                 continue
 
             # 3.5) ROUTE (Line) – EN field aliases + EN layer name (posle export/import iz Preview Map)
-            if gtype == QgsWkbTypes.LineGeometry and (
+            if gtype == QgsWkbTypes.GeometryType.LineGeometry and (
                 lname_l.startswith("route")
                 or lname_l.startswith("trasa")  # noqa: W503
                 or {"naziv", "duzina", "tip_trase"}.issubset(fset)  # noqa: W503
@@ -2237,7 +2237,7 @@ class FiberQPlugin:
                 continue
 
             # 3.6) POLES (Point) – EN field aliases + EN layer name
-            if gtype == QgsWkbTypes.PointGeometry and (
+            if gtype == QgsWkbTypes.GeometryType.PointGeometry and (
                 lname_l.startswith("poles")
                 or lname_l.startswith("stubov")  # noqa: W503
                 or {"tip", "podtip", "visina", "materijal"}.issubset(fset)  # noqa: W503
@@ -2251,7 +2251,7 @@ class FiberQPlugin:
                 continue
 
             # 3.7) MANHOLES / OKNA (Point) – EN field aliases + EN layer name
-            if gtype == QgsWkbTypes.PointGeometry and (
+            if gtype == QgsWkbTypes.GeometryType.PointGeometry and (
                 lname_l.startswith("manholes")
                 or lname_l.startswith("okna")  # noqa: W503
                 or {"broj_okna", "tip_okna"}.issubset(fset)  # noqa: W503
@@ -2266,7 +2266,7 @@ class FiberQPlugin:
 
             # 4) GENERIC “Placing elements” (ODF/TB/OTB/TO/Patch panel/Optical slacks…)
             if (
-                gtype in (QgsWkbTypes.PointGeometry, QgsWkbTypes.PolygonGeometry)
+                gtype in (QgsWkbTypes.GeometryType.PointGeometry, QgsWkbTypes.GeometryType.PolygonGeometry)
                 and (  # noqa: W503
                     "proizvodjac" in fset
                     or "kapacitet" in fset  # noqa: W503
@@ -2333,7 +2333,7 @@ class FiberQPlugin:
             # THIS IS A CHECK THAT USES capabilities()
             if isinstance(lyr, QgsVectorLayer) and (
                 lyr.isEditable()
-                or lyr.dataProvider().capabilities() & QgsVectorDataProvider.DeleteFeatures  # noqa: W503
+                or lyr.dataProvider().capabilities() & QgsVectorDataProvider.Capability.DeleteFeatures  # noqa: W503
             ):
                 selected_feats = list(lyr.selectedFeatures())
 
@@ -2516,7 +2516,7 @@ class FiberQPlugin:
             QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Unable to load or invalid file!")
             return
 
-        if imported_layer.geometryType() != QgsWkbTypes.PointGeometry:
+        if imported_layer.geometryType() != QgsWkbTypes.GeometryType.PointGeometry:
             QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "The selected file does not contain points!")
             return
         # Find all existing point layers relevant to plugin:
@@ -2542,7 +2542,7 @@ class FiberQPlugin:
         existing_layers = [
             lyr for lyr in QgsProject.instance().mapLayers().values()
             if isinstance(lyr, QgsVectorLayer)
-            and lyr.geometryType() == QgsWkbTypes.PointGeometry  # noqa: W503
+            and lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry  # noqa: W503
             and lyr.name() in node_layer_names  # noqa: W503
         ]
         layer_names = [lyr.name() for lyr in existing_layers]
@@ -2611,7 +2611,7 @@ class FiberQPlugin:
                 symbol_layer = symbol.symbolLayer(0)
                 if symbol_layer is not None:
                     symbol_layer.setSize(10)
-                    symbol_layer.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
+                    symbol_layer.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMetersInMapUnits)
                 layer.renderer().setSymbol(symbol)
                 layer.triggerRepaint()
 
@@ -2650,7 +2650,7 @@ class FiberQPlugin:
                 geom.transform(transform)
 
             # Add each individual Point (even from MultiPoint)
-            if geom.type() == QgsWkbTypes.PointGeometry:
+            if geom.type() == QgsWkbTypes.GeometryType.PointGeometry:
                 if geom.isMultipart():
                     for pt in geom.asMultiPoint():
                         if pt:
@@ -2853,7 +2853,7 @@ class FiberQPlugin:
             res = result
             err_message = ""
 
-        if res != QgsVectorFileWriter.NoError:
+        if res != QgsVectorFileWriter.WriterError.NoError:
             QMessageBox.critical(
                 self.iface.mainWindow(),
                 "Export",
@@ -2946,7 +2946,7 @@ class FiberQPlugin:
 
     def fix_route_to_pole(self, route_feature, must_start=True):
         poles_layer = next((lyr for lyr in QgsProject.instance().mapLayers().values()
-                            if lyr.geometryType() == QgsWkbTypes.PointGeometry
+                            if lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry
                             and lyr.name() in ('Poles', 'Poles')), None)  # noqa: W503
 
         if not poles_layer:
@@ -2985,7 +2985,7 @@ class FiberQPlugin:
                 (lyr for lyr in QgsProject.instance().mapLayers().values()
                  if isinstance(lyr, QgsVectorLayer)
                  and lyr.name() in ('Route', 'Route')  # noqa: W503
-                 and lyr.geometryType() == QgsWkbTypes.LineGeometry),  # noqa: W503
+                 and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry),  # noqa: W503
                 None
             )
             if not route_layer:

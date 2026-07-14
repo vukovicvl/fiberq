@@ -106,7 +106,7 @@ class RouteManager:
             symbol = QgsSymbol.defaultSymbol(route_layer.geometryType())
             symbol_layer = symbol.symbolLayer(0)
             symbol_layer.setWidth(0.8)
-            symbol_layer.setWidthUnit(QgsUnitTypes.RenderMetersInMapUnits)
+            symbol_layer.setWidthUnit(QgsUnitTypes.RenderUnit.RenderMetersInMapUnits)
             symbol_layer.setPenStyle(Qt.PenStyle.DashLine)
             route_layer.renderer().setSymbol(symbol)
             route_layer.triggerRepaint()
@@ -151,7 +151,7 @@ class RouteManager:
     def _find_route_layer(self) -> Optional[QgsVectorLayer]:
         """Find existing Route layer."""
         for lyr in QgsProject.instance().mapLayers().values():
-            if lyr.name() in ('Route', 'Trasa') and lyr.geometryType() == QgsWkbTypes.LineGeometry:
+            if lyr.name() in ('Route', 'Trasa') and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry:
                 return lyr
         return None
 
@@ -225,7 +225,7 @@ class RouteManager:
         selected_features = []
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if (lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
+                if (lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and  # noqa: W504
                         lyr.name() in ('Poles', 'Stubovi', 'OKNA', 'Manholes')):
                     if lyr.selectedFeatureCount() > 0:
                         selected_features.extend(lyr.selectedFeatures())

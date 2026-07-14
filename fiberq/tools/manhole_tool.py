@@ -186,7 +186,7 @@ class ManholePlaceTool(QgsMapToolEmitPoint):
             try:
                 if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
                     lyr.name() in ('Manholes', 'OKNA') and  # noqa: W504
-                        lyr.geometryType() == QgsWkbTypes.PointGeometry):
+                        lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry):
                     return lyr
             except Exception as e:
                 logger.debug(f"Error in ManholePlaceTool._find_manhole_layer: {e}")
@@ -198,7 +198,7 @@ class ManholePlaceTool(QgsMapToolEmitPoint):
             try:
                 if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
                     lyr.name() in ('Route', 'Trasa') and  # noqa: W504
-                        lyr.geometryType() == QgsWkbTypes.LineGeometry):
+                        lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry):
                     return lyr
             except Exception as e:
                 logger.debug(f"Error in ManholePlaceTool._find_route_layer: {e}")

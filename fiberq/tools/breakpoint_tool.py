@@ -32,7 +32,7 @@ class BreakpointTool(QgsMapToolEmitPoint):
         self.plugin = plugin
 
         # Visual feedback rubber band
-        self.rubber = QgsRubberBand(self.canvas, QgsWkbTypes.PointGeometry)
+        self.rubber = QgsRubberBand(self.canvas, QgsWkbTypes.GeometryType.PointGeometry)
         self.rubber.setColor(QColor(0, 255, 0))
         self.rubber.setWidth(10)
 
@@ -44,7 +44,7 @@ class BreakpointTool(QgsMapToolEmitPoint):
         for lyr in QgsProject.instance().mapLayers().values():
             if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
                 lyr.name() in ('Route', 'Trasa') and  # noqa: W504
-                    lyr.geometryType() == QgsWkbTypes.LineGeometry):
+                    lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry):
                 return lyr
         return None
 
@@ -54,7 +54,7 @@ class BreakpointTool(QgsMapToolEmitPoint):
 
         route_layer = self._find_route_layer()
         if route_layer is None or route_layer.featureCount() == 0:
-            self.rubber.reset(QgsWkbTypes.PointGeometry)
+            self.rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
             self.snap_info = None
             return
 
@@ -77,7 +77,7 @@ class BreakpointTool(QgsMapToolEmitPoint):
 
         tolerance = self.canvas.mapUnitsPerPixel() * 10
         if snapped_point and min_dist < tolerance:
-            self.rubber.reset(QgsWkbTypes.PointGeometry)
+            self.rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
             self.rubber.addPoint(snapped_point)
             self.snap_info = {
                 'feat': min_feat,
@@ -87,7 +87,7 @@ class BreakpointTool(QgsMapToolEmitPoint):
                 'dist': min_dist
             }
         else:
-            self.rubber.reset(QgsWkbTypes.PointGeometry)
+            self.rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
             self.snap_info = None
 
     def canvasReleaseEvent(self, event):
@@ -95,7 +95,7 @@ class BreakpointTool(QgsMapToolEmitPoint):
         # Right click = cancel tool
         if event.button() == Qt.MouseButton.RightButton:
             self.snap_info = None
-            self.rubber.reset(QgsWkbTypes.PointGeometry)
+            self.rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
             self.iface.mapCanvas().unsetMapTool(self)
             return
 
@@ -109,7 +109,7 @@ class BreakpointTool(QgsMapToolEmitPoint):
                 "Split route",
                 "Click closer to a route!"
             )
-            self.rubber.reset(QgsWkbTypes.PointGeometry)
+            self.rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
             return
 
         min_feat = self.snap_info['feat']
@@ -130,7 +130,7 @@ class BreakpointTool(QgsMapToolEmitPoint):
                     "and cannot be split with this tool!\n"
                     "Merge the lines so that there is ONE line (not a MultiLineString)."
                 )
-                self.rubber.reset(QgsWkbTypes.PointGeometry)
+                self.rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
                 return
 
         # Convert all vertices to QgsPointXY
@@ -149,7 +149,7 @@ class BreakpointTool(QgsMapToolEmitPoint):
                     "Split route",
                     "Click closer to the middle of the segment."
                 )
-                self.rubber.reset(QgsWkbTypes.PointGeometry)
+                self.rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
                 return
 
             geom1 = QgsGeometry.fromPolylineXY([p0, snapped_point])
@@ -164,7 +164,7 @@ class BreakpointTool(QgsMapToolEmitPoint):
                     "Split route",
                     "Cannot split the route at this location."
                 )
-                self.rubber.reset(QgsWkbTypes.PointGeometry)
+                self.rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
                 return
 
             geom1 = min_geom
@@ -182,7 +182,7 @@ class BreakpointTool(QgsMapToolEmitPoint):
                 "Split route",
                 "Route layer 'Route' not found!"
             )
-            self.rubber.reset(QgsWkbTypes.PointGeometry)
+            self.rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
             return
 
         # Perform the split
@@ -222,7 +222,7 @@ class BreakpointTool(QgsMapToolEmitPoint):
         if self.plugin:
             self.plugin.stylize_route_layer(route_layer)
 
-        self.rubber.reset(QgsWkbTypes.PointGeometry)
+        self.rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
         QMessageBox.information(
             self.iface.mainWindow(),
             "Split route",
@@ -232,7 +232,7 @@ class BreakpointTool(QgsMapToolEmitPoint):
 
     def deactivate(self):
         """Clean up when tool is deactivated."""
-        self.rubber.reset(QgsWkbTypes.PointGeometry)
+        self.rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
         self.snap_info = None
         super().deactivate()
 

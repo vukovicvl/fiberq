@@ -41,7 +41,7 @@ class ExtensionTool(QgsMapToolEmitPoint):
         self.layer = layer
         self.snap_marker = QgsVertexMarker(self.canvas)
         self.snap_marker.setColor(QColor(255, 0, 0))
-        self.snap_marker.setIconType(QgsVertexMarker.ICON_CIRCLE)
+        self.snap_marker.setIconType(QgsVertexMarker.IconType.ICON_CIRCLE)
         self.snap_marker.setIconSize(14)
         self.snap_marker.setPenWidth(3)
         self.snap_marker.hide()
@@ -104,7 +104,7 @@ class ExtensionTool(QgsMapToolEmitPoint):
                     or lname.strip() in ("cuts", "cut")  # noqa: W503
                 )
 
-                if gtype == QgsWkbTypes.PointGeometry and is_node_layer:
+                if gtype == QgsWkbTypes.GeometryType.PointGeometry and is_node_layer:
                     req = QgsFeatureRequest().setFilterRect(rect)
                     for feat in lyr.getFeatures(req):
                         geom = feat.geometry()
@@ -122,7 +122,7 @@ class ExtensionTool(QgsMapToolEmitPoint):
                     or lyr.name() in ("Route", "Route")  # noqa: W503
                 )
 
-                if gtype == QgsWkbTypes.LineGeometry and is_cable_layer:
+                if gtype == QgsWkbTypes.GeometryType.LineGeometry and is_cable_layer:
                     req = QgsFeatureRequest().setFilterRect(rect)
                     for feat in lyr.getFeatures(req):
                         geom = feat.geometry()
@@ -194,7 +194,7 @@ class ExtensionTool(QgsMapToolEmitPoint):
         for lyr in QgsProject.instance().mapLayers().values():
             if (
                 isinstance(lyr, QgsVectorLayer)
-                and lyr.geometryType() == QgsWkbTypes.PointGeometry  # noqa: W503
+                and lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry  # noqa: W503
                 and lyr.name() in target_names  # noqa: W503
             ):
                 nastavak_layer = lyr
@@ -232,9 +232,9 @@ class ExtensionTool(QgsMapToolEmitPoint):
                 )
                 svg_layer.setSize(10)
                 try:
-                    svg_layer.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
+                    svg_layer.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMetersInMapUnits)
                 except Exception:
-                    svg_layer.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+                    svg_layer.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
                 symbol.changeSymbolLayer(0, svg_layer)
             except Exception as e:
                 logger.debug(f"Error in ExtensionTool.canvasReleaseEvent: {e}")

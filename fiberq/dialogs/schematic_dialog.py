@@ -293,7 +293,7 @@ class OpticalSchematicDialog(QDialog):
         nodes = {}
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.PointGeometry:
+                if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry:
                     lname = lyr.name()
                     fields = lyr.fields()
                     has_naziv = fields.indexFromName('naziv') != -1
@@ -529,9 +529,9 @@ class OpticalSchematicDialog(QDialog):
                     pt = None
                     if g.isEmpty():
                         continue
-                    if g.type() == QgsWkbTypes.PointGeometry:
+                    if g.type() == QgsWkbTypes.GeometryType.PointGeometry:
                         pt = g.asPoint()
-                    elif g.type() == QgsWkbTypes.LineGeometry:
+                    elif g.type() == QgsWkbTypes.GeometryType.LineGeometry:
                         try:
                             d = g.length()
                             pt = g.interpolate(d / 2.0).asPoint()

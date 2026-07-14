@@ -371,7 +371,7 @@ class RelationsManager:
         cands = []
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if lyr.geometryType() != QgsWkbTypes.PointGeometry:
+                if lyr.geometryType() != QgsWkbTypes.GeometryType.PointGeometry:
                     continue
 
                 fields = lyr.fields()

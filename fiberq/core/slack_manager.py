@@ -98,7 +98,7 @@ class SlackManager:
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.PointGeometry  # noqa: W503
+                    and lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry  # noqa: W503
                     and lyr.name() in ("Opticke_rezerve", "Optical slacks", "Optical slack")  # noqa: W503
                 ):
                     self.apply_slack_field_aliases(lyr)
@@ -157,7 +157,7 @@ class SlackManager:
             except Exception as e:
                 logger.debug(f"Error in SlackManager.stylize_slack_layer: {e}")
             try:
-                sym.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+                sym.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
             except Exception as e:
                 logger.debug(f"Error in SlackManager.stylize_slack_layer: {e}")
 
@@ -273,7 +273,7 @@ class SlackManager:
         kabl_layers = []
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if lyr.geometryType() == QgsWkbTypes.LineGeometry and lyr.name() in (
+                if lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry and lyr.name() in (
                     "Kablovi_podzemni", "Kablovi_vazdusni",
                     "Underground cables", "Aerial cables"
                 ):

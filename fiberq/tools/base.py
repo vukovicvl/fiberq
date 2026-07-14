@@ -65,7 +65,7 @@ def find_route_layer():
     for lyr in QgsProject.instance().mapLayers().values():
         try:
             if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
-                lyr.geometryType() == QgsWkbTypes.LineGeometry and  # noqa: W504
+                lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry and  # noqa: W504
                     lyr.name() in ('Route', 'Trasa')):
                 return lyr
         except Exception as e:
@@ -83,7 +83,7 @@ def find_cable_layers():
     for lyr in QgsProject.instance().mapLayers().values():
         try:
             if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
-                lyr.geometryType() == QgsWkbTypes.LineGeometry and  # noqa: W504
+                lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry and  # noqa: W504
                     lyr.name() in cable_names):
                 layers.append(lyr)
         except Exception as e:
@@ -98,7 +98,7 @@ def find_node_layers():
     for lyr in QgsProject.instance().mapLayers().values():
         try:
             if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
-                lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
+                lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and  # noqa: W504
                     lyr.name() in node_names):
                 layers.append(lyr)
         except Exception as e:
@@ -126,7 +126,7 @@ def find_element_layers():
     for lyr in QgsProject.instance().mapLayers().values():
         try:
             if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
-                lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
+                lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and  # noqa: W504
                     lyr.name() in element_names):
                 layers.append(lyr)
         except Exception as e:
@@ -167,7 +167,7 @@ def snap_to_point_layers(point, layers, tolerance):
     snapped_point = None
 
     for layer in layers:
-        if layer.geometryType() != QgsWkbTypes.PointGeometry:
+        if layer.geometryType() != QgsWkbTypes.GeometryType.PointGeometry:
             continue
 
         for feature in layer.getFeatures():
@@ -201,7 +201,7 @@ def snap_to_line_layer(point, layer, tolerance):
     Returns:
         Tuple of (snapped_point, feature, segment_index, distance) or (None, None, None, None)
     """
-    if layer.geometryType() != QgsWkbTypes.LineGeometry:
+    if layer.geometryType() != QgsWkbTypes.GeometryType.LineGeometry:
         return None, None, None, None
 
     min_dist = None
@@ -238,7 +238,7 @@ def snap_to_line_vertices(point, layer, tolerance):
     Returns:
         Tuple of (snapped_point, min_distance) or (None, None)
     """
-    if layer.geometryType() != QgsWkbTypes.LineGeometry:
+    if layer.geometryType() != QgsWkbTypes.GeometryType.LineGeometry:
         return None, None
 
     min_dist = None

@@ -49,7 +49,7 @@ class PlaceElementTool(QgsMapToolEmitPoint):
         self.symbol_spec = symbol_spec or {'name': 'diamond', 'color': 'red', 'size': '5', 'size_unit': 'MapUnit'}
         self.snap_marker = QgsVertexMarker(self.canvas)
         self.snap_marker.setColor(QColor(255, 0, 0))
-        self.snap_marker.setIconType(QgsVertexMarker.ICON_CIRCLE)
+        self.snap_marker.setIconType(QgsVertexMarker.IconType.ICON_CIRCLE)
         self.snap_marker.setIconSize(14)
         self.snap_marker.setPenWidth(3)
         self.snap_marker.hide()
@@ -66,13 +66,13 @@ class PlaceElementTool(QgsMapToolEmitPoint):
 
         try:
             simple = QgsSimpleMarkerSymbolLayer()
-            simple.setShape(QgsSimpleMarkerSymbolLayer.Circle)
+            simple.setShape(QgsSimpleMarkerSymbolLayer.Shape.Circle)
             simple.setSize(2.4)  # mm
-            simple.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
+            simple.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMetersInMapUnits)
             simple.setColor(QColor(0, 0, 0))  # black fill
             simple.setOutlineColor(QColor(0, 0, 0))  # black outline
             simple.setOutlineWidth(0.2)
-            simple.setOutlineWidthUnit(QgsUnitTypes.RenderMetersInMapUnits)
+            simple.setOutlineWidthUnit(QgsUnitTypes.RenderUnit.RenderMetersInMapUnits)
 
             sym = QgsMarkerSymbol()
             sym.changeSymbolLayer(0, simple)
@@ -89,12 +89,12 @@ class PlaceElementTool(QgsMapToolEmitPoint):
         node_layers = []
         for lyr in QgsProject.instance().mapLayers().values():
             try:
-                if lyr.geometryType() == QgsWkbTypes.LineGeometry and lyr.name() in (
+                if lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry and lyr.name() in (
                     "Kablovi_podzemni", "Kablovi_vazdusni", "Underground cables",
                     "Aerial cables", "Route", "Route"
                 ):
                     line_layers.append(lyr)
-                if lyr.geometryType() == QgsWkbTypes.PointGeometry and lyr.name() in (
+                if lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and lyr.name() in (
                     "Poles", "Poles", "OKNA", "Manholes"
                 ):
                     node_layers.append(lyr)
@@ -165,7 +165,7 @@ class PlaceElementTool(QgsMapToolEmitPoint):
         existing_layer = None
         try:
             for lyr in QgsProject.instance().mapLayers().values():
-                if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.PointGeometry and lyr.name() == self.target_layer_name:
+                if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and lyr.name() == self.target_layer_name:
                     existing_layer = lyr
                     break
         except Exception:
@@ -192,7 +192,7 @@ class PlaceElementTool(QgsMapToolEmitPoint):
         # Find or create layer
         elem_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
-            if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.PointGeometry and lyr.name() == self.target_layer_name:
+            if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and lyr.name() == self.target_layer_name:
                 elem_layer = lyr
                 break
 
@@ -237,9 +237,9 @@ class PlaceElementTool(QgsMapToolEmitPoint):
                     except Exception as e:
                         logger.debug(f"Error in PlaceElementTool.canvasPressEvent: {e}")
                     try:
-                        svg_layer.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
+                        svg_layer.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMetersInMapUnits)
                     except Exception:
-                        svg_layer.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+                        svg_layer.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
                     symbol.changeSymbolLayer(0, svg_layer)
                 except Exception as e:
                     logger.debug(f"Error in PlaceElementTool.canvasPressEvent: {e}")
@@ -355,7 +355,7 @@ class ChangeElementTypeTool(QgsMapToolIdentify):
         self.canvas = iface.mapCanvas()
         try:
             self.snap_marker = QgsVertexMarker(self.canvas)
-            self.snap_marker.setIconType(QgsVertexMarker.ICON_CROSS)
+            self.snap_marker.setIconType(QgsVertexMarker.IconType.ICON_CROSS)
             self.snap_marker.setPenWidth(3)
             self.snap_marker.setIconSize(14)
             self.snap_marker.setColor(QColor(0, 200, 0))
@@ -404,7 +404,7 @@ class ChangeElementTypeTool(QgsMapToolIdentify):
 
     def _is_element_layer(self, lyr):
         try:
-            if not (isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.PointGeometry):
+            if not (isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry):
                 return False
 
             name = (lyr.name() or "").strip()

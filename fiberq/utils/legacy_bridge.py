@@ -169,14 +169,14 @@ def _apply_fixed_text_label(layer, field_name='naziv', size_mu=8.0, yoff_mu=5.0)
         try:
             s.xOffset = 0.0
             s.yOffset = float(yoff_mu)
-            s.offsetUnits = QgsUnitTypes.RenderMapUnits
+            s.offsetUnits = QgsUnitTypes.RenderUnit.RenderMapUnits
         except Exception as e:
             logger.debug(f"Error in _apply_fixed_text_label: {e}")
 
         tf = QgsTextFormat()
         try:
             tf.setSize(float(size_mu))
-            tf.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+            tf.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
         except Exception as e:
             logger.debug(f"Error in _apply_fixed_text_label: {e}")
 
@@ -284,7 +284,7 @@ def _ensure_region_layer(core):
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.PolygonGeometry  # noqa: W503
+                    and lyr.geometryType() == QgsWkbTypes.GeometryType.PolygonGeometry  # noqa: W503
                     and lyr.name() in ('Rejon', 'Service Area')  # noqa: W503
                 ):
                     # If old name 'Rejon', rename so user sees 'Service Area'
@@ -353,10 +353,10 @@ def _ensure_objects_layer(core):
                 if (
                     isinstance(lyr, QgsVectorLayer)
                     and lyr.wkbType() in (  # noqa: W503
-                        QgsWkbTypes.Polygon,
-                        QgsWkbTypes.MultiPolygon,
-                        QgsWkbTypes.PolygonZM,
-                        QgsWkbTypes.MultiPolygonZM,
+                        QgsWkbTypes.Type.Polygon,
+                        QgsWkbTypes.Type.MultiPolygon,
+                        QgsWkbTypes.Type.PolygonZM,
+                        QgsWkbTypes.Type.MultiPolygonZM,
                     )
                     and lyr.name() in ("Objekti", "Objects")  # noqa: W503
                 ):
@@ -422,7 +422,7 @@ def _stylize_objects_layer(layer):
         simple.setFillColor(QColor(0, 0, 0, 0))
         simple.setStrokeColor(QColor(0, 0, 0))
         simple.setStrokeWidth(0.8)
-        simple.setStrokeWidthUnit(QgsUnitTypes.RenderMillimeters)
+        simple.setStrokeWidthUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
 
         hatch = QgsLinePatternFillSymbolLayer()
         try:
@@ -436,7 +436,7 @@ def _stylize_objects_layer(layer):
         except Exception as e:
             logger.debug(f"Error in _stylize_objects_layer: {e}")
         hatch.setDistance(2.2)
-        hatch.setDistanceUnit(QgsUnitTypes.RenderMillimeters)
+        hatch.setDistanceUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
         try:
             sub = hatch.subSymbol()
             if sub and sub.symbolLayerCount() > 0:
@@ -447,7 +447,7 @@ def _stylize_objects_layer(layer):
                     logger.debug(f"Could not set hatch color: {e}")
                 try:
                     sl.setWidth(0.3)
-                    sl.setWidthUnit(QgsUnitTypes.RenderMillimeters)
+                    sl.setWidthUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
                 except Exception as e:
                     logger.debug(f"Error in _stylize_objects_layer: {e}")
         except Exception as e:

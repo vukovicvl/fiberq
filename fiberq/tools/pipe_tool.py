@@ -44,7 +44,7 @@ class PipePlaceTool(QgsMapTool):
         self.points = []
 
         # Temporary line rubber band
-        self.rb = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
+        self.rb = QgsRubberBand(self.canvas, QgsWkbTypes.GeometryType.LineGeometry)
         self.rb.setLineStyle(Qt.PenStyle.SolidLine)
         self.rb.show()
         self.rb.setWidth(1.5)
@@ -52,7 +52,7 @@ class PipePlaceTool(QgsMapTool):
 
         # Snap indicator
         self.snap_marker = QgsVertexMarker(self.canvas)
-        self.snap_marker.setIconType(QgsVertexMarker.ICON_CROSS)
+        self.snap_marker.setIconType(QgsVertexMarker.IconType.ICON_CROSS)
         self.snap_marker.setPenWidth(3)
         self.snap_marker.setIconSize(14)
         self.snap_marker.setColor(QColor(0, 200, 0))
@@ -97,7 +97,7 @@ class PipePlaceTool(QgsMapTool):
         for lyr in QgsProject.instance().mapLayers().values():
             try:
                 if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
-                    lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
+                    lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and  # noqa: W504
                         lyr.name() in node_names):
                     for f in lyr.getFeatures():
                         p = f.geometry().asPoint()
@@ -113,7 +113,7 @@ class PipePlaceTool(QgsMapTool):
             try:
                 if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
                     lyr.name() in ('Route', 'Trasa') and  # noqa: W504
-                        lyr.geometryType() == QgsWkbTypes.LineGeometry):
+                        lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry):
 
                     for g in lyr.getFeatures():
                         geom = g.geometry()
@@ -214,7 +214,7 @@ class PipePlaceTool(QgsMapTool):
             try:
                 if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
                     lyr.name() in ('Route', 'Trasa') and  # noqa: W504
-                        lyr.geometryType() == QgsWkbTypes.LineGeometry):
+                        lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry):
                     return lyr
             except Exception as e:
                 logger.debug(f"Error in PipePlaceTool._find_route_layer: {e}")
@@ -338,7 +338,7 @@ class PipePlaceTool(QgsMapTool):
         for lyr in QgsProject.instance().mapLayers().values():
             try:
                 if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
-                    lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
+                    lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and  # noqa: W504
                         lyr.name() in node_names):
                     node_layers.append(lyr)
             except Exception as e:
@@ -404,7 +404,7 @@ class PipePlaceTool(QgsMapTool):
 
             if getattr(self, "rb", None) is not None:
                 try:
-                    self.rb.reset(QgsWkbTypes.LineGeometry)
+                    self.rb.reset(QgsWkbTypes.GeometryType.LineGeometry)
                     self.rb.hide()
                 except Exception as e:
                     logger.debug(f"Error in PipePlaceTool._cleanup: {e}")

@@ -3,7 +3,7 @@ name=FiberQ
 description=Open-source fiber network design tools for QGIS (FTTH/GPON/FTTx)
 about=FiberQ helps telecom engineers and GIS professionals design, analyze, and document fiber optic networks inside QGIS. FiberQ supports QGIS 4 / Qt6 while keeping support for QGIS 3.22 LTR and later, and clears all findings from the QGIS repository security scan. Some advanced features may require an activation key.
 
-version=1.3.1
+version=1.3.0
 qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
 
@@ -23,14 +23,6 @@ license=GPL-3.0-or-later
 class_name=FiberQPlugin
 
 changelog=
-    1.3.1 - Security-scan hardening (no functional change)
-        * Resolved 66 Bandit low-severity findings (B110 try/except/pass and B112
-          try/except/continue): the previously-silent exception handlers now log at
-          debug level instead of swallowing errors. No behaviour change beyond the
-          added debug logging.
-        * The local lint gate (make lint / scan-check) now runs Bandit at ALL
-          severities to match the plugins.qgis.org Security & Quality scanner.
-
     1.3.0 - Project schema versioning, safe migrations, and stable feature IDs
         * New: every FiberQ project now carries a schema-version marker, also
           mirrored into the GeoPackage, so future releases can recognise and
@@ -52,6 +44,12 @@ changelog=
         * Fix: the Optical Schematic View now draws pipes in the legend orange for
           English-named layers (previously grey), matching the "Pipes" legend.
         * Fix: renamed the mislabeled "FiberQ web browser" action to "Preview Map".
+        * Compat: scoped all QGIS enum accesses (e.g. QgsWkbTypes.PointGeometry ->
+          QgsWkbTypes.GeometryType.PointGeometry) for PyQt6 / QGIS 4; unchanged
+          behaviour on QGIS 3 / Qt5.
+        * Hardening: previously-silent exception handlers now log at debug level
+          instead of swallowing errors, and the local lint gate runs Bandit at all
+          severities to match the plugins.qgis.org scanner.
         * Quality: the maintainer manually reviewed the entire plugin source -
           every Python module - prior to this release. Lint (flake8 + Bandit)
           remains at zero findings on the plugins.qgis.org scan, and the pytest

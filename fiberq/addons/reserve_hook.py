@@ -28,7 +28,7 @@ class ReserveHook(QObject):
             return
         for l in QgsProject.instance().mapLayers().values():  # noqa: E741
             try:
-                if isinstance(l, QgsVectorLayer) and l.geometryType() == QgsWkbTypes.PointGeometry and l.name().lower().startswith('opticke_rezerve'):
+                if isinstance(l, QgsVectorLayer) and l.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and l.name().lower().startswith('opticke_rezerve'):
                     self._connect_layer(l)
                     self._connected = True
             except Exception as e:
@@ -37,7 +37,7 @@ class ReserveHook(QObject):
     def _layers_added(self, layers):
         try:
             for l in layers:  # noqa: E741
-                if isinstance(l, QgsVectorLayer) and l.geometryType() == QgsWkbTypes.PointGeometry and l.name().lower().startswith('opticke_rezerve'):
+                if isinstance(l, QgsVectorLayer) and l.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and l.name().lower().startswith('opticke_rezerve'):
                     self._connect_layer(l)
         except Exception as e:
             logger.debug(f"Error in ReserveHook._layers_added: {e}")
@@ -79,7 +79,7 @@ class ReserveHook(QObject):
         return os.path.abspath(base)
 
     def _apply_style(self, rez: QgsVectorLayer):
-        if not isinstance(rez, QgsVectorLayer) or rez.geometryType() != QgsWkbTypes.PointGeometry:
+        if not isinstance(rez, QgsVectorLayer) or rez.geometryType() != QgsWkbTypes.GeometryType.PointGeometry:
             return
         field = 'tip' if rez.fields().indexFromName('tip') != -1 else None
         if not field:
@@ -92,12 +92,12 @@ class ReserveHook(QObject):
                 path = os.path.join(self._icons_dir(), svg_name)
                 if os.path.exists(path):
                     sl = QgsSvgMarkerSymbolLayer(path, 12, 0)
-                    sl.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+                    sl.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
                     s.changeSymbolLayer(0, sl)
                 else:
-                    s.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+                    s.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
             except Exception:
-                s.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+                s.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
             return s
         cats = [
             QgsRendererCategory('zavrsna', _svg_symbol('map_rezerva_c.svg'), 'Završna'),

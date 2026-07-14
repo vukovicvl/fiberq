@@ -84,7 +84,7 @@ class _BaseObjMapTool(QgsMapTool):
         self.core = core
         self.canvas = iface.mapCanvas()
         self.points = []
-        self.rb = QgsRubberBand(self.canvas, QgsWkbTypes.PolygonGeometry)
+        self.rb = QgsRubberBand(self.canvas, QgsWkbTypes.GeometryType.PolygonGeometry)
         try:
             self.rb.setWidth(2)
             # semi-transparent fill
@@ -111,7 +111,7 @@ class _BaseObjMapTool(QgsMapTool):
             self._update_rb([])
         except Exception:
             try:
-                self.rb.reset(QgsWkbTypes.PolygonGeometry)
+                self.rb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
             except Exception as e:
                 logger.debug(f"Error in _BaseObjMapTool._reset: {e}")
 

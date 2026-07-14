@@ -98,7 +98,7 @@ class ObjectsUI:
                 return
 
             g = sel[0].geometry()
-            if not g or g.type() != QgsWkbTypes.PolygonGeometry:
+            if not g or g.type() != QgsWkbTypes.GeometryType.PolygonGeometry:
                 QMessageBox.information(
                     core.iface.mainWindow(),
                     "Objects",

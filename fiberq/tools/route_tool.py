@@ -34,7 +34,7 @@ class ManualRouteTool(QgsMapTool):
         self.canvas = iface.mapCanvas()
 
         # Route line rubber band
-        self.rb = QgsRubberBand(self.canvas, QgsWkbTypes.LineGeometry)
+        self.rb = QgsRubberBand(self.canvas, QgsWkbTypes.GeometryType.LineGeometry)
         self.rb.setColor(QColor(0, 0, 255, 150))
         self.rb.setWidth(2)
 
@@ -42,7 +42,7 @@ class ManualRouteTool(QgsMapTool):
         self.points = []
 
         # Snap indicator
-        self.snap_rubber = QgsRubberBand(self.canvas, QgsWkbTypes.PointGeometry)
+        self.snap_rubber = QgsRubberBand(self.canvas, QgsWkbTypes.GeometryType.PointGeometry)
         self.snap_rubber.setColor(QColor(255, 0, 0, 180))
         self.snap_rubber.setWidth(12)
 
@@ -90,7 +90,7 @@ class ManualRouteTool(QgsMapTool):
         for lyr in QgsProject.instance().mapLayers().values():
             try:
                 if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
-                    lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
+                    lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and  # noqa: W504
                         lyr.name() in node_layer_names):
                     node_layers.append(lyr)
             except Exception as e:
@@ -117,7 +117,7 @@ class ManualRouteTool(QgsMapTool):
             for lyr in QgsProject.instance().mapLayers().values():
                 try:
                     if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
-                        lyr.geometryType() == QgsWkbTypes.LineGeometry and  # noqa: W504
+                        lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry and  # noqa: W504
                             lyr.name() in ('Route', 'Trasa')):
 
                         for feat in lyr.getFeatures():
@@ -172,10 +172,10 @@ class ManualRouteTool(QgsMapTool):
 
         if min_dist is not None and min_dist < snap_tolerance and snap_point is not None:
             point = snap_point
-            self.snap_rubber.reset(QgsWkbTypes.PointGeometry)
+            self.snap_rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
             self.snap_rubber.addPoint(snap_point)
         else:
-            self.snap_rubber.reset(QgsWkbTypes.PointGeometry)
+            self.snap_rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
 
         self.points.append(point)
         self.rb.addPoint(point)
@@ -189,11 +189,11 @@ class ManualRouteTool(QgsMapTool):
         snap_tolerance = self.canvas.mapUnitsPerPixel() * 15
 
         if snap_point is not None and min_dist is not None and min_dist < snap_tolerance:
-            self.snap_rubber.reset(QgsWkbTypes.PointGeometry)
+            self.snap_rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
             self.snap_rubber.addPoint(snap_point)
             disp_point = snap_point
         else:
-            self.snap_rubber.reset(QgsWkbTypes.PointGeometry)
+            self.snap_rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
             disp_point = point
 
         # Update rubber band
@@ -207,11 +207,11 @@ class ManualRouteTool(QgsMapTool):
     def _finish_route(self):
         """Complete the route and add it to the layer."""
         # Clear snap marker
-        self.snap_rubber.reset(QgsWkbTypes.PointGeometry)
+        self.snap_rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
 
         # Need at least 2 points
         if len(self.points) < 2:
-            self.rb.reset(QgsWkbTypes.LineGeometry)
+            self.rb.reset(QgsWkbTypes.GeometryType.LineGeometry)
             self.points = []
             self.canvas.unsetMapTool(self)
             return
@@ -221,7 +221,7 @@ class ManualRouteTool(QgsMapTool):
         for lyr in QgsProject.instance().mapLayers().values():
             if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
                 lyr.name() in ('Route', 'Trasa') and  # noqa: W504
-                    lyr.geometryType() == QgsWkbTypes.LineGeometry):
+                    lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry):
                 route_layer = lyr
                 break
 
@@ -324,13 +324,13 @@ class ManualRouteTool(QgsMapTool):
 
         # Reset tool
         self.points = []
-        self.rb.reset(QgsWkbTypes.LineGeometry)
+        self.rb.reset(QgsWkbTypes.GeometryType.LineGeometry)
         self.canvas.unsetMapTool(self)
 
     def deactivate(self):
         """Clean up when tool is deactivated."""
-        self.rb.reset(QgsWkbTypes.LineGeometry)
-        self.snap_rubber.reset(QgsWkbTypes.PointGeometry)
+        self.rb.reset(QgsWkbTypes.GeometryType.LineGeometry)
+        self.snap_rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
         self.points = []
         super().deactivate()
 
