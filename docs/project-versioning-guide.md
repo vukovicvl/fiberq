@@ -93,9 +93,11 @@ identifier that stays with the feature no matter what happens to it:
 - **Full manual source review.** Ahead of the 1.3.0 release, the maintainer
   manually reviewed the **entire plugin source — every Python module** — in
   addition to the automated checks below.
-- **Clean repository scan.** The plugin continues to report **zero findings** on
-  the plugins.qgis.org Security & Quality scan (flake8 with
-  `--max-line-length=120 --ignore=E501`, and Bandit at medium/high severity).
+- **Clean repository scan.** The plugin reports **zero findings** on the
+  plugins.qgis.org Security & Quality scan: flake8 (with
+  `--max-line-length=120 --ignore=E501`) and Bandit **at all severities** both
+  report 0, and the repository's **Qt6 compatibility check** also passes with 0
+  enum errors — every QGIS enum access is scoped for PyQt6 / QGIS 4.
 - **Automated tests on both Qt generations.** The pytest suite (including the new
   schema-version, migration, and `fiberq_uuid` invariant tests) runs green against
   **QGIS 3 / Qt5** and **QGIS 4 / Qt6**.
