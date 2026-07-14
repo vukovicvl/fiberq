@@ -1565,17 +1565,29 @@ class FiberQPlugin:
             logger.debug(f"Error creating Quick Toolbar: {e}")
             self.quick_toolbar = None
 
-        # Phase 0.1: UUID migration for FiberQ Designer compatibility
-        # Run after a short delay to ensure all layers are loaded,
-        # AND connect to projectRead so it runs on every project open
+        # WP1b: run the versioned schema-migration runner on project load.
+        # Deferred (~1s) so all layersAdded handlers (alias / name
+        # canonicalisation) finish first. The slot is stored on self so unload()
+        # can disconnect the *same* callable -- the previous code connected an
+        # inline lambda but disconnected a bound method, so it never disconnected.
+        # The one-shot at init covers a project already open when the plugin loads.
         try:
             from qgis.PyQt.QtCore import QTimer
-            QTimer.singleShot(2000, self._migrate_uuids)
-            QgsProject.instance().readProject.connect(
-                lambda *args: QTimer.singleShot(1000, self._migrate_uuids)
+            # Idempotent re-init: drop any slot from a previous initGui that ran
+            # without a clean unload, so we never accumulate connections.
+            prev_slot = getattr(self, "_schema_migration_slot", None)
+            if prev_slot is not None:
+                try:
+                    QgsProject.instance().readProject.disconnect(prev_slot)
+                except Exception:
+                    pass
+            self._schema_migration_slot = (
+                lambda *args: QTimer.singleShot(1000, self._run_schema_migrations)
             )
+            QgsProject.instance().readProject.connect(self._schema_migration_slot)
+            QTimer.singleShot(2000, self._run_schema_migrations)
         except Exception as e:
-            logger.debug(f"Error scheduling UUID migration: {e}")
+            logger.debug(f"Error scheduling schema migration: {e}")
 
     def _color_catalogs_key(self):
         """Get color catalogs storage key."""
@@ -1933,10 +1945,51 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Error in UUID migration: {e}")
 
-    def unload(self):
-        # Phase 0.1: Disconnect UUID migration signal
+    def _run_schema_migrations(self):
+        """Run the versioned schema-migration runner (WP1b) on the current project.
+
+        Two responsibilities on every project load:
+        1. The version-gated migration runner: reads the stored schema marker,
+           upgrades an older project to the current version, and stamps the
+           marker (only on success -- a failed step is retried on the next load).
+        2. The fiberq_uuid identity invariant: an idempotent backfill that runs
+           regardless of the marker, because imports / external edits can add
+           NULL-uuid features to an already-migrated project. This keeps the old
+           always-on healing behaviour that the version gate would otherwise drop.
+        """
+        prj = QgsProject.instance()
+        steps_done = []
         try:
-            QgsProject.instance().readProject.disconnect(self._migrate_uuids)
+            from .core.migrations import run_migrations
+            report = run_migrations(prj)
+            steps_done = report.steps
+            if report.ran:
+                self.iface.messageBar().pushInfo("FiberQ", report.summary())
+                logger.debug(f"Schema migration: {report}")
+            elif report.errors:
+                logger.debug(f"Schema migration not applied: {report.summary()}")
+        except Exception as e:
+            logger.debug(f"Error running schema migrations: {e}")
+
+        # Standing identity invariant -- heal any features still lacking a UUID.
+        # Skipped when the migration above already ran the uuid step this load.
+        try:
+            from .utils.uuid_utils import migrate_project_uuids
+            if "uuid-identity" not in steps_done:
+                healed = migrate_project_uuids(prj)
+                if healed:
+                    total = sum(healed.values())
+                    logger.debug(f"UUID invariant backfilled {total} features: {healed}")
+        except Exception as e:
+            logger.debug(f"Error in UUID invariant backfill: {e}")
+
+    def unload(self):
+        # WP1b: disconnect the schema-migration slot -- the same callable we
+        # connected, so the disconnect actually succeeds.
+        try:
+            slot = getattr(self, "_schema_migration_slot", None)
+            if slot is not None:
+                QgsProject.instance().readProject.disconnect(slot)
         except Exception:
             pass  # May not be connected or already disconnected
 

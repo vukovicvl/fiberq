@@ -40,7 +40,37 @@ The project schema version is the string **`SCHEMA_VERSION`** in
   **mirrored into the GeoPackage** `_fiberq_metadata` table on a full project
   export, so the version travels with the data file;
 - **absent in pre-1.0 projects** — those are treated as the pre-marker baseline
-  (version `0`) and are upgraded by the migration framework (see WP1b).
+  (version `0`) and are upgraded by the migration framework.
+
+### Migrations (on load)
+
+When a project is opened, FiberQ runs `fiberq/core/migrations.py:run_migrations`:
+
+1. It reads the stored version. A **malformed / foreign** marker (anything that
+   is not a dotted run of integers, e.g. `v2.0`) is left untouched — never
+   coerced, so a genuinely newer project can't be silently downgraded.
+2. If the project is **older**, it runs the ordered chain of migration steps in
+   the half-open range `(stored, current]`. The only step today, `uuid-identity`
+   (baseline `0` → `1.0`), adds and backfills the `fiberq_uuid` field.
+3. The current version is stamped **only if every step succeeded**. If a step
+   cannot persist (a locked or read-only GeoPackage), the marker is left
+   unchanged so the next load retries — the marker never claims a migration that
+   didn't reach disk.
+4. A project stamped **newer** than the running plugin is left untouched (never
+   downgraded).
+
+Each step is **idempotent**: re-running on an up-to-date project does nothing.
+Because a project entry only becomes durable when the project is saved (or
+exported to GeoPackage, which also stamps the marker), an on-load upgrade that
+isn't saved simply re-runs — harmlessly — next time.
+
+### The `fiberq_uuid` identity invariant
+
+`fiberq_uuid` must exist and be populated on **every** FiberQ feature. Adding it
+is the `0 → 1.0` migration, but keeping it filled is a standing invariant, not a
+one-time step: an idempotent backfill runs on **every** load regardless of the
+marker, so features introduced later (imports, external edits, interchange
+round-trips) are healed too.
 
 ## Layer types
 

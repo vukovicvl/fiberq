@@ -1,0 +1,17 @@
+# EditorConfig — https://editorconfig.org
+# Stops the repo from ever picking up Windows CRLF again by telling the editor
+# to write LF (and UTF-8) regardless of the host OS. Works with VS Code,
+# PyCharm, and most editors (VS Code needs the EditorConfig extension).
+root = true
+
+[*]
+end_of_line = lf
+charset = utf-8
+insert_final_newline = true
+
+[*.py]
+indent_style = space
+indent_size = 4
+
+[Makefile]
+indent_style = tab
