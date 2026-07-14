@@ -131,9 +131,9 @@ class ExtensionTool(QgsMapToolEmitPoint):
                         for v in geom.vertices():
                             consider(v)
 
-            except Exception:
+            except Exception as e:
                 # if any layer fails, skip it
-                pass
+                logger.debug(f"Skipping layer during snap candidate search: {e}")
 
         if snap_point is not None and min_dist is not None and min_dist < tol:
             return snap_point
@@ -203,8 +203,8 @@ class ExtensionTool(QgsMapToolEmitPoint):
                 try:
                     from ..utils.uuid_utils import ensure_uuid_field
                     ensure_uuid_field(nastavak_layer)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Could not ensure UUID field on joint closure layer: {e}")
                 break
 
         # 2) If doesn't exist – create new
@@ -284,8 +284,8 @@ class ExtensionTool(QgsMapToolEmitPoint):
         try:
             from ..utils.uuid_utils import set_feature_uuid
             set_feature_uuid(nastavak_feat)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Could not set UUID on joint closure feature: {e}")
 
         nastavak_layer.startEditing()
         nastavak_layer.addFeature(nastavak_feat)

@@ -1579,8 +1579,8 @@ class FiberQPlugin:
             if prev_slot is not None:
                 try:
                     QgsProject.instance().readProject.disconnect(prev_slot)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Could not disconnect previous schema migration slot: {e}")
             self._schema_migration_slot = (
                 lambda *args: QTimer.singleShot(1000, self._run_schema_migrations)
             )
@@ -1736,9 +1736,9 @@ class FiberQPlugin:
                     except Exception as e:
                         logger.debug(f"Error in FiberQPlugin.activate_fiber_break_tool: {e}")
 
-        except Exception:
+        except Exception as e:
             # if something fails, do not crash tool - just skip style
-            pass
+            logger.debug(f"Could not apply fiber break style: {e}")
 
         self._record_cmd('fiber_break')
 
@@ -1990,8 +1990,8 @@ class FiberQPlugin:
             slot = getattr(self, "_schema_migration_slot", None)
             if slot is not None:
                 QgsProject.instance().readProject.disconnect(slot)
-        except Exception:
-            pass  # May not be connected or already disconnected
+        except Exception as e:
+            logger.debug(f"Could not disconnect schema migration slot: {e}")
 
         # Clear undo stacks (v1.2 — Feature 2)
         try:
@@ -2077,9 +2077,9 @@ class FiberQPlugin:
             node = root.findLayer(self.layer.id())
             if node:
                 node.setCustomLayerName("Poles")
-        except Exception:
+        except Exception as e:
             # If something fails (e.g. layerTreeRoot not ready), just skip
-            pass
+            logger.debug(f"Could not set poles layer alias: {e}")
 
     def _apply_poles_field_aliases(self, layer):
         """Apply English field aliases to the poles layer.
@@ -3424,9 +3424,9 @@ def _open_fiberq_web(iface):
                 "FiberQ – pregledna mapa",
                 f"Greška pri otvaranju pregledne mape:\n{e}"
             )
-        except Exception:
+        except Exception as e:
             # if even QMessageBox fails, just ignore
-            pass
+            logger.debug(f"Could not show preview error dialog: {e}")
 
 
 # =============================================================================

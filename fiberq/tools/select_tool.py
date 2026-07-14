@@ -117,7 +117,8 @@ class SmartMultiSelectTool(QgsMapTool):
                 d = geom.distance(gpt)
                 if d <= tol and (best[0] is None or d < best[0]):
                     best = (d, f.id(), geom)
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Skipping feature; could not compute distance: {e}")
                 continue
         return (best[1], best[2]) if best[1] is not None else (None, None)
 
@@ -304,7 +305,8 @@ class SmartMultiSelectTool(QgsMapTool):
                     elif gtype == QgsWkbTypes.PolygonGeometry:
                         if name in valid_poly_names or lname in low_poly:
                             layers.append(lyr)
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Skipping layer during smart-select classification: {e}")
                     continue
 
             return layers

@@ -353,7 +353,8 @@ def apply_element_aliases(layer) -> None:
             idx = fields.indexFromName(field_name)
             if idx != -1:
                 layer.setFieldAlias(idx, alias)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"could not set alias for field {field_name}: {e}")
             continue
 
 

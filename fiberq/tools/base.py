@@ -180,7 +180,8 @@ def snap_to_point_layers(point, layers, tolerance):
                 if min_dist is None or d < min_dist:
                     min_dist = d
                     snapped_point = QgsPointXY(pt)
-            except Exception:
+            except Exception as e:
+                logger.debug(f"could not compute distance to snap point: {e}")
                 continue
 
     if snapped_point and min_dist is not None and min_dist <= tolerance:

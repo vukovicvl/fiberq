@@ -388,7 +388,8 @@ def apply_field_aliases(
             if idx != -1:
                 layer.setFieldAlias(idx, alias)
                 applied_count += 1
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Could not set alias for field {field_name}: {e}")
             continue
 
     return applied_count

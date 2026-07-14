@@ -212,8 +212,8 @@ class BreakpointTool(QgsMapToolEmitPoint):
             from ..utils.uuid_utils import set_feature_uuid
             set_feature_uuid(feat1)
             set_feature_uuid(feat2)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"could not set uuid on new route segments: {e}")
 
         route_layer.addFeatures([feat1, feat2])
         route_layer.commitChanges()

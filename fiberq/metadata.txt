@@ -3,7 +3,7 @@ name=FiberQ
 description=Open-source fiber network design tools for QGIS (FTTH/GPON/FTTx)
 about=FiberQ helps telecom engineers and GIS professionals design, analyze, and document fiber optic networks inside QGIS. FiberQ supports QGIS 4 / Qt6 while keeping support for QGIS 3.22 LTR and later, and clears all findings from the QGIS repository security scan. Some advanced features may require an activation key.
 
-version=1.3.0
+version=1.3.1
 qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
 
@@ -23,6 +23,14 @@ license=GPL-3.0-or-later
 class_name=FiberQPlugin
 
 changelog=
+    1.3.1 - Security-scan hardening (no functional change)
+        * Resolved 66 Bandit low-severity findings (B110 try/except/pass and B112
+          try/except/continue): the previously-silent exception handlers now log at
+          debug level instead of swallowing errors. No behaviour change beyond the
+          added debug logging.
+        * The local lint gate (make lint / scan-check) now runs Bandit at ALL
+          severities to match the plugins.qgis.org Security & Quality scanner.
+
     1.3.0 - Project schema versioning, safe migrations, and stable feature IDs
         * New: every FiberQ project now carries a schema-version marker, also
           mirrored into the GeoPackage, so future releases can recognise and

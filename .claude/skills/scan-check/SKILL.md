@@ -10,11 +10,11 @@ Run the same checks the plugins.qgis.org scanner runs, locally and fast, and rep
    ```bash
    python -m flake8 --isolated --max-line-length=120 --ignore=E501 fiberq
    ```
-2. Bandit, medium/high only (the scan policy):
+2. Bandit at ALL severities (the scanner flags LOW too — e.g. B110/B112 try/except/pass|continue — so `-ll` is not enough):
    ```bash
-   python -m bandit -r fiberq -ll -q
+   python -m bandit -r fiberq -q -c pyproject.toml
    ```
-3. Report: flake8 finding count and Bandit medium/high count. **The gate is 0 / 0.**
+3. Report: flake8 finding count and total Bandit count (all severities). **The gate is 0 / 0.**
 4. If anything fires, list each finding with `file:line` and the code, and say whether it should be fixed or (rarely, with a stated reason) silenced with an inline `# noqa: <code>` / Bandit annotation.
 
 ## Notes

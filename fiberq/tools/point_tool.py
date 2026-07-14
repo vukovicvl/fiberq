@@ -129,8 +129,8 @@ class PointTool(QgsMapToolEmitPoint):
         try:
             from ..utils.uuid_utils import set_feature_uuid
             set_feature_uuid(feature)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Could not set feature uuid on pole: {e}")
         self.layer.startEditing()
         self.layer.addFeature(feature)
         self.layer.commitChanges()
@@ -141,8 +141,8 @@ class PointTool(QgsMapToolEmitPoint):
         try:
             if hasattr(self, 'plugin') and self.plugin and hasattr(self.plugin, 'undo_manager') and self.plugin.undo_manager:
                 self.plugin.undo_manager.record_add(self.layer, feature)
-        except Exception:
-            pass  # PointTool may not always have plugin reference
+        except Exception as e:
+            logger.debug(f"Could not record undo for added pole (plugin ref may be missing): {e}")
 
 
 __all__ = ['PointTool']

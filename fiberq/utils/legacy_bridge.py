@@ -197,9 +197,9 @@ def _apply_fixed_text_label(layer, field_name='naziv', size_mu=8.0, yoff_mu=5.0)
         layer.setLabeling(QgsVectorLayerSimpleLabeling(s))
         layer.setLabelsEnabled(True)
         layer.triggerRepaint()
-    except Exception:
+    except Exception as e:
         # Do not crash the plugin if labeling fails on some older QGIS.
-        pass
+        logger.debug(f"Could not apply fixed text label: {e}")
 
 
 ELEMENT_DEFS = [
@@ -248,8 +248,8 @@ def _img_set(layer, fid, path):
     """Set image path for a feature."""
     try:
         QgsProject.instance().writeEntry("FiberQPlugin", _img_key(layer, fid), path or "")
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Could not write image path entry: {e}")
 
 
 def _set_objects_layer_alias(layer):
@@ -299,7 +299,8 @@ def _ensure_region_layer(core):
                     except Exception as e:
                         logger.debug(f"Error ensuring fiberq_uuid on Service Area layer: {e}")
                     return lyr
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Skipping layer while ensuring region layer: {e}")
                 continue
 
         # 2) If doesn't exist – create new layer named 'Service Area'

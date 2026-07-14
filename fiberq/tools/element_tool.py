@@ -124,7 +124,8 @@ class PlaceElementTool(QgsMapToolEmitPoint):
                     continue
                 try:
                     pt = geom.asPoint()
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"skipping node without point geometry: {e}")
                     continue
                 d = QgsPointXY(point).distance(QgsPointXY(pt))
                 if min_dist is None or d < min_dist:

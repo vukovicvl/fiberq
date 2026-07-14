@@ -56,8 +56,9 @@ flake8:
 	$(PYTHON) -m flake8 --isolated --max-line-length=120 --ignore=E501 $(PKG) tests conftest.py
 
 bandit:
-	# Medium/high severity only (-ll), matching the scan policy. Config in pyproject.toml.
-	$(PYTHON) -m bandit -r $(PKG) -ll -q -c pyproject.toml
+	# ALL severities — the plugins.qgis.org scanner flags LOW too (e.g. B110/B112
+	# try/except/pass|continue), so -ll (medium/high only) is NOT enough. Config in pyproject.toml.
+	$(PYTHON) -m bandit -r $(PKG) -q -c pyproject.toml
 
 # ---- tests ------------------------------------------------------------------
 # QT_QPA_PLATFORM=offscreen runs Qt without a display. The qgis/qgis image also

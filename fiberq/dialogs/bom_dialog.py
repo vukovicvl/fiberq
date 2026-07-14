@@ -142,7 +142,8 @@ class _BOMDialog(QDialog):
         for lyr in layers:
             try:
                 gtype = lyr.geometryType()
-            except Exception:
+            except Exception as e:
+                logger.debug(f"skipping layer without geometry type: {e}")
                 continue
 
             # Gather stats

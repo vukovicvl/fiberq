@@ -416,7 +416,8 @@ class RelationsManager:
                         "m": m,
                         "distance": float(d),
                     })
-            except Exception:
+            except Exception as e:
+                logger.debug(f"skipping layer while collecting relation candidates: {e}")
                 continue
 
         # Sort and remove duplicates

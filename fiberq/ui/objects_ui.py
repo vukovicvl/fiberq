@@ -128,8 +128,8 @@ class ObjectsUI:
             try:
                 from ..utils.uuid_utils import set_feature_uuid
                 set_feature_uuid(f)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Could not set feature uuid: {e}")
             obj.addFeature(f)
             obj.commitChanges()
             _stylize_objects_layer(obj)

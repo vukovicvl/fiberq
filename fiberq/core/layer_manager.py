@@ -364,7 +364,8 @@ def _ensure_region_layer(core):
                             logger.debug(f"Error in _ensure_region_layer: {e}")
                     ensure_uuid_field(lyr)
                     return lyr
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Skipping layer while locating region layer: {e}")
                 continue
 
         # Create new layer
@@ -422,7 +423,8 @@ def _collect_selected_geometries(core):
                     if not g or g.isEmpty():
                         continue
                     geoms.append((lyr, f, g))
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Skipping layer while collecting selected geometries: {e}")
                 continue
     except Exception as e:
         logger.debug(f"Error in _collect_selected_geometries: {e}")
@@ -466,7 +468,8 @@ def _create_region_from_selection(core, name: str, buf_m: float):
                     polys.append(g.buffer(buf_m, 8))
                 else:
                     polys.append(g)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Skipping geometry while buffering selection: {e}")
             continue
 
     if not polys:
@@ -1123,7 +1126,8 @@ class LayerManager:
                     ensure_uuid_field(lyr)
                     self.move_layer_to_top(lyr)
                     return lyr
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Skipping layer while locating manholes layer: {e}")
                 continue
 
         # Create new layer
@@ -1361,7 +1365,8 @@ class LayerManager:
                                 logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")
                         ensure_uuid_field(lyr)
                         return lyr
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Skipping layer while locating region layer: {e}")
                     continue
 
             # Create new layer

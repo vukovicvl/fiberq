@@ -91,7 +91,8 @@ def classFactory(iface):  # pylint: disable=invalid-name
             Qgis.MessageLevel.Info
         )
     except Exception:
-        pass
+        # best-effort logging; nothing to fall back to
+        pass  # nosec B110
 
     # Import and return the actual plugin
     from .main_plugin import FiberQPlugin
@@ -123,7 +124,7 @@ class _FiberQStub:
 # PACKAGE INFO
 # =============================================================================
 
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 __author__ = "Vladimir Vukovic"
 __email__ = "vukovicvl@fiberq.net"
 __license__ = "GPL-3.0-or-later"

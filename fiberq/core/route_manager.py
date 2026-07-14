@@ -282,8 +282,8 @@ class RouteManager:
         try:
             from ..utils.uuid_utils import set_feature_uuid
             set_feature_uuid(route_feature)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Could not set feature uuid on route: {e}")
 
         route_layer.startEditing()
         route_layer.addFeature(route_feature)
@@ -413,8 +413,8 @@ class RouteManager:
         try:
             from ..utils.uuid_utils import set_feature_uuid
             set_feature_uuid(feat)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Could not set feature uuid on merged route: {e}")
         route_layer.addFeature(feat)
         route_layer.commitChanges()
         self.stylize_route_layer(route_layer)
@@ -480,8 +480,8 @@ class RouteManager:
                             try:
                                 from ..utils.uuid_utils import set_feature_uuid
                                 set_feature_uuid(new_feat)
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.debug(f"Could not set feature uuid on imported route: {e}")
                             route_layer.addFeature(new_feat)
                             count_added += 1
             else:
@@ -502,8 +502,8 @@ class RouteManager:
                     try:
                         from ..utils.uuid_utils import set_feature_uuid
                         set_feature_uuid(new_feat)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Could not set feature uuid on imported route: {e}")
                     route_layer.addFeature(new_feat)
                     count_added += 1
 
