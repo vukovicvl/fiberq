@@ -42,7 +42,7 @@ class InfrastructureCutTool(QgsMapTool):
         # Marker for live snap preview
         self._marker = QgsVertexMarker(self.canvas)
         self._marker.setColor(QColor(255, 0, 0))
-        self._marker.setIconType(QgsVertexMarker.ICON_CROSS)
+        self._marker.setIconType(QgsVertexMarker.IconType.ICON_CROSS)
         self._marker.setPenWidth(2)
         self._marker.setIconSize(12)
         self._marker.hide()
@@ -64,12 +64,12 @@ class InfrastructureCutTool(QgsMapTool):
         """Yield eligible line layers, preferring active layer first if valid."""
         layers = []
         al = self.iface.activeLayer()
-        if isinstance(al, QgsVectorLayer) and al.geometryType() == QgsWkbTypes.LineGeometry:
+        if isinstance(al, QgsVectorLayer) and al.geometryType() == QgsWkbTypes.GeometryType.LineGeometry:
             layers.append(al)
         for lyr in QgsProject.instance().mapLayers().values():
             if not isinstance(lyr, QgsVectorLayer):
                 continue
-            if lyr.geometryType() != QgsWkbTypes.LineGeometry:
+            if lyr.geometryType() != QgsWkbTypes.GeometryType.LineGeometry:
                 continue
             if lyr is al:
                 continue
@@ -79,7 +79,7 @@ class InfrastructureCutTool(QgsMapTool):
         # Fallback: include all other line layers if nothing matched hints
         if not layers:
             for lyr in QgsProject.instance().mapLayers().values():
-                if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.LineGeometry:
+                if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry:
                     layers.append(lyr)
         return layers
 
@@ -118,7 +118,7 @@ class InfrastructureCutTool(QgsMapTool):
             if not lyr.isValid():
                 continue
             rect = QgsRectangle(map_pt.x() - tol, map_pt.y() - tol, map_pt.x() + tol, map_pt.y() + tol)
-            req = QgsFeatureRequest().setFilterRect(rect).setFlags(QgsFeatureRequest.ExactIntersect)
+            req = QgsFeatureRequest().setFilterRect(rect).setFlags(QgsFeatureRequest.Flag.ExactIntersect)
             for f in lyr.getFeatures(req):
                 g = f.geometry()
                 if not g or g.isEmpty():
@@ -208,7 +208,7 @@ class InfrastructureCutTool(QgsMapTool):
         else:
             layer, feat, cp = self._last_preview_layer, self._last_preview_feat, self._last_preview_point
 
-        if not isinstance(layer, QgsVectorLayer) or layer.geometryType() != QgsWkbTypes.LineGeometry:
+        if not isinstance(layer, QgsVectorLayer) or layer.geometryType() != QgsWkbTypes.GeometryType.LineGeometry:
             self._flash("Active layer is not a line layer.")
             return
 
@@ -355,7 +355,7 @@ class InfrastructureCutTool(QgsMapTool):
             logger.debug(f"Error in InfrastructureCutTool._norm: {e}")
         L = da.measureLength(feat.geometry())
         try:
-            L = da.convertLengthMeasurement(L, QgsUnitTypes.DistanceMeters)
+            L = da.convertLengthMeasurement(L, QgsUnitTypes.DistanceUnit.DistanceMeters)
         except Exception as e:
             logger.debug(f"Error in InfrastructureCutTool._norm: {e}")
         val_m = round(float(L or 0.0), 3)

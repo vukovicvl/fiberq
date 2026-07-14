@@ -214,13 +214,13 @@ class CableManager:
 
         # Fallback: inline implementation
         base_width = 0.8
-        base_unit = QgsUnitTypes.RenderMetersInMapUnits
+        base_unit = QgsUnitTypes.RenderUnit.RenderMetersInMapUnits
         try:
             route_layer = next(
                 (
                     lyr for lyr in QgsProject.instance().mapLayers().values()
                     if lyr.name().lower().strip() in ("trasa", "route")
-                    and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
+                    and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry  # noqa: W503
                 ),
                 None
             )
@@ -285,7 +285,7 @@ class CableManager:
                 if hasattr(QgsPalLayerSettings, 'LinePlacement') and hasattr(QgsPalLayerSettings.LinePlacement, 'AboveLine'):
                     s.placement = QgsPalLayerSettings.LinePlacement.AboveLine
                 elif hasattr(QgsPalLayerSettings, 'Line'):
-                    s.placement = QgsPalLayerSettings.Line
+                    s.placement = QgsPalLayerSettings.Placement.Line
             except Exception as e:
                 logger.debug(f"Error in CableManager.stylize_cable_layer: {e}")
 
@@ -338,7 +338,7 @@ class CableManager:
         Returns:
             Tuple of (groups_count, updated_count)
         """
-        if layer is None or layer.geometryType() != QgsWkbTypes.LineGeometry:
+        if layer is None or layer.geometryType() != QgsWkbTypes.GeometryType.LineGeometry:
             return 0, 0
 
         tol_units = float(tol_m)
@@ -424,7 +424,7 @@ class CableManager:
         # Fallback: inline implementation
         if layer is None or layer.renderer() is None:
             return
-        if layer.geometryType() != QgsWkbTypes.LineGeometry:
+        if layer.geometryType() != QgsWkbTypes.GeometryType.LineGeometry:
             return
 
         renderer = layer.renderer()
@@ -437,7 +437,7 @@ class CableManager:
                 for sl in sym.symbolLayers():
                     try:
                         if hasattr(sl, "setOffsetUnit"):
-                            sl.setOffsetUnit(QgsUnitTypes.RenderMillimeters)
+                            sl.setOffsetUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
                         if hasattr(sl, "setOffset"):
                             sl.setOffset(0.0)
                     except Exception as e:
@@ -489,7 +489,7 @@ class CableManager:
             layer = None
 
         if not (layer and isinstance(layer, QgsVectorLayer)
-                and layer.geometryType() == QgsWkbTypes.LineGeometry):  # noqa: W503
+                and layer.geometryType() == QgsWkbTypes.GeometryType.LineGeometry):  # noqa: W503
             try:
                 self.iface.messageBar().pushWarning(
                     "Branch cables",
@@ -543,7 +543,7 @@ class CableManager:
             try:
                 if (
                     not isinstance(lyr, QgsVectorLayer)
-                    or lyr.geometryType() != QgsWkbTypes.LineGeometry  # noqa: W503
+                    or lyr.geometryType() != QgsWkbTypes.GeometryType.LineGeometry  # noqa: W503
                     or lyr.name() not in candidate_names  # noqa: W503
                 ):
                     continue
@@ -621,7 +621,7 @@ class CableManager:
         relevant_names = [NASTAVAK_DEF['name']] + [d['name'] for d in ELEMENT_DEFS] + ['Poles', 'Stubovi', 'OKNA', 'Manholes']
         selected = []
         for lyr in QgsProject.instance().mapLayers().values():
-            if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.PointGeometry and lyr.name() in relevant_names:
+            if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and lyr.name() in relevant_names:
                 feats = lyr.selectedFeatures()
                 for f in feats:
                     selected.append((lyr, f))
@@ -633,7 +633,7 @@ class CableManager:
         # Find route layer
         route_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
-            if lyr.name() in ('Route', 'Trasa') and lyr.geometryType() == QgsWkbTypes.LineGeometry:
+            if lyr.name() in ('Route', 'Trasa') and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry:
                 route_layer = lyr
                 break
         if route_layer is None or route_layer.featureCount() == 0:
@@ -717,7 +717,7 @@ class CableManager:
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
+                    and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry  # noqa: W503
                     and lyr.name() in candidate_names  # noqa: W503
                 ):
                     cables_layer = lyr
@@ -846,7 +846,7 @@ class CableManager:
         cable_geom = None
         for feat in route_layer.getFeatures():
             geom = feat.geometry()
-            if geom.type() != QgsWkbTypes.LineGeometry:
+            if geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
                 continue
             line = geom.asPolyline()
             if not line:

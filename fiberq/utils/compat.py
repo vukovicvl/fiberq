@@ -260,11 +260,11 @@ def get_geometry_type(type_name: str):
 # Convenience constants
 try:
     from qgis.core import QgsWkbTypes
-    PointGeometry = QgsWkbTypes.PointGeometry
-    LineGeometry = QgsWkbTypes.LineGeometry
-    PolygonGeometry = QgsWkbTypes.PolygonGeometry
-    UnknownGeometry = QgsWkbTypes.UnknownGeometry
-    NullGeometry = QgsWkbTypes.NullGeometry
+    PointGeometry = QgsWkbTypes.GeometryType.PointGeometry
+    LineGeometry = QgsWkbTypes.GeometryType.LineGeometry
+    PolygonGeometry = QgsWkbTypes.GeometryType.PolygonGeometry
+    UnknownGeometry = QgsWkbTypes.GeometryType.UnknownGeometry
+    NullGeometry = QgsWkbTypes.GeometryType.NullGeometry
 except (ImportError, AttributeError):
     PointGeometry = 0
     LineGeometry = 1

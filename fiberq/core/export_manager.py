@@ -217,7 +217,7 @@ class ExportManager:
             res = result
             err_message = ""
 
-        if res != QgsVectorFileWriter.NoError:
+        if res != QgsVectorFileWriter.WriterError.NoError:
             QMessageBox.critical(
                 self.iface.mainWindow(),
                 "Export",
@@ -302,9 +302,9 @@ class ExportManager:
                 opts.driverName = "GPKG"
                 opts.layerName = name
                 opts.actionOnExistingFile = (
-                    QgsVectorFileWriter.CreateOrOverwriteLayer
+                    QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
                     if os.path.exists(gpkg_path)
-                    else QgsVectorFileWriter.CreateOrOverwriteFile
+                    else QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteFile
                 )
 
                 result = QgsVectorFileWriter.writeAsVectorFormatV3(
@@ -318,7 +318,7 @@ class ExportManager:
                     err_code = result
                     err_msg = ""
 
-                if err_code != QgsVectorFileWriter.NoError:
+                if err_code != QgsVectorFileWriter.WriterError.NoError:
                     errors.append(f"{lyr.name()}: {err_msg}")
                     continue
 
@@ -392,9 +392,9 @@ class ExportManager:
         opts.driverName = "GPKG"
         opts.layerName = name
         opts.actionOnExistingFile = (
-            QgsVectorFileWriter.CreateOrOverwriteLayer
+            QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
             if os.path.exists(gpkg_path)
-            else QgsVectorFileWriter.CreateOrOverwriteFile
+            else QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteFile
         )
 
         try:
@@ -414,7 +414,7 @@ class ExportManager:
             err_code = result
             err_msg = ""
 
-        if err_code != QgsVectorFileWriter.NoError:
+        if err_code != QgsVectorFileWriter.WriterError.NoError:
             try:
                 self.iface.messageBar().pushWarning(
                     "GPKG export",

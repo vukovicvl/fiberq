@@ -53,7 +53,7 @@ def _http_get_json(url, user_agent, timeout_ms=15000):
         logger.debug(f"Could not set network request timeout: {e}")
 
     err = blocking.get(request, forceRefresh=True)
-    if err != QgsBlockingNetworkRequest.NoError:
+    if err != QgsBlockingNetworkRequest.ErrorCode.NoError:
         raise RuntimeError(blocking.errorMessage() or "Network request failed")
 
     reply = blocking.reply()
@@ -141,7 +141,7 @@ class RectSelectTool(QgsMapTool):
     def canvasPressEvent(self, event):
         self.start_point = self.toMapCoordinates(event.pos())
         if self.rubber is None:
-            self.rubber = QgsRubberBand(self.canvas, QgsWkbTypes.PolygonGeometry)
+            self.rubber = QgsRubberBand(self.canvas, QgsWkbTypes.GeometryType.PolygonGeometry)
             self.rubber.setFillColor(QtCore.Qt.GlobalColor.transparent)
             self.rubber.setStrokeColor(QtCore.Qt.GlobalColor.red)
             self.rubber.setWidth(1)
@@ -190,7 +190,7 @@ class RectSelectTool(QgsMapTool):
             QgsPointXY(x_max, y_min),
             QgsPointXY(x_min, y_min),
         ]
-        self.rubber.reset(QgsWkbTypes.PolygonGeometry)
+        self.rubber.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
         for pt in points:
             self.rubber.addPoint(pt, False)
         self.rubber.addPoint(points[0], True)
@@ -824,12 +824,12 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
                 if hasattr(QgsPalLayerSettings, 'LinePlacement') and hasattr(QgsPalLayerSettings.LinePlacement, 'AboveLine'):
                     s.placement = QgsPalLayerSettings.LinePlacement.AboveLine
                 elif hasattr(QgsPalLayerSettings, 'Line'):
-                    s.placement = QgsPalLayerSettings.Line
+                    s.placement = QgsPalLayerSettings.Placement.Line
             except Exception as e:
                 logger.debug(f"Error in FiberQPreviewDialog._apply_preview_cable_labels: {e}")
             tf = QgsTextFormat()
             tf.setSize(8.0)
-            tf.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+            tf.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
 
             tf.setColor(QColor(200, 0, 0))
 
@@ -872,18 +872,18 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
             try:
                 s.xOffset = 0.0
                 s.yOffset = 5.0
-                s.offsetUnits = QgsUnitTypes.RenderMapUnits
+                s.offsetUnits = QgsUnitTypes.RenderUnit.RenderMapUnits
             except Exception as e:
                 logger.debug(f"Error in FiberQPreviewDialog._apply_preview_manhole_labels: {e}")
             tf = QgsTextFormat()
             tf.setSize(7.0)
-            tf.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+            tf.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
             tf.setColor(QColor(0, 0, 0))
 
             buf = QgsTextBufferSettings()
             buf.setEnabled(True)
             try:
-                buf.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+                buf.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
             except Exception as e:
                 logger.debug(f"Error in FiberQPreviewDialog._apply_preview_manhole_labels: {e}")
             buf.setSize(0.8)

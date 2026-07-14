@@ -40,7 +40,7 @@ class SmartMultiSelectTool(QgsMapTool):
         # Marker for visual feedback
         try:
             self._marker = QgsVertexMarker(self.canvas)
-            self._marker.setIconType(QgsVertexMarker.ICON_CROSS)
+            self._marker.setIconType(QgsVertexMarker.IconType.ICON_CROSS)
             self._marker.setColor(QColor(0, 170, 255))
             self._marker.setIconSize(12)
             self._marker.setPenWidth(3)
@@ -88,11 +88,11 @@ class SmartMultiSelectTool(QgsMapTool):
             return 10
 
         # 3) lines: route, cables, pipes
-        if gtype == QgsWkbTypes.LineGeometry:
+        if gtype == QgsWkbTypes.GeometryType.LineGeometry:
             return 50
 
         # 4) polygons: objects, regions
-        if gtype == QgsWkbTypes.PolygonGeometry:
+        if gtype == QgsWkbTypes.GeometryType.PolygonGeometry:
             return 80
 
         # other
@@ -296,13 +296,13 @@ class SmartMultiSelectTool(QgsMapTool):
                     lname = name.lower()
                     gtype = lyr.geometryType()
 
-                    if gtype == QgsWkbTypes.PointGeometry:
+                    if gtype == QgsWkbTypes.GeometryType.PointGeometry:
                         if name in valid_point_names or lname in low_point:
                             layers.append(lyr)
-                    elif gtype == QgsWkbTypes.LineGeometry:
+                    elif gtype == QgsWkbTypes.GeometryType.LineGeometry:
                         if name in valid_line_names or lname in low_line:
                             layers.append(lyr)
-                    elif gtype == QgsWkbTypes.PolygonGeometry:
+                    elif gtype == QgsWkbTypes.GeometryType.PolygonGeometry:
                         if name in valid_poly_names or lname in low_poly:
                             layers.append(lyr)
                 except Exception as e:
@@ -318,7 +318,7 @@ class SmartMultiSelectTool(QgsMapTool):
             layers = []
             for lyr in QgsProject.instance().mapLayers().values():
                 try:
-                    if isinstance(lyr, QgsVectorLayer) and lyr.isValid() and lyr.geometryType() == QgsWkbTypes.PointGeometry:
+                    if isinstance(lyr, QgsVectorLayer) and lyr.isValid() and lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry:
                         if _re.search(r"(nastav|stub|okno|zok|patch|ormar|panel|izvod|or)", (lyr.name() or "").lower()):
                             layers.append(lyr)
                 except Exception as e2:

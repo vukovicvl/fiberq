@@ -33,7 +33,7 @@ class SlackPlaceTool(QgsMapTool):
 
         # Snap marker
         self.snap_marker = QgsVertexMarker(self.canvas)
-        self.snap_marker.setIconType(QgsVertexMarker.ICON_CROSS)
+        self.snap_marker.setIconType(QgsVertexMarker.IconType.ICON_CROSS)
         self.snap_marker.setPenWidth(3)
         self.snap_marker.setIconSize(14)
         self.snap_marker.setColor(QColor(0, 200, 0))
@@ -63,7 +63,7 @@ class SlackPlaceTool(QgsMapTool):
         for lyr in QgsProject.instance().mapLayers().values():
             try:
                 if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
-                    lyr.geometryType() == QgsWkbTypes.LineGeometry and  # noqa: W504
+                    lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry and  # noqa: W504
                         lyr.name() in cable_names):
                     yield lyr
             except Exception as e:
@@ -75,7 +75,7 @@ class SlackPlaceTool(QgsMapTool):
         for lyr in QgsProject.instance().mapLayers().values():
             try:
                 if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
-                    lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
+                    lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and  # noqa: W504
                         lyr.name() in node_names):
                     yield lyr
             except Exception as e:
@@ -212,7 +212,7 @@ class SlackPlaceTool(QgsMapTool):
             # Fallback: find existing slack layer
             for lyr in QgsProject.instance().mapLayers().values():
                 if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
-                    lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
+                    lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and  # noqa: W504
                         lyr.name() in ("Opticke_rezerve", "Optical slacks", "Optical slack")):
                     vl = lyr
                     break

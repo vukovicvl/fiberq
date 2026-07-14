@@ -64,7 +64,7 @@ def _http_get_json(url, user_agent, timeout_ms=15000):
         logger.debug(f"could not set network timeout: {e}")
 
     err = blocking.get(request, forceRefresh=True)
-    if err != QgsBlockingNetworkRequest.NoError:
+    if err != QgsBlockingNetworkRequest.ErrorCode.NoError:
         raise RuntimeError(blocking.errorMessage() or "Network request failed")
 
     reply = blocking.reply()

@@ -39,7 +39,7 @@ class DrawRegionPolygonTool(QgsMapTool):
 
     def _setup_rb(self):
         try:
-            self.rb = QgsRubberBand(self.canvas, QgsWkbTypes.PolygonGeometry)
+            self.rb = QgsRubberBand(self.canvas, QgsWkbTypes.GeometryType.PolygonGeometry)
             # Style similar to other toolbar icons: soft slate stroke, semi-transparent fill
             self.rb.setWidth(2)
             self.rb.setStrokeColor(QColor('#334155'))  # slate-700
@@ -55,7 +55,7 @@ class DrawRegionPolygonTool(QgsMapTool):
                 self._setup_rb()
             self.points = []
             if self.rb:
-                self.rb.reset(QgsWkbTypes.PolygonGeometry)
+                self.rb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
             self.iface.messageBar().pushInfo(
                 'Draw Service Area (manual)',
                 'Left click adds vertices, Backspace removes, right click finishes.'
@@ -67,7 +67,7 @@ class DrawRegionPolygonTool(QgsMapTool):
     def deactivate(self):
         try:
             if self.rb:
-                self.rb.reset(QgsWkbTypes.PolygonGeometry)
+                self.rb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
         except Exception as e:
             logger.debug(f"Error in DrawRegionPolygonTool.deactivate: {e}")
         super().deactivate()
@@ -115,7 +115,7 @@ class DrawRegionPolygonTool(QgsMapTool):
         try:
             if not self.rb:
                 return
-            self.rb.reset(QgsWkbTypes.PolygonGeometry)
+            self.rb.reset(QgsWkbTypes.GeometryType.PolygonGeometry)
             pts = list(self.points)
             if temp_point is not None:
                 pts.append(temp_point)

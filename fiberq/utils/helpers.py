@@ -316,7 +316,7 @@ def apply_fixed_text_label(
         try:
             settings.xOffset = 0.0
             settings.yOffset = float(y_offset_mu)
-            settings.offsetUnits = QgsUnitTypes.RenderMapUnits
+            settings.offsetUnits = QgsUnitTypes.RenderUnit.RenderMapUnits
         except Exception as e:
             logger.debug(f"Error in apply_fixed_text_label: {e}")
 
@@ -324,7 +324,7 @@ def apply_fixed_text_label(
         text_format = QgsTextFormat()
         try:
             text_format.setSize(float(size_mu))
-            text_format.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+            text_format.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
         except Exception as e:
             logger.debug(f"Error in apply_fixed_text_label: {e}")
 
@@ -704,7 +704,7 @@ def is_route_layer(layer: QgsVectorLayer) -> bool:
         from qgis.core import QgsWkbTypes
 
         name = (layer.name() or "").lower()
-        is_line = layer.geometryType() == QgsWkbTypes.LineGeometry
+        is_line = layer.geometryType() == QgsWkbTypes.GeometryType.LineGeometry
 
         return is_line and name in ('trasa', 'route', 'routes')
     except Exception:
@@ -728,7 +728,7 @@ def is_cable_layer(layer: QgsVectorLayer) -> bool:
         from qgis.core import QgsWkbTypes
 
         name = (layer.name() or "").lower()
-        is_line = layer.geometryType() == QgsWkbTypes.LineGeometry
+        is_line = layer.geometryType() == QgsWkbTypes.GeometryType.LineGeometry
 
         cable_keywords = ['kabl', 'cable', 'kablo']
         return is_line and any(kw in name for kw in cable_keywords)
@@ -753,7 +753,7 @@ def is_pole_layer(layer: QgsVectorLayer) -> bool:
         from qgis.core import QgsWkbTypes
 
         name = (layer.name() or "").lower()
-        is_point = layer.geometryType() == QgsWkbTypes.PointGeometry
+        is_point = layer.geometryType() == QgsWkbTypes.GeometryType.PointGeometry
 
         return is_point and name in ('stubovi', 'poles', 'pole')
     except Exception:

@@ -30,7 +30,7 @@ class PointTool(QgsMapToolEmitPoint):
         self.layer = layer
         self.snap_marker = QgsVertexMarker(self.canvas)
         self.snap_marker.setColor(QColor(0, 255, 0))
-        self.snap_marker.setIconType(QgsVertexMarker.ICON_CROSS)
+        self.snap_marker.setIconType(QgsVertexMarker.IconType.ICON_CROSS)
         self.snap_marker.setIconSize(14)
         self.snap_marker.setPenWidth(3)
         self.snap_marker.hide()
@@ -39,7 +39,7 @@ class PointTool(QgsMapToolEmitPoint):
         """Find snap candidate on route layer vertices and midpoints."""
         route_layer = None
         for lyr in QgsProject.instance().mapLayers().values():
-            if lyr.name() in ('Route', 'Route') and lyr.geometryType() == QgsWkbTypes.LineGeometry:
+            if lyr.name() in ('Route', 'Route') and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry:
                 route_layer = lyr
                 break
 

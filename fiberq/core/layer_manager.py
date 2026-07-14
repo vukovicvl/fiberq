@@ -109,14 +109,14 @@ def _apply_fixed_text_label(layer, field_name='naziv', size_mu=8.0, yoff_mu=5.0)
         try:
             s.xOffset = 0.0
             s.yOffset = float(yoff_mu)
-            s.offsetUnits = QgsUnitTypes.RenderMapUnits
+            s.offsetUnits = QgsUnitTypes.RenderUnit.RenderMapUnits
         except Exception as e:
             logger.debug(f"Could not set label offset: {e}")
 
         tf = QgsTextFormat()
         try:
             tf.setSize(float(size_mu))
-            tf.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+            tf.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
         except Exception as e:
             logger.debug(f"Could not set text format size: {e}")
 
@@ -171,7 +171,7 @@ def _ensure_element_layer_with_style(plugin, layer_name: str):
     elem_layer = None
     for lyr in QgsProject.instance().mapLayers().values():
         try:
-            if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.PointGeometry and lyr.name() == layer_name:
+            if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and lyr.name() == layer_name:
                 elem_layer = lyr
                 break
         except Exception as e:
@@ -222,9 +222,9 @@ def _ensure_element_layer_with_style(plugin, layer_name: str):
                 except Exception as e:
                     logger.debug(f"Error in element layer creation: {e}")
                 try:
-                    svg_layer.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
+                    svg_layer.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMetersInMapUnits)
                 except Exception:
-                    svg_layer.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+                    svg_layer.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
                 symbol.changeSymbolLayer(0, svg_layer)
             except Exception as e:
                 logger.debug(f"Error in element layer creation: {e}")
@@ -353,7 +353,7 @@ def _ensure_region_layer(core):
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.PolygonGeometry  # noqa: W503
+                    and lyr.geometryType() == QgsWkbTypes.GeometryType.PolygonGeometry  # noqa: W503
                     and lyr.name() in ('Rejon', 'Service Area')  # noqa: W503
                 ):
                     # Rename old 'Rejon' to 'Service Area'
@@ -458,7 +458,7 @@ def _create_region_from_selection(core, name: str, buf_m: float):
         try:
             g = QgsGeometry(g)  # copy
             gtype = lyr.geometryType()
-            if gtype in (QgsWkbTypes.PointGeometry, QgsWkbTypes.LineGeometry):
+            if gtype in (QgsWkbTypes.GeometryType.PointGeometry, QgsWkbTypes.GeometryType.LineGeometry):
                 if buf_m > 0:
                     polys.append(g.buffer(buf_m, 8))
                 else:
@@ -501,7 +501,7 @@ def _create_region_from_selection(core, name: str, buf_m: float):
         return False
 
     # Ensure polygon geometry
-    if u.type() != QgsWkbTypes.PolygonGeometry:
+    if u.type() != QgsWkbTypes.GeometryType.PolygonGeometry:
         try:
             u = u.buffer(0.01, 8)
         except Exception as e:
@@ -626,10 +626,10 @@ def _ensure_objects_layer(core):
                 if (
                     isinstance(lyr, QgsVectorLayer)
                     and lyr.wkbType() in (  # noqa: W503
-                        QgsWkbTypes.Polygon,
-                        QgsWkbTypes.MultiPolygon,
-                        QgsWkbTypes.PolygonZM,
-                        QgsWkbTypes.MultiPolygonZM,
+                        QgsWkbTypes.Type.Polygon,
+                        QgsWkbTypes.Type.MultiPolygon,
+                        QgsWkbTypes.Type.PolygonZM,
+                        QgsWkbTypes.Type.MultiPolygonZM,
                     )
                     and lyr.name() in ("Objekti", "Objects")  # noqa: W503
                 ):
@@ -683,7 +683,7 @@ def _stylize_objects_layer(layer):
         simple.setFillColor(QColor(0, 0, 0, 0))
         simple.setStrokeColor(QColor(0, 0, 0))
         simple.setStrokeWidth(0.8)
-        simple.setStrokeWidthUnit(QgsUnitTypes.RenderMillimeters)
+        simple.setStrokeWidthUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
 
         hatch = QgsLinePatternFillSymbolLayer()
         try:
@@ -697,7 +697,7 @@ def _stylize_objects_layer(layer):
         except Exception as e:
             logger.debug(f"Error in _stylize_objects_layer: {e}")
         hatch.setDistance(2.2)
-        hatch.setDistanceUnit(QgsUnitTypes.RenderMillimeters)
+        hatch.setDistanceUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
         try:
             sub = hatch.subSymbol()
             if sub and sub.symbolLayerCount() > 0:
@@ -708,7 +708,7 @@ def _stylize_objects_layer(layer):
                     logger.debug(f"Error in _stylize_objects_layer: {e}")
                 try:
                     sl.setWidth(0.3)
-                    sl.setWidthUnit(QgsUnitTypes.RenderMillimeters)
+                    sl.setWidthUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
                 except Exception as e:
                     logger.debug(f"Error in _stylize_objects_layer: {e}")
         except Exception as e:
@@ -798,9 +798,9 @@ def _telecom_save_all_layers_to_gpkg(iface):
             opts.driverName = "GPKG"
             opts.layerName = name
             opts.actionOnExistingFile = (
-                QgsVectorFileWriter.CreateOrOverwriteLayer
+                QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
                 if os.path.exists(gpkg_path)
-                else QgsVectorFileWriter.CreateOrOverwriteFile
+                else QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteFile
             )
 
             result = QgsVectorFileWriter.writeAsVectorFormatV3(
@@ -813,7 +813,7 @@ def _telecom_save_all_layers_to_gpkg(iface):
                 err_code = result
                 err_msg = ""
 
-            if err_code != QgsVectorFileWriter.NoError:
+            if err_code != QgsVectorFileWriter.WriterError.NoError:
                 errors.append(f"{lyr.name()}: {err_msg}")
                 continue
 
@@ -877,9 +877,9 @@ def _telecom_export_one_layer_to_gpkg(lyr, gpkg_path, iface):
     opts.driverName = "GPKG"
     opts.layerName = name
     opts.actionOnExistingFile = (
-        QgsVectorFileWriter.CreateOrOverwriteLayer
+        QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
         if os.path.exists(gpkg_path)
-        else QgsVectorFileWriter.CreateOrOverwriteFile
+        else QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteFile
     )
 
     try:
@@ -898,7 +898,7 @@ def _telecom_export_one_layer_to_gpkg(lyr, gpkg_path, iface):
         err_code = result
         err_msg = ""
 
-    if err_code != QgsVectorFileWriter.NoError:
+    if err_code != QgsVectorFileWriter.WriterError.NoError:
         try:
             iface.messageBar().pushWarning("GPKG export", f"{lyr.name()}: {err_msg}")
         except Exception as e:
@@ -980,7 +980,7 @@ class LayerManager:
         for lyr in project.mapLayers().values():
             if (
                 isinstance(lyr, QgsVectorLayer) and  # noqa: W504
-                lyr.geometryType() == QgsWkbTypes.PointGeometry and  # noqa: W504
+                lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and  # noqa: W504
                 lyr.name() in ("Poles", "Stubovi")
             ):
                 self._apply_poles_aliases(lyr)
@@ -1008,7 +1008,7 @@ class LayerManager:
             symbol = QgsSymbol.defaultSymbol(layer.geometryType())
             symbol_layer = symbol.symbolLayer(0)
             symbol_layer.setSize(10)
-            symbol_layer.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
+            symbol_layer.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMetersInMapUnits)
             layer.renderer().setSymbol(symbol)
             layer.triggerRepaint()
         except Exception as e:
@@ -1043,7 +1043,7 @@ class LayerManager:
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.PointGeometry  # noqa: W503
+                    and lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry  # noqa: W503
                     and lyr.name() in ("Opticke_rezerve", "Optical slacks", "Optical slack")  # noqa: W503
                 ):
                     self._apply_slack_aliases(lyr)
@@ -1094,7 +1094,7 @@ class LayerManager:
             except Exception as e:
                 logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")
             try:
-                sym.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+                sym.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
             except Exception as e:
                 logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")
 
@@ -1121,7 +1121,7 @@ class LayerManager:
         for lyr in project.mapLayers().values():
             try:
                 name = lyr.name().strip()
-                if name in ("OKNA", "Manholes") and lyr.geometryType() == QgsWkbTypes.PointGeometry:
+                if name in ("OKNA", "Manholes") and lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry:
                     self._apply_manholes_aliases(lyr)
                     ensure_uuid_field(lyr)
                     self.move_layer_to_top(lyr)
@@ -1236,7 +1236,7 @@ class LayerManager:
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
+                    and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry  # noqa: W503
                     and lyr.name() in target_names  # noqa: W503
                 ):
                     self._apply_pipe_aliases(lyr)
@@ -1355,7 +1355,7 @@ class LayerManager:
                 try:
                     if (
                         isinstance(lyr, QgsVectorLayer)
-                        and lyr.geometryType() == QgsWkbTypes.PolygonGeometry  # noqa: W503
+                        and lyr.geometryType() == QgsWkbTypes.GeometryType.PolygonGeometry  # noqa: W503
                         and lyr.name() in ('Rejon', 'Service Area')  # noqa: W503
                     ):
                         if lyr.name() == 'Rejon':
@@ -1416,10 +1416,10 @@ class LayerManager:
                     if (
                         isinstance(lyr, QgsVectorLayer)
                         and lyr.wkbType() in (  # noqa: W503
-                            QgsWkbTypes.Polygon,
-                            QgsWkbTypes.MultiPolygon,
-                            QgsWkbTypes.PolygonZM,
-                            QgsWkbTypes.MultiPolygonZM,
+                            QgsWkbTypes.Type.Polygon,
+                            QgsWkbTypes.Type.MultiPolygon,
+                            QgsWkbTypes.Type.PolygonZM,
+                            QgsWkbTypes.Type.MultiPolygonZM,
                         )
                         and lyr.name() in ("Objekti", "Objects")  # noqa: W503
                     ):
@@ -1482,7 +1482,7 @@ class LayerManager:
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.PointGeometry  # noqa: W503
+                    and lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry  # noqa: W503
                     and lyr.name() == layer_name  # noqa: W503
                 ):
                     self._apply_element_aliases(lyr)
@@ -1565,9 +1565,9 @@ class LayerManager:
                     except Exception as e:
                         logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")
                     try:
-                        svg_layer.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
+                        svg_layer.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMetersInMapUnits)
                     except Exception:
-                        svg_layer.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+                        svg_layer.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
                     symbol.changeSymbolLayer(0, svg_layer)
                 except Exception as e:
                     logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")
@@ -1609,7 +1609,7 @@ class LayerManager:
             if (
                 isinstance(lyr, QgsVectorLayer)
                 and lyr.name() in ('Route', 'Trasa')  # noqa: W503
-                and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
+                and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry  # noqa: W503
             ):
                 ensure_uuid_field(lyr)
                 return lyr

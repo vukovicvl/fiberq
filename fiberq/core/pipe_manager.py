@@ -229,7 +229,7 @@ class PipeManager:
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
+                    and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry  # noqa: W503
                     and lyr.name() in target_names  # noqa: W503
                 ):
                     try:
@@ -323,7 +323,7 @@ class PipeManager:
             sl = QgsSimpleLineSymbolLayer()
             sl.setColor(QColor(color_hex))
             sl.setWidth(float(width_mm))
-            sl.setWidthUnit(QgsUnitTypes.RenderMillimeters)
+            sl.setWidthUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
             try:
                 sl.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
                 sl.setCapStyle(Qt.PenCapStyle.RoundCap)
@@ -360,7 +360,7 @@ class PipeManager:
         for lyr in QgsProject.instance().mapLayers().values():
             try:
                 if (isinstance(lyr, QgsVectorLayer)
-                    and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
+                    and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry  # noqa: W503
                         and lyr.name() in self.PIPE_LAYER_NAMES):  # noqa: W503
                     layers.append(lyr)
             except Exception as e:

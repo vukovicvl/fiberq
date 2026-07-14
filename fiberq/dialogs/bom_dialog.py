@@ -163,7 +163,7 @@ class _BOMDialog(QDialog):
 
             for f in lyr.getFeatures():
                 feat_count += 1
-                if gtype == QgsWkbTypes.LineGeometry:
+                if gtype == QgsWkbTypes.GeometryType.LineGeometry:
                     # prefer attribute duzina if it exists and >0, else compute geometry
                     val_len = None
                     if attr_duz is not None:
@@ -185,17 +185,17 @@ class _BOMDialog(QDialog):
                             slack_m += float(f[attr_slack] or 0.0)
                         except Exception as e:
                             logger.debug(f"Error in _BOMDialog._build: {e}")
-                elif gtype == QgsWkbTypes.PointGeometry:
+                elif gtype == QgsWkbTypes.GeometryType.PointGeometry:
                     # nothing to compute; just counting
                     pass
 
-            if gtype == QgsWkbTypes.LineGeometry:
+            if gtype == QgsWkbTypes.GeometryType.LineGeometry:
                 total_m = length_m + slack_m
                 rows.append([lyr.name(), "Line", feat_count, length_m, slack_m, total_m])
                 totals["line_len"] += length_m
                 totals["line_slack"] += slack_m
                 totals["line_total"] += total_m
-            elif gtype == QgsWkbTypes.PointGeometry:
+            elif gtype == QgsWkbTypes.GeometryType.PointGeometry:
                 rows.append([lyr.name(), "Point", feat_count, "", "", ""])
                 totals["points"] += feat_count
             else:

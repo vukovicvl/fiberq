@@ -68,7 +68,7 @@ class StyleManager:
             symbol = QgsSymbol.defaultSymbol(layer.geometryType())
             symbol_layer = symbol.symbolLayer(0)
             symbol_layer.setWidth(0.8)
-            symbol_layer.setWidthUnit(QgsUnitTypes.RenderMetersInMapUnits)
+            symbol_layer.setWidthUnit(QgsUnitTypes.RenderUnit.RenderMetersInMapUnits)
             symbol_layer.setPenStyle(Qt.PenStyle.DashLine)
             layer.renderer().setSymbol(symbol)
             layer.triggerRepaint()
@@ -96,13 +96,13 @@ class StyleManager:
         try:
             # Get base width from route layer if available
             base_width = 0.8
-            base_unit = QgsUnitTypes.RenderMetersInMapUnits
+            base_unit = QgsUnitTypes.RenderUnit.RenderMetersInMapUnits
             try:
                 route_layer = next(
                     (
                         lyr for lyr in QgsProject.instance().mapLayers().values()
                         if lyr.name().lower().strip() in ("trasa", "route")
-                        and lyr.geometryType() == QgsWkbTypes.LineGeometry  # noqa: W503
+                        and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry  # noqa: W503
                     ),
                     None
                 )
@@ -188,7 +188,7 @@ class StyleManager:
                 if hasattr(QgsPalLayerSettings, 'LinePlacement') and hasattr(QgsPalLayerSettings.LinePlacement, 'AboveLine'):
                     s.placement = QgsPalLayerSettings.LinePlacement.AboveLine
                 elif hasattr(QgsPalLayerSettings, 'Line'):
-                    s.placement = QgsPalLayerSettings.Line
+                    s.placement = QgsPalLayerSettings.Placement.Line
             except Exception as e:
                 logger.debug(f"Error in StyleManager._apply_cable_labels: {e}")
 
@@ -231,7 +231,7 @@ class StyleManager:
             except Exception as e:
                 logger.debug(f"Error in StyleManager.stylize_slack_layer: {e}")
             try:
-                sym.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+                sym.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
             except Exception as e:
                 logger.debug(f"Error in StyleManager.stylize_slack_layer: {e}")
 
@@ -271,16 +271,16 @@ class StyleManager:
 
             # Size in meters on map
             try:
-                sl.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
+                sl.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMetersInMapUnits)
             except Exception:
-                sl.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+                sl.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
 
             # Outline in mm (constant width)
             try:
-                sl.setOutlineWidthUnit(QgsUnitTypes.RenderMillimeters)
+                sl.setOutlineWidthUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
             except Exception:
                 try:
-                    sl.setStrokeWidthUnit(QgsUnitTypes.RenderMillimeters)
+                    sl.setStrokeWidthUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
                 except Exception as e:
                     logger.debug(f"Error in StyleManager.stylize_manhole_layer: {e}")
 
@@ -288,7 +288,7 @@ class StyleManager:
             try:
                 ddp = sl.dataDefinedProperties()
                 if ddp:
-                    ddp.setProperty(QgsSymbolLayer.PropertySize, QgsProperty())
+                    ddp.setProperty(QgsSymbolLayer.Property.PropertySize, QgsProperty())
                     sl.setDataDefinedProperties(ddp)
             except Exception as e:
                 logger.debug(f"Error in StyleManager.stylize_manhole_layer: {e}")
@@ -355,12 +355,12 @@ class StyleManager:
             # Fixed offset above marker
             s.xOffset = 0.0
             s.yOffset = 5.0
-            s.offsetUnits = QgsUnitTypes.RenderMapUnits
+            s.offsetUnits = QgsUnitTypes.RenderUnit.RenderMapUnits
 
             tf = QgsTextFormat()
             tf.setSize(8.0)
             try:
-                tf.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+                tf.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
             except Exception as e:
                 logger.debug(f"Error in StyleManager._apply_manhole_labels: {e}")
             f = QFont()
@@ -400,7 +400,7 @@ class StyleManager:
             sl = QgsSimpleLineSymbolLayer()
             sl.setColor(QColor(color_hex))
             sl.setWidth(float(width_mm))
-            sl.setWidthUnit(QgsUnitTypes.RenderMillimeters)
+            sl.setWidthUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
             # Rounded corners for better appearance
             try:
                 sl.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
@@ -432,16 +432,16 @@ class StyleManager:
             simple = QgsSimpleMarkerSymbolLayer()
 
             try:
-                simple.setShape(QgsSimpleMarkerSymbolLayer.Circle)
+                simple.setShape(QgsSimpleMarkerSymbolLayer.Shape.Circle)
             except Exception as e:
                 logger.debug(f"Error in StyleManager.stylize_fiber_break_layer: {e}")
 
             simple.setSize(2.4)
-            simple.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
+            simple.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMetersInMapUnits)
             simple.setColor(QColor(0, 0, 0))
             simple.setOutlineColor(QColor(0, 0, 0))
             simple.setOutlineWidth(0.2)
-            simple.setOutlineWidthUnit(QgsUnitTypes.RenderMetersInMapUnits)
+            simple.setOutlineWidthUnit(QgsUnitTypes.RenderUnit.RenderMetersInMapUnits)
 
             sym = QgsMarkerSymbol()
             sym.changeSymbolLayer(0, simple)
@@ -472,7 +472,7 @@ class StyleManager:
             simple.setFillColor(QColor(0, 0, 0, 0))
             simple.setStrokeColor(QColor(0, 0, 0))
             simple.setStrokeWidth(0.8)
-            simple.setStrokeWidthUnit(QgsUnitTypes.RenderMillimeters)
+            simple.setStrokeWidthUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
 
             # Diagonal hatch lines
             hatch = QgsLinePatternFillSymbolLayer()
@@ -487,7 +487,7 @@ class StyleManager:
             except Exception as e:
                 logger.debug(f"Error in StyleManager.stylize_objects_layer: {e}")
             hatch.setDistance(2.2)
-            hatch.setDistanceUnit(QgsUnitTypes.RenderMillimeters)
+            hatch.setDistanceUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
 
             # Tune hatch sub symbol
             try:
@@ -500,7 +500,7 @@ class StyleManager:
                         logger.debug(f"Error in StyleManager.stylize_objects_layer: {e}")
                     try:
                         sl.setWidth(0.3)
-                        sl.setWidthUnit(QgsUnitTypes.RenderMillimeters)
+                        sl.setWidthUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
                     except Exception as e:
                         logger.debug(f"Error in StyleManager.stylize_objects_layer: {e}")
             except Exception as e:
@@ -536,7 +536,7 @@ class StyleManager:
         """
         if layer is None or layer.renderer() is None:
             return
-        if layer.geometryType() != QgsWkbTypes.LineGeometry:
+        if layer.geometryType() != QgsWkbTypes.GeometryType.LineGeometry:
             return
 
         try:
@@ -552,7 +552,7 @@ class StyleManager:
                         # Base offset 0, units = mm
                         try:
                             if hasattr(sl, "setOffsetUnit"):
-                                sl.setOffsetUnit(QgsUnitTypes.RenderMillimeters)
+                                sl.setOffsetUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
                             if hasattr(sl, "setOffset"):
                                 sl.setOffset(0.0)
                         except Exception as e:
@@ -630,9 +630,9 @@ class StyleManager:
                     except Exception as e:
                         logger.debug(f"Error in StyleManager.stylize_element_layer: {e}")
                     try:
-                        svg_layer.setSizeUnit(QgsUnitTypes.RenderMetersInMapUnits)
+                        svg_layer.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMetersInMapUnits)
                     except Exception:
-                        svg_layer.setSizeUnit(QgsUnitTypes.RenderMapUnits)
+                        svg_layer.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMapUnits)
                     symbol.changeSymbolLayer(0, svg_layer)
                 except Exception as e:
                     logger.debug(f"Error in StyleManager.stylize_element_layer: {e}")
@@ -673,7 +673,7 @@ class StyleManager:
             tf = QgsTextFormat()
             tf.setSize(font_size)
             try:
-                tf.setSizeUnit(QgsUnitTypes.RenderPoints)
+                tf.setSizeUnit(QgsUnitTypes.RenderUnit.RenderPoints)
             except Exception as e:
                 logger.debug(f"Error in StyleManager.apply_fixed_text_label: {e}")
 

@@ -58,7 +58,7 @@ class BranchInfoTool(QgsMapToolIdentify):
         for h in hits or []:
             lyr = h.mLayer
             try:
-                if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.LineGeometry:
+                if isinstance(lyr, QgsVectorLayer) and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry:
                     name = (lyr.name() or "").lower().strip()
                     # Accept both old and new cable layer names
                     if name in (
