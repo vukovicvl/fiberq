@@ -239,8 +239,8 @@ class SlackPlaceTool(QgsMapTool):
         try:
             from ..utils.uuid_utils import set_feature_uuid
             set_feature_uuid(f)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to set uuid on slack feature: {e}")
 
         vl.startEditing()
         vl.addFeature(f)

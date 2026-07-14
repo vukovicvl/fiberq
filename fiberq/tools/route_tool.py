@@ -108,7 +108,8 @@ class ManualRouteTool(QgsMapTool):
                     if min_dist is None or d < min_dist:
                         min_dist = d
                         snap_point = QgsPointXY(pt)
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"could not compute distance to snap point: {e}")
                     continue
 
         # Snap to existing routes (vertices and segment midpoints)
@@ -295,8 +296,8 @@ class ManualRouteTool(QgsMapTool):
         try:
             from ..utils.uuid_utils import set_feature_uuid
             set_feature_uuid(feat)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"failed to set uuid on route feature: {e}")
         route_layer.addFeature(feat)
         route_layer.commitChanges()
 

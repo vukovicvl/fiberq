@@ -313,8 +313,8 @@ class QuickToolbar:
                 slack_action = getattr(self.core, 'action_slack_quick', None)
                 if slack_action:
                     slack_action.setShortcut(QKeySequence('R'))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Could not restore slack 'R' shortcut: {e}")
 
         QgsSettings().setValue(SETTING_ENABLE_SHORTCUTS,
                                'true' if enabled else 'false')
@@ -337,8 +337,8 @@ class QuickToolbar:
             for _, action in self._actions:
                 try:
                     self.iface.removeToolBarIcon(action)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Error removing quick toolbar icon: {e}")
             self._actions.clear()
         except Exception as e:
             logger.debug(f"Error removing quick toolbar actions: {e}")

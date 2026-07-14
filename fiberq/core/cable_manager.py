@@ -359,7 +359,8 @@ class CableManager:
                     line = g.asMultiPolyline()[0]
                 else:
                     line = g.asPolyline()
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Skipping feature; could not read cable geometry: {e}")
                 continue
 
             if len(line) < 2:
@@ -546,7 +547,8 @@ class CableManager:
                     or lyr.name() not in candidate_names  # noqa: W503
                 ):
                     continue
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Skipping layer; could not check cable layer type: {e}")
                 continue
 
             fields = lyr.fields()

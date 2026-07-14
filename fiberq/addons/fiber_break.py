@@ -97,8 +97,8 @@ class FiberBreakTool(QgsMapTool):
                 layer.loadNamedStyle(qml_path)
                 layer.triggerRepaint()
                 return
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"could not load Fiber break QML style: {e}")
 
         try:
             from qgis.PyQt.QtGui import QColor
@@ -163,11 +163,12 @@ class FiberBreakTool(QgsMapTool):
                     from ..utils.uuid_utils import ensure_uuid_field
 
                     ensure_uuid_field(lyr)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"could not ensure uuid field on Fiber break layer: {e}")
 
                 return lyr
-            except Exception:
+            except Exception as e:
+                logger.debug(f"skipping layer while locating Fiber break layer: {e}")
                 continue
 
         crs_authid = self.canvas.mapSettings().destinationCrs().authid()
@@ -200,7 +201,8 @@ class FiberBreakTool(QgsMapTool):
                     and lyr.isValid()  # noqa: W503
                 ):
                     yield lyr
-            except Exception:
+            except Exception as e:
+                logger.debug(f"skipping layer while iterating line layers: {e}")
                 continue
 
     def _flatten_polyline(self, geom: QgsGeometry):
@@ -258,7 +260,8 @@ class FiberBreakTool(QgsMapTool):
                     if geom is None:
                         continue
                     dist = geom.distance(map_pt_geom)
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"could not compute distance to feature: {e}")
                     continue
 
                 if nearest_dist is None or (dist is not None and dist < nearest_dist):
@@ -324,8 +327,8 @@ class FiberBreakTool(QgsMapTool):
             from ..utils.uuid_utils import set_feature_uuid
 
             set_feature_uuid(ev)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"could not set feature uuid: {e}")
 
         ev_layer.startEditing()
         ev_layer.addFeature(ev)

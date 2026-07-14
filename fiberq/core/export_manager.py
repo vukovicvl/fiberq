@@ -617,8 +617,8 @@ class ExportManager:
             logger.debug(f"Error writing metadata table: {e}")
             try:
                 conn.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Could not close GPKG connection after error: {e}")
             return False
 
 

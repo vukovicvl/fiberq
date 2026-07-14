@@ -59,9 +59,9 @@ def _http_get_json(url, user_agent, timeout_ms=15000):
     blocking = QgsBlockingNetworkRequest()
     try:
         blocking.setTimeout(timeout_ms)
-    except Exception:
+    except Exception as e:
         # setTimeout was added later; ignore on old QGIS builds
-        pass
+        logger.debug(f"could not set network timeout: {e}")
 
     err = blocking.get(request, forceRefresh=True)
     if err != QgsBlockingNetworkRequest.NoError:

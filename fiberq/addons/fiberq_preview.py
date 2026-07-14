@@ -49,8 +49,8 @@ def _http_get_json(url, user_agent, timeout_ms=15000):
     blocking = QgsBlockingNetworkRequest()
     try:
         blocking.setTimeout(timeout_ms)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Could not set network request timeout: {e}")
 
     err = blocking.get(request, forceRefresh=True)
     if err != QgsBlockingNetworkRequest.NoError:
@@ -781,7 +781,8 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
                 item.setCheckState(QtCore.Qt.CheckState.Checked)
                 self.layersList.addItem(item)
 
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Skipping preview layer that failed to load: {e}")
                 continue
 
         if layers_for_canvas:
@@ -963,7 +964,8 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
                 continue
             try:
                 ext = layer.extent()
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Could not get layer extent: {e}")
                 continue
             if not ext or ext.isEmpty():
                 continue

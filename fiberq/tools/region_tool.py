@@ -171,8 +171,8 @@ class DrawRegionPolygonTool(QgsMapTool):
             try:
                 from ..utils.uuid_utils import set_feature_uuid
                 set_feature_uuid(f)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to set uuid on region feature: {e}")
             region.addFeature(f)
             region.commitChanges()
             region.triggerRepaint()

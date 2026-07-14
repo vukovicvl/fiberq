@@ -219,7 +219,8 @@ class DrawingManager:
                 if target_base and target_base.lower() in src_norm.lower():
                     return True
 
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Skipping layer while checking if drawing is loaded: {e}")
                 continue
 
         return False

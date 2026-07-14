@@ -98,11 +98,13 @@ def _log(msg):
     try:
         logger.debug(msg)
     except Exception:
-        pass
+        # best-effort logging; nothing to fall back to
+        pass  # nosec B110
     try:
         QgsMessageLog.logMessage(msg, "FiberQ UUID", Qgis.MessageLevel.Info)
     except Exception:
-        pass
+        # best-effort logging; nothing to fall back to
+        pass  # nosec B110
 
 
 def generate_uuid() -> str:
@@ -155,8 +157,8 @@ def _set_uuid_alias(layer):
         idx = layer.fields().indexOf(FIBERQ_UUID_FIELD)
         if idx >= 0 and layer.attributeAlias(idx) != FIBERQ_UUID_ALIAS:
             layer.setFieldAlias(idx, FIBERQ_UUID_ALIAS)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"could not set fiberq_uuid display alias: {e}")
 
 
 def ensure_uuid_field(layer):
@@ -245,8 +247,8 @@ def ensure_uuid_field(layer):
             try:
                 if layer.isEditable():
                     layer.rollBack()
-            except Exception:
-                pass
+            except Exception as rollback_err:
+                logger.debug(f"rollback after Method 2 failure raised: {rollback_err}")
 
         _log(f"ensure_uuid_field: ALL METHODS FAILED for '{layer.name()}'")
         return False
@@ -322,8 +324,8 @@ def migrate_layer_uuids(layer):
         try:
             if layer.isEditable():
                 layer.rollBack()
-        except Exception:
-            pass
+        except Exception as rollback_err:
+            logger.debug(f"rollback after persist failure raised: {rollback_err}")
         raise UuidMigrationError(f"error persisting UUIDs in '{layer.name()}': {e}")
 
     _log(f"Migrated {count} features with UUID in layer '{layer.name()}'")

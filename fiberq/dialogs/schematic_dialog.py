@@ -337,7 +337,8 @@ class OpticalSchematicDialog(QDialog):
                                 "layer_name": lname,
                                 "fid": int(f.id()),
                             }
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Skipping layer while collecting schematic nodes: {e}")
                 continue
         return nodes
 
@@ -551,7 +552,8 @@ class OpticalSchematicDialog(QDialog):
                     ptt = tr.transform(QgsPointXY(pt.x(), pt.y()))
                     pos[name] = (ptt.x(), ptt.y())
                     world_points.append((ptt.x(), ptt.y()))
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Skipping node without usable geometry: {e}")
                     continue
 
             # Add all points from cable/pipe geometry

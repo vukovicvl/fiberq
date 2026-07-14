@@ -117,7 +117,8 @@ def _make_description(op_type, layer_name, feature):
             if val and str(val).strip():
                 label = str(val).strip()
                 break
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Could not read field {field_name} for undo label: {e}")
             continue
 
     type_word = {

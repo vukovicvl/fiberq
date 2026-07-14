@@ -294,8 +294,8 @@ class DataManager:
             logger.debug(f"Error reading metadata from GPKG: {e}")
             try:
                 conn.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Error closing GPKG connection after read failure: {e}")
             return {}
 
     def restore_metadata_to_project(self, metadata):
@@ -414,7 +414,8 @@ class DataManager:
                     or lyr.name() not in candidate_names  # noqa: W503
                 ):
                     continue
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Skipping layer while listing cables: {e}")
                 continue
 
             fields = lyr.fields()
@@ -606,7 +607,8 @@ class DataManager:
                         "m": m,
                         "distance": float(d),
                     })
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Skipping layer while finding candidate elements: {e}")
                 continue
 
         # Sort and deduplicate
