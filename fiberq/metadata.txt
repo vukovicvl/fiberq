@@ -3,7 +3,7 @@ name=FiberQ
 description=Open-source fiber network design tools for QGIS (FTTH/GPON/FTTx)
 about=FiberQ helps telecom engineers and GIS professionals design, analyze, and document fiber optic networks inside QGIS. FiberQ supports QGIS 4 / Qt6 while keeping support for QGIS 3.22 LTR and later, and clears all findings from the QGIS repository security scan. Some advanced features may require an activation key.
 
-version=1.2.3
+version=1.3.0
 qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
 
@@ -23,6 +23,33 @@ license=GPL-3.0-or-later
 class_name=FiberQPlugin
 
 changelog=
+    1.3.0 - Project schema versioning, safe migrations, and stable feature IDs
+        * New: every FiberQ project now carries a schema-version marker, also
+          mirrored into the GeoPackage, so future releases can recognise and
+          upgrade older projects safely.
+        * New: a versioned migration runner upgrades older projects automatically
+          on load (e.g. schema 0 -> 1.0) - losslessly and idempotently - and
+          reports a summary in the QGIS log. Blank or non-FiberQ projects are
+          left untouched.
+        * New: the fiberq_uuid identity invariant. Every FiberQ feature carries a
+          stable, cross-system UUID. Loading an older project assigns UUIDs to all
+          existing features; new features receive one on creation across every
+          tool (routes, cables, slack, pipes, service areas, objects, ...).
+        * Fix: the cable "Number of fibers" field now follows the computed total
+          instead of freezing at an intermediate value while typing.
+        * Fix: the Objects draw tools (3-point / N-point / ortho / digitize) no
+          longer raise an ImportError after the module split.
+        * Fix: "Cut infrastructure" no longer fails to save on a duplicate primary
+          key; the two halves get fresh feature ids and fresh fiberq_uuids.
+        * Fix: the Optical Schematic View now draws pipes in the legend orange for
+          English-named layers (previously grey), matching the "Pipes" legend.
+        * Fix: renamed the mislabeled "FiberQ web browser" action to "Preview Map".
+        * Quality: the maintainer manually reviewed the entire plugin source -
+          every Python module - prior to this release. Lint (flake8 + Bandit)
+          remains at zero findings on the plugins.qgis.org scan, and the pytest
+          suite runs green on QGIS 3 (Qt5) and QGIS 4 (Qt6).
+        (This release was developed with support from the NLnet NGI0 Commons Fund.)
+
     1.2.3 - Repository scan: zero findings (code hygiene, no functional change)
         * The plugin now scans clean on the plugins.qgis.org Security & Quality
           scan: flake8 (--max-line-length=120 --ignore=E501) and Bandit
