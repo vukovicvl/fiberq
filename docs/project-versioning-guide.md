@@ -101,6 +101,21 @@ identifier that stays with the feature no matter what happens to it:
 - **Automated tests on both Qt generations.** The pytest suite (including the new
   schema-version, migration, and `fiberq_uuid` invariant tests) runs green against
   **QGIS 3 / Qt5** and **QGIS 4 / Qt6**.
+- **Manual acceptance testing across QGIS versions.** Beyond the automated suite,
+  1.3.0 was manually verified end-to-end on **QGIS 3.40 (Qt5)** and **QGIS 4.2
+  (Qt6)**, with both **newly created** projects and **older projects** migrated
+  from a previous FiberQ version. Each combination was checked for:
+  - the on-load schema migration (`0 -> 1.0`) and its per-layer UUID summary;
+  - **idempotent re-opening** — after saving a migrated project, re-opening it
+    shows no second upgrade and re-assigns no UUIDs;
+  - **`fiberq_uuid`** assignment on newly drawn features and backfill on existing
+    ones;
+  - **cross-version opening** — a project migrated and saved under QGIS 3 / Qt5
+    opens cleanly, with no re-migration, under QGIS 4 / Qt6;
+  - layer rendering and styling (including the SVG map icons), the **Optical
+    Schematic View**, **GeoPackage export**, **Cut infrastructure**, and
+    new-element creation with the drawing tools —
+  all with a clean QGIS message log (no errors).
 - **Backward compatibility.** FiberQ 1.3.0 targets QGIS 3.22 LTR through QGIS 4 /
   Qt6, and opens projects from earlier FiberQ versions via the migration described
   above.
