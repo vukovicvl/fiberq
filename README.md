@@ -2,7 +2,7 @@
 
 Open-source QGIS plugin for fiber optic network design (FTTH / GPON / FTTx).
 
-**Latest release: v1.2.3 — 23.06.2026.** Added on GitHub as a new release.
+**Latest release: v1.3.0 — 15.07.2026.** Added on GitHub as a new release.
 
 You can auto-update in QGIS, or download the folder manually from the GitHub release.
 
