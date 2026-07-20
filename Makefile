@@ -316,18 +316,36 @@ package: i18n-check
 	@echo "Built $(ZIP)"
 
 # ---- local install for manual QGIS testing ---------------------------------
-# Override QGIS_PROFILE for your OS, e.g.:
-#   macOS:   ~/Library/Application Support/QGIS/QGIS3/profiles/default
-#   Windows: %APPDATA%/QGIS/QGIS3/profiles/default
-QGIS_PROFILE ?= $(HOME)/.local/share/QGIS/QGIS3/profiles/default
+# QGIS 4 moved its configuration root from .../QGIS/QGIS3 to .../QGIS/QGIS4.
+# Hardcoding QGIS3 made `make install` a silent no-op for QGIS 4 users: files were
+# copied, success was printed, and QGIS read a different directory entirely.
+# So detect the root instead, newest first. QGIS_ROOT covers the per-OS location,
+# QGIS_PROFILE the profile within it; either can be overridden:
+#
+#   make install QGIS_PROFILE_NAME=i18n-test          # different profile, same OS
+#   make install QGIS_ROOT="$HOME/Library/Application Support/QGIS"   # macOS
+#   make install QGIS_ROOT="$APPDATA/QGIS"            # Windows, from Git Bash
+#   make install QGIS_PROFILE=/full/path/to/profile   # bypass detection entirely
+QGIS_ROOT ?= $(HOME)/.local/share/QGIS
+QGIS_PROFILE_NAME ?= default
+# $(wildcard) tests existence; QGIS4 wins when both are present.
+QGIS_VERSION_DIR := $(notdir $(lastword $(sort $(wildcard $(QGIS_ROOT)/QGIS3) \
+                                               $(wildcard $(QGIS_ROOT)/QGIS4))))
+QGIS_PROFILE ?= $(QGIS_ROOT)/$(or $(QGIS_VERSION_DIR),QGIS3)/profiles/$(QGIS_PROFILE_NAME)
 PLUGIN_DEST := $(QGIS_PROFILE)/python/plugins/$(PLUGIN_NAME)
 
 install:
+	@if [ -z "$(QGIS_VERSION_DIR)" ]; then \
+		echo "WARNING: no QGIS3/ or QGIS4/ directory under $(QGIS_ROOT)."; \
+		echo "         Guessing QGIS3. If QGIS does not see the plugin, pass the"; \
+		echo "         real path: make install QGIS_PROFILE=/path/to/profile"; \
+	fi
 	@mkdir -p "$(dir $(PLUGIN_DEST))"
 	@rm -rf "$(PLUGIN_DEST)"
 	@cp -r "$(PKG)" "$(PLUGIN_DEST)"
 	@find "$(PLUGIN_DEST)" -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
 	@echo "Installed to $(PLUGIN_DEST)  (restart QGIS or use the Plugin Reloader)"
+	@echo "Verify in QGIS: Settings > User Profiles shows '$(QGIS_PROFILE_NAME)'."
 
 uninstall:
 	@rm -rf "$(PLUGIN_DEST)"

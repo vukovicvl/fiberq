@@ -106,12 +106,32 @@ make deps PIP_FLAGS=
 in a real QGIS:
 
 ```bash
-make install                                     # Linux default profile
-make install QGIS_PROFILE="$APPDATA/QGIS/QGIS3/profiles/default"   # Windows, from Git Bash
+make install                                  # auto-detects QGIS4/ or QGIS3/
+make install QGIS_PROFILE_NAME=my-test        # a different profile
+make install QGIS_ROOT="$HOME/Library/Application Support/QGIS"   # macOS
+make install QGIS_ROOT="$APPDATA/QGIS"        # Windows, from Git Bash
 ```
 
-Then restart QGIS (or use the *Plugin Reloader* plugin). Testing in a **clean
-QGIS profile** is strongly recommended before you claim a bug is fixed.
+QGIS 4 moved its configuration root from `.../QGIS/QGIS3` to `.../QGIS/QGIS4`, so
+the target is detected rather than hardcoded. `make install` prints the path it
+used — **check it**, because a wrong path fails silently: the copy succeeds and
+QGIS simply reads somewhere else.
+
+Then restart QGIS (or use the *Plugin Reloader* plugin).
+
+**Test in a separate profile**, not your everyday one — `make install` deletes and
+replaces whatever is in that profile's plugin folder, including a copy installed
+from plugins.qgis.org:
+
+```bash
+make install QGIS_PROFILE_NAME=fiberq-dev
+qgis --profile fiberq-dev
+```
+
+Confirm the profile name in the QGIS title bar or under *Settings → User
+Profiles*. In the *Plugins* dialog use the **Installed** tab to enable it — the
+**All** tab's *Install/Reinstall Plugin* buttons download the released version
+from plugins.qgis.org and overwrite your build.
 
 ### 3. A note for Windows contributors
 
