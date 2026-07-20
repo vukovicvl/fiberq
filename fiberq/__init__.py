@@ -6,7 +6,7 @@ including route planning, cable laying, element placement, and documentation.
 
 Supported QGIS Versions: 3.22 LTR - 4.x (Qt5 and Qt6)
 
-Version: 1.2.3 (QGIS Repo)
+Version: 1.3.0 (QGIS Repo)
 """
 
 # Minimum supported QGIS version

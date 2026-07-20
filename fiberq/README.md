@@ -1,8 +1,29 @@
-# FiberQ v1.2
+# FiberQ v1.3
 
 A QGIS plugin for fiber optic network design and documentation.
 
-## What's New in v1.2 — Productivity Release
+## What's New in v1.3.0 — Schema Versioning & Stable IDs
+
+Every FiberQ project now carries a **schema-version marker** (mirrored into the
+GeoPackage) so future releases can recognise and safely upgrade older projects.
+
+- **Safe automatic migrations** — a versioned migration runner upgrades older
+  projects on load, losslessly and idempotently (e.g. schema 0 → 1.0), and reports
+  a summary in the QGIS log. Blank or non-FiberQ projects are left untouched.
+- **Stable feature identity (`fiberq_uuid`)** — every FiberQ feature carries a
+  stable, cross-system UUID. Loading an older project assigns UUIDs to all existing
+  features; new features receive one on creation across every tool.
+- **QGIS 4 / Qt6 compatibility** — all QGIS enum accesses are scoped for PyQt6,
+  with unchanged behaviour on QGIS 3 / Qt5.
+- **Fixes** — cable "Number of fibers" now follows the computed total; the Objects
+  draw tools no longer raise an ImportError after the module split; "Cut
+  infrastructure" no longer fails on a duplicate primary key; the Optical Schematic
+  View draws pipes orange in the legend for English-named layers; the "FiberQ web
+  browser" action is renamed to "Preview Map".
+
+*This release was developed with support from the NLnet NGI0 Commons Fund.*
+
+## Previously in v1.2 — Productivity Release
 
 ### Feature 1: Manhole ID Auto-Increment
 
@@ -126,12 +147,13 @@ fiberq/
 
 ## Requirements
 
-- **QGIS**: 3.22 LTR through 3.40+ (all versions supported)
+- **QGIS**: 3.22 LTR through QGIS 4 / Qt6 (all versions supported)
 - **Operating System**: Windows / macOS / Linux
 
 ## Backward Compatibility
 
-v1.2 maintains full backward compatibility with v1.0 and v1.1 projects:
+v1.3 maintains full backward compatibility with v1.0, v1.1, and v1.2 projects.
+Older projects are migrated automatically on load (see *What's New in v1.3.0*):
 
 - All layer names work in both Serbian and English
 - Database field names unchanged
