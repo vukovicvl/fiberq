@@ -9,6 +9,15 @@ import os
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 
+try:
+    from qgis.PyQt.QtCore import QT_TRANSLATE_NOOP
+except ImportError:  # pragma: no cover - keeps models/ importable without Qt
+    # QT_TRANSLATE_NOOP is an identity function on its text argument, so this
+    # fallback is behaviourally exact. pylupdate6 reads the source statically
+    # and extracts the literals either way.
+    def QT_TRANSLATE_NOOP(context, text):
+        return text
+
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
@@ -90,9 +99,25 @@ class ElementDefinition:
 # =============================================================================
 
 # Point element definitions with SVG symbols
+#
+# i18n: every "name" below is BOTH a user-visible label and a runtime
+# IDENTIFIER -- it keys ELEMENT_ICON_MAP, the icon lookup in ui/base.py and
+# utils/helpers.py, the layer-name match in core/data_manager.py
+# (PLACING_ELEMENT_LAYERS), utils/layer_names.py, utils/uuid_utils.py, the
+# roster in models/schema.py and the .qml style filenames in fiberq/styles/.
+# QT_TRANSLATE_NOOP marks the literal for pylupdate6 and returns it UNCHANGED,
+# so these values stay byte-identical in every locale. Translation happens at
+# DISPLAY time only, in ui/elements_ui.py, via context 'ElementNames'.
+# Never translate these values in place, and never wrap a dict KEY.
+#
+# The "#:" comments are translator notes: pylupdate6 extracts them into
+# <extracomment> and Qt Linguist shows them beside the source string.
 ELEMENT_DEFS: List[Dict[str, Any]] = [
     {
-        "name": "ODF",
+        #: Element type (acronym), shown in the "Placing elements" menu.
+        #: Optical Distribution Frame: the passive frame at the head end where
+        #: feeder fibres terminate. Most languages keep the acronym "ODF".
+        "name": QT_TRANSLATE_NOOP('ElementNames', "ODF"),
         "symbol": {
             "svg_path": _map_icon_path("map_odf.svg"),
             "size": "10",
@@ -100,7 +125,10 @@ ELEMENT_DEFS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "TB",
+        #: Element type (acronym) = "Terminal Box". The Serbian backend name is
+        #: "ZOK" (Zavrsna opticka kutija). Keep the acronym "TB" unless your
+        #: language has an established equivalent acronym.
+        "name": QT_TRANSLATE_NOOP('ElementNames', "TB"),
         "symbol": {
             "svg_path": _map_icon_path("map_tb.svg"),
             "size": "10",
@@ -108,7 +136,11 @@ ELEMENT_DEFS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "Patch panel",
+        #: Element type (noun phrase, not an acronym): the rack panel holding
+        #: patch connections. Its scope overlaps ODF above -- CONTRIBUTING.md
+        #: leaves fr "tiroir optique" vs "panneau de brassage" open; keep the
+        #: two element types clearly distinct in your language.
+        "name": QT_TRANSLATE_NOOP('ElementNames', "Patch panel"),
         "symbol": {
             "svg_path": _map_icon_path("map_patch_panel.svg"),
             "size": "10",
@@ -116,7 +148,11 @@ ELEMENT_DEFS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "OTB",
+        #: Element type (acronym) = "Optical Termination Box". (The Serbian
+        #: backend name "OD ormar" is legacy wording and does not redefine the
+        #: term.) Keep the acronym "OTB" unless your language has an established
+        #: equivalent acronym.
+        "name": QT_TRANSLATE_NOOP('ElementNames', "OTB"),
         "symbol": {
             "svg_path": _map_icon_path("map_otb.svg"),
             "size": "10",
@@ -124,7 +160,9 @@ ELEMENT_DEFS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "Indoor OTB",
+        #: Element type. "Indoor" is an ADJECTIVE qualifying OTB: an OTB mounted
+        #: inside a building. Serbian catalogue: "Unutrašnji OD ormar".
+        "name": QT_TRANSLATE_NOOP('ElementNames', "Indoor OTB"),
         "symbol": {
             "svg_path": _map_icon_path("map_place_otb_indoor.svg"),
             "size": "10",
@@ -132,7 +170,10 @@ ELEMENT_DEFS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "Outdoor OTB",
+        #: Element type. "Outdoor" is an ADJECTIVE qualifying OTB: an OTB
+        #: mounted outside, typically on a wall or facade. Serbian catalogue:
+        #: "Spoljašnji OD ormar".
+        "name": QT_TRANSLATE_NOOP('ElementNames', "Outdoor OTB"),
         "symbol": {
             "svg_path": _map_icon_path("map_place_otb_outdoor.svg"),
             "size": "10",
@@ -140,7 +181,10 @@ ELEMENT_DEFS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "Pole OTB",
+        #: Element type. "Pole" is an ADJECTIVE here: an OTB mounted ON a pole.
+        #: It is one element, not a pole plus an OTB. Serbian catalogue:
+        #: "OD ormar na stubu".
+        "name": QT_TRANSLATE_NOOP('ElementNames', "Pole OTB"),
         "symbol": {
             "svg_path": _map_icon_path("map_place_otb_pole.svg"),
             "size": "10",
@@ -148,7 +192,12 @@ ELEMENT_DEFS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "TO",
+        #: Element type (acronym) = "Termination Outlet": the subscriber-side
+        #: optical outlet, the last element before the customer's equipment.
+        #: WARNING: this is NOT the English preposition "to" -- the from/to
+        #: direction words are a separate string. Keep the acronym "TO" unless
+        #: your language has an established equivalent acronym.
+        "name": QT_TRANSLATE_NOOP('ElementNames', "TO"),
         "symbol": {
             "svg_path": _map_icon_path("map_place_to.svg"),
             "size": "10",
@@ -156,7 +205,9 @@ ELEMENT_DEFS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "Indoor TO",
+        #: Element type. "Indoor" is an ADJECTIVE qualifying TO: a TO mounted
+        #: inside a building. Serbian catalogue: "Unutrašnji TO Izvod".
+        "name": QT_TRANSLATE_NOOP('ElementNames', "Indoor TO"),
         "symbol": {
             "svg_path": _map_icon_path("map_place_to_indoor.svg"),
             "size": "10",
@@ -164,7 +215,9 @@ ELEMENT_DEFS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "Outdoor TO",
+        #: Element type. "Outdoor" is an ADJECTIVE qualifying TO: a TO mounted
+        #: outside. Serbian catalogue: "Spoljašnji TO Izvod".
+        "name": QT_TRANSLATE_NOOP('ElementNames', "Outdoor TO"),
         "symbol": {
             "svg_path": _map_icon_path("map_place_to_outdoor.svg"),
             "size": "10",
@@ -172,7 +225,9 @@ ELEMENT_DEFS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "Pole TO",
+        #: Element type. "Pole" is an ADJECTIVE: a TO mounted ON a pole.
+        #: Serbian catalogue: "TO Izvod na stubu".
+        "name": QT_TRANSLATE_NOOP('ElementNames', "Pole TO"),
         "symbol": {
             "svg_path": _map_icon_path("map_place_to_pole.svg"),
             "size": "10",
@@ -180,7 +235,10 @@ ELEMENT_DEFS: List[Dict[str, Any]] = [
         }
     },
     {
-        "name": "Joint Closure TO",
+        #: Element type: a TO housed INSIDE a joint (splice) closure. Serbian
+        #: catalogue: "TO Izvod u nastavku" = "TO outlet in the joint closure".
+        #: "Joint Closure" qualifies "TO" -- one element, not two.
+        "name": QT_TRANSLATE_NOOP('ElementNames', "Joint Closure TO"),
         "symbol": {
             "svg_path": _map_icon_path("map_place_to_joint_closure.svg"),
             "size": "10",
@@ -190,6 +248,14 @@ ELEMENT_DEFS: List[Dict[str, Any]] = [
 ]
 
 # Joint closure (nastavak) definition
+#
+# i18n: "Joint Closures" is deliberately NOT marked for translation. Unlike the
+# ELEMENT_DEFS names it is only ever used as a LAYER NAME -- it is written onto
+# the layer by utils/field_aliases.set_layer_display_name() and matched back by
+# core/data_manager.PLACING_ELEMENT_LAYERS, tools/select_tool and
+# tools/extension_tool. docs/i18n.md rule 4 ("do not translate layer names")
+# applies. The user-facing menu entry is the separate, translated literal
+# 'Place Joint Closure' in ui/elements_ui.py.
 JOINT_CLOSURE_DEF: Dict[str, Any] = {
     "name": "Joint Closures",
     "symbol": {

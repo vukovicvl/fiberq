@@ -1,0 +1,156 @@
+name: Translation offer
+description: Volunteer to translate FiberQ into your language, or improve an existing translation
+title: "[i18n] Translation for <language>"
+labels: ["i18n", "help wanted"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for offering to translate FiberQ.
+
+        You do **not** need to be a programmer, and you do not need to install
+        anything — one of the three contribution methods below works entirely in
+        your web browser.
+
+        Before filling this in, it is worth skimming the
+        [Translations section of CONTRIBUTING.md](https://github.com/vukovicvl/fiberq/blob/main/CONTRIBUTING.md#translations).
+        It explains what a `.ts` file is, the three rules that must not be broken,
+        and — importantly — carries a **glossary of fibre-optic terminology**.
+        FiberQ is full of specialised vocabulary that general translators and
+        machine translation reliably get wrong, so please read the glossary for
+        your language if one exists.
+
+        Translations are released under **GPL-3.0-or-later**, the same licence as
+        the rest of the plugin, and translators are credited in the README and in
+        the release notes.
+
+  - type: input
+    id: language
+    attributes:
+      label: Language
+      description: >-
+        Which language would you like to translate into? Please include the
+        locale code if you know it, and mention the script or regional variant
+        if it matters (for example Serbian Latin vs. Cyrillic).
+      placeholder: "French (fr) — or: Serbian, Latin script (sr_Latn)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: status
+    attributes:
+      label: What would you like to do?
+      options:
+        - Start a brand-new translation for this language
+        - Complete an existing, partial translation
+        - Correct or improve an existing translation
+        - Review someone else's translation (terminology check only)
+        - Not sure yet — happy to discuss
+    validations:
+      required: true
+
+  - type: dropdown
+    id: fibre_familiarity
+    attributes:
+      label: How familiar are you with fibre optic / FTTH terminology?
+      description: >-
+        There is no wrong answer, and a fluent speaker without field experience
+        is still very welcome — this just tells the maintainer how much
+        terminology support to offer, and whether the glossary needs a separate
+        reviewer.
+      options:
+        - I work in the field (network design, survey, installation, operations)
+        - I work in telecoms but not specifically on fibre plant
+        - I have some familiarity — I have used FiberQ or similar GIS/design tools
+        - Not familiar with the terminology, but fluent in the target language
+    validations:
+      required: true
+
+  - type: dropdown
+    id: method
+    attributes:
+      label: How would you prefer to contribute the file?
+      description: >-
+        All three are equally welcome. See CONTRIBUTING.md for what each involves.
+      options:
+        - GitHub web editor (pencil icon) — easiest, nothing to install
+        - Qt Linguist — a graphical editor, best for a full translation
+        - Email the .ts file to the maintainer — no git or GitHub needed
+        - Git clone and pull request — I am comfortable with git
+        - Not sure — please advise
+    validations:
+      required: true
+
+  - type: textarea
+    id: terminology_notes
+    attributes:
+      label: Terminology notes or questions
+      description: >-
+        Optional. If you already disagree with something in the glossary, are
+        unsure which term the plugin means, or know that your region uses
+        different vocabulary from the standard, this is the most useful thing you
+        can tell us. Terms marked "(to confirm)" in the glossary especially need
+        a real practitioner's judgement.
+      placeholder: >-
+        e.g. "In the French glossary, I would use 'sous-tube' rather than
+        'sous-fourreau' — that is what we say in the field."
+    validations:
+      required: false
+
+  - type: textarea
+    id: anything_else
+    attributes:
+      label: Anything else
+      description: >-
+        Optional. Rough timescale, how much you expect to get through, whether
+        you would like a specific name or handle used for credit (or no credit at
+        all), or any question at all.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: human_translation
+    attributes:
+      label: Human translation
+      description: >-
+        Machine translation output is confidently wrong about fibre terminology
+        in ways that are hard to spot but unusable in the field. Using an engine
+        for a first draft that you then review and correct yourself is fine;
+        submitting untouched output is not.
+      options:
+        - label: >-
+            I confirm this will be human translation. If I use a machine
+            translation engine at all, it will only be as a first draft that I
+            review and correct myself.
+          required: true
+
+  - type: checkboxes
+    id: licence
+    attributes:
+      label: Licence
+      options:
+        - label: >-
+            I understand my contribution will be released under
+            GPL-3.0-or-later, the same licence as the rest of FiberQ.
+          required: true
+
+  - type: checkboxes
+    id: read_rules
+    attributes:
+      label: The three rules
+      description: >-
+        These are the ways a translation silently stops working. There is no
+        error message when one is broken.
+      options:
+        - label: >-
+            I will never edit the English `<source>` text — only the
+            `<translation>` slot.
+          required: true
+        - label: >-
+            I will keep placeholders such as `%1`, `%2` and `{n}` exactly as
+            written (I may move them within the sentence).
+          required: true
+        - label: >-
+            I will not compile anything — I will submit only the `.ts` file, and
+            leave the `.qm` build to the maintainer.
+          required: true

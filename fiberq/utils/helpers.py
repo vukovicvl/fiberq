@@ -460,6 +460,28 @@ def set_language(lang: str) -> None:
         logger.debug(f"Error in set_language: {e}")
 
 
+# =============================================================================
+# DEPRECATED — legacy phrase-map translation (superseded by Qt i18n)
+# =============================================================================
+# The following symbols are DEPRECATED:
+#     _TRANSLATION_MAP, _fiberq_translate, translate_text,
+#     _apply_text_and_tooltip, _apply_menu_language
+#
+# They implement the original ad-hoc "retranslate widgets in place by looking
+# their visible text up in a dict" scheme. That approach is superseded by the
+# standard Qt i18n pipeline in fiberq/i18n/ (.ts sources compiled to .qm and
+# installed via QTranslator), where strings are marked at their definition site
+# with tr()/QCoreApplication.translate() instead of being reverse-matched from
+# rendered UI text.
+#
+# They are retained for now because fiberq/dialogs/ still depends on them
+# through fiberq/utils/legacy_bridge.py, and because several are re-exported
+# from fiberq/utils/__init__.py (removing them would be a public API break).
+# Remove this whole block once fiberq/dialogs/ has been migrated (Stage 2).
+#
+# Do not add new call sites. New user-facing strings must use tr().
+# =============================================================================
+
 # Translation phrase map (Serbian ↔ English)
 _TRANSLATION_MAP = {
     'Publish to PostGIS': 'Publish to PostGIS',
@@ -514,10 +536,23 @@ _TRANSLATION_MAP = {
     'Nacrtaj rejon rucno': 'Draw region (manual)',
 }
 
+# English -> Serbian reverse lookup, built once at import time (it used to be
+# rebuilt on every _fiberq_translate() call).
+#
+# NOTE: two source phrases are lost to value collisions, exactly as before —
+# last key wins, so 'Create region' maps back to 'Kreiraj rejon' (not
+# 'Kreiranje Rejona') and 'Draw region (manual)' maps back to the unaccented
+# 'Nacrtaj rejon rucno' (not 'Nacrtaj rejon ručno'). This is preserved
+# deliberately to keep behaviour byte-identical; do not "fix" it here.
+_TRANSLATION_MAP_REVERSE = {v: k for k, v in _TRANSLATION_MAP.items()}
+
 
 def _fiberq_translate(text: str, lang: str) -> str:
     """
     Translate UI text between Serbian and English.
+
+    DEPRECATED: superseded by the Qt i18n pipeline in fiberq/i18n/.
+    Kept only for fiberq/dialogs/ via utils/legacy_bridge.py (Stage 2).
 
     Args:
         text: Text to translate
@@ -530,23 +565,19 @@ def _fiberq_translate(text: str, lang: str) -> str:
         return text
     text = text.strip()
 
-    sr2en = _TRANSLATION_MAP
-    en2sr = {v: k for k, v in sr2en.items()}
-
-    # Simple prefix rules
     if lang == 'en':
-        if text.startswith('Place '):
-            return 'Place ' + text[len('Place '):]
-        return sr2en.get(text, text)
-    else:
-        if text.startswith('Place '):
-            return 'Place ' + text[len('Place '):]
-        return en2sr.get(text, text)
+        return _TRANSLATION_MAP.get(text, text)
+    return _TRANSLATION_MAP_REVERSE.get(text, text)
 
 
 def translate_text(text: str, lang: str = None) -> str:
     """
     Translate UI text between Serbian and English.
+
+    DEPRECATED: superseded by the Qt i18n pipeline in fiberq/i18n/.
+    Currently has no in-tree call sites, but is re-exported from
+    fiberq/utils/__init__.py, so removing it would break the public API.
+    Slated for removal with the rest of this block in Stage 2.
 
     Args:
         text: Text to translate
@@ -563,6 +594,10 @@ def translate_text(text: str, lang: str = None) -> str:
 def _apply_text_and_tooltip(obj, lang: str) -> None:
     """
     Apply translation to an object's text and tooltip.
+
+    DEPRECATED: superseded by the Qt i18n pipeline in fiberq/i18n/.
+    Retranslating widgets by reverse-matching their rendered text is exactly
+    the pattern tr() replaces. Removed in Stage 2.
 
     Args:
         obj: QAction or similar object with text() and toolTip() methods
@@ -592,6 +627,9 @@ def _apply_text_and_tooltip(obj, lang: str) -> None:
 def _apply_menu_language(menu, lang: str) -> None:
     """
     Apply translation to a menu and all its actions recursively.
+
+    DEPRECATED: superseded by the Qt i18n pipeline in fiberq/i18n/.
+    Removed in Stage 2.
 
     Args:
         menu: QMenu to translate

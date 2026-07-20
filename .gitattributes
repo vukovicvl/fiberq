@@ -26,3 +26,9 @@ Makefile text eol=lf
 *.gpkg binary
 *.zip  binary
 *.pdf  binary
+
+# Qt translation catalogues are XML, but the `.ts` extension makes GitHub
+# Linguist (and most editors) assume TypeScript — which reports the file as the
+# repo's main language and floods editors with bogus parse errors. Declare the
+# real language; `.qm` stays binary above.
+fiberq/i18n/*.ts linguist-language=XML
