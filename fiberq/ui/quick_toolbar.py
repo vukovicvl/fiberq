@@ -9,7 +9,7 @@ Registered with iface.addToolBar() so it appears in
 View → Toolbars → FiberQ Quick.
 """
 
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import Qt, QCoreApplication, QT_TRANSLATE_NOOP
 from qgis.PyQt.QtGui import QKeySequence
 pass
 from qgis.PyQt.QtGui import QAction, QShortcut  # noqa: E402
@@ -17,6 +17,7 @@ from qgis.PyQt.QtGui import QAction, QShortcut  # noqa: E402
 from qgis.core import QgsSettings  # noqa: E402
 
 from .base import load_icon  # noqa: E402
+from ..i18n import safe_format  # noqa: E402
 from ..utils.logger import get_logger  # noqa: E402
 logger = get_logger(__name__)
 
@@ -27,10 +28,21 @@ logger = get_logger(__name__)
 
 # Each entry: (key, label, icon, shortcut_key_or_None, method_name, method_args)
 # method_name is called on the plugin core; method_args is a dict of kwargs.
+#
+# i18n: labels are marked here with QT_TRANSLATE_NOOP (context 'FiberQ') so
+# pylupdate6 extracts them, but they stay untranslated in the table -- this
+# module is imported at initGui time and the dict is built once at import.
+# The actual lookup happens in _build_actions() via QCoreApplication.translate,
+# so resolution never depends on whether the QTranslator was installed before
+# this module was imported.
 QUICK_TOOLS = [
     {
         'id': 'pole',
-        'label': 'Place Pole',
+        #: Quick-toolbar button label, imperative. Places one pole (the support that
+        #: carries aerial cable). NOTE: this is the SAME command as the main
+        #: toolbar's "Add pole" (Routing menu) - only the English wording differs.
+        #: Please use one consistent term for the pole in both.
+        'label': QT_TRANSLATE_NOOP('FiberQ', 'Place Pole'),
         'icon': 'ic_add_pole.svg',
         'shortcut': 'P',
         'method': 'activate_point_tool',
@@ -38,7 +50,10 @@ QUICK_TOOLS = [
     },
     {
         'id': 'manhole',
-        'label': 'Place Manhole',
+        #: Quick-toolbar button label, imperative, singular. Same command as the
+        #: Ducting menu's "Placing manholes" - only the wording differs. "manhole" =
+        #: the underground inspection chamber on a duct run (fr: chambre de tirage).
+        'label': QT_TRANSLATE_NOOP('FiberQ', 'Place Manhole'),
         'icon': 'ic_place_manholes.svg',
         'shortcut': 'M',
         'method': 'open_manhole_workflow',
@@ -46,7 +61,10 @@ QUICK_TOOLS = [
     },
     {
         'id': 'route',
-        'label': 'Create Route',
+        #: Quick-toolbar button label, imperative. "Route" = the physical path on the
+        #: ground that cables follow (fr: tracé). Same command as the Routing menu's
+        #: "Create route" - only the capitalisation differs, so keep one wording.
+        'label': QT_TRANSLATE_NOOP('FiberQ', 'Create Route'),
         'icon': 'ic_create_route.svg',
         'shortcut': 'R',
         'method': 'create_route',
@@ -54,7 +72,11 @@ QUICK_TOOLS = [
     },
     {
         'id': 'aerial_cable',
-        'label': 'Aerial Cable',
+        #: Quick-toolbar button label. Noun phrase, "Aerial" = strung overhead on
+        #: poles (as opposed to buried). Shortcut for laying specifically a BACKBONE
+        #: /feeder aerial cable - the subtype is fixed to "main" in code even though
+        #: the label does not say so. The Cable menu offers the full choice.
+        'label': QT_TRANSLATE_NOOP('FiberQ', 'Aerial Cable'),
         'icon': 'ic_cable_aerial.svg',
         'shortcut': 'A',
         'method': 'lay_cable_type',
@@ -62,7 +84,10 @@ QUICK_TOOLS = [
     },
     {
         'id': 'underground_cable',
-        'label': 'Underground Cable',
+        #: Quick-toolbar button label. Noun phrase, "Underground" = laid in ducts or
+        #: a trench below ground; pairs with "Aerial Cable" above. Also fixed to the
+        #: BACKBONE/feeder subtype in code, though the label does not say so.
+        'label': QT_TRANSLATE_NOOP('FiberQ', 'Underground Cable'),
         'icon': 'ic_cable_underground.svg',
         'shortcut': 'U',
         'method': 'lay_cable_type',
@@ -70,7 +95,10 @@ QUICK_TOOLS = [
     },
     {
         'id': 'odf',
-        'label': 'Place ODF',
+        #: Quick-toolbar button label, imperative. ODF = Optical Distribution Frame,
+        #: the passive frame at the head end where feeder fibres terminate. Translate
+        #: only "Place"; keep the acronym "ODF" - it doubles as the layer name.
+        'label': QT_TRANSLATE_NOOP('FiberQ', 'Place ODF'),
         'icon': 'ic_place_odf.svg',
         'shortcut': 'O',
         'method': 'activate_place_element_tool',
@@ -79,7 +107,10 @@ QUICK_TOOLS = [
     },
     {
         'id': 'otb',
-        'label': 'Place OTB',
+        #: Quick-toolbar button label, imperative. OTB = "Optical Termination Box".
+        #: Translate only "Place" and keep the acronym "OTB" unless your language
+        #: has an established equivalent acronym.
+        'label': QT_TRANSLATE_NOOP('FiberQ', 'Place OTB'),
         'icon': 'ic_place_otb.svg',
         'shortcut': 'T',
         'method': 'activate_place_element_tool',
@@ -88,7 +119,11 @@ QUICK_TOOLS = [
     },
     {
         'id': 'to',
-        'label': 'Place TO',
+        #: Quick-toolbar button label, imperative. WARNING: "TO" is an ACRONYM =
+        #: "Termination Outlet" (the subscriber-side optical outlet), NOT the English
+        #: preposition "to" - do not read this as "place ... to ...". Translate only
+        #: "Place" and keep the acronym "TO" unless your language has an equivalent.
+        'label': QT_TRANSLATE_NOOP('FiberQ', 'Place TO'),
         'icon': 'ic_place_to.svg',
         'shortcut': None,  # no single-key shortcut
         'method': 'activate_place_element_tool',
@@ -97,7 +132,11 @@ QUICK_TOOLS = [
     },
     {
         'id': 'slack',
-        'label': 'Optical Slack',
+        #: Quick-toolbar button label, noun phrase (singular). "Slack" = the spare
+        #: length of cable coiled at a point for later re-splicing. This button
+        #: places a TERMINAL slack by default. The Slack menu labels the same group
+        #: "Optical slacks" (plural) - keep the two consistent.
+        'label': QT_TRANSLATE_NOOP('FiberQ', 'Optical Slack'),
         'icon': 'ic_slack_midspan.svg',
         'shortcut': 'S',
         'method': '_start_slack_interactive',
@@ -107,7 +146,10 @@ QUICK_TOOLS = [
     None,
     {
         'id': 'undo',
-        'label': 'Undo (FiberQ)',
+        #: Quick-toolbar button label, imperative verb. Undoes the last FiberQ action.
+        #: The "(FiberQ)" qualifier distinguishes it from QGIS's own Undo, which is a
+        #: separate history - keep the product name as-is and keep the brackets.
+        'label': QT_TRANSLATE_NOOP('FiberQ', 'Undo (FiberQ)'),
         'icon': 'ic_undo.svg',
         'shortcut': None,  # already has Ctrl+Shift+Z via main toolbar
         'method': '_on_undo',
@@ -175,6 +217,10 @@ class QuickToolbar:
         if shortcuts_on:
             self._enable_shortcuts()
 
+    def tr(self, message):
+        """Translate a UI string in the 'QuickToolbar' context."""
+        return QCoreApplication.translate('QuickToolbar', message)
+
     # ────────────────────────────────────────────────────
     # Build
     # ────────────────────────────────────────────────────
@@ -196,14 +242,27 @@ class QuickToolbar:
                 continue
 
             icon = load_icon(tool_def['icon'])
-            label = tool_def['label']
+            # Marked at the definition site with QT_TRANSLATE_NOOP('FiberQ', ...)
+            label = QCoreApplication.translate('FiberQ', tool_def['label'])
             shortcut_key = tool_def.get('shortcut')
 
             # Build tooltip with shortcut hint
             if shortcut_key:
-                tooltip = f"{label} ({shortcut_key})"
+                #: Tooltip pattern for every quick-toolbar button, e.g. "Place Pole
+                #: (P)". {label} is the already-translated button label and {shortcut}
+                #: is a keyboard key such as P or Ctrl+Shift+Z. Keep both placeholders
+                #: spelled exactly as they are; only the punctuation may be adapted.
+                tooltip = safe_format(self.tr("{label} ({shortcut})"),
+                                      "{label} ({shortcut})",
+                                      label=label, shortcut=shortcut_key)
             elif tool_def['id'] == 'undo':
-                tooltip = f"{label} (Ctrl+Shift+Z)"
+                #: Tooltip pattern for every quick-toolbar button, e.g. "Place Pole
+                #: (P)". {label} is the already-translated button label and {shortcut}
+                #: is a keyboard key such as P or Ctrl+Shift+Z. Keep both placeholders
+                #: spelled exactly as they are; only the punctuation may be adapted.
+                tooltip = safe_format(self.tr("{label} ({shortcut})"),
+                                      "{label} ({shortcut})",
+                                      label=label, shortcut='Ctrl+Shift+Z')
             else:
                 tooltip = label
 

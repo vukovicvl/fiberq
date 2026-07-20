@@ -52,8 +52,17 @@ coverage.xml
 cover/
 
 # Translations
+# gettext artifacts only. Qt catalogs are SOURCE and SHIPPED, never ignored:
+#   fiberq/i18n/*.ts  translator input  (merged by `make i18n-update`)
+#   fiberq/i18n/*.qm  runtime binary    (built by `make i18n-compile`)
+# Both MUST stay tracked - `make package` runs `git archive HEAD:fiberq`, so an
+# untracked .qm silently ships an untranslated plugin. The negations below are
+# belt-and-braces: nothing above matches them today, and they keep it that way
+# if a *.ts / *.qm pattern is ever pasted in from another template.
 *.mo
 *.pot
+!fiberq/i18n/*.ts
+!fiberq/i18n/*.qm
 
 # Django stuff:
 *.log

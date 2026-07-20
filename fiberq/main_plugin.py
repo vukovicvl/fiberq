@@ -1,5 +1,5 @@
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import Qt, QCoreApplication
 from qgis.PyQt.QtGui import QKeySequence
 from qgis.PyQt.QtWidgets import (
     QAction, QMessageBox, QInputDialog, QDialog, QVBoxLayout, QLabel, QDialogButtonBox,
@@ -21,8 +21,16 @@ from .utils.helpers import (
     # Language/i18n functions
     _get_lang,
     _set_lang,
-    _apply_text_and_tooltip,
-    _apply_menu_language,
+)
+
+# =============================================================================
+# WP1: Qt translation catalogues (self-contained, no plugin-internal imports)
+# =============================================================================
+from .i18n import (
+    available_languages,
+    install_translator,
+    language_name,
+    remove_translator,
 )
 
 # =============================================================================
@@ -167,71 +175,62 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Could not set language attribute: {e}")
 
-        # 1) Translate known QAction objects collected in self.actions (text + tooltip)
+        # Widget text is NOT rewritten here. Translation is done by the QTranslator
+        # installed at plugin construction, so every label is already in the right
+        # language by the time it is built.
+        #
+        # The old code walked self.actions calling _apply_text_and_tooltip(), which
+        # routed through the legacy English<->Serbian map in utils/helpers.py. That
+        # map dispatches on `lang == 'en'` and sends EVERY other language down the
+        # English->Serbian branch -- so with a real language selector, choosing
+        # French relabelled the toolbar in Serbian. Rewriting live also fought the
+        # QTranslator for ownership of the same strings.
+
+        # 1) Update the language selector check-states and caption
         try:
-            for a in getattr(self, 'actions', []) or []:
-                _apply_text_and_tooltip(a, lang)
+            self._fiberq_sync_language_selector(lang)
         except Exception as e:
-            logger.debug(f"Could not translate actions: {e}")
+            logger.warning(f"Could not update language selector: {e}")
 
-        # Also translate individual top-level actions not stored in the list (defensive)
-        for name in [
-            'action_publish_pg', 'action_slack_quick', 'action_branch', 'action_hotkeys',
-            'action_bom', 'action_health_check', 'action_schematic', 'action_import_points',
-            'action_locator', 'action_clear_locator', 'action_relations', 'action_latent_list',
-            'action_fiber_break', 'action_color_catalog', 'action_save_gpkg', 'action_auto_gpkg'
-        ]:
-            try:
-                a = getattr(self, name, None)
-                if a:
-                    _apply_text_and_tooltip(a, lang)
-            except Exception as e:
-                logger.debug(f"Could not translate action '{name}': {e}")
-
-        # 2) Translate drop-down menus and buttons from UI groups if present
-        for group_name in ['ui_crtezi', 'ui_kabl', 'ui_polaganje', 'ui_kanalizacija', 'ui_selekcija', 'ui_rezerve']:
-            try:
-                grp = getattr(self, group_name, None)
-                if not grp:
-                    continue
-                # menu title + actions
-                if hasattr(grp, 'menu') and grp.menu:
-                    _apply_menu_language(grp.menu, lang)
-                if hasattr(grp, 'menu_kabl') and grp.menu_kabl:
-                    _apply_menu_language(grp.menu_kabl, lang)
-                if hasattr(grp, 'menu_kabl_podzemni') and grp.menu_kabl_podzemni:
-                    _apply_menu_language(grp.menu_kabl_podzemni, lang)
-                if hasattr(grp, 'menu_kabl_vazdusni') and grp.menu_kabl_vazdusni:
-                    _apply_menu_language(grp.menu_kabl_vazdusni, lang)
-                # toolbar button text/tooltip
-                if hasattr(grp, 'button') and grp.button:
-                    _apply_text_and_tooltip(grp.button, lang)
-                if hasattr(grp, 'btn_kabl') and grp.btn_kabl:
-                    _apply_text_and_tooltip(grp.btn_kabl, lang)
-            except Exception as e:
-                logger.debug(f"Could not translate UI group '{group_name}': {e}")
-
-        # 3) Update language toggle caption/tooltip
-        try:
-            if hasattr(self, '_fiberq_lang_action') and self._fiberq_lang_action:
-                self._fiberq_lang_action.setText('EN' if lang == 'sr' else 'SR')
-                self._fiberq_lang_action.setToolTip(
-                    'Promeni jezik interfejsa na engleski' if lang == 'sr' else 'Switch UI language to Serbian'
-                )
-        except Exception as e:
-            logger.debug(f"Could not update language toggle: {e}")
-
-        # 4) Store preference
+        # 2) Store preference
         try:
             _set_lang(lang)
         except Exception as e:
             logger.debug(f"Could not store language preference: {e}")
 
-    def _fiberq_toggle_language(self):
-        lang = getattr(self, '_fiberq_lang', None) or _get_lang()
-        lang = 'en' if lang == 'sr' else 'sr'
-        _set_lang(lang)
-        self._fiberq_apply_language(lang)
+    def _fiberq_sync_language_selector(self, lang):
+        """Reflect ``lang`` in the toolbar language button and its menu."""
+        actions = getattr(self, '_fiberq_lang_actions', None) or {}
+        for code, action in actions.items():
+            try:
+                action.setChecked(code == lang)
+            except RuntimeError as e:
+                logger.warning(f"Language menu action for '{code}' is gone: {e}")
+
+        button = getattr(self, '_fiberq_lang_button', None)
+        if button is not None:
+            try:
+                button.setText(language_name(lang))
+                button.setToolTip(self.tr("Interface language"))
+            except RuntimeError as e:
+                logger.warning(f"Language button is gone: {e}")
+
+    def _fiberq_set_language(self, code):
+        """Store the chosen UI language and tell the user a restart is needed.
+
+        The QTranslator is installed once, at plugin construction, so switching
+        language cannot take effect until QGIS reloads the plugin.
+        """
+        if not code:
+            return
+        _set_lang(code)
+        self._fiberq_apply_language(code)
+        QMessageBox.information(
+            self.iface.mainWindow(),
+            self.tr("Interface language"),
+            self.tr("Language set to {language}.\n\n"
+                    "Language will change when QGIS restarts.").format(language=language_name(code))
+        )
     # === BOM: otvori dijalog ===
 
     def open_bom_dialog(self):
@@ -243,7 +242,10 @@ class FiberQPlugin:
                 logger.debug(f"Could not apply language to BOM dialog: {e}")
             dlg.exec()
         except Exception as e:
-            QMessageBox.critical(self.iface.mainWindow(), "BOM report", f"Error: {e}")
+            #: Error-dialog title. "BOM" = Bill of Materials (costed list of
+            #: materials for the design), NOT the Unicode byte-order mark.
+            QMessageBox.critical(self.iface.mainWindow(), self.tr("BOM report"),
+                                 self.tr("Error: {details}").format(details=e))
 
     # === LOCATOR: helper methods ===
     def open_locator_dialog(self):
@@ -252,7 +254,8 @@ class FiberQPlugin:
             dlg = LocatorDialog(self)
             dlg.exec()
         except Exception as e:
-            QMessageBox.critical(self.iface.mainWindow(), "Locator", f"Error opening locator: {e}")
+            QMessageBox.critical(self.iface.mainWindow(), self.tr("Locator"),
+                                 self.tr("Error opening locator: {details}").format(details=e))
 
     def _center_and_mark_wgs84(self, lon, lat, label=None):
         # Pomeri mapu na zadate WGS84 koordinate (lon, lat) i postavi marker.
@@ -318,12 +321,44 @@ class FiberQPlugin:
             self._locator_marker = None
             self.iface.mapCanvas().refresh()
 
+    def tr(self, message, disambiguation=None, n=-1):
+        """Translate ``message`` using the 'FiberQPlugin' catalogue context.
+
+        The context string must stay exactly equal to the class name: pylupdate
+        derives the .ts <context> from the enclosing class, so any other value
+        produces entries that never resolve at runtime.
+
+        ``n`` enables Qt's plural handling: pass a count and use the ``%n``
+        placeholder in ``message`` (``self.tr('%n item(s)', '', count)``).
+        pylupdate then emits a ``numerus="yes"`` entry and the translator gets
+        one field per plural form of the target language -- French splits at
+        n<=1 vs n>1, Serbian has three forms. The default n=-1 is Qt's
+        "not a plural" sentinel, so existing single-argument calls are
+        unaffected.
+        """
+        return QCoreApplication.translate('FiberQPlugin', message, disambiguation, n)
+
     def __init__(self, iface):
         self.iface = iface
         self.layer = None
         self.toolbar = None
         self.point_tool = None
         self.actions = []
+        self.plugin_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # WP1: install the Qt translation catalogue for the current QGIS locale.
+        # Keep the reference on self -- a garbage-collected QTranslator stops
+        # translating without any error being raised.
+        self.translator = None
+        try:
+            self.translator = install_translator(self.plugin_dir)
+        except (OSError, RuntimeError) as e:
+            logger.warning(f"Could not install FiberQ translator: {e}")
+
+        # Language selector state (built in initGui)
+        self._fiberq_lang_button = None
+        self._fiberq_lang_actions = {}
+        self._fiberq_lang_widget_action = None
         self._hk_shortcuts = []
         self.breakpoint_tool = None  # === DODATO ===
         self.selected_cable_type = None
@@ -466,7 +501,11 @@ class FiberQPlugin:
         except Exception as e:
             try:
                 from qgis.PyQt.QtWidgets import QMessageBox
-                QMessageBox.critical(self.iface.mainWindow(), "Publish to PostGIS", f"Greška: {e}")
+                QMessageBox.critical(
+                    self.iface.mainWindow(),
+                    self.tr("Publish to PostGIS"),
+                    self.tr("Error: {details}").format(details=e)
+                )
             except Exception as e2:
                 logger.error(f"Could not show error dialog: {e2}")
 
@@ -522,8 +561,13 @@ class FiberQPlugin:
                 try:
                     QMessageBox.warning(
                         self.iface.mainWindow(),
-                        "Health check",
-                        f"Error while running detailed route check:\n{e}",
+                        #: Dialog title. "Health check" = a validation pass over
+                        #: the QGIS PROJECT's data (are the Route/Poles/Manholes layers
+                        #: present, of the right geometry type, and internally
+                        #: consistent). It is a data-integrity check, NOT a measurement
+                        #: of optical/network health and not hardware diagnostics.
+                        self.tr("Health check"),
+                        self.tr("Error while running detailed route check:\n{details}").format(details=e),
                     )
                 except Exception as e:
                     logger.debug(f"Error in FiberQPlugin.run_health_check: {e}")
@@ -602,7 +646,11 @@ class FiberQPlugin:
         except Exception as e:
             try:
                 from qgis.PyQt.QtWidgets import QMessageBox
-                QMessageBox.critical(self.iface.mainWindow(), "Izmena tipa elementa", f"Greška: {e}")
+                QMessageBox.critical(
+                    self.iface.mainWindow(),
+                    self.tr("Change element type"),
+                    self.tr("Error: {details}").format(details=e)
+                )
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.activate_change_element_type_tool: {e}")
 
@@ -645,16 +693,17 @@ class FiberQPlugin:
             return
         layer = self.iface.activeLayer()
         if not layer or layer.selectedFeatureCount() == 0:
-            QMessageBox.information(self.iface.mainWindow(), 'FiberQ', 'Select one or more elements and try again.')
+            QMessageBox.information(self.iface.mainWindow(), 'FiberQ',
+                                    self.tr('Select one or more elements and try again.'))
             return
         feats = layer.selectedFeatures()
 
         # 2) choose image
         path, _ = QFileDialog.getOpenFileName(
             self.iface.mainWindow(),
-            'Choose image',
+            self.tr('Choose image'),
             '',
-            'Images (*.jpg *.jpeg *.png *.gif);;All files (*.*)'
+            self.tr('Images (*.jpg *.jpeg *.png *.gif);;All files (*.*)')
         )
         if not path:
             return
@@ -663,7 +712,11 @@ class FiberQPlugin:
         for f in feats:
             _img_set(layer, f.id(), path)
 
-        QMessageBox.information(self.iface.mainWindow(), 'FiberQ', f'Image linked to {len(feats)} element(s).')
+        QMessageBox.information(self.iface.mainWindow(), 'FiberQ',
+                                #: Confirmation after attaching one photo to the selected
+                                #: map elements. %n is how many elements now point at that image;
+                                #: Qt substitutes it, so keep %n and do not turn it into {count}.
+                                self.tr('Image linked to %n element(s).', '', len(feats)))
 
         # 4) switch to click-to-open tool
         try:
@@ -680,7 +733,8 @@ class FiberQPlugin:
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.ui_import_image: {e}")
             try:
-                self.iface.messageBar().pushInfo('Image', 'Click on an element to open its image (ESC to exit).')
+                self.iface.messageBar().pushInfo(self.tr('Image'),
+                                                 self.tr('Click on an element to open its image (ESC to exit).'))
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.ui_import_image: {e}")
 
@@ -692,12 +746,17 @@ class FiberQPlugin:
             return
         layer = self.iface.activeLayer()
         if not layer or layer.selectedFeatureCount() == 0:
-            QMessageBox.information(self.iface.mainWindow(), 'FiberQ', 'Select one or more elements and try again.')
+            QMessageBox.information(self.iface.mainWindow(), 'FiberQ',
+                                    self.tr('Select one or more elements and try again.'))
             return
         feats = layer.selectedFeatures()
         for f in feats:
             _img_set(layer, f.id(), '')
-        QMessageBox.information(self.iface.mainWindow(), 'FiberQ', f'Image link removed for {len(feats)} element(s).')
+        QMessageBox.information(self.iface.mainWindow(), 'FiberQ',
+                                #: Confirmation after detaching the photo from the selected
+                                #: map elements. Only the link is cleared - the image file itself
+                                #: is not deleted. %n is how many elements were unlinked; keep %n.
+                                self.tr('Image link removed for %n element(s).', '', len(feats)))
 
     def ui_move_elements(self):
         try:
@@ -719,15 +778,23 @@ class FiberQPlugin:
             self.iface.mapCanvas().setMapTool(self._infra_cut_tool)
             try:
                 self.iface.messageBar().pushInfo(
-                    "Cutiing",
-                    "Tool activated. Move mouse over line (red cross), left click to cut, right/ESC exit.",
+                    #: Message-bar heading for the geometry-splitting tool.
+                    #: "Cutting" = the act of splitting a line feature in two, NOT a
+                    #: cable fault/outage. Verbal noun; keep it short (banner title).
+                    #: The body text below belongs to the same tool.
+                    self.tr("Cutting"),
+                    self.tr("Tool activated. Move mouse over line (red cross), left click to cut, right/ESC exit."),
                 )
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.activate_infrastructure_cut_tool: {e}")
         except Exception as e:
             try:
                 from qgis.PyQt.QtWidgets import QMessageBox
-                QMessageBox.critical(self.iface.mainWindow(), "Infrastructure cutting", f"Error: {e}")
+                #: Error-dialog title for the geometry-splitting tool.
+                #: "cutting" = splitting a line feature at a clicked point, NOT a
+                #: cable fault. Same tool as the "Cut infrastructure" button.
+                QMessageBox.critical(self.iface.mainWindow(), self.tr("Infrastructure cutting"),
+                                     self.tr("Error: {details}").format(details=e))
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.activate_infrastructure_cut_tool: {e}")
 # --- Help/About ---
@@ -771,7 +838,7 @@ class FiberQPlugin:
             support_url = (self._fiberq_read_config_value('web', 'support_url', '') or '').strip()
 
             dlg = QDialog(self.iface.mainWindow())
-            dlg.setWindowTitle(f"{name} – About")
+            dlg.setWindowTitle(self.tr("{name} – About").format(name=name))
             layout = QVBoxLayout(dlg)
 
             # Rich text body
@@ -814,7 +881,8 @@ class FiberQPlugin:
             dlg.exec()
         except Exception as e:
             try:
-                QMessageBox.information(self.iface.mainWindow(), 'FiberQ', f'About dialog error: {e}')
+                QMessageBox.information(self.iface.mainWindow(), 'FiberQ',
+                                        self.tr('About dialog error: {details}').format(details=e))
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.show_about_dialog: {e}")
 
@@ -927,20 +995,38 @@ class FiberQPlugin:
         # Make sure SVGs in styles resolve on every machine
         self._ensure_plugin_svg_search_path()
 
-        # --- Language toggle button (SR/EN) ---
+        # --- Language selector (one entry per shipped .qm catalogue) ---
+        from qgis.PyQt.QtWidgets import QToolButton, QMenu
+
+        current_lang = _get_lang()
+
+        self.menu_language = QMenu(self.tr("Interface language"), self.iface.mainWindow())
+        self._fiberq_lang_actions = {}
+        for code in available_languages(self.plugin_dir):
+            act_lang = QAction(language_name(code), self.iface.mainWindow())
+            act_lang.setCheckable(True)
+            act_lang.setChecked(code == current_lang)
+            # default arg binds the loop variable per iteration
+            act_lang.triggered.connect(lambda _checked=False, c=code: self._fiberq_set_language(c))
+            self.menu_language.addAction(act_lang)
+            self._fiberq_lang_actions[code] = act_lang
+
+        self._fiberq_lang_button = QToolButton(self.toolbar)
+        self._fiberq_lang_button.setMenu(self.menu_language)
+        self._fiberq_lang_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self._fiberq_lang_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._fiberq_lang_button.setText(language_name(current_lang))
+        self._fiberq_lang_button.setToolTip(self.tr("Interface language"))
+        # addWidget returns the QAction that owns the widget; keep it so unload()
+        # can remove the button instead of duplicating it on every plugin reload.
+        self._fiberq_lang_widget_action = self.toolbar.addWidget(self._fiberq_lang_button)
+
         try:
-            self._fiberq_lang_action = QAction('EN', self.iface.mainWindow())
-            self._fiberq_lang_action.setToolTip('Switch UI language to English')
-            self._fiberq_lang_action.triggered.connect(self._fiberq_toggle_language)
-            self.toolbar.addAction(self._fiberq_lang_action)
-            try:
-                from qgis.PyQt.QtCore import QTimer
-                # Apply stored language after UI is ready
-                QTimer.singleShot(0, lambda: self._fiberq_apply_language(_get_lang()))
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+            from qgis.PyQt.QtCore import QTimer
+            # Apply stored language after UI is ready
+            QTimer.singleShot(0, lambda: self._fiberq_apply_language(current_lang))
+        except ImportError as e:
+            logger.warning(f"Could not schedule deferred language apply: {e}")
 
         # Label "FiberQ" at the start of toolbar
         try:
@@ -956,9 +1042,9 @@ class FiberQPlugin:
 
             # Undo button
             self.action_undo = QAction(
-                _load_icon('ic_undo.svg'), 'Undo (FiberQ)', self.iface.mainWindow()
+                _load_icon('ic_undo.svg'), self.tr('Undo (FiberQ)'), self.iface.mainWindow()
             )
-            self.action_undo.setToolTip('Undo last FiberQ action (Ctrl+Shift+Z)')
+            self.action_undo.setToolTip(self.tr('Undo last FiberQ action (Ctrl+Shift+Z)'))
             self.action_undo.setShortcut(QKeySequence('Ctrl+Shift+Z'))
             self.action_undo.triggered.connect(self._on_undo)
             self.toolbar.addAction(self.action_undo)
@@ -966,9 +1052,9 @@ class FiberQPlugin:
 
             # Redo button
             self.action_redo = QAction(
-                _load_icon('ic_redo.svg'), 'Redo (FiberQ)', self.iface.mainWindow()
+                _load_icon('ic_redo.svg'), self.tr('Redo (FiberQ)'), self.iface.mainWindow()
             )
-            self.action_redo.setToolTip('Redo last undone FiberQ action (Ctrl+Shift+Y)')
+            self.action_redo.setToolTip(self.tr('Redo last undone FiberQ action (Ctrl+Shift+Y)'))
             self.action_redo.setShortcut(QKeySequence('Ctrl+Shift+Y'))
             self.action_redo.triggered.connect(self._on_redo)
             self.toolbar.addAction(self.action_redo)
@@ -991,8 +1077,8 @@ class FiberQPlugin:
                     except Exception as e2:
                         logger.debug(f"Could not load theme icon: {e2}")
                         icon_help = QIcon()
-                self.action_help_about = QAction(icon_help, 'Help / About', self.iface.mainWindow())
-                self.action_help_about.setToolTip('Help and information about FiberQ')
+                self.action_help_about = QAction(icon_help, self.tr('Help / About'), self.iface.mainWindow())
+                self.action_help_about.setToolTip(self.tr('Help and information about FiberQ'))
                 try:
                     self.action_help_about.triggered.connect(self.show_about_dialog)
                 except Exception as e:
@@ -1023,13 +1109,13 @@ class FiberQPlugin:
 
         try:
 
-            self.action_publish_pg = QAction('Publish to PostGIS', self.iface.mainWindow())
+            self.action_publish_pg = QAction(self.tr('Publish to PostGIS'), self.iface.mainWindow())
 
             try:
                 self.action_publish_pg.setIcon(_load_icon('ic_publish_pg.svg'))
             except Exception as e:
                 logger.debug(f"Could not load publish_pg icon: {e}")
-            self.action_publish_pg.setToolTip('Publish the active (or selected) layer to PostGIS')
+            self.action_publish_pg.setToolTip(self.tr('Publish the active (or selected) layer to PostGIS'))
 
             self.action_publish_pg.triggered.connect(self.open_publish_dialog)
 
@@ -1065,7 +1151,13 @@ class FiberQPlugin:
 
         # Quick shortcut: 'R' opens interactive terminal slack
         try:
-            self.action_slack_quick = QAction("Terminal slack (shortcut)", self.iface.mainWindow())
+            #: Label of a HIDDEN action that only exists to bind the "R" key;
+            #: it shows up in the QGIS keyboard-shortcuts list, not on a toolbar.
+            #: "Slack" = spare cable length coiled at a point for later re-splicing
+            #: (fr "love"/"reserve"); TERMINAL slack is the type that sits at a
+            #: cable END - keep it distinct from "mid span" slack. "(shortcut)"
+            #: refers to the key binding, not to a Windows shortcut file.
+            self.action_slack_quick = QAction(self.tr("Terminal slack (shortcut)"), self.iface.mainWindow())
             self.action_slack_quick.setShortcut(QKeySequence('R'))
             self.action_slack_quick.setVisible(False)  # 'skrivena' akcija
             self.action_slack_quick.triggered.connect(lambda: self._start_slack_interactive("Terminal"))
@@ -1076,14 +1168,14 @@ class FiberQPlugin:
         self.ui_drawings = DrawingsUI(self)
         self.ui_objects = ObjectsUI(self)
         # — NEW — Optical schematic view
-        self.action_schematic = QAction(_load_icon('ic_optical_schematic_view.svg'), "Optical schematic view", self.iface.mainWindow())
+        self.action_schematic = QAction(_load_icon('ic_optical_schematic_view.svg'), self.tr("Optical schematic view"), self.iface.mainWindow())
         self.action_schematic.triggered.connect(self.open_optical_schematic)
         self.toolbar.addAction(self.action_schematic)
 
         # Dodatna dugmad koja ostaju van grupa (ako treba)
         # Import points remains as standalone button, per original behavior
         icon_import_points = _load_icon('ic_import_points.svg')
-        self.action_import_points = QAction(icon_import_points, "Import points", self.iface.mainWindow())
+        self.action_import_points = QAction(icon_import_points, self.tr("Import points"), self.iface.mainWindow())
         self.action_import_points.triggered.connect(self.import_points)
         self.toolbar.addAction(self.action_import_points)
         self.actions.append(self.action_import_points)
@@ -1094,16 +1186,16 @@ class FiberQPlugin:
 
             export_icon = _load_icon('ic_export_features.svg')
 
-            self.menu_export = QMenu("Export", self.iface.mainWindow())
+            self.menu_export = QMenu(self.tr("Export"), self.iface.mainWindow())
             self.menu_export.setToolTipsVisible(True)
 
             self.action_export_selected = QAction(
                 export_icon,
-                "Export selected...",
+                self.tr("Export selected..."),
                 self.iface.mainWindow()
             )
             self.action_export_selected.setToolTip(
-                "Export selected features of the active layer to GPX / KML / KMZ / GeoPackage"
+                self.tr("Export selected features of the active layer to GPX / KML / KMZ / GeoPackage")
             )
             self.action_export_selected.triggered.connect(
                 self.export_selected_features
@@ -1113,11 +1205,11 @@ class FiberQPlugin:
 
             self.action_export_all = QAction(
                 export_icon,
-                "Export all...",
+                self.tr("Export all..."),
                 self.iface.mainWindow()
             )
             self.action_export_all.setToolTip(
-                "Export all features of the active layer to GPX / KML / KMZ / GeoPackage"
+                self.tr("Export all features of the active layer to GPX / KML / KMZ / GeoPackage")
             )
             self.action_export_all.triggered.connect(
                 self.export_all_features
@@ -1129,7 +1221,7 @@ class FiberQPlugin:
             self.btn_export.setMenu(self.menu_export)
             self.btn_export.setDefaultAction(self.action_export_selected)
             self.btn_export.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-            self.btn_export.setToolTip("Export active layer")
+            self.btn_export.setToolTip(self.tr("Export active layer"))
             self.toolbar.addWidget(self.btn_export)
         except Exception as e:
             # Failing to build export UI should not break plugin loading
@@ -1137,24 +1229,42 @@ class FiberQPlugin:
 
         # Lokator
         icon_locator = _load_icon('ic_locator.svg')
-        self.action_locator = QAction(icon_locator, "Locator", self.iface.mainWindow())
+        #: Toolbar button opening FiberQ's OWN address-finder dialog
+        #: (country/city/street/number, geocoded via OpenStreetMap Nominatim,
+        #: then marked on the map). NOT the QGIS "Locator" search bar - do not
+        #: reuse the QGIS translation of that term. Sense: address finder.
+        self.action_locator = QAction(icon_locator, self.tr("Locator"), self.iface.mainWindow())
         self.action_locator.triggered.connect(self.open_locator_dialog)
         self.toolbar.addAction(self.action_locator)
         self.actions.append(self.action_locator)
 
-        self.action_clear_locator = QAction(_load_icon('ic_hide_locator.svg'), "Hide locator", self.iface.mainWindow())
+        #: Toolbar button that removes the address marker the Locator
+        #: dropped on the map. "Hide" is a VERB (imperative); "locator" is the
+        #: same address-finder feature as the "Locator" button above.
+        self.action_clear_locator = QAction(_load_icon('ic_hide_locator.svg'), self.tr("Hide locator"), self.iface.mainWindow())
         self.action_clear_locator.triggered.connect(self.clear_locator_marker)
         self.toolbar.addAction(self.action_clear_locator)
         self.actions.append(self.action_clear_locator)
 
         # Relacije
         icon_rel = _load_icon('ic_relations.svg')
-        self.action_relations = QAction(icon_rel, "Relations", self.iface.mainWindow())
+        #: Toolbar button opening "Optical relations management". A FiberQ
+        #: "relation" is a named end-to-end optical link (a logical route between
+        #: two sites) that cables get assigned to - telecom domain sense, plural
+        #: NOUN. NOT QGIS layer relations (foreign keys between tables), and not
+        #: "relationship" in the general sense.
+        self.action_relations = QAction(icon_rel, self.tr("Relations"), self.iface.mainWindow())
         self.action_relations.triggered.connect(self.open_relations_dialog)
         self.toolbar.addAction(self.action_relations)
         self.actions.append(self.action_relations)
         # Lista latentnih elemenata
-        self.action_latent_list = QAction(_load_icon('ic_list_of_latent_elements.svg'), "List of latent elements", self.iface.mainWindow())
+        #: Toolbar button opening a table of "latent" elements. In FiberQ a
+        #: latent element is a passive optical element (joint closure, ODF, OTB,
+        #: termination box) that sits ON a cable's path at a recorded distance
+        #: along it, between the cable's two endpoints - recorded as data, not
+        #: drawn as a separate map feature. "latent" = intermediate/pass-through,
+        #: NOT "faulty", "hidden bug" or "dormant".
+        self.action_latent_list = QAction(_load_icon('ic_list_of_latent_elements.svg'), self.tr("List of latent elements"), self.iface.mainWindow())
         self.action_latent_list.triggered.connect(self.open_latent_elements_dialog)
         self.toolbar.addAction(self.action_latent_list)
         self.actions.append(self.action_latent_list)
@@ -1172,9 +1282,14 @@ class FiberQPlugin:
                 logger.debug(f"Error in FiberQPlugin.initGui: {e}")
                 icon_sec = None
         try:
-            self.action_infra_cut = QAction(icon_sec, "Cut infrastructure", self.iface.mainWindow())
+            #: Toolbar button. "Cut" is a VERB, imperative, in the GEOMETRY
+            #: -EDITING sense: the tool splits one line feature into two at the point
+            #: you click (see addons/infrastructure_cut.py, _split_feature_at_point).
+            #: It is NOT a cable fault/break - French "decouper"/"scinder", never
+            #: "coupure". The separate fault tool is "Fiber break".
+            self.action_infra_cut = QAction(icon_sec, self.tr("Cut infrastructure"), self.iface.mainWindow())
         except Exception:
-            self.action_infra_cut = QAction("Cut infrastructure")
+            self.action_infra_cut = QAction(self.tr("Cut infrastructure"))
         try:
             self.action_infra_cut.setObjectName("action_infrastructure_cut")
         except Exception as e:
@@ -1209,7 +1324,11 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.initGui: {e}")
 
-        self.action_fiber_break = QAction(icon_prekid, "Fiber break", self.iface.mainWindow())
+        #: Toolbar button. NOUN: a fault - the point where a fibre is broken
+        #: or severed (fr "coupure"/"rupture"). This IS the fault concept, unlike
+        #: "Cut infrastructure" above, which is geometry editing. The tool marks a
+        #: break location on the map. "break" is not a pause and not a rest.
+        self.action_fiber_break = QAction(icon_prekid, self.tr("Fiber break"), self.iface.mainWindow())
         try:
             self.action_fiber_break.setShortcut(QKeySequence('Ctrl+F'))
         except Exception as e:
@@ -1219,7 +1338,11 @@ class FiberQPlugin:
         self.actions.append(self.action_fiber_break)
 
         # Color catalog (menu for fiber/tube color standards)
-        self.action_color_catalog = QAction(_load_icon('ic_color_catalog.svg'), "Color catalog", self.iface.mainWindow())
+        #: Toolbar entry opening the FIBRE COLOUR CODE: the standard sequence of
+        #: colours identifying each tube and each fibre within a cable (e.g. the
+        #: TIA-598 or IEC ordering). This is industry cable terminology - it is NOT
+        #: a QGIS symbology palette or a map-styling colour picker.
+        self.action_color_catalog = QAction(_load_icon('ic_color_catalog.svg'), self.tr("Color catalog"), self.iface.mainWindow())
         self.action_color_catalog.triggered.connect(self.open_color_catalog_manager)
         self.toolbar.addAction(self.action_color_catalog)
         self.actions.append(self.action_color_catalog)
@@ -1230,8 +1353,8 @@ class FiberQPlugin:
         except Exception:
             from qgis.PyQt.QtGui import QIcon as _QIconTmp
             icon_save_gpkg = _QIconTmp()
-        self.action_save_gpkg = QAction(icon_save_gpkg, "Save all layers to GeoPackage", self.iface.mainWindow())
-        self.action_save_gpkg.setToolTip("Export all vector layers (including Temporary scratch) to a single .gpkg and redirect the project to it")
+        self.action_save_gpkg = QAction(icon_save_gpkg, self.tr("Save all layers to GeoPackage"), self.iface.mainWindow())
+        self.action_save_gpkg.setToolTip(self.tr("Export all vector layers (including Temporary scratch) to a single .gpkg and redirect the project to it"))
         self.action_save_gpkg.triggered.connect(self.save_all_layers_to_gpkg)
         # Add to toolbar and list for clean removal
         try:
@@ -1251,9 +1374,9 @@ class FiberQPlugin:
             logger.debug(f"Could not load auto_gpkg icon: {e}")
             from qgis.PyQt.QtGui import QIcon as _QIconTmp
             icon_auto_gpkg = _QIconTmp()
-        self.action_auto_gpkg = QAction(icon_auto_gpkg, "Auto save to GeoPackage", self.iface.mainWindow())
+        self.action_auto_gpkg = QAction(icon_auto_gpkg, self.tr("Auto save to GeoPackage"), self.iface.mainWindow())
         self.action_auto_gpkg.setCheckable(True)
-        self.action_auto_gpkg.setToolTip("When enabled: every new or memory layer is automatically written to the selected .gpkg and redirected to it")
+        self.action_auto_gpkg.setToolTip(self.tr("When enabled: every new or memory layer is automatically written to the selected .gpkg and redirected to it"))
         self.action_auto_gpkg.toggled.connect(self.ui_routing._toggle_auto_gpkg)
         try:
             self.toolbar.addAction(self.action_auto_gpkg)
@@ -1271,8 +1394,8 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Could not load fiberq_web icon: {e}")
             icon_fiberq = QIcon()
-        self.action_open_fiberq_web = QAction(icon_fiberq, "Preview Map", self.iface.mainWindow())
-        self.action_open_fiberq_web.setToolTip("Open the FiberQ Preview Map (PostGIS connection from config.ini)")
+        self.action_open_fiberq_web = QAction(icon_fiberq, self.tr("Preview Map"), self.iface.mainWindow())
+        self.action_open_fiberq_web.setToolTip(self.tr("Open the FiberQ Preview Map (PostGIS connection from config.ini)"))
         self.action_open_fiberq_web.triggered.connect(self.open_fiberq_web)
         try:
             self.toolbar.addAction(self.action_open_fiberq_web)
@@ -1286,8 +1409,8 @@ class FiberQPlugin:
         # Service Area tools
         try:
             icon_sa = _load_icon('ic_service_area.svg') if 'ic_service_area.svg' else QIcon()
-            self.action_create_region = QAction(icon_sa, 'Create Service Area', self.iface.mainWindow())
-            self.action_create_region.setToolTip('Create Service Area from selection (buffer around selected cables/elements)')
+            self.action_create_region = QAction(icon_sa, self.tr('Create Service Area'), self.iface.mainWindow())
+            self.action_create_region.setToolTip(self.tr('Create Service Area from selection (buffer around selected cables/elements)'))
             self.action_create_region.triggered.connect(self.run_create_service_area)
             try:
                 self.toolbar.addAction(self.action_create_region)
@@ -1302,8 +1425,8 @@ class FiberQPlugin:
 
         try:
             icon_draw = _load_icon('ic_draw_service_area.svg') if 'ic_draw_service_area.svg' else QIcon()
-            self.action_draw_region = QAction(icon_draw, 'Draw Service Area Manually', self.iface.mainWindow())
-            self.action_draw_region.setToolTip('Manual Service Area drawing (like Google Earth) and entry into Service Area layer')
+            self.action_draw_region = QAction(icon_draw, self.tr('Draw Service Area Manually'), self.iface.mainWindow())
+            self.action_draw_region.setToolTip(self.tr('Manual Service Area drawing (like Google Earth) and entry into Service Area layer'))
             self.action_draw_region.triggered.connect(self.activate_draw_service_area_manual)
             try:
                 self.toolbar.addAction(self.action_draw_region)
@@ -1324,15 +1447,20 @@ class FiberQPlugin:
             logger.debug(f"Could not load branch icon: {e}")
             icon_branch = QIcon()
         try:
-            self.action_branch = QAction(icon_branch, "Branch info", self.iface.mainWindow())
+            #: Toolbar button. "Branch" is a NOUN in the cable-network sense -
+            #: a branching/junction point where cables split off (French
+            #: "derivation"). Click a cable to see how many cables, of which types
+            #: and capacities, meet at that point. Not a tree branch, not a company
+            #: branch office, not a version-control branch.
+            self.action_branch = QAction(icon_branch, self.tr("Branch info"), self.iface.mainWindow())
         except Exception as e:
             logger.debug(f"Could not create action with parent: {e}")
-            self.action_branch = QAction("Branch info")
+            self.action_branch = QAction(self.tr("Branch info"))
         try:
             self.action_branch.setShortcut("Ctrl+G")
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.initGui: {e}")
-        self.action_branch.setToolTip("Click on cable to show number of cables/types/capacities at that point")
+        self.action_branch.setToolTip(self.tr("Click on cable to show number of cables/types/capacities at that point"))
         try:
             self.action_branch.triggered.connect(self.activate_branch_info_tool)
         except Exception as e:
@@ -1349,10 +1477,10 @@ class FiberQPlugin:
 
         # Show shortcuts (overlay)
         try:
-            self.action_hotkeys = QAction("Show shortcuts", self.iface.mainWindow())
+            self.action_hotkeys = QAction(self.tr("Show shortcuts"), self.iface.mainWindow())
         except Exception as e:
             logger.debug(f"Could not create action with parent: {e}")
-            self.action_hotkeys = QAction("Show shortcuts")
+            self.action_hotkeys = QAction(self.tr("Show shortcuts"))
         try:
             self.action_hotkeys.setIcon(_load_icon('ic_hotkeys.svg'))
         except Exception as e:
@@ -1379,20 +1507,25 @@ class FiberQPlugin:
 
         # === BOM report (XLSX/CSV) ===
         try:
-            self.action_bom = QAction("BOM izveštaj (XLSX/CSV)", self.iface.mainWindow())
+            #: Toolbar button. "BOM" = Bill of Materials, the costed list of
+            #: cables/closures/poles a design consumes (fr "nomenclature" /
+            #: "liste de materiel"). It is NOT the Unicode byte-order mark. XLSX/CSV
+            #: are file formats and stay untranslated. Expand or keep "BOM" per the
+            #: convention of your language's telecom/engineering usage.
+            self.action_bom = QAction(self.tr("BOM report (XLSX/CSV)"), self.iface.mainWindow())
             try:
                 self.action_bom.setIcon(_load_icon('ic_bom.svg'))
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.initGui: {e}")
         except Exception:
             # fallback if QAction construction with parent fails
-            self.action_bom = QAction("BOM izveštaj (XLSX/CSV)")
+            self.action_bom = QAction(self.tr("BOM report (XLSX/CSV)"))
 
         try:
             self.action_bom.setShortcut("Ctrl+B")
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.initGui: {e}")
-        self.action_bom.setToolTip("BOM report")
+        self.action_bom.setToolTip(self.tr("BOM report"))
         try:
             self.action_bom.triggered.connect(self.open_bom_dialog)
         except Exception as e:
@@ -1433,7 +1566,12 @@ class FiberQPlugin:
 
         # --- Health check action ---
         try:
-            self.action_health_check = QAction('Check (health check)', self.iface.mainWindow())
+            #: Toolbar action running the project data-integrity check (are
+            #: the expected FiberQ layers present, right geometry type, routes
+            #: consistent). Imperative verb + the feature's name in brackets; it is
+            #: NOT optical/network health. Same feature as the "Health check"
+            #: dialog title - keep the bracketed term identical to that one.
+            self.action_health_check = QAction(self.tr('Check (health check)'), self.iface.mainWindow())
             try:
                 self.action_health_check.setIcon(_load_icon('ic_health.svg'))
             except Exception as e:
@@ -1469,7 +1607,7 @@ class FiberQPlugin:
             if not hasattr(self, 'action_settings'):
                 icon_path_settings = os.path.join(os.path.dirname(__file__), 'icons', 'ic_settings.svg')
                 icon_settings = QIcon(icon_path_settings) if os.path.exists(icon_path_settings) else QIcon()
-                self.action_settings = QAction(icon_settings, 'Settings', self.iface.mainWindow())
+                self.action_settings = QAction(icon_settings, self.tr('Settings'), self.iface.mainWindow())
                 self.action_settings.triggered.connect(self.open_fiberq_settings)
                 try:
                     if self.toolbar is not None:
@@ -1491,8 +1629,8 @@ class FiberQPlugin:
         try:
             if not hasattr(self, 'action_change_element_type'):
                 icon = _load_icon('ic_selection.svg')
-                self.action_change_element_type = QAction(icon, 'Change element type', self.iface.mainWindow())
-                self.action_change_element_type.setToolTip('Smart selection + change element type (visual style)')
+                self.action_change_element_type = QAction(icon, self.tr('Change element type'), self.iface.mainWindow())
+                self.action_change_element_type.setToolTip(self.tr('Smart selection + change element type (visual style)'))
                 self.action_change_element_type.triggered.connect(self.activate_change_element_type_tool)
                 try:
                     self.toolbar.addAction(self.action_change_element_type)
@@ -1511,18 +1649,24 @@ class FiberQPlugin:
         # --- Move elements + link images to elements ---
         try:
             # Move elements
-            self.action_move_elements = QAction(_load_icon('ic_move_elements.svg'), 'Move elements', self.iface.mainWindow())
-            self.action_move_elements.setToolTip('Move elements on the map (click-move-click)')
+            self.action_move_elements = QAction(_load_icon('ic_move_elements.svg'), self.tr('Move elements'), self.iface.mainWindow())
+            self.action_move_elements.setToolTip(self.tr('Move elements on the map (click-move-click)'))
             self.action_move_elements.triggered.connect(self.ui_move_elements)
 
             # Import picture
-            self.action_import_image = QAction(_load_icon('ic_import_picture.svg'), 'Import picture to element', self.iface.mainWindow())
-            self.action_import_image.setToolTip('Link a .jpg/.png picture to selected element(s)')
+            self.action_import_image = QAction(_load_icon('ic_import_picture.svg'), self.tr('Import picture to element'), self.iface.mainWindow())
+            #: Toolbar tooltip. Static text built once at startup, so there
+            #: is no count to plug in: "(s)" here just means "one or more".
+            #: Render it with whatever generic/plural form reads naturally.
+            self.action_import_image.setToolTip(self.tr('Link a .jpg/.png picture to selected element(s)'))
             self.action_import_image.triggered.connect(self.ui_import_image)
 
             # Clear picture
-            self.action_clear_image = QAction(_load_icon('ic_import_picture.svg'), 'Clear picture from element', self.iface.mainWindow())
-            self.action_clear_image.setToolTip('Unlink picture from selected element(s)')
+            self.action_clear_image = QAction(_load_icon('ic_import_picture.svg'), self.tr('Clear picture from element'), self.iface.mainWindow())
+            #: Toolbar tooltip. "Unlink" = detach the picture reference from
+            #: the element; the image file on disk is NOT deleted. Static text, so
+            #: "(s)" just means "one or more" - no count is substituted.
+            self.action_clear_image.setToolTip(self.tr('Unlink picture from selected element(s)'))
             self.action_clear_image.triggered.connect(self.ui_clear_image)
 
             # Add actions to toolbar
@@ -1668,7 +1812,12 @@ class FiberQPlugin:
             self.iface.mapCanvas().setMapTool(self._place_element_tool)
             self._record_cmd('place_element', layer_name=layer_name, symbol_spec=symbol_spec)
         except Exception as e:
-            QMessageBox.critical(self.iface.mainWindow(), "Placing elements", f"Error: {e}")
+            #: Error-dialog title. "Placing elements" is FiberQ's name for the
+            #: CATEGORY of passive optical elements you drop on the map (ODF, TB,
+            #: OTB, TO, patch panel, joint closures) - it is the layer-group label,
+            #: not the -ing action of placing. Treat as a noun phrase.
+            QMessageBox.critical(self.iface.mainWindow(), self.tr("Placing elements"),
+                                 self.tr("Error: {details}").format(details=e))
 
     def activate_fiber_break_tool(self):
         """Activate the fiber-break map tool. Falls back to simple point placement if import fails."""
@@ -1690,7 +1839,8 @@ class FiberQPlugin:
                 self._place_element_tool.plugin = self  # v1.2: for undo_manager access
                 self.iface.mapCanvas().setMapTool(self._place_element_tool)
             except Exception as e:
-                QMessageBox.critical(self.iface.mainWindow(), "Fiber break", f"Error activating: {e}")
+                QMessageBox.critical(self.iface.mainWindow(), self.tr("Fiber break"),
+                                     self.tr("Error activating: {details}").format(details=e))
                 return
 
         # After activating tool, find all break layers and apply fixed style
@@ -1752,11 +1902,13 @@ class FiberQPlugin:
                 self.smart_selection = []
             # informacija korisniku
             try:
-                self.iface.messageBar().pushInfo("Smart selection", "Click on the elements to select/deselect them. Selections on other layers are not touched.")
+                self.iface.messageBar().pushInfo(self.tr("Smart selection"),
+                                                 self.tr("Click on the elements to select/deselect them. Selections on other layers are not touched."))
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.activate_smart_select_tool: {e}")
         except Exception as e:
-            QMessageBox.critical(self.iface.mainWindow(), "Smart selection", f"Error: {e}")
+            QMessageBox.critical(self.iface.mainWindow(), self.tr("Smart selection"),
+                                 self.tr("Error: {details}").format(details=e))
 
     def activate_branch_info_tool(self):
         """Aktiviraj alat: klik na cable → info o grananju u message baru."""
@@ -1765,15 +1917,16 @@ class FiberQPlugin:
             self.iface.mapCanvas().setMapTool(self._branch_info_tool)
             try:
                 self.iface.messageBar().pushInfo(
-                    "Branch info",
-                    "Click on cable to show number of cables/types/capacities at that point "
-                    "(right click or ESC to exit)."
+                    self.tr("Branch info"),
+                    self.tr("Click on cable to show number of cables/types/capacities at that point "
+                            "(right click or ESC to exit).")
                 )
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.activate_branch_info_tool: {e}")
         except Exception as e:
             from qgis.PyQt.QtWidgets import QMessageBox
-            QMessageBox.critical(self.iface.mainWindow(), "Branch info", f"Error: {e}")
+            QMessageBox.critical(self.iface.mainWindow(), self.tr("Branch info"),
+                                 self.tr("Error: {details}").format(details=e))
 
     def clear_all_selections(self):
         """Skloni selekciju sa svih slojeva (ne briše objekte)."""
@@ -1798,7 +1951,8 @@ class FiberQPlugin:
             self._schematic_dlg.raise_()
             self._schematic_dlg.activateWindow()
         except Exception as e:
-            QMessageBox.critical(self.iface.mainWindow(), "Optical schematic", f"Error: {e}")
+            QMessageBox.critical(self.iface.mainWindow(), self.tr("Optical schematic"),
+                                 self.tr("Error: {details}").format(details=e))
 
 # === RELACIJE ===
     def open_relations_dialog(self):
@@ -1806,7 +1960,8 @@ class FiberQPlugin:
             dlg = RelationsDialog(self)
             dlg.exec()
         except Exception as e:
-            QMessageBox.critical(self.iface.mainWindow(), "Relations", f"Error opening dialog: {e}")
+            QMessageBox.critical(self.iface.mainWindow(), self.tr("Relations"),
+                                 self.tr("Error opening dialog: {details}").format(details=e))
 
     def _relations_storage_key(self):
         """Get relations storage key."""
@@ -1917,7 +2072,8 @@ class FiberQPlugin:
             dlg = LatentElementsDialog(self)
             dlg.exec()
         except Exception as e:
-            QMessageBox.critical(self.iface.mainWindow(), "List of latent elements", f"Error: {e}")
+            QMessageBox.critical(self.iface.mainWindow(), self.tr("List of latent elements"),
+                                 self.tr("Error: {details}").format(details=e))
 
     # =========================================================================
     # PHASE 0.1: UUID MIGRATION FOR FIBERQ DESIGNER
@@ -2055,6 +2211,24 @@ class FiberQPlugin:
         for action in self.actions:
             self.iface.removePluginMenu('FiberQ', action)
             self.iface.removeToolBarIcon(action)
+
+        # WP1: drop the language selector widget action, otherwise the button is
+        # duplicated on the toolbar every time the plugin is reloaded.
+        # initGui() added it with self.toolbar.addWidget(), i.e. to FiberQ's OWN
+        # toolbar, so it has to come off with self.toolbar.removeAction().
+        # iface.removeToolBarIcon() only touches the shared QGIS plugin toolbar
+        # and was a silent no-op here. Must run BEFORE 'del self.toolbar' below.
+        try:
+            _lang_action = getattr(self, '_fiberq_lang_widget_action', None)
+            _lang_toolbar = getattr(self, 'toolbar', None)
+            if _lang_action is not None and _lang_toolbar is not None:
+                _lang_toolbar.removeAction(_lang_action)
+        except Exception as e:
+            logger.debug(f"Error removing language selector: {e}")
+        self._fiberq_lang_widget_action = None
+        self._fiberq_lang_button = None
+        self._fiberq_lang_actions = {}
+
         del self.toolbar
         self.layer = None
         # Schematic view – clear
@@ -2063,6 +2237,13 @@ class FiberQPlugin:
                 self.iface.removeToolBarIcon(self.action_schematic)
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.unload: {e}")
+
+        # WP1: uninstall the translation catalogue
+        try:
+            remove_translator(getattr(self, 'translator', None))
+        except Exception as e:
+            logger.debug(f"Error removing translator: {e}")
+        self.translator = None
         try:
             if hasattr(self, '_schematic_dlg') and self._schematic_dlg:
                 self._schematic_dlg.close()
@@ -2367,12 +2548,13 @@ class FiberQPlugin:
                     logger.debug(f"Error in FiberQPlugin.delete_selected: {e}")
 
         if obrisano == 0:
-            QMessageBox.information(self.iface.mainWindow(), "Delete", "No selected features to delete.")
+            QMessageBox.information(self.iface.mainWindow(), self.tr("Delete"),
+                                    self.tr("No selected features to delete."))
         else:
             QMessageBox.information(
                 self.iface.mainWindow(),
-                "Delete",
-                f"Deleted {obrisano} selected features from all layers."
+                self.tr("Delete"),
+                self.tr("Deleted {count} selected features from all layers.").format(count=obrisano)
             )
 
     def _stylize_cable_layer(self, cables_layer):
@@ -2438,7 +2620,7 @@ class FiberQPlugin:
                 self._hotkeys_dlg.hide()
                 return
             self._hotkeys_dlg = QDialog(self.iface.mainWindow(), Qt.WindowType.Tool)
-            self._hotkeys_dlg.setWindowTitle('Shortcuts')
+            self._hotkeys_dlg.setWindowTitle(self.tr('Shortcuts'))
             self._hotkeys_dlg.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
             self._hotkeys_dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
             lay = QVBoxLayout(self._hotkeys_dlg)
@@ -2504,20 +2686,22 @@ class FiberQPlugin:
     def import_points(self):
         filename, _ = QFileDialog.getOpenFileName(
             self.iface.mainWindow(),
-            "Izaberi fajl sa tačkama (KML/KMZ/DWG/Shape/GPX)",
+            self.tr("Choose a file with points (KML/KMZ/DWG/Shape/GPX)"),
             "",
-            "GIS fajlovi (*.kml *.kmz *.shp *.dwg *.gpx);;Svi fajlovi (*)"
+            self.tr("GIS files (*.kml *.kmz *.shp *.dwg *.gpx);;All files (*)")
         )
         if not filename:
             return
 
         imported_layer = QgsVectorLayer(filename, "Uvezi_tacke_tmp", "ogr")
         if not imported_layer.isValid():
-            QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Unable to load or invalid file!")
+            QMessageBox.warning(self.iface.mainWindow(), "FiberQ",
+                                self.tr("Unable to load or invalid file!"))
             return
 
         if imported_layer.geometryType() != QgsWkbTypes.GeometryType.PointGeometry:
-            QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "The selected file does not contain points!")
+            QMessageBox.warning(self.iface.mainWindow(), "FiberQ",
+                                self.tr("The selected file does not contain points!"))
             return
         # Find all existing point layers relevant to plugin:
         # Poles, Manholes + all elements from Placing elements (+ Joint Closures)
@@ -2583,10 +2767,12 @@ class FiberQPlugin:
                     self.init_layer()
                     layer = self.layer
                     if layer is None:
-                        QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Unable to create or find 'Poles' layer!")
+                        QMessageBox.warning(self.iface.mainWindow(), "FiberQ",
+                                            self.tr("Unable to create or find the Poles layer!"))
                         return
                 except Exception:
-                    QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Unable to create or find 'Poles' layer!")
+                    QMessageBox.warning(self.iface.mainWindow(), "FiberQ",
+                                        self.tr("Unable to create or find the Poles layer!"))
                     return
 
             else:
@@ -2620,7 +2806,8 @@ class FiberQPlugin:
             # Find layer by name
             layer = next((l for l in existing_layers if l.name() == selected_layer_name), None)  # noqa: E741
             if layer is None:
-                QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Unable to find the target layer!")
+                QMessageBox.warning(self.iface.mainWindow(), "FiberQ",
+                                    self.tr("Unable to find the target layer!"))
                 return
 
         # Extra protection: if target is Poles, ensure 'tip' field exists
@@ -2681,7 +2868,8 @@ class FiberQPlugin:
         layer.commitChanges()
         layer.triggerRepaint()
 
-        QMessageBox.information(self.iface.mainWindow(), "FiberQ", f"Imported {broj_dodatih} points into layer '{layer.name()}'!")
+        QMessageBox.information(self.iface.mainWindow(), "FiberQ",
+                                self.tr("Imported {count} points into layer '{layer}'!").format(count=broj_dodatih, layer=layer.name()))
 
     # Automatska korekcija
 
@@ -2692,8 +2880,8 @@ class FiberQPlugin:
         if not isinstance(self.iface.activeLayer(), QgsVectorLayer):
             QMessageBox.warning(
                 self.iface.mainWindow(),
-                "Export",
-                "Please select an active vector layer before exporting."
+                self.tr("Export"),
+                self.tr("Please select an active vector layer before exporting.")
             )
             return
 
@@ -2703,8 +2891,8 @@ class FiberQPlugin:
         if only_selected and layer.selectedFeatureCount() == 0:
             QMessageBox.information(
                 self.iface.mainWindow(),
-                "Export",
-                "There are no selected features on the active layer."
+                self.tr("Export"),
+                self.tr("There are no selected features on the active layer.")
             )
             return
 
@@ -2717,8 +2905,8 @@ class FiberQPlugin:
         items = [label for (label, _ext) in formats]
         choice, ok = QInputDialog.getItem(
             self.iface.mainWindow(),
-            "Export format",
-            "Select output format:",
+            self.tr("Export format"),
+            self.tr("Select output format:"),
             items,
             0,
             False,
@@ -2746,7 +2934,7 @@ class FiberQPlugin:
 
         filename, _ = QFileDialog.getSaveFileName(
             self.iface.mainWindow(),
-            "Export layer",
+            self.tr("Export layer"),
             suggested,
             choice,
         )
@@ -2787,8 +2975,8 @@ class FiberQPlugin:
         if not driver_name:
             QMessageBox.warning(
                 self.iface.mainWindow(),
-                "Export",
-                f"Unknown driver for extension '{lower_ext}'."
+                self.tr("Export"),
+                self.tr("Unknown driver for extension '{ext}'.").format(ext=lower_ext)
             )
             return
 
@@ -2836,8 +3024,8 @@ class FiberQPlugin:
         except Exception as ex:
             QMessageBox.critical(
                 self.iface.mainWindow(),
-                "Export",
-                f"Error while exporting:\n{ex}"
+                self.tr("Export"),
+                self.tr("Error while exporting:\n{details}").format(details=ex)
             )
             return
 
@@ -2856,16 +3044,32 @@ class FiberQPlugin:
         if res != QgsVectorFileWriter.WriterError.NoError:
             QMessageBox.critical(
                 self.iface.mainWindow(),
-                "Export",
-                f"Export failed: {err_message}"
+                self.tr("Export"),
+                self.tr("Export failed: {details}").format(details=err_message)
             )
         else:
-            scope_txt = "selected features" if only_selected else "all features"
+            # WP1: two complete sentences instead of one sentence assembled from a
+            # separately translated "selected features"/"all features" fragment.
+            # The fragment form is untranslatable into French: "de" + "les"
+            # contracts to the mandatory "des", which no runtime substitution
+            # into a fixed "de {scope}" can produce. Only the layer name and the
+            # path stay as placeholders.
+            if only_selected:
+                #: Confirmation shown after exporting ONLY the features the
+                #: user had selected. {layer} is the source layer name, {path} the
+                #: written file. Keep as one whole sentence - do not split it.
+                msg = self.tr("Successfully exported the selected features of layer '{layer}'\n"
+                              "to:\n{path}").format(layer=layer.name(), path=filename)
+            else:
+                #: Confirmation shown after exporting the WHOLE layer (no
+                #: selection filter). {layer} is the source layer name, {path} the
+                #: written file. Keep as one whole sentence - do not split it.
+                msg = self.tr("Successfully exported all features of layer '{layer}'\n"
+                              "to:\n{path}").format(layer=layer.name(), path=filename)
             QMessageBox.information(
                 self.iface.mainWindow(),
-                "Export",
-                f"Successfully exported {scope_txt} from layer '{layer.name()}'\n"
-                f"to:\n{filename}"
+                self.tr("Export"),
+                msg
             )
 
     def export_selected_features(self):
@@ -2937,7 +3141,12 @@ class FiberQPlugin:
                     self.popravljive_greske.append(greska)
 
         if not self.popravljive_greske:
-            QMessageBox.information(self.iface.mainWindow(), "Route correction", "No errors found!")
+            #: Dialog title for the results of the route-consistency check
+            #: (e.g. route lines whose ends do not meet a pole). "Route" = the
+            #: physical cable route/trench on the map, not a road and not a network
+            #: route. "Correction" is a NOUN: the fixing-up of those defects.
+            QMessageBox.information(self.iface.mainWindow(), self.tr("Route correction"),
+                                    self.tr("No errors found!"))
         else:
             dlg = CorrectionDialog(self.popravljive_greske, self.iface.mainWindow())
             dlg.exec()
@@ -2950,7 +3159,8 @@ class FiberQPlugin:
                             and lyr.name() in ('Poles', 'Poles')), None)  # noqa: W503
 
         if not poles_layer:
-            QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Layer 'Poles' not found!")
+            QMessageBox.warning(self.iface.mainWindow(), "FiberQ",
+                                self.tr("Layer 'Poles' not found!"))
             return
 
         geom = route_feature.geometry()
@@ -2989,7 +3199,8 @@ class FiberQPlugin:
                 None
             )
             if not route_layer:
-                QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Route layer 'Route' not found!")
+                QMessageBox.warning(self.iface.mainWindow(), "FiberQ",
+                                    self.tr("Route layer 'Route' not found!"))
                 return
 
             route_layer.startEditing()
@@ -2999,7 +3210,7 @@ class FiberQPlugin:
             QMessageBox.information(
                 self.iface.mainWindow(),
                 "FiberQ",
-                "Route has been automatically attached to a pole."
+                self.tr("Route has been automatically attached to a pole.")
             )
 
     # === DRAWINGS / ATTACHMENTS (DWG/DXF) ===
@@ -3138,7 +3349,7 @@ class FiberQPlugin:
             QMessageBox.information(
                 self.iface.mainWindow(),
                 'FiberQ',
-                'Select one or more elements and try again.'
+                self.tr('Select one or more elements and try again.')
             )
             return
 
@@ -3155,7 +3366,11 @@ class FiberQPlugin:
         QMessageBox.information(
             self.iface.mainWindow(),
             'FiberQ',
-            f'Drawing link removed for {count} element(s).'
+            #: Confirmation after detaching a drawing (a CAD/PDF document
+            #: attached to an element) from the selected map elements. Only the link
+            #: is cleared - the drawing file is not deleted. %n is how many elements
+            #: were actually unlinked; keep %n.
+            self.tr('Drawing link removed for %n element(s).', '', count)
         )
 
     # === UNDO / REDO (v1.2 — Feature 2) ===
@@ -3216,10 +3431,12 @@ class FiberQPlugin:
                                  id_pad_width=self._manhole_place_tool._id_pad_width)
             else:
                 self.iface.mapCanvas().setMapTool(self._manhole_place_tool)
-                self.iface.messageBar().pushInfo("Placing manhole", "Click on the map to place the manhole (ESC to exit).")
+                self.iface.messageBar().pushInfo(self.tr("Placing manhole"),
+                                                 self.tr("Click on the map to place the manhole (ESC to exit)."))
                 self._record_cmd('place_manhole')
         except Exception as e:
-            QMessageBox.critical(self.iface.mainWindow(), "Manhole", f"Error: {e}")
+            QMessageBox.critical(self.iface.mainWindow(), self.tr("Manhole"),
+                                 self.tr("Error: {details}").format(details=e))
 
     def _ensure_okna_layer(self):
         """Create or return the Manholes layer."""
@@ -3419,10 +3636,15 @@ def _open_fiberq_web(iface):
     except Exception as e:
         try:
             from qgis.PyQt.QtWidgets import QMessageBox
+            # Module level: no enclosing class, so use the explicit two-argument
+            # form -- a module-level tr() helper would be extracted under the
+            # wrong context and never resolve at runtime.
             QMessageBox.critical(
                 iface.mainWindow(),
-                "FiberQ – pregledna mapa",
-                f"Greška pri otvaranju pregledne mape:\n{e}"
+                QCoreApplication.translate('FiberQ', "FiberQ – Preview Map"),
+                QCoreApplication.translate(
+                    'FiberQ', "Error opening the preview map:\n{details}"
+                ).format(details=e)
             )
         except Exception as e:
             # if even QMessageBox fails, just ignore
