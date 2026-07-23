@@ -33,6 +33,7 @@ Commons Fund**. Sponsorship keeps it maintained and moving beyond that grant —
 independent of any single funder.
 
 - ❤️ **Sponsor development (GitHub Sponsors):** https://github.com/sponsors/vukovicvl
+- 🌐 **Other ways to give (one-off / card):** https://www.fiberq.net/donate/
 
 ## Use of Generative AI
 
