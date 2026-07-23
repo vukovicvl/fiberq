@@ -26,6 +26,15 @@ For the full feature list and install instructions, see [fiberq/README.md](fiber
 - 🐛 **Bug reports (GitHub Issues):** https://github.com/vukovicvl/fiberq/issues
 - 📊 **Polls (priorities & decisions):** https://github.com/vukovicvl/fiberq/discussions/categories/polls
 
+## Support FiberQ
+
+FiberQ is open source (GPL-3.0) and developed with support from the **NLnet NGI0
+Commons Fund**. Sponsorship keeps it maintained and moving beyond that grant —
+independent of any single funder.
+
+- ❤️ **Sponsor development (GitHub Sponsors):** https://github.com/sponsors/vukovicvl
+- 🌐 **Other ways to give (one-off / card):** https://www.fiberq.net/donate/
+
 ## Use of Generative AI
 
 Parts of FiberQ are developed with the help of generative AI tools (Anthropic's
