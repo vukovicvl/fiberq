@@ -853,7 +853,10 @@ class FiberQPlugin:
             if viewer_url:
                 parts.append(f"<b>Preview map URL:</b> <a href='{viewer_url}'>{viewer_url}</a><br>")
             if support_url:
-                parts.append(f"<b>Support URL:</b> <a href='{support_url}'>{support_url}</a><br>")
+                parts.append(
+                    "<b>&#10084; Support FiberQ:</b> "
+                    f"<a href='{support_url}'>sponsor its ongoing development</a><br>"
+                )
             # NEW: call-to-action text
             parts.append("<hr style='margin:10px 0'>")
             parts.append(
