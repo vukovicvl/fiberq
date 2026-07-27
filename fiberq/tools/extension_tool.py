@@ -6,8 +6,6 @@ Phase 2.1: Extracted from extracted_classes.py
 Phase 5.2: Added logging infrastructure
 """
 
-from qgis.PyQt import sip
-
 from qgis.PyQt.QtCore import Qt, QVariant
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QMessageBox, QInputDialog
@@ -35,10 +33,17 @@ logger = get_logger(__name__)
 class ExtensionTool(QgsMapToolEmitPoint):
     """Tool for placing joint closures on the network."""
 
-    def __init__(self, canvas, layer):
+    def __init__(self, canvas, layer=None):
+        """``layer`` is accepted and ignored.
+
+        The tool writes only to the Joint Closures layer, which it resolves (or
+        creates) from the project on each click. It never read or wrote the layer
+        passed here -- that argument is leftover coupling from when joint closures
+        were placed onto poles. The parameter is kept so any out-of-tree caller
+        keeps working; new code should omit it.
+        """
         super().__init__(canvas)
         self.canvas = canvas
-        self.layer = layer
         self.snap_marker = QgsVertexMarker(self.canvas)
         self.snap_marker.setColor(QColor(255, 0, 0))
         self.snap_marker.setIconType(QgsVertexMarker.IconType.ICON_CIRCLE)
@@ -165,10 +170,6 @@ class ExtensionTool(QgsMapToolEmitPoint):
     def canvasReleaseEvent(self, event):
         # Only left click places joint closure
         if event.button() != Qt.MouseButton.LeftButton:
-            return
-
-        if self.layer is None or sip.isdeleted(self.layer) or not self.layer.isValid():
-            QMessageBox.warning(None, "FiberQ", "Layer not found or invalid!")
             return
 
         click_point = self.toMapCoordinates(event.pos())
