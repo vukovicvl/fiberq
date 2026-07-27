@@ -159,6 +159,10 @@ class ValidationContext:
         self.config = config or ValidationConfig()
         self._layers_by_canonical: Optional[Dict[str, list]] = None
         self._index_cache: Dict[str, Any] = {}
+        # Scratch space shared between rules for structures that are expensive to
+        # build and useful to more than one rule (e.g. the cable-endpoint scan
+        # that A1 and A2 both read). Lives for one validation run.
+        self.cache: Dict[str, Any] = {}
 
     @property
     def layers_by_canonical(self) -> Dict[str, list]:
