@@ -47,8 +47,13 @@ def _issues(result, rule_id):
 # ---------------------------------------------------------------------------
 
 def test_registry_ids_unique_and_wellformed():
+    """The rules this module covers are registered, and every entry is sane.
+
+    The exact full rule list is pinned in test_validation_topology.py -- asserting
+    it here too would mean two tests to update every time a rule lands.
+    """
     ids = [r.id for r in vr.RULES]
-    assert ids == ["B4", "C1", "D1"]
+    assert {"B4", "C1", "D1"} <= set(ids)
     assert len(ids) == len(set(ids))
     for rule in vr.RULES:
         assert rule.id and rule.title and rule.category
@@ -172,7 +177,8 @@ def test_failing_rule_is_recorded_not_raised():
         id="X1", title="x", category="c",
         default_severity=vm.Severity.INFO, check=boom,
     )
-    result = vm.run_validation(QgsProject(), rules=[bad, vr.RULES[0]])
+    good = next(r for r in vr.RULES if r.id == "B4")
+    result = vm.run_validation(QgsProject(), rules=[bad, good])
     assert any("X1" in e for e in result.rule_errors)
     assert "B4" in result.ran_rules  # the good rule still ran after the bad one
 
