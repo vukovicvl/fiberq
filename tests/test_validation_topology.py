@@ -348,12 +348,26 @@ def test_plural_slack_layer_is_actually_checked(qgis_app):
     assert len(_ids(_run(project, {"B1"}), "B1")) == 1
 
 
-def test_registry_is_wellformed_after_the_topology_batch(qgis_app):
-    ids = [r.id for r in vr.RULES]
-    assert ids == ["A1", "A2", "A3", "B1", "B2", "B3", "B4", "C1", "D1"]
-    assert len(ids) == len(set(ids))
-    for rule in vr.RULES:
-        assert rule.title and rule.category and callable(rule.check)
+def test_topology_rules_are_registered(qgis_app):
+    """The full rule list is pinned once, in test_validation_domain.py."""
+    ids = {r.id for r in vr.RULES}
+    assert {"A1", "A2", "A3", "B1", "B2", "B3"} <= ids
+
+
+def test_line_rules_survive_a_layer_with_unexpected_geometry(qgis_app):
+    """A layer whose real geometry differs from its declared type must not crash.
+
+    A1/A2 previously called asPolyline() on whatever the layer held, so a point
+    layer named like a cable raised "Point geometry cannot be converted to a
+    polyline". The runner caught it, but the rule produced nothing useful.
+    """
+    project = QgsProject()
+    project.addMapLayer(_point_layer("Underground cables", [
+        ({"fiberq_uuid": "odd"}, QgsPointXY(0, 0)),
+    ]))
+    result = _run(project, {"A1", "A2"})
+    assert result.rule_errors == []
+    assert result.issues == []
 
 
 def test_endpoint_scan_is_built_once_per_run(qgis_app):

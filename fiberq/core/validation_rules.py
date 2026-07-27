@@ -60,6 +60,37 @@ _LINEAR_LAYERS = _CABLE_LAYERS + ("Route",)
 # Layers carrying a cable_layer_id + cable_fid foreign key.
 _FK_LAYERS = ("Optical slack", "Fiber break")
 
+# D2 numeric bounds: field -> (minimum, maximum, exclusive_min). ``None`` means
+# unbounded on that side. Only applied to fields the schema declares int/double,
+# which is why pipe ``kapacitet`` (text, as-built) is skipped rather than
+# mis-parsed -- the same schema-driven approach D1 uses for enums.
+_NUMERIC_BOUNDS = {
+    "broj_vlakana": (0, 1152, True),    # a cable with zero fibres is not a cable
+    "broj_cevcica": (0, None, False),
+    "fi": (0, None, True),              # duct diameter in mm
+    "visina": (0, None, True),          # pole height in m
+    "kapacitet": (0, None, False),
+    "slabljenje_dbkm": (0, 10, False),  # dB/km; typical single-mode is 0.2-0.4
+    "duzina_m": (0, None, False),
+    "duzina": (0, None, False),
+    "duzina_km": (0, None, False),
+    "total_len_m": (0, None, False),
+    "slack_m": (0, None, False),
+    "area_m2": (0, None, False),
+    "perim_m": (0, None, False),
+}
+
+# D3: the field holding a line layer's stored length. Route is the odd one out --
+# it stores ``duzina`` (m) plus ``duzina_km``, every other line layer uses
+# ``duzina_m``.
+_STORED_LENGTH_FIELD = {
+    "Aerial cables": "duzina_m",
+    "Underground cables": "duzina_m",
+    "PE pipes": "duzina_m",
+    "Transition pipes": "duzina_m",
+    "Route": "duzina",
+}
+
 # Required, domain-meaningful fields per layer type (fiberq_uuid is B4's concern,
 # not repeated here). Element layers share one set; the rest are keyed by
 # canonical layer name.
@@ -156,8 +187,17 @@ def _first_point(geom):
 
 
 def _line_parts(geom):
-    """Vertex lists of every line part with at least two vertices."""
+    """Vertex lists of every line part with at least two vertices.
+
+    Guards on the *actual* geometry type rather than trusting the schema: a layer
+    whose real geometry differs from its declared type would otherwise raise
+    ("Point geometry cannot be converted to a polyline") instead of simply having
+    no endpoints to check.
+    """
     if geom is None or geom.isNull() or geom.isEmpty():
+        return []
+    from qgis.core import QgsWkbTypes
+    if geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
         return []
     if geom.isMultipart():
         return [part for part in geom.asMultiPolyline() if len(part) >= 2]
@@ -649,6 +689,284 @@ def _check_enum_conformance(ctx):
 
 
 # ---------------------------------------------------------------------------
+# D2 -- numeric ranges
+# ---------------------------------------------------------------------------
+
+def _as_number(value, null):
+    """Coerce an attribute to float, or None when blank / not numeric."""
+    if _is_blank(value, null):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _bound_text(low, high, exclusive) -> str:
+    """Human-readable bound, e.g. "> 0 and <= 1152". Not translated: it is a
+    mathematical expression, and its pieces are numbers."""
+    low_part = f"> {_fmt(low)}" if exclusive else f">= {_fmt(low)}"
+    if high is None:
+        return low_part
+    return f"{low_part} and <= {_fmt(high)}"
+
+
+def _check_numeric_ranges(ctx):
+    from qgis.core import NULL
+
+    for canonical, layers in ctx.layers_by_canonical.items():
+        layer_schema = schema.get_layer_schema(canonical)
+        if layer_schema is None:
+            continue
+        # Only fields the schema declares numeric. Pipe `kapacitet` is text
+        # (as-built) and is skipped rather than mis-parsed -- the same
+        # schema-driven approach D1 uses for enum domains.
+        checks = [
+            (fd.key, _NUMERIC_BOUNDS[fd.key], fd.units)
+            for fd in layer_schema.fields
+            if fd.key in _NUMERIC_BOUNDS and fd.field_type in ("int", "double")
+        ]
+        if not checks:
+            continue
+        for layer in layers:
+            names = set(layer.fields().names())
+            active = [c for c in checks if c[0] in names]
+            for feat in layer.getFeatures():
+                for key, (low, high, exclusive), units in active:
+                    number = _as_number(feat.attribute(key), NULL)
+                    if number is None:
+                        continue  # emptiness is C1's concern
+                    too_low = number <= low if exclusive else number < low
+                    too_high = high is not None and number > high
+                    if not (too_low or too_high):
+                        continue
+                    src = "Field {field}: {value} is out of range (expected {bound})"
+                    yield ValidationIssue(
+                        rule_id="D2", severity=Severity.WARNING, category=_CAT_DOMAIN,
+                        message=_safe_format(
+                            QCoreApplication.translate(_CTX, src), src,
+                            field=key, value=_fmt(number),
+                            bound=_bound_text(low, high, exclusive)),
+                        layer_name=layer.name(), layer_id=layer.id(),
+                        feature_id=feat.id(), fiberq_uuid=_uuid_of(feat),
+                        where=_feature_xy(feat),
+                        details={"field": key, "value": number, "units": units,
+                                 "min": low, "max": high, "exclusive_min": exclusive},
+                    )
+
+
+# ---------------------------------------------------------------------------
+# D3 -- length coherence (needs a projected CRS; see E1)
+# ---------------------------------------------------------------------------
+
+def _is_metric(layer) -> bool:
+    """True when the layer's CRS measures in linear units rather than degrees."""
+    crs = layer.crs()
+    return bool(crs and crs.isValid() and not crs.isGeographic())
+
+
+def _disagrees(stored, computed, cfg) -> bool:
+    """Whether two lengths differ by more than the configured tolerance."""
+    allowed = max(cfg.length_abs_tol, abs(computed) * cfg.length_rel_tol)
+    return abs(stored - computed) > allowed
+
+
+def _check_length_coherence(ctx):
+    """Stored lengths should agree with the geometry, and with each other.
+
+    Length comparisons are meaningless in a geographic CRS -- geometry length
+    comes out in degrees while the stored value is metres -- so the check is
+    skipped there and *says so*, rather than emitting a page of false warnings.
+    """
+    from qgis.core import NULL
+
+    cfg = ctx.config
+    for canonical, stored_field in _STORED_LENGTH_FIELD.items():
+        for layer in ctx.layers_for(canonical):
+            names = set(layer.fields().names())
+
+            if not _is_metric(layer):
+                src = ("Length checks skipped: they need a projected (metric) CRS, "
+                       "but this layer uses {crs}")
+                yield ValidationIssue(
+                    rule_id="D3", severity=Severity.INFO, category=_CAT_DOMAIN,
+                    message=_safe_format(
+                        QCoreApplication.translate(_CTX, src), src,
+                        crs=layer.crs().authid() or "?"),
+                    layer_name=layer.name(), layer_id=layer.id(),
+                    details={"skipped": True, "crs": layer.crs().authid()},
+                )
+                continue
+
+            for feat in layer.getFeatures():
+                geom = feat.geometry()
+                if geom is None or geom.isNull() or geom.isEmpty():
+                    continue  # E2's concern
+                computed = geom.length()
+
+                # 1. stored length vs the geometry it describes
+                if stored_field in names:
+                    stored = _as_number(feat.attribute(stored_field), NULL)
+                    if stored is not None and stored > 0 and _disagrees(stored, computed, cfg):
+                        src = ("Stored {field} ({stored}) does not match the drawn "
+                               "geometry ({computed})")
+                        yield ValidationIssue(
+                            rule_id="D3", severity=Severity.WARNING, category=_CAT_DOMAIN,
+                            message=_safe_format(
+                                QCoreApplication.translate(_CTX, src), src,
+                                field=stored_field, stored=_fmt(stored),
+                                computed=_fmt(computed)),
+                            layer_name=layer.name(), layer_id=layer.id(),
+                            feature_id=feat.id(), fiberq_uuid=_uuid_of(feat),
+                            where=_feature_xy(feat),
+                            details={"field": stored_field, "stored": stored,
+                                     "computed": computed},
+                        )
+
+                # 2. cable total = laid length + slack
+                if {"total_len_m", "duzina_m", "slack_m"} <= names:
+                    total = _as_number(feat.attribute("total_len_m"), NULL)
+                    base = _as_number(feat.attribute("duzina_m"), NULL)
+                    slack = _as_number(feat.attribute("slack_m"), NULL)
+                    if None not in (total, base, slack) and total > 0:
+                        expected = base + slack
+                        if _disagrees(total, expected, cfg):
+                            src = ("total_len_m ({total}) should equal duzina_m + "
+                                   "slack_m ({expected})")
+                            yield ValidationIssue(
+                                rule_id="D3", severity=Severity.WARNING,
+                                category=_CAT_DOMAIN,
+                                message=_safe_format(
+                                    QCoreApplication.translate(_CTX, src), src,
+                                    total=_fmt(total), expected=_fmt(expected)),
+                                layer_name=layer.name(), layer_id=layer.id(),
+                                feature_id=feat.id(), fiberq_uuid=_uuid_of(feat),
+                                where=_feature_xy(feat),
+                                details={"total_len_m": total, "expected": expected},
+                            )
+
+                # 3. route kilometres agree with metres
+                if {"duzina", "duzina_km"} <= names:
+                    metres = _as_number(feat.attribute("duzina"), NULL)
+                    km = _as_number(feat.attribute("duzina_km"), NULL)
+                    if None not in (metres, km) and km > 0:
+                        expected = metres / 1000.0
+                        allowed = max(cfg.length_abs_tol / 1000.0,
+                                      abs(expected) * cfg.length_rel_tol)
+                        if abs(km - expected) > allowed:
+                            src = ("duzina_km ({km}) does not match duzina/1000 "
+                                   "({expected})")
+                            yield ValidationIssue(
+                                rule_id="D3", severity=Severity.WARNING,
+                                category=_CAT_DOMAIN,
+                                message=_safe_format(
+                                    QCoreApplication.translate(_CTX, src), src,
+                                    km=_fmt(km), expected=_fmt(expected)),
+                                layer_name=layer.name(), layer_id=layer.id(),
+                                feature_id=feat.id(), fiberq_uuid=_uuid_of(feat),
+                                where=_feature_xy(feat),
+                                details={"duzina_km": km, "expected": expected},
+                            )
+
+
+# ---------------------------------------------------------------------------
+# E1 -- CRS consistency
+# ---------------------------------------------------------------------------
+
+def _check_crs_consistency(ctx):
+    """FiberQ layers should share one CRS, and a metric one where lengths matter."""
+    seen = {}
+    for canonical, layers in ctx.layers_by_canonical.items():
+        for layer in layers:
+            crs = layer.crs()
+            authid = (crs.authid() if crs and crs.isValid() else "") or "?"
+            seen.setdefault(authid, []).append(layer.name())
+
+            if canonical in _STORED_LENGTH_FIELD and not _is_metric(layer):
+                src = ("Layer uses a geographic CRS ({crs}); length and area checks "
+                       "need a projected CRS in metres")
+                yield ValidationIssue(
+                    rule_id="E1", severity=Severity.WARNING, category=_CAT_DOMAIN,
+                    message=_safe_format(
+                        QCoreApplication.translate(_CTX, src), src, crs=authid),
+                    layer_name=layer.name(), layer_id=layer.id(),
+                    details={"crs": authid, "geographic": True},
+                )
+
+    if len(seen) > 1:
+        src = "FiberQ layers do not all share one CRS: {list}"
+        yield ValidationIssue(
+            rule_id="E1", severity=Severity.WARNING, category=_CAT_DOMAIN,
+            message=_safe_format(
+                QCoreApplication.translate(_CTX, src), src,
+                list=", ".join(sorted(seen))),
+            details={"crs_list": sorted(seen), "layers_by_crs": seen},
+        )
+
+
+# ---------------------------------------------------------------------------
+# E2 -- geometry health
+# ---------------------------------------------------------------------------
+
+def _check_geometry_validity(ctx):
+    """Missing geometry is an error; degenerate or self-crossing shapes warn.
+
+    Dispatches on the feature's *actual* geometry type, not the schema's declared
+    one. Trusting the schema would call ``length()`` on a point (always 0) and
+    report a phantom zero-length line whenever a layer's real geometry differs
+    from its declaration.
+    """
+    from qgis.core import QgsWkbTypes
+
+    for canonical, layers in ctx.layers_by_canonical.items():
+        layer_schema = schema.get_layer_schema(canonical)
+        expected = layer_schema.geometry if layer_schema else ""
+        for layer in layers:
+            for feat in layer.getFeatures():
+                geom = feat.geometry()
+
+                if geom is None or geom.isNull() or geom.isEmpty():
+                    src = "Feature has no geometry"
+                    yield ValidationIssue(
+                        rule_id="E2", severity=Severity.ERROR, category=_CAT_DOMAIN,
+                        message=QCoreApplication.translate(_CTX, src),
+                        layer_name=layer.name(), layer_id=layer.id(),
+                        feature_id=feat.id(), fiberq_uuid=_uuid_of(feat),
+                        details={"expected_geometry": expected},
+                    )
+                    continue
+
+                gtype = geom.type()
+                if gtype == QgsWkbTypes.GeometryType.LineGeometry:
+                    if geom.length() <= 0:
+                        src = "Line has zero length"
+                    elif not geom.isSimple():
+                        # A self-crossing LineString is OGC-valid, so
+                        # isGeosValid() will not catch it -- isSimple() does.
+                        src = "Line crosses itself"
+                    else:
+                        continue
+                elif gtype == QgsWkbTypes.GeometryType.PolygonGeometry:
+                    if geom.area() <= 0:
+                        src = "Polygon has zero area"
+                    elif not geom.isGeosValid():
+                        src = "Polygon boundary is self-intersecting"
+                    else:
+                        continue
+                else:
+                    continue
+
+                yield ValidationIssue(
+                    rule_id="E2", severity=Severity.WARNING, category=_CAT_DOMAIN,
+                    message=QCoreApplication.translate(_CTX, src),
+                    layer_name=layer.name(), layer_id=layer.id(),
+                    feature_id=feat.id(), fiberq_uuid=_uuid_of(feat),
+                    where=_feature_xy(feat),
+                    details={"expected_geometry": expected},
+                )
+
+
+# ---------------------------------------------------------------------------
 # Registry — [core] rules shipping in v1.4.0. Append as the engine grows;
 # keep each rule independent (the runner continues past a failing one).
 # ---------------------------------------------------------------------------
@@ -722,5 +1040,34 @@ RULES = [
         category=_CAT_DOMAIN,
         default_severity=Severity.WARNING,
         check=_check_enum_conformance,
+    ),
+    ValidationRule(
+        id="D2",
+        title=QT_TRANSLATE_NOOP(_CTX, "Numeric attributes within plausible ranges"),
+        category=_CAT_DOMAIN,
+        default_severity=Severity.WARNING,
+        check=_check_numeric_ranges,
+    ),
+    ValidationRule(
+        id="D3",
+        title=QT_TRANSLATE_NOOP(_CTX, "Stored lengths agree with geometry"),
+        category=_CAT_DOMAIN,
+        default_severity=Severity.WARNING,
+        check=_check_length_coherence,
+        applies_to=tuple(_STORED_LENGTH_FIELD),
+    ),
+    ValidationRule(
+        id="E1",
+        title=QT_TRANSLATE_NOOP(_CTX, "Coordinate reference systems are consistent"),
+        category=_CAT_DOMAIN,
+        default_severity=Severity.WARNING,
+        check=_check_crs_consistency,
+    ),
+    ValidationRule(
+        id="E2",
+        title=QT_TRANSLATE_NOOP(_CTX, "Geometries are present and well formed"),
+        category=_CAT_DOMAIN,
+        default_severity=Severity.ERROR,
+        check=_check_geometry_validity,
     ),
 ]
