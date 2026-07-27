@@ -1785,9 +1785,12 @@ class FiberQPlugin:
                 logger.debug(f"Error in FiberQPlugin.open_color_catalog_manager: {e}")
 
     def activate_breakpoint_tool(self):
-        """Aktivira alat za dodavanje tačke na lom trase (BreakpointTool)."""
-        if self.layer is None or sip.isdeleted(self.layer) or not self.layer.isValid():
-            self.init_layer()
+        """Aktivira alat za dodavanje tačke na lom trase (BreakpointTool).
+
+        No init_layer() here: BreakpointTool.__init__(canvas, iface, plugin) never
+        receives or reads the Poles layer, so creating one only added an empty
+        "Poles" entry to the Layers panel on Split route.
+        """
         self.breakpoint_tool = BreakpointTool(self.iface.mapCanvas(), self.iface, self)
         self.iface.mapCanvas().setMapTool(self.breakpoint_tool)
         self._record_cmd('split_route')
@@ -1798,9 +1801,14 @@ class FiberQPlugin:
         self._record_cmd('manual_route')
 
     def activate_extension_tool(self):
-        if self.layer is None or sip.isdeleted(self.layer) or not self.layer.isValid():
-            self.init_layer()
-        self.extension_tool = ExtensionTool(self.iface.mapCanvas(), self.layer)
+        """Activate the Joint Closure placement tool.
+
+        No init_layer() here: ExtensionTool writes only to the Joint Closures
+        layer, which it resolves or creates itself on each click. Creating the
+        Poles layer only added an empty "Poles" entry to the Layers panel before
+        the user had clicked anything.
+        """
+        self.extension_tool = ExtensionTool(self.iface.mapCanvas())
         self.extension_tool.plugin = self  # v1.2: for undo_manager access
         self.iface.mapCanvas().setMapTool(self.extension_tool)
         self._record_cmd('place_joint_closure')
