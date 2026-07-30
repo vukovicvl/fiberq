@@ -13,6 +13,7 @@ from .base import (
 
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
+from ..utils.measure import ground_length
 logger = get_logger(__name__)
 
 
@@ -194,7 +195,7 @@ class BreakpointTool(QgsMapToolEmitPoint):
         feat1.setGeometry(geom1)
         feat1.setAttribute('naziv', naziv + "_a")
         feat1.setAttribute('tip_trase', tip_trase)
-        duzina_m1 = geom1.length()
+        duzina_m1 = ground_length(geom1, route_layer)
         feat1.setAttribute('duzina', duzina_m1)
         feat1.setAttribute('duzina_km', round(duzina_m1 / 1000.0, 2))
 
@@ -203,7 +204,7 @@ class BreakpointTool(QgsMapToolEmitPoint):
         feat2.setGeometry(geom2)
         feat2.setAttribute('naziv', naziv + "_b")
         feat2.setAttribute('tip_trase', tip_trase)
-        duzina_m2 = geom2.length()
+        duzina_m2 = ground_length(geom2, route_layer)
         feat2.setAttribute('duzina', duzina_m2)
         feat2.setAttribute('duzina_km', round(duzina_m2 / 1000.0, 2))
 

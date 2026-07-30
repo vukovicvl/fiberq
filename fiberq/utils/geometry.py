@@ -407,6 +407,10 @@ def calculate_geometry_length(geom: QgsGeometry) -> float:
     """
     Calculate the length of a geometry in map units.
 
+    Map units are not metres in a projected CRS: Web Mercator inflates distance
+    by 1/cos(latitude). For anything stored in a field or shown to the user, use
+    :func:`fiberq.utils.measure.ground_length` instead.
+
     Args:
         geom: Geometry (typically line)
 

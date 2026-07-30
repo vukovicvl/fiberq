@@ -8,6 +8,7 @@ import os
 
 # Phase 5.3: Logging
 from ..utils.logger import get_logger
+from ..utils.measure import ground_length
 logger = get_logger(__name__)
 
 
@@ -245,7 +246,7 @@ class ReserveHook(QObject):
         try:
             kf = next(lyr.getFeatures(f'id={int(cable_fid)}'))
             geom = kf.geometry()
-            g_m = geom.length() if isinstance(geom, QgsGeometry) else 0.0
+            g_m = ground_length(geom, lyr) if isinstance(geom, QgsGeometry) else 0.0
         except StopIteration:
             pass
 

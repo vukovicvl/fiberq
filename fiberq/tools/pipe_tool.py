@@ -13,13 +13,9 @@ from .base import (
     QgsMapTool, QgsVertexMarker
 )
 
-try:
-    from qgis.core import QgsDistanceArea
-except ImportError:
-    QgsDistanceArea = None
-
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
+from ..utils.measure import ground_length
 logger = get_logger(__name__)
 
 
@@ -307,30 +303,10 @@ class PipePlaceTool(QgsMapTool):
         except Exception:
             f['fi'] = None
 
-        # Calculate length
-        try:
-            if QgsDistanceArea is not None:
-                d = QgsDistanceArea()
-                try:
-                    d.setSourceCrs(layer.crs(), QgsProject.instance().transformContext())
-                except Exception:
-                    try:
-                        d.setSourceCrs(
-                            self.iface.mapCanvas().mapSettings().destinationCrs(),
-                            QgsProject.instance().transformContext()
-                        )
-                    except Exception as e:
-                        logger.debug(f"Error in PipePlaceTool._finish: {e}")
-                d.setEllipsoid(QgsProject.instance().ellipsoid())
-                length_m = d.measureLength(geom) if geom is not None else 0.0
-            else:
-                length_m = geom.length() if geom is not None else 0.0
-            f['duzina_m'] = float(length_m) if length_m else 0.0
-        except Exception:
-            try:
-                f['duzina_m'] = float(geom.length()) if geom is not None else None
-            except Exception:
-                f['duzina_m'] = None
+        # Calculate length. This tool measured on the ellipsoid before the shared
+        # helper existed, which is why pipes were right while routes and cables
+        # were 41% long in the same project (see fiberq/utils/measure.py).
+        f['duzina_m'] = ground_length(geom, layer)
 
         # Find FROM/TO names
         node_names = {"Poles", "Stubovi", "OKNA", "Manholes"}

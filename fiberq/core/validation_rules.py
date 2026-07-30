@@ -813,14 +813,17 @@ def _measures_metres(ctx, layer) -> bool:
 
 
 def _distance_area(ctx, layer):
-    """A QgsDistanceArea configured exactly as the plugin's own measuring code is.
+    """A QgsDistanceArea configured the way :mod:`fiberq.utils.measure` is.
 
-    This is the crux of D3: the plugin writes ``duzina_m`` with
-    ``QgsDistanceArea`` + the project ellipsoid (see dialogs/bom_dialog.py and
-    tools/pipe_tool.py), i.e. true ground metres. Comparing that against a raw
-    ``QgsGeometry.length()`` compares metres to *projected* units, and in Web
-    Mercator those differ by 1/cos(latitude) -- about 1.41x at 45 degrees, so
-    every length in a normal EPSG:3857 project looked wrong by ~41%.
+    D3 asks "is the stored length the real length?", so it has to measure the
+    real one: ground metres on the project ellipsoid, not ``QgsGeometry.length()``
+    in map units. The two differ by the local scale factor -- 1/cos(latitude) in
+    Web Mercator, about 1.41x at 45 degrees.
+
+    That distinction is the whole point of the rule. Running it on real projects
+    showed the plugin storing *both* kinds in one file: pipes measured on the
+    ellipsoid, routes and cables measured in map units, so a trench and the duct
+    inside it disagreed by 41%. See :mod:`fiberq.utils.measure`.
     """
     key = f"distance_area:{layer.id()}"
     cached = ctx.cache.get(key)

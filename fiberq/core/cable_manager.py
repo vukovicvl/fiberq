@@ -39,6 +39,7 @@ from qgis.core import (
 
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
+from ..utils.measure import ground_length
 logger = get_logger(__name__)
 
 # Phase 0.1: UUID support for FiberQ Designer
@@ -935,7 +936,7 @@ class CableManager:
         except Exception as e:
             logger.debug(f"Error setting UUID on cable: {e}")
         try:
-            cable_length = cable_geom.length()
+            cable_length = ground_length(cable_geom, cables_layer)
             feat.setAttribute("duzina_m", cable_length)
             feat.setAttribute("slack_m", 0.0)  # Issue #1: Initialize slack to 0
             feat.setAttribute("total_len_m", cable_length)  # Issue #1: Set total_len_m = duzina_m initially

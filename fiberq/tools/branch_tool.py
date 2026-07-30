@@ -14,6 +14,7 @@ from qgis.gui import QgsMapToolIdentify
 
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
+from ..utils.measure import ground_length
 logger = get_logger(__name__)
 
 
@@ -79,7 +80,8 @@ class BranchInfoTool(QgsMapToolIdentify):
         total_len = 0.0
         by_type = Counter()
 
-        for f in feats:
+        for hit in cable_hits:
+            f = hit.mFeature
             tip = self._attr(f, ["tip", "Tip", "TIP"], "n/a")
             br_c = self._attr(f, ["broj_cevcica", "cevi"], "")  # noqa: F841
             br_v = self._attr(f, ["broj_vlakana", "vlakna"], "")
@@ -90,7 +92,7 @@ class BranchInfoTool(QgsMapToolIdentify):
             try:
                 geom = f.geometry()
                 if geom:
-                    total_len += float(geom.length())
+                    total_len += ground_length(geom, hit.mLayer)
             except Exception as e:
                 logger.debug(f"Error in BranchInfoTool.canvasReleaseEvent: {e}")
 

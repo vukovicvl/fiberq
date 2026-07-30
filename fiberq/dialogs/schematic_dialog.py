@@ -35,6 +35,7 @@ from qgis.core import (
 
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
+from ..utils.measure import ground_length
 logger = get_logger(__name__)
 
 
@@ -379,7 +380,7 @@ class OpticalSchematicDialog(QDialog):
             except Exception:
                 coords = []
             try:
-                length_m = float(geom.length())
+                length_m = ground_length(geom, lyr)
             except Exception:
                 length_m = 0.0
 
