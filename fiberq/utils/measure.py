@@ -53,6 +53,31 @@ def distance_area(crs=None, project=None):
     return cached
 
 
+def has_ellipsoid(project=None) -> bool:
+    """Whether the project has measurement on an ellipsoid switched on."""
+    ellipsoid = (_project(project).ellipsoid() or "").strip().upper()
+    return bool(ellipsoid) and ellipsoid != "NONE"
+
+
+def measures_metres(layer=None, crs=None, project=None) -> bool:
+    """Whether :func:`ground_length` will return metres rather than degrees.
+
+    With an ellipsoid configured, QgsDistanceArea returns metres from any CRS,
+    geographic included. Without one it falls back to planar maths, which is only
+    meaningful where the CRS itself is linear.
+    """
+    if has_ellipsoid(project):
+        return True
+    if crs is None and layer is not None:
+        try:
+            crs = layer.crs()
+        except Exception:
+            crs = None
+    if crs is None:
+        crs = _project(project).crs()
+    return bool(crs and crs.isValid() and not crs.isGeographic())
+
+
 def ground_length(geom, layer=None, crs=None, project=None) -> float:
     """Length of ``geom`` in metres on the ground.
 

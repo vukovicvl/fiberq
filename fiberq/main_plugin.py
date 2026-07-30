@@ -379,6 +379,82 @@ class FiberQPlugin:
         else:
             bar.pushSuccess('FiberQ', self.tr('Validation found no issues.'))
 
+    def recalculate_lengths(self):
+        """Rewrite stored lengths that disagree with their geometry.
+
+        Shows the user what is about to change before writing anything: this
+        touches their data, and the numbers it replaces may have been in the
+        project for years. Re-runs validation afterwards so the D3 findings it
+        was invoked to clear visibly disappear.
+        """
+        from qgis.PyQt.QtWidgets import QMessageBox
+
+        from .core.length_manager import apply_recalculation, plan_recalculation
+        from .i18n import safe_format
+
+        bar = self.iface.messageBar()
+        try:
+            plan = plan_recalculation()
+        except Exception as e:
+            logger.warning(f"Length recalculation could not be planned: {e}")
+            src = 'Could not check lengths: {details}'
+            bar.pushWarning('FiberQ', safe_format(self.tr(src), src, details=e))
+            return
+
+        if plan.skipped_layers:
+            src = 'Skipped {layers}: lengths cannot be measured without a projected CRS or a project ellipsoid'
+            bar.pushInfo('FiberQ', safe_format(
+                self.tr(src), src, layers=', '.join(sorted(set(plan.skipped_layers)))))
+
+        if not plan:
+            bar.pushSuccess('FiberQ', self.tr('All stored lengths already match the geometry.'))
+            return
+
+        lines = [
+            self.tr('%n feature(s) will have their stored length rewritten '
+                    'from the drawn geometry.', '', plan.feature_count),
+            '',
+        ]
+        for layer_name, count in sorted(plan.counts_by_layer().items()):
+            lines.append(f'  {layer_name}: {count}')
+
+        biggest = plan.largest_change()
+        if biggest is not None:
+            src = 'Largest change: {field} {old} -> {new} on {layer}'
+            lines += ['', safe_format(
+                self.tr(src), src, field=biggest.field_name,
+                old=f'{biggest.old_value:.2f}', new=f'{biggest.new_value:.2f}',
+                layer=biggest.layer_name)]
+
+        confirm = QMessageBox(self.iface.mainWindow())
+        confirm.setIcon(QMessageBox.Icon.Question)
+        confirm.setWindowTitle(self.tr('Recalculate lengths'))
+        confirm.setText(self.tr('Recalculate stored lengths?'))
+        confirm.setInformativeText('\n'.join(lines))
+        confirm.setDetailedText(self.tr(
+            'Lengths are measured on the project ellipsoid, the same way the '
+            'QGIS measure tool does. Slack values are read but never changed.'))
+        confirm.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+        confirm.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        if confirm.exec() != QMessageBox.StandardButton.Yes:
+            return
+
+        outcome = apply_recalculation(plan)
+
+        if outcome.applied:
+            src = 'Recalculated lengths on {count} feature(s).'
+            bar.pushSuccess('FiberQ', safe_format(
+                self.tr(src), src, count=outcome.feature_count))
+        if outcome.failures:
+            src = 'Some layers could not be updated: {details}'
+            bar.pushWarning('FiberQ', safe_format(
+                self.tr(src), src, details='; '.join(outcome.failures[:3])))
+
+        # Re-run only if the panel is already open; do not open it unbidden.
+        if getattr(self, '_validation_panel', None) is not None:
+            self.run_validation()
+
     def _zoom_to_issue(self, issue):
         """Centre the canvas on an issue and mark it.
 
@@ -1736,6 +1812,27 @@ class FiberQPlugin:
                 logger.debug(f"Error in FiberQPlugin.initGui: {e}")
             try:
                 self.iface.addPluginToMenu('FiberQ', self.action_validate)
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+        except Exception as e:
+            logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+
+        # --- Recalculate lengths (WP2 companion to the D3 rule) ---
+        try:
+            #: Menu-only on purpose: this rewrites the user's attributes, so it
+            #: should be a deliberate trip to the menu rather than a click away
+            #: on an already-crowded toolbar.
+            self.action_recalc_lengths = QAction(
+                self.tr('Recalculate lengths…'), self.iface.mainWindow())
+            self.action_recalc_lengths.setToolTip(self.tr(
+                'Rewrite stored lengths that disagree with the drawn geometry'))
+            self.action_recalc_lengths.triggered.connect(self.recalculate_lengths)
+            try:
+                self.actions.append(self.action_recalc_lengths)
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+            try:
+                self.iface.addPluginToMenu('FiberQ', self.action_recalc_lengths)
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.initGui: {e}")
         except Exception as e:

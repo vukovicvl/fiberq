@@ -791,25 +791,15 @@ def _check_numeric_ranges(ctx):
 # D3 -- length coherence (needs a projected CRS; see E1)
 # ---------------------------------------------------------------------------
 
-def _is_metric(layer) -> bool:
-    """True when the layer's CRS measures in linear units rather than degrees."""
-    crs = layer.crs()
-    return bool(crs and crs.isValid() and not crs.isGeographic())
-
-
-def _has_ellipsoid(ctx) -> bool:
-    ellipsoid = (ctx.project.ellipsoid() or "").strip().upper()
-    return bool(ellipsoid) and ellipsoid != "NONE"
-
-
 def _measures_metres(ctx, layer) -> bool:
     """Whether :func:`_measure_length` will return real metres for this layer.
 
-    With an ellipsoid configured, QgsDistanceArea returns metres from any CRS,
-    geographic included. Without one it falls back to planar maths, which is only
-    meaningful in a projected CRS.
+    Delegates to :mod:`fiberq.utils.measure` so D3 and core.length_manager agree
+    on which layers are measurable -- if they disagreed, "recalculate" would skip
+    a layer the rule keeps reporting, or vice versa.
     """
-    return _has_ellipsoid(ctx) or _is_metric(layer)
+    from ..utils.measure import measures_metres
+    return measures_metres(layer, project=ctx.project)
 
 
 def _distance_area(ctx, layer):
