@@ -311,6 +311,202 @@ class FiberQPlugin:
             except Exception as e:
                 logger.debug(f"Could not show message bar info: {e}")
 
+    # ------------------------------------------------------------------
+    # WP2 - project validation
+    # ------------------------------------------------------------------
+
+    def _ensure_validation_panel(self):
+        """Create the results dock on first use and keep a reference to it."""
+        panel = getattr(self, '_validation_panel', None)
+        if panel is not None:
+            return panel
+
+        from qgis.PyQt.QtCore import Qt as _Qt
+        from .ui.validation_panel import ValidationPanel
+
+        panel = ValidationPanel(self.iface.mainWindow())
+        panel.rerunRequested.connect(self.run_validation)
+        panel.issueActivated.connect(self._zoom_to_issue)
+        self.iface.addDockWidget(_Qt.DockWidgetArea.RightDockWidgetArea, panel)
+        self._validation_panel = panel
+        return panel
+
+    def run_validation(self):
+        """Run the WP2 validation engine and show the results.
+
+        Deliberately thin: every rule lives in core.validation_manager /
+        validation_rules, so this only wires the engine to the UI.
+        """
+        from datetime import datetime
+
+        from . import __version__ as _plugin_version
+        from .core.validation_manager import run_validation as _run
+        from .i18n import safe_format
+
+        panel = self._ensure_validation_panel()
+        panel.set_busy(True)
+        try:
+            result = _run(
+                timestamp=datetime.now().isoformat(timespec='seconds'),
+                plugin_version=_plugin_version,
+            )
+        except Exception as e:
+            # The runner is documented never to raise; if it somehow does, say so
+            # rather than leaving the panel stuck on "Validating...".
+            logger.warning(f"Validation failed: {e}")
+            panel.set_busy(False)
+            panel.set_result(None)
+            src = 'Validation could not run: {details}'
+            self.iface.messageBar().pushWarning(
+                'FiberQ', safe_format(self.tr(src), src, details=e))
+            return
+        panel.set_busy(False)
+        panel.set_result(result)
+        panel.show()
+        panel.raise_()
+
+        counts = result.counts_by_severity()
+        summary = ', '.join([
+            self.tr('%n error(s)', '', counts['error']),
+            self.tr('%n warning(s)', '', counts['warning']),
+            self.tr('%n info', '', counts['info']),
+        ])
+        bar = self.iface.messageBar()
+        if counts['error']:
+            bar.pushWarning('FiberQ', summary)
+        elif result.issues:
+            bar.pushInfo('FiberQ', summary)
+        else:
+            bar.pushSuccess('FiberQ', self.tr('Validation found no issues.'))
+
+    def recalculate_lengths(self):
+        """Rewrite stored lengths that disagree with their geometry.
+
+        Shows the user what is about to change before writing anything: this
+        touches their data, and the numbers it replaces may have been in the
+        project for years. Re-runs validation afterwards so the D3 findings it
+        was invoked to clear visibly disappear.
+        """
+        from qgis.PyQt.QtWidgets import QMessageBox
+
+        from .core.length_manager import apply_recalculation, plan_recalculation
+        from .i18n import safe_format
+
+        bar = self.iface.messageBar()
+        try:
+            plan = plan_recalculation()
+        except Exception as e:
+            logger.warning(f"Length recalculation could not be planned: {e}")
+            src = 'Could not check lengths: {details}'
+            bar.pushWarning('FiberQ', safe_format(self.tr(src), src, details=e))
+            return
+
+        if plan.skipped_layers:
+            src = 'Skipped {layers}: lengths cannot be measured without a projected CRS or a project ellipsoid'
+            bar.pushInfo('FiberQ', safe_format(
+                self.tr(src), src, layers=', '.join(sorted(set(plan.skipped_layers)))))
+
+        if not plan:
+            bar.pushSuccess('FiberQ', self.tr('All stored lengths already match the geometry.'))
+            return
+
+        lines = [
+            self.tr('%n feature(s) will have their stored length rewritten '
+                    'from the drawn geometry.', '', plan.feature_count),
+            '',
+        ]
+        for layer_name, count in sorted(plan.counts_by_layer().items()):
+            lines.append(f'  {layer_name}: {count}')
+
+        biggest = plan.largest_change()
+        if biggest is not None:
+            src = 'Largest change: {field} {old} -> {new} on {layer}'
+            lines += ['', safe_format(
+                self.tr(src), src, field=biggest.field_name,
+                old=f'{biggest.old_value:.2f}', new=f'{biggest.new_value:.2f}',
+                layer=biggest.layer_name)]
+
+        confirm = QMessageBox(self.iface.mainWindow())
+        confirm.setIcon(QMessageBox.Icon.Question)
+        confirm.setWindowTitle(self.tr('Recalculate lengths'))
+        confirm.setText(self.tr('Recalculate stored lengths?'))
+        confirm.setInformativeText('\n'.join(lines))
+        confirm.setDetailedText(self.tr(
+            'Lengths are measured on the project ellipsoid, the same way the '
+            'QGIS measure tool does. Slack values are read but never changed.'))
+        confirm.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+        confirm.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        if confirm.exec() != QMessageBox.StandardButton.Yes:
+            return
+
+        outcome = apply_recalculation(plan)
+
+        if outcome.applied:
+            src = 'Recalculated lengths on {count} feature(s).'
+            bar.pushSuccess('FiberQ', safe_format(
+                self.tr(src), src, count=outcome.feature_count))
+        if outcome.failures:
+            src = 'Some layers could not be updated: {details}'
+            bar.pushWarning('FiberQ', safe_format(
+                self.tr(src), src, details='; '.join(outcome.failures[:3])))
+
+        # Re-run only if the panel is already open; do not open it unbidden.
+        if getattr(self, '_validation_panel', None) is not None:
+            self.run_validation()
+
+    def _zoom_to_issue(self, issue):
+        """Centre the canvas on an issue and mark it.
+
+        ``issue.where`` is in the *layer's* CRS, which need not be the canvas
+        CRS, so the point is transformed before use -- otherwise a project whose
+        layers differ from the canvas would jump somewhere arbitrary.
+        """
+        where = getattr(issue, 'where', None)
+        if not where:
+            # Layer-level findings (E1, a layer missing its uuid field) have no
+            # coordinate to go to.
+            self.iface.messageBar().pushInfo(
+                'FiberQ', self.tr('This issue is not tied to a map location.'))
+            return
+
+        try:
+            canvas = self.iface.mapCanvas()
+            point = QgsPointXY(float(where[0]), float(where[1]))
+
+            source = None
+            layer = QgsProject.instance().mapLayer(getattr(issue, 'layer_id', '') or '')
+            if layer is not None:
+                source = layer.crs()
+            dest = canvas.mapSettings().destinationCrs()
+            if source is not None and source.isValid() and dest.isValid() and source != dest:
+                xform = QgsCoordinateTransform(source, dest, QgsProject.instance())
+                point = xform.transform(point)
+
+            canvas.setCenter(point)
+            canvas.refresh()
+            self._mark_point(point)
+        except Exception as e:
+            logger.warning(f"Could not zoom to issue: {e}")
+
+    def _mark_point(self, point):
+        """Drop the shared locator marker on a canvas-CRS point."""
+        try:
+            self.clear_locator_marker()
+        except Exception as e:
+            logger.debug(f"Could not clear previous marker: {e}")
+        try:
+            marker = QgsVertexMarker(self.iface.mapCanvas())
+            marker.setCenter(point)
+            marker.setIconType(QgsVertexMarker.IconType.ICON_CROSS)
+            marker.setIconSize(18)
+            marker.setPenWidth(3)
+            marker.setColor(QColor(255, 0, 0))
+            marker.show()
+            self._locator_marker = marker
+        except Exception as e:
+            logger.warning(f"Could not create marker: {e}")
+
     def clear_locator_marker(self):
         if hasattr(self, "_locator_marker") and self._locator_marker:
             try:
@@ -1592,6 +1788,56 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.initGui: {e}")
 
+        # --- Validate project (WP2) ---
+        try:
+            #: Toolbar action running the WP2 validation engine (topology,
+            #: referential integrity, required attributes, value domains,
+            #: geometry health) and opening the results panel. Imperative verb;
+            #: this is the data-quality audit, distinct from the "Check (health
+            #: check)" action above, which only checks that layers exist.
+            self.action_validate = QAction(
+                self.tr('Validate project'), self.iface.mainWindow())
+            try:
+                self.action_validate.setIcon(_load_icon('ic_health.svg'))
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+            self.action_validate.triggered.connect(self.run_validation)
+            try:
+                self.actions.append(self.action_validate)
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+            try:
+                self.toolbar.addAction(self.action_validate)
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+            try:
+                self.iface.addPluginToMenu('FiberQ', self.action_validate)
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+        except Exception as e:
+            logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+
+        # --- Recalculate lengths (WP2 companion to the D3 rule) ---
+        try:
+            #: Menu-only on purpose: this rewrites the user's attributes, so it
+            #: should be a deliberate trip to the menu rather than a click away
+            #: on an already-crowded toolbar.
+            self.action_recalc_lengths = QAction(
+                self.tr('Recalculate lengths…'), self.iface.mainWindow())
+            self.action_recalc_lengths.setToolTip(self.tr(
+                'Rewrite stored lengths that disagree with the drawn geometry'))
+            self.action_recalc_lengths.triggered.connect(self.recalculate_lengths)
+            try:
+                self.actions.append(self.action_recalc_lengths)
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+            try:
+                self.iface.addPluginToMenu('FiberQ', self.action_recalc_lengths)
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+        except Exception as e:
+            logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+
         # --- Reserve hook ---
         try:
             from .addons.reserve_hook import ReserveHook
@@ -2210,6 +2456,18 @@ class FiberQPlugin:
             QgsProject.instance().layersAdded.disconnect(self._on_layers_added)
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.unload: {e}")
+
+        # WP2: take the validation dock back down. It is added with
+        # iface.addDockWidget(), so it is NOT covered by the self.actions loop
+        # below and would survive a plugin reload as a dead panel.
+        try:
+            panel = getattr(self, '_validation_panel', None)
+            if panel is not None:
+                self.iface.removeDockWidget(panel)
+                panel.deleteLater()
+        except Exception as e:
+            logger.debug(f"Could not remove validation panel: {e}")
+        self._validation_panel = None
 
         # Auto-cleanup for save_gpkg action (safety)
         try:

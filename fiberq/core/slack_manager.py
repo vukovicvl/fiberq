@@ -30,6 +30,7 @@ from qgis.PyQt.QtGui import QColor
 
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
+from ..utils.measure import ground_length
 logger = get_logger(__name__)
 
 
@@ -224,7 +225,7 @@ class SlackManager:
                 cable_f[fld_slack] = float(slack)
             if has_total:
                 try:
-                    geom_len = float(cable_f.geometry().length())
+                    geom_len = ground_length(cable_f.geometry(), cable_lyr)
                 except Exception:
                     geom_len = 0.0
                 cable_f["total_len_m"] = geom_len + float(slack)

@@ -31,6 +31,7 @@ from qgis.core import (
 
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
+from ..utils.measure import ground_length
 logger = get_logger(__name__)
 
 
@@ -267,7 +268,7 @@ class RouteManager:
         tip_trase = self._ask_route_type()
 
         # Calculate length
-        duzina_m = line_geom.length()
+        duzina_m = ground_length(line_geom, route_layer)
         duzina_km = round(duzina_m / 1000.0, 2)
 
         # Create feature
@@ -395,7 +396,7 @@ class RouteManager:
         # Ask for route type
         tip_trase = self._ask_route_type("Type of connected route")
 
-        duzina_m = geom.length()
+        duzina_m = ground_length(geom, route_layer)
         duzina_km = round(duzina_m / 1000.0, 2)
 
         # Delete old features and add merged
@@ -469,7 +470,7 @@ class RouteManager:
                             geom_line = QgsGeometry.fromPolylineXY(polyline)
                             if src_crs != dst_crs:
                                 geom_line.transform(transform)
-                            duzina_m = geom_line.length()
+                            duzina_m = ground_length(geom_line, route_layer)
                             duzina_km = round(duzina_m / 1000.0, 2)
                             new_feat.setGeometry(geom_line)
                             new_feat.setAttribute("naziv", f"Imported route {route_layer.featureCount() + 1}")
@@ -491,7 +492,7 @@ class RouteManager:
                     geom_line = QgsGeometry.fromPolylineXY(polyline)
                     if src_crs != dst_crs:
                         geom_line.transform(transform)
-                    duzina_m = geom_line.length()
+                    duzina_m = ground_length(geom_line, route_layer)
                     duzina_km = round(duzina_m / 1000.0, 2)
                     new_feat.setGeometry(geom_line)
                     new_feat.setAttribute("naziv", f"Imported route {route_layer.featureCount() + 1}")

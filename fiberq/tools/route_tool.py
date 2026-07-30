@@ -14,6 +14,7 @@ from .base import (
 
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
+from ..utils.measure import ground_length
 logger = get_logger(__name__)
 
 
@@ -257,7 +258,7 @@ class ManualRouteTool(QgsMapTool):
 
         # Create geometry
         line_geom = QgsGeometry.fromPolylineXY(self.points)
-        duzina_m = line_geom.length()
+        duzina_m = ground_length(line_geom, route_layer)
         duzina_km = round(duzina_m / 1000.0, 2)
 
         # Get route type options

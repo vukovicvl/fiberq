@@ -235,3 +235,6 @@ __marimo__/
 
 # Local dev helpers (not shipped in the plugin zip)
 /dev/
+
+# QGIS writes this into the CWD when it runs headless in the test containers.
+symbology-style.db
