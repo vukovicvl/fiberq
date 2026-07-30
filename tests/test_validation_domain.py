@@ -6,6 +6,7 @@ geographic CRS, so lengths in these fixtures are directly comparable to the
 stored values.
 """
 from qgis.core import (
+    QgsCoordinateReferenceSystem,
     QgsFeature,
     QgsGeometry,
     QgsPointXY,
@@ -320,6 +321,103 @@ def test_e2_flags_a_bowtie_polygon(qgis_app):
     issues = _ids(_run(project, {"E2"}), "E2")
     assert len(issues) == 1
     assert issues[0].details["expected_geometry"] == "Polygon"
+
+
+# ---------------------------------------------------------------------------
+# Regressions found by running against real projects (QGIS 4.2, EPSG:3857)
+# ---------------------------------------------------------------------------
+
+def test_d1_accepts_the_english_labels_the_plugin_actually_stores(qgis_app):
+    """The cable dialog offers "Optical"/"Copper" and maps them to themselves, so
+    real projects store the English label where schema.py declares opticki /
+    bakarnI. Both sides of value_map must pass, or every cable is flagged."""
+    project = QgsProject()
+    project.addMapLayer(_layer(
+        "Underground cables", "LineString",
+        ("fiberq_uuid:string", "tip:string"),
+        [({"fiberq_uuid": "c1", "tip": "Optical"}, _line((0, 0), (100, 0))),
+         ({"fiberq_uuid": "c2", "tip": "opticki"}, _line((0, 10), (100, 10))),
+         ({"fiberq_uuid": "c3", "tip": "bakarnI"}, _line((0, 20), (100, 20))),
+         ({"fiberq_uuid": "c4", "tip": "Copper"}, _line((0, 30), (100, 30)))],
+    ))
+    assert _ids(_run(project, {"D1"}), "D1") == []
+
+
+def test_d1_still_catches_genuine_garbage(qgis_app):
+    """Widening the domain must not blunt the rule."""
+    project = QgsProject()
+    project.addMapLayer(_layer(
+        "Underground cables", "LineString",
+        ("fiberq_uuid:string", "tip:string"),
+        [({"fiberq_uuid": "c1", "tip": "banana"}, _line((0, 0), (100, 0)))],
+    ))
+    assert len(_ids(_run(project, {"D1"}), "D1")) == 1
+
+
+def test_d3_measures_ground_length_not_projected_length(qgis_app):
+    """The Web Mercator regression.
+
+    The plugin writes duzina_m with QgsDistanceArea + the project ellipsoid, i.e.
+    true ground metres. Comparing that to a raw geometry length in EPSG:3857 is
+    off by 1/cos(latitude) -- about 1.41x at 45 degrees -- so every length in a
+    normal project looked ~41% wrong.
+
+    This line spans 100 projected units at a realistic Serbian northing; its true
+    ground length is ~71 m. Storing the ground length must validate cleanly.
+    """
+    project = QgsProject()
+    # setEllipsoid() is a silent no-op while the project CRS is unset -- it leaves
+    # the ellipsoid at "NONE". The CRS has to be set first.
+    project.setCrs(QgsCoordinateReferenceSystem(METRIC))
+    project.setEllipsoid("EPSG:7030")  # WGS 84
+    assert project.ellipsoid() == "EPSG:7030"
+    northing = 5589866  # ~44.8 N, from the reported project
+    layer = _layer("Underground cables", "LineString", CABLE_FIELDS, [
+        ({"fiberq_uuid": "c1"}, _line((2344313, northing), (2344413, northing))),
+    ])
+    project.addMapLayer(layer)
+
+    from qgis.core import QgsDistanceArea
+    da = QgsDistanceArea()
+    da.setSourceCrs(layer.crs(), project.transformContext())
+    da.setEllipsoid(project.ellipsoid())
+    ground = da.measureLength(next(layer.getFeatures()).geometry())
+
+    # Sanity: the projection really does inflate by ~1.41 here.
+    assert 1.35 < 100.0 / ground < 1.45, ground
+
+    layer.startEditing()
+    for feat in layer.getFeatures():
+        layer.changeAttributeValue(
+            feat.id(), layer.fields().indexOf("duzina_m"), round(ground, 2))
+    layer.commitChanges()
+
+    assert _ids(_run(project, {"D3"}), "D3") == []
+
+
+def test_d3_tolerates_rounded_kilometres(qgis_app):
+    """duzina_km is stored rounded, so a 34.5 m route legitimately reads 0.03."""
+    project = QgsProject()
+    project.addMapLayer(_layer(
+        "Route", "LineString",
+        ("fiberq_uuid:string", "duzina:double", "duzina_km:double"),
+        [({"fiberq_uuid": "r1", "duzina": 34.5, "duzina_km": 0.03},
+          _line((0, 0), (34.5, 0)))],
+    ))
+    km = [i for i in _ids(_run(project, {"D3"}), "D3") if "duzina_km" in i.details]
+    assert km == []
+
+
+def test_d3_still_catches_a_wrong_kilometre_value(qgis_app):
+    project = QgsProject()
+    project.addMapLayer(_layer(
+        "Route", "LineString",
+        ("fiberq_uuid:string", "duzina:double", "duzina_km:double"),
+        [({"fiberq_uuid": "r1", "duzina": 1000.0, "duzina_km": 7.5},
+          _line((0, 0), (1000, 0)))],
+    ))
+    km = [i for i in _ids(_run(project, {"D3"}), "D3") if "duzina_km" in i.details]
+    assert len(km) == 1
 
 
 # ---------------------------------------------------------------------------

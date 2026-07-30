@@ -25,7 +25,10 @@ asserted in a pure unit test; QGIS types (``NULL``, feature/geometry access) are
 imported lazily inside the checks, which only run under QGIS.
 """
 from ..models import schema
+from ..utils.logger import get_logger
 from .validation_manager import Severity, ValidationIssue, ValidationRule
+
+logger = get_logger(__name__)
 
 try:
     from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
@@ -136,14 +139,32 @@ def _uuid_of(feat) -> str:
     return "" if value is None else str(value)
 
 
-def _fmt(value) -> str:
+def _fmt(value, places: int = 2) -> str:
     """Compact number for a message: trims trailing zeros so a tolerance of 5.0
-    reads as "5" and a distance of 7.25 keeps its precision."""
+    reads as "5" and a distance of 7.25 keeps its precision. ``places`` is raised
+    for small magnitudes (kilometres) where 2 decimals would print both sides of
+    a mismatch identically."""
     try:
-        text = f"{float(value):.2f}".rstrip("0").rstrip(".")
+        text = f"{float(value):.{places}f}".rstrip("0").rstrip(".")
         return text or "0"
     except (TypeError, ValueError):
         return str(value)
+
+
+def _half_ulp(value) -> float:
+    """Half the precision the stored value appears to carry.
+
+    ``0.03`` looks 2-decimal, so anything within 0.005 of it is consistent with
+    that rounding and must not be reported as a mismatch.
+    """
+    try:
+        text = f"{float(value)!r}"
+    except (TypeError, ValueError):
+        return 0.0
+    if "." not in text or "e" in text.lower():
+        return 0.0
+    decimals = len(text.split(".", 1)[1].rstrip("0"))
+    return 0.5 * (10 ** -decimals) if decimals else 0.0
 
 
 def _safe_format(translated, source, **kwargs):
@@ -154,15 +175,26 @@ def _safe_format(translated, source, **kwargs):
 
 
 def _allowed_domain(field_def):
-    """The set of valid *stored* values for an enum field. ``value_map`` is
-    ``{display: stored}``, so the stored domain is its values (e.g. cable ``tip``
-    -> ``{opticki, bakarnI}`` — the as-built typo is honoured because the domain
-    is read from the schema, not hardcoded)."""
+    """Valid values for an enum field -- **both** sides of ``value_map``.
+
+    ``value_map`` is declared ``{display: stored}``, but the plugin does not
+    consistently store the mapped side. The cable dialog offers "Optical"/"Copper"
+    and maps them to themselves (fiberq/dialogs/cable_dialog.py), so real projects
+    hold the English label where schema.py declares ``opticki``/``bakarnI``; older
+    projects hold the Serbian form. Both are legitimate as-built values.
+
+    Accepting the union keeps D1 doing its actual job -- catching typos and
+    garbage -- without taking sides in a vocabulary split that WP3's schema
+    inventory is the right place to resolve. Narrowing to one side floods every
+    real project with false positives on every cable.
+    """
+    allowed = set()
     if field_def.value_map:
-        return set(field_def.value_map.values())
+        allowed |= set(field_def.value_map.values())
+        allowed |= set(field_def.value_map.keys())
     if field_def.options:
-        return set(field_def.options)
-    return set()
+        allowed |= set(field_def.options)
+    return allowed
 
 
 def _required_fields_for(canonical: str):
@@ -765,6 +797,57 @@ def _is_metric(layer) -> bool:
     return bool(crs and crs.isValid() and not crs.isGeographic())
 
 
+def _has_ellipsoid(ctx) -> bool:
+    ellipsoid = (ctx.project.ellipsoid() or "").strip().upper()
+    return bool(ellipsoid) and ellipsoid != "NONE"
+
+
+def _measures_metres(ctx, layer) -> bool:
+    """Whether :func:`_measure_length` will return real metres for this layer.
+
+    With an ellipsoid configured, QgsDistanceArea returns metres from any CRS,
+    geographic included. Without one it falls back to planar maths, which is only
+    meaningful in a projected CRS.
+    """
+    return _has_ellipsoid(ctx) or _is_metric(layer)
+
+
+def _distance_area(ctx, layer):
+    """A QgsDistanceArea configured exactly as the plugin's own measuring code is.
+
+    This is the crux of D3: the plugin writes ``duzina_m`` with
+    ``QgsDistanceArea`` + the project ellipsoid (see dialogs/bom_dialog.py and
+    tools/pipe_tool.py), i.e. true ground metres. Comparing that against a raw
+    ``QgsGeometry.length()`` compares metres to *projected* units, and in Web
+    Mercator those differ by 1/cos(latitude) -- about 1.41x at 45 degrees, so
+    every length in a normal EPSG:3857 project looked wrong by ~41%.
+    """
+    key = f"distance_area:{layer.id()}"
+    cached = ctx.cache.get(key)
+    if cached is None:
+        from qgis.core import QgsDistanceArea
+        cached = QgsDistanceArea()
+        try:
+            cached.setSourceCrs(layer.crs(), ctx.project.transformContext())
+        except Exception as e:
+            logger.debug(f"Could not set distance-area CRS for {layer.name()}: {e}")
+        try:
+            cached.setEllipsoid(ctx.project.ellipsoid())
+        except Exception as e:
+            logger.debug(f"Could not set distance-area ellipsoid: {e}")
+        ctx.cache[key] = cached
+    return cached
+
+
+def _measure_length(ctx, layer, geom) -> float:
+    """Ground length of ``geom``, measured the same way the plugin stores it."""
+    try:
+        return float(_distance_area(ctx, layer).measureLength(geom))
+    except Exception as e:
+        logger.debug(f"Falling back to planar length on {layer.name()}: {e}")
+        return float(geom.length())
+
+
 def _disagrees(stored, computed, cfg) -> bool:
     """Whether two lengths differ by more than the configured tolerance."""
     allowed = max(cfg.length_abs_tol, abs(computed) * cfg.length_rel_tol)
@@ -785,9 +868,9 @@ def _check_length_coherence(ctx):
         for layer in ctx.layers_for(canonical):
             names = set(layer.fields().names())
 
-            if not _is_metric(layer):
-                src = ("Length checks skipped: they need a projected (metric) CRS, "
-                       "but this layer uses {crs}")
+            if not _measures_metres(ctx, layer):
+                src = ("Length checks skipped: they need either a projected CRS or "
+                       "a project ellipsoid, but this layer uses {crs} with none set")
                 yield ValidationIssue(
                     rule_id="D3", severity=Severity.INFO, category=_CAT_DOMAIN,
                     message=_safe_format(
@@ -802,7 +885,7 @@ def _check_length_coherence(ctx):
                 geom = feat.geometry()
                 if geom is None or geom.isNull() or geom.isEmpty():
                     continue  # E2's concern
-                computed = geom.length()
+                computed = _measure_length(ctx, layer, geom)
 
                 # 1. stored length vs the geometry it describes
                 if stored_field in names:
@@ -851,7 +934,13 @@ def _check_length_coherence(ctx):
                     km = _as_number(feat.attribute("duzina_km"), NULL)
                     if None not in (metres, km) and km > 0:
                         expected = metres / 1000.0
-                        allowed = max(cfg.length_abs_tol / 1000.0,
+                        # duzina_km is stored rounded (typically 2 decimals), so a
+                        # 34.5 m route legitimately reads 0.03 km. Allow half of
+                        # the stored value's own precision, otherwise every route
+                        # in a real project reports a mismatch whose two numbers
+                        # then print identically.
+                        allowed = max(_half_ulp(km),
+                                      cfg.length_abs_tol / 1000.0,
                                       abs(expected) * cfg.length_rel_tol)
                         if abs(km - expected) > allowed:
                             src = ("duzina_km ({km}) does not match duzina/1000 "
@@ -861,7 +950,7 @@ def _check_length_coherence(ctx):
                                 category=_CAT_DOMAIN,
                                 message=_safe_format(
                                     QCoreApplication.translate(_CTX, src), src,
-                                    km=_fmt(km), expected=_fmt(expected)),
+                                    km=_fmt(km, 4), expected=_fmt(expected, 4)),
                                 layer_name=layer.name(), layer_id=layer.id(),
                                 feature_id=feat.id(), fiberq_uuid=_uuid_of(feat),
                                 where=_feature_xy(feat),
@@ -882,9 +971,11 @@ def _check_crs_consistency(ctx):
             authid = (crs.authid() if crs and crs.isValid() else "") or "?"
             seen.setdefault(authid, []).append(layer.name())
 
-            if canonical in _STORED_LENGTH_FIELD and not _is_metric(layer):
-                src = ("Layer uses a geographic CRS ({crs}); length and area checks "
-                       "need a projected CRS in metres")
+            # Only a problem when nothing can measure in metres: with a project
+            # ellipsoid set, QgsDistanceArea handles a geographic CRS fine.
+            if canonical in _STORED_LENGTH_FIELD and not _measures_metres(ctx, layer):
+                src = ("Layer uses a geographic CRS ({crs}) and the project has no "
+                       "ellipsoid set, so lengths cannot be checked")
                 yield ValidationIssue(
                     rule_id="E1", severity=Severity.WARNING, category=_CAT_DOMAIN,
                     message=_safe_format(
