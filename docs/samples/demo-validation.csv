@@ -1,0 +1,9 @@
+rule_id,severity,category,layer,feature_id,fiberq_uuid,x,y,message,fix_hint
+B1,error,referential,Optical slack,2,fe1b0000-0000-4000-8000-000000000015,1900120.0,5400100.0,Referenced cable layer no-such-layer-id is not in the project,
+A1,warning,topology,Aerial cables,1,fe1b0000-0000-4000-8000-000000000006,1900360.0,5400090.0,Cable endpoint is not connected to any element or cable (tolerance 5),
+A1,warning,topology,Aerial cables,1,fe1b0000-0000-4000-8000-000000000006,1900430.0,5400090.0,Cable endpoint is not connected to any element or cable (tolerance 5),
+A3,warning,topology,Poles,4,fe1b0000-0000-4000-8000-000000000010,1900200.0,5400045.0,Element is not on or near any cable or route (tolerance 5),
+C1,warning,completeness,Underground cables,2,fe1b0000-0000-4000-8000-000000000005,1900120.0,5400100.0,Required field(s) missing or empty: tip,
+D1,warning,domain,Underground cables,2,fe1b0000-0000-4000-8000-000000000005,1900120.0,5400100.0,"Field stanje_kabla: value Someday is not one of the allowed values (Existing, Planned, Postojeće, Projektovano, U izgradnji, Under construction)",
+D2,warning,domain,Aerial cables,1,fe1b0000-0000-4000-8000-000000000006,1900395.0,5400090.0,Field broj_vlakana: 9999 is out of range (expected > 0 and <= 1152),
+D3,warning,domain,Route,3,fe1b0000-0000-4000-8000-000000000003,1900120.0,5400100.0,Stored duzina (210) does not match the drawn geometry (144.61),

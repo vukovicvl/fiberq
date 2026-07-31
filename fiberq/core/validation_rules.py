@@ -293,7 +293,7 @@ def _node_index(ctx):
 
 
 def _cable_endpoint_index(ctx):
-    """``(QgsSpatialIndex, {id: (layer_name, layer_id, fid, label, QgsPointXY)})``
+    """``(QgsSpatialIndex, {id: (layer_name, layer_id, fid, uuid, label, QgsPointXY)})``
     over every cable endpoint, so endpoint-to-endpoint joins can be detected.
 
     A plain index over cable features would index their bounding boxes, which says
@@ -314,7 +314,8 @@ def _cable_endpoint_index(ctx):
                 holder = QgsFeature(next_id)
                 holder.setGeometry(QgsGeometry.fromPointXY(point))
                 index.addFeature(holder)
-                records[next_id] = (layer.name(), layer.id(), feat.id(), label, point)
+                records[next_id] = (layer.name(), layer.id(), feat.id(),
+                                    _uuid_of(feat), label, point)
                 next_id += 1
 
     cached = (index, records)
@@ -325,8 +326,9 @@ def _cable_endpoint_index(ctx):
 def _endpoint_scan(ctx):
     """Classify every cable endpoint by its distance to the nearest legal partner.
 
-    Returns ``[{layer_name, layer_id, feature_id, label, point, distance, target}]``
-    where ``distance`` is ``None`` when nothing at all lies within 2*tol.
+    Returns ``[{layer_name, layer_id, feature_id, fiberq_uuid, label, point,
+    distance, target}]`` where ``distance`` is ``None`` when nothing at all lies
+    within 2*tol.
     Shared by A1 and A2 so the scan runs once.
     """
     cached = ctx.cache.get("endpoint_scan")
@@ -339,7 +341,7 @@ def _endpoint_scan(ctx):
     ep_index, ep_records = _cable_endpoint_index(ctx)
 
     findings = []
-    for holder_id, (layer_name, layer_id, fid, label, point) in ep_records.items():
+    for holder_id, (layer_name, layer_id, fid, uuid, label, point) in ep_records.items():
         rect = _rect_around(point, reach)
         best_distance = None
         best_target = None
@@ -354,7 +356,8 @@ def _endpoint_scan(ctx):
         for candidate in ep_index.intersects(rect):
             if candidate == holder_id:
                 continue
-            other_layer, other_layer_id, other_fid, _lbl, other_point = ep_records[candidate]
+            (other_layer, other_layer_id, other_fid,
+             _uuid, _lbl, other_point) = ep_records[candidate]
             # An endpoint must join a *different* feature; its own other end does
             # not count as a connection.
             if other_layer_id == layer_id and other_fid == fid:
@@ -368,6 +371,7 @@ def _endpoint_scan(ctx):
             "layer_name": layer_name,
             "layer_id": layer_id,
             "feature_id": fid,
+            "fiberq_uuid": uuid,
             "label": label,
             "point": point,
             "distance": best_distance,
@@ -400,7 +404,7 @@ def _check_cable_dangles(ctx):
             message=_safe_format(
                 QCoreApplication.translate(_CTX, src), src, tol=_fmt(tol)),
             layer_name=finding["layer_name"], layer_id=finding["layer_id"],
-            feature_id=finding["feature_id"],
+            feature_id=finding["feature_id"], fiberq_uuid=finding["fiberq_uuid"],
             where=(finding["point"].x(), finding["point"].y()),
             details={
                 "endpoint": finding["label"],
@@ -434,7 +438,7 @@ def _check_near_miss(ctx):
                 target=target[0] if target else "",
                 tol=_fmt(tol)),
             layer_name=finding["layer_name"], layer_id=finding["layer_id"],
-            feature_id=finding["feature_id"],
+            feature_id=finding["feature_id"], fiberq_uuid=finding["fiberq_uuid"],
             where=(finding["point"].x(), finding["point"].y()),
             details={
                 "endpoint": finding["label"],

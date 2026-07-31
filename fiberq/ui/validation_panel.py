@@ -178,6 +178,15 @@ class ValidationPanel(QDockWidget):
         self._populate()
         self._update_summary()
 
+    def result(self):
+        """The rendered :class:`ValidationResult`, or ``None`` before a run.
+
+        The export handler needs the result the user is looking at, and reaching
+        into ``_result`` from the plugin would make a private attribute part of
+        the contract by accident.
+        """
+        return self._result
+
     def set_busy(self, busy: bool):
         """Disable the controls while a run is in flight."""
         self.btn_rerun.setEnabled(not busy)

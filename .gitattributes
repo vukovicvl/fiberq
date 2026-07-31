@@ -27,6 +27,13 @@ Makefile text eol=lf
 *.zip  binary
 *.pdf  binary
 
+# The published sample reports are specimens of what the plugin writes, so they
+# must survive a round trip byte for byte. The CSV exporter emits CRLF (RFC 4180,
+# and what Excel expects); normalising it to LF here would mean the file we ship
+# as an example is not the file the plugin produces. Narrow exception to the
+# eol=lf rule above, scoped to this directory only.
+docs/samples/*.csv -text
+
 # Qt translation catalogues are XML, but the `.ts` extension makes GitHub
 # Linguist (and most editors) assume TypeScript — which reports the file as the
 # repo's main language and floods editors with bogus parse errors. Declare the
