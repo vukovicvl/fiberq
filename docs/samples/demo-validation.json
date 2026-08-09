@@ -1,0 +1,225 @@
+{
+  "format": "fiberq-validation-report",
+  "format_version": "1.0",
+  "issues": [
+    {
+      "category": "referential",
+      "details": {
+        "cable_fid": 999,
+        "cable_layer_id": "no-such-layer-id"
+      },
+      "feature_id": 2,
+      "fiberq_uuid": "fe1b0000-0000-4000-8000-000000000015",
+      "fix_hint": null,
+      "layer": "Optical slack",
+      "layer_id": "Optical_slack_ca9615e9_499a_4411_9bf6_0ab41ec5b6ad",
+      "message": "Referenced cable layer no-such-layer-id is not in the project",
+      "rule_id": "B1",
+      "severity": "error",
+      "x": 1900120.0,
+      "y": 5400100.0
+    },
+    {
+      "category": "topology",
+      "details": {
+        "endpoint": "start",
+        "nearest": null,
+        "nearest_distance": null,
+        "tolerance": 5.0
+      },
+      "feature_id": 1,
+      "fiberq_uuid": "fe1b0000-0000-4000-8000-000000000006",
+      "fix_hint": null,
+      "layer": "Aerial cables",
+      "layer_id": "Aerial_cables_ddf7dde3_b007_4e3e_abd7_ef1ea406c6d0",
+      "message": "Cable endpoint is not connected to any element or cable (tolerance 5)",
+      "rule_id": "A1",
+      "severity": "warning",
+      "x": 1900360.0,
+      "y": 5400090.0
+    },
+    {
+      "category": "topology",
+      "details": {
+        "endpoint": "end",
+        "nearest": null,
+        "nearest_distance": null,
+        "tolerance": 5.0
+      },
+      "feature_id": 1,
+      "fiberq_uuid": "fe1b0000-0000-4000-8000-000000000006",
+      "fix_hint": null,
+      "layer": "Aerial cables",
+      "layer_id": "Aerial_cables_ddf7dde3_b007_4e3e_abd7_ef1ea406c6d0",
+      "message": "Cable endpoint is not connected to any element or cable (tolerance 5)",
+      "rule_id": "A1",
+      "severity": "warning",
+      "x": 1900430.0,
+      "y": 5400090.0
+    },
+    {
+      "category": "topology",
+      "details": {
+        "tolerance": 5.0
+      },
+      "feature_id": 4,
+      "fiberq_uuid": "fe1b0000-0000-4000-8000-000000000010",
+      "fix_hint": null,
+      "layer": "Poles",
+      "layer_id": "Poles_01bf927c_77f4_4d4f_8e6f_516cf5d722ea",
+      "message": "Element is not on or near any cable or route (tolerance 5)",
+      "rule_id": "A3",
+      "severity": "warning",
+      "x": 1900200.0,
+      "y": 5400045.0
+    },
+    {
+      "category": "completeness",
+      "details": {
+        "missing": [
+          "tip"
+        ]
+      },
+      "feature_id": 2,
+      "fiberq_uuid": "fe1b0000-0000-4000-8000-000000000005",
+      "fix_hint": null,
+      "layer": "Underground cables",
+      "layer_id": "Underground_cables_89db88bf_1a7d_4992_afe9_aa892eeafbd4",
+      "message": "Required field(s) missing or empty: tip",
+      "rule_id": "C1",
+      "severity": "warning",
+      "x": 1900120.0,
+      "y": 5400100.0
+    },
+    {
+      "category": "domain",
+      "details": {
+        "allowed": [
+          "Existing",
+          "Planned",
+          "Postojeće",
+          "Projektovano",
+          "U izgradnji",
+          "Under construction"
+        ],
+        "field": "stanje_kabla",
+        "value": "Someday"
+      },
+      "feature_id": 2,
+      "fiberq_uuid": "fe1b0000-0000-4000-8000-000000000005",
+      "fix_hint": null,
+      "layer": "Underground cables",
+      "layer_id": "Underground_cables_89db88bf_1a7d_4992_afe9_aa892eeafbd4",
+      "message": "Field stanje_kabla: value Someday is not one of the allowed values (Existing, Planned, Postojeće, Projektovano, U izgradnji, Under construction)",
+      "rule_id": "D1",
+      "severity": "warning",
+      "x": 1900120.0,
+      "y": 5400100.0
+    },
+    {
+      "category": "domain",
+      "details": {
+        "exclusive_min": true,
+        "field": "broj_vlakana",
+        "max": 1152,
+        "min": 0,
+        "units": "",
+        "value": 9999.0
+      },
+      "feature_id": 1,
+      "fiberq_uuid": "fe1b0000-0000-4000-8000-000000000006",
+      "fix_hint": null,
+      "layer": "Aerial cables",
+      "layer_id": "Aerial_cables_ddf7dde3_b007_4e3e_abd7_ef1ea406c6d0",
+      "message": "Field broj_vlakana: 9999 is out of range (expected > 0 and <= 1152)",
+      "rule_id": "D2",
+      "severity": "warning",
+      "x": 1900395.0,
+      "y": 5400090.0
+    },
+    {
+      "category": "domain",
+      "details": {
+        "computed": 144.61098999424132,
+        "field": "duzina",
+        "stored": 210.0
+      },
+      "feature_id": 3,
+      "fiberq_uuid": "fe1b0000-0000-4000-8000-000000000003",
+      "fix_hint": null,
+      "layer": "Route",
+      "layer_id": "Route_3bb33dab_dfbb_4e8a_a7fb_57394ab81e21",
+      "message": "Stored duzina (210) does not match the drawn geometry (144.61)",
+      "rule_id": "D3",
+      "severity": "warning",
+      "x": 1900120.0,
+      "y": 5400100.0
+    }
+  ],
+  "project": {
+    "crs": "EPSG:3857",
+    "feature_counts": {
+      "Aerial cables": 1,
+      "Joint Closures": 1,
+      "Manholes": 2,
+      "Optical slack": 2,
+      "Poles": 4,
+      "Route": 3,
+      "Underground cables": 2
+    },
+    "name": "FiberQ demo project",
+    "schema_version": "1.0"
+  },
+  "run": {
+    "plugin_version": "1.3.0",
+    "rule_errors": [],
+    "rules_run": [
+      "A1",
+      "A2",
+      "A3",
+      "B1",
+      "B2",
+      "B3",
+      "B4",
+      "C1",
+      "D1",
+      "D2",
+      "D3",
+      "E1",
+      "E2"
+    ],
+    "rules_skipped": [],
+    "timestamp": "2026-07-30T22:00:00"
+  },
+  "summary": {
+    "by_category": {
+      "completeness": 1,
+      "domain": 3,
+      "referential": 1,
+      "topology": 3
+    },
+    "by_layer": {
+      "Aerial cables": 3,
+      "Optical slack": 1,
+      "Poles": 1,
+      "Route": 1,
+      "Underground cables": 2
+    },
+    "by_rule": {
+      "A1": 2,
+      "A3": 1,
+      "B1": 1,
+      "C1": 1,
+      "D1": 1,
+      "D2": 1,
+      "D3": 1
+    },
+    "by_severity": {
+      "error": 1,
+      "info": 0,
+      "warning": 7
+    },
+    "passed": false,
+    "total": 8
+  }
+}

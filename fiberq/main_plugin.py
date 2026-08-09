@@ -327,6 +327,7 @@ class FiberQPlugin:
         panel = ValidationPanel(self.iface.mainWindow())
         panel.rerunRequested.connect(self.run_validation)
         panel.issueActivated.connect(self._zoom_to_issue)
+        panel.exportRequested.connect(self.export_validation_report)
         self.iface.addDockWidget(_Qt.DockWidgetArea.RightDockWidgetArea, panel)
         self._validation_panel = panel
         return panel
@@ -378,6 +379,58 @@ class FiberQPlugin:
             bar.pushInfo('FiberQ', summary)
         else:
             bar.pushSuccess('FiberQ', self.tr('Validation found no issues.'))
+
+    def export_validation_report(self):
+        """Save the current validation result as HTML, JSON or CSV.
+
+        The format follows the extension the user picks, so the selected filter
+        and a hand-typed name can never disagree about what gets written.
+        """
+        import os
+
+        from qgis.PyQt.QtWidgets import QFileDialog
+
+        from .core.validation_report import FORMATS, format_for_path, write_report
+        from .i18n import safe_format
+
+        panel = getattr(self, '_validation_panel', None)
+        result = panel.result() if panel is not None else None
+        if result is None:
+            self.iface.messageBar().pushInfo(
+                'FiberQ', self.tr('Run a validation before exporting a report.'))
+            return
+
+        filters = ';;'.join(
+            f'{label} (*.{ext})' for ext, (label, _) in FORMATS.items())
+        suggested = (result.project_name or 'fiberq').strip() or 'fiberq'
+        suggested = ''.join(c if c.isalnum() or c in '-_' else '_' for c in suggested)
+
+        path, chosen = QFileDialog.getSaveFileName(
+            self.iface.mainWindow(), self.tr('Export validation report'),
+            f'{suggested}-validation.html', filters)
+        if not path:
+            return
+
+        # A name typed without an extension would otherwise be written as HTML
+        # regardless of the filter picked in the dialog.
+        if not os.path.splitext(path)[1]:
+            for ext, (label, _) in FORMATS.items():
+                if chosen.startswith(label):
+                    path = f'{path}.{ext}'
+                    break
+
+        try:
+            fmt = write_report(result, path, format_for_path(path))
+        except OSError as e:
+            logger.warning(f"Could not write validation report: {e}")
+            src = 'Could not save the report: {details}'
+            self.iface.messageBar().pushWarning(
+                'FiberQ', safe_format(self.tr(src), src, details=e))
+            return
+
+        src = 'Saved {format} report to {path}'
+        self.iface.messageBar().pushSuccess('FiberQ', safe_format(
+            self.tr(src), src, format=fmt.upper(), path=os.path.basename(path)))
 
     def recalculate_lengths(self):
         """Rewrite stored lengths that disagree with their geometry.
