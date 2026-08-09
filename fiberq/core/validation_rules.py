@@ -43,7 +43,6 @@ except ImportError:  # pragma: no cover - keep importable without Qt (pure tests
 
     QCoreApplication = _NoQtTranslate
 
-_CTX = "ValidationRules"
 
 # Categories are stable identifiers (grouping keys in the report), not translated.
 _CAT_IDENTITY = "identity"
@@ -398,11 +397,12 @@ def _check_cable_dangles(ctx):
         distance = finding["distance"]
         if distance is not None and distance <= tol:
             continue
-        src = "Cable endpoint is not connected to any element or cable (tolerance {tol})"
+        src = QT_TRANSLATE_NOOP(
+            'ValidationRules', "Cable endpoint is not connected to any element or cable (tolerance {tol})")
         yield ValidationIssue(
             rule_id="A1", severity=Severity.WARNING, category=_CAT_TOPOLOGY,
             message=_safe_format(
-                QCoreApplication.translate(_CTX, src), src, tol=_fmt(tol)),
+                QCoreApplication.translate('ValidationRules', src), src, tol=_fmt(tol)),
             layer_name=finding["layer_name"], layer_id=finding["layer_id"],
             feature_id=finding["feature_id"], fiberq_uuid=finding["fiberq_uuid"],
             where=(finding["point"].x(), finding["point"].y()),
@@ -428,12 +428,12 @@ def _check_near_miss(ctx):
         if distance is None or distance <= tol or distance > tol * 2.0:
             continue
         target = finding["target"]
-        src = ("Cable endpoint is {distance} from {target} -- just outside the "
-               "{tol} snapping tolerance; it probably should connect")
+        src = (QT_TRANSLATE_NOOP(
+            'ValidationRules', "Cable endpoint is {distance} from {target} -- just outside the {tol} snapping tolerance; it probably should connect"))
         yield ValidationIssue(
             rule_id="A2", severity=Severity.INFO, category=_CAT_TOPOLOGY,
             message=_safe_format(
-                QCoreApplication.translate(_CTX, src), src,
+                QCoreApplication.translate('ValidationRules', src), src,
                 distance=_fmt(distance),
                 target=target[0] if target else "",
                 tol=_fmt(tol)),
@@ -483,11 +483,12 @@ def _check_orphan_elements(ctx):
                     break
             if attached:
                 continue
-            src = "Element is not on or near any cable or route (tolerance {tol})"
+            src = QT_TRANSLATE_NOOP(
+                'ValidationRules', "Element is not on or near any cable or route (tolerance {tol})")
             yield ValidationIssue(
                 rule_id="A3", severity=Severity.WARNING, category=_CAT_TOPOLOGY,
                 message=_safe_format(
-                    QCoreApplication.translate(_CTX, src), src, tol=_fmt(tol)),
+                    QCoreApplication.translate('ValidationRules', src), src, tol=_fmt(tol)),
                 layer_name=layer.name(), layer_id=layer.id(),
                 feature_id=feat.id(), fiberq_uuid=_uuid_of(feat),
                 where=(point.x(), point.y()),
@@ -543,13 +544,15 @@ def _fk_checker(canonical, rule_id):
             if cable_feat is not None:
                 continue
             if cable_layer is None:
-                src = "Referenced cable layer {layer_id} is not in the project"
+                src = QT_TRANSLATE_NOOP(
+                    'ValidationRules', "Referenced cable layer {layer_id} is not in the project")
                 message = _safe_format(
-                    QCoreApplication.translate(_CTX, src), src, layer_id=raw_layer_id)
+                    QCoreApplication.translate('ValidationRules', src), src, layer_id=raw_layer_id)
             else:
-                src = "Referenced cable feature {fid} does not exist in layer {layer}"
+                src = QT_TRANSLATE_NOOP(
+                    'ValidationRules', "Referenced cable feature {fid} does not exist in layer {layer}")
                 message = _safe_format(
-                    QCoreApplication.translate(_CTX, src), src,
+                    QCoreApplication.translate('ValidationRules', src), src,
                     fid=raw_fid, layer=cable_layer.name())
             yield ValidationIssue(
                 rule_id=rule_id, severity=Severity.ERROR, category=_CAT_REFERENTIAL,
@@ -580,12 +583,12 @@ def _check_fk_spatial(ctx):
             distance = QgsGeometry.fromPointXY(point).distance(cable_geom)
             if distance <= tol:
                 continue
-            src = ("Feature is {distance} from the cable it references "
-                   "(tolerance {tol}) -- the cable may have been re-routed")
+            src = (QT_TRANSLATE_NOOP(
+                'ValidationRules', "Feature is {distance} from the cable it references (tolerance {tol}) -- the cable may have been re-routed"))
             yield ValidationIssue(
                 rule_id="B3", severity=Severity.WARNING, category=_CAT_REFERENTIAL,
                 message=_safe_format(
-                    QCoreApplication.translate(_CTX, src), src,
+                    QCoreApplication.translate('ValidationRules', src), src,
                     distance=_fmt(distance), tol=_fmt(tol)),
                 layer_name=layer.name(), layer_id=layer.id(),
                 feature_id=feat.id(), fiberq_uuid=_uuid_of(feat),
@@ -611,11 +614,12 @@ def _check_identity(ctx):
                 yield ValidationIssue(
                     rule_id="B4", severity=Severity.ERROR, category=_CAT_IDENTITY,
                     message=QCoreApplication.translate(
-                        _CTX, "Layer is missing the fiberq_uuid identity field"),
+                        'ValidationRules', "Layer is missing the fiberq_uuid identity field"),
                     layer_name=layer.name(), layer_id=layer.id(),
                     fix_hint=QCoreApplication.translate(
-                        _CTX, "Re-open the project so migration can add fiberq_uuid, "
-                              "or re-create the layer."),
+                        'ValidationRules',
+                        "Re-open the project so migration can add fiberq_uuid, "
+                        "or re-create the layer."),
                 )
                 continue
             for feat in layer.getFeatures():
@@ -624,7 +628,7 @@ def _check_identity(ctx):
                     yield ValidationIssue(
                         rule_id="B4", severity=Severity.ERROR, category=_CAT_IDENTITY,
                         message=QCoreApplication.translate(
-                            _CTX, "Feature has no fiberq_uuid value"),
+                            'ValidationRules', "Feature has no fiberq_uuid value"),
                         layer_name=layer.name(), layer_id=layer.id(),
                         feature_id=feat.id(), where=_feature_xy(feat),
                     )
@@ -632,12 +636,12 @@ def _check_identity(ctx):
                 key = str(value)
                 if key in seen:
                     prev_layer, prev_fid = seen[key]
-                    src = ("Duplicate fiberq_uuid — the same identity is already "
-                           "used by feature {fid} in layer {layer}")
+                    src = (QT_TRANSLATE_NOOP(
+                        'ValidationRules', "Duplicate fiberq_uuid — the same identity is already used by feature {fid} in layer {layer}"))
                     yield ValidationIssue(
                         rule_id="B4", severity=Severity.ERROR, category=_CAT_IDENTITY,
                         message=_safe_format(
-                            QCoreApplication.translate(_CTX, src), src,
+                            QCoreApplication.translate('ValidationRules', src), src,
                             fid=prev_fid, layer=prev_layer),
                         layer_name=layer.name(), layer_id=layer.id(),
                         feature_id=feat.id(), fiberq_uuid=key, where=_feature_xy(feat),
@@ -668,11 +672,11 @@ def _check_required_fields(ctx):
                 ]
                 if not missing:
                     continue
-                src = "Required field(s) missing or empty: {fields}"
+                src = QT_TRANSLATE_NOOP('ValidationRules', "Required field(s) missing or empty: {fields}")
                 yield ValidationIssue(
                     rule_id="C1", severity=Severity.WARNING, category=_CAT_COMPLETENESS,
                     message=_safe_format(
-                        QCoreApplication.translate(_CTX, src), src,
+                        QCoreApplication.translate('ValidationRules', src), src,
                         fields=", ".join(missing)),
                     layer_name=layer.name(), layer_id=layer.id(),
                     feature_id=feat.id(), fiberq_uuid=_uuid_of(feat),
@@ -708,12 +712,12 @@ def _check_enum_conformance(ctx):
                         continue  # emptiness is C1's concern, not D1's
                     if str(value) in allowed:
                         continue
-                    src = ("Field {field}: value {value} is not one of the "
-                           "allowed values ({allowed})")
+                    src = (QT_TRANSLATE_NOOP(
+                        'ValidationRules', "Field {field}: value {value} is not one of the allowed values ({allowed})"))
                     yield ValidationIssue(
                         rule_id="D1", severity=Severity.WARNING, category=_CAT_DOMAIN,
                         message=_safe_format(
-                            QCoreApplication.translate(_CTX, src), src,
+                            QCoreApplication.translate('ValidationRules', src), src,
                             field=key, value=value,
                             allowed=", ".join(sorted(allowed))),
                         layer_name=layer.name(), layer_id=layer.id(),
@@ -776,11 +780,12 @@ def _check_numeric_ranges(ctx):
                     too_high = high is not None and number > high
                     if not (too_low or too_high):
                         continue
-                    src = "Field {field}: {value} is out of range (expected {bound})"
+                    src = QT_TRANSLATE_NOOP(
+                        'ValidationRules', "Field {field}: {value} is out of range (expected {bound})")
                     yield ValidationIssue(
                         rule_id="D2", severity=Severity.WARNING, category=_CAT_DOMAIN,
                         message=_safe_format(
-                            QCoreApplication.translate(_CTX, src), src,
+                            QCoreApplication.translate('ValidationRules', src), src,
                             field=key, value=_fmt(number),
                             bound=_bound_text(low, high, exclusive)),
                         layer_name=layer.name(), layer_id=layer.id(),
@@ -866,12 +871,12 @@ def _check_length_coherence(ctx):
             names = set(layer.fields().names())
 
             if not _measures_metres(ctx, layer):
-                src = ("Length checks skipped: they need either a projected CRS or "
-                       "a project ellipsoid, but this layer uses {crs} with none set")
+                src = (QT_TRANSLATE_NOOP(
+                    'ValidationRules', "Length checks skipped: they need either a projected CRS or a project ellipsoid, but this layer uses {crs} with none set"))
                 yield ValidationIssue(
                     rule_id="D3", severity=Severity.INFO, category=_CAT_DOMAIN,
                     message=_safe_format(
-                        QCoreApplication.translate(_CTX, src), src,
+                        QCoreApplication.translate('ValidationRules', src), src,
                         crs=layer.crs().authid() or "?"),
                     layer_name=layer.name(), layer_id=layer.id(),
                     details={"skipped": True, "crs": layer.crs().authid()},
@@ -888,12 +893,12 @@ def _check_length_coherence(ctx):
                 if stored_field in names:
                     stored = _as_number(feat.attribute(stored_field), NULL)
                     if stored is not None and stored > 0 and _disagrees(stored, computed, cfg):
-                        src = ("Stored {field} ({stored}) does not match the drawn "
-                               "geometry ({computed})")
+                        src = (QT_TRANSLATE_NOOP(
+                            'ValidationRules', "Stored {field} ({stored}) does not match the drawn geometry ({computed})"))
                         yield ValidationIssue(
                             rule_id="D3", severity=Severity.WARNING, category=_CAT_DOMAIN,
                             message=_safe_format(
-                                QCoreApplication.translate(_CTX, src), src,
+                                QCoreApplication.translate('ValidationRules', src), src,
                                 field=stored_field, stored=_fmt(stored),
                                 computed=_fmt(computed)),
                             layer_name=layer.name(), layer_id=layer.id(),
@@ -911,13 +916,13 @@ def _check_length_coherence(ctx):
                     if None not in (total, base, slack) and total > 0:
                         expected = base + slack
                         if _disagrees(total, expected, cfg):
-                            src = ("total_len_m ({total}) should equal duzina_m + "
-                                   "slack_m ({expected})")
+                            src = (QT_TRANSLATE_NOOP(
+                                'ValidationRules', "total_len_m ({total}) should equal duzina_m + slack_m ({expected})"))
                             yield ValidationIssue(
                                 rule_id="D3", severity=Severity.WARNING,
                                 category=_CAT_DOMAIN,
                                 message=_safe_format(
-                                    QCoreApplication.translate(_CTX, src), src,
+                                    QCoreApplication.translate('ValidationRules', src), src,
                                     total=_fmt(total), expected=_fmt(expected)),
                                 layer_name=layer.name(), layer_id=layer.id(),
                                 feature_id=feat.id(), fiberq_uuid=_uuid_of(feat),
@@ -940,13 +945,13 @@ def _check_length_coherence(ctx):
                                       cfg.length_abs_tol / 1000.0,
                                       abs(expected) * cfg.length_rel_tol)
                         if abs(km - expected) > allowed:
-                            src = ("duzina_km ({km}) does not match duzina/1000 "
-                                   "({expected})")
+                            src = (QT_TRANSLATE_NOOP(
+                                'ValidationRules', "duzina_km ({km}) does not match duzina/1000 ({expected})"))
                             yield ValidationIssue(
                                 rule_id="D3", severity=Severity.WARNING,
                                 category=_CAT_DOMAIN,
                                 message=_safe_format(
-                                    QCoreApplication.translate(_CTX, src), src,
+                                    QCoreApplication.translate('ValidationRules', src), src,
                                     km=_fmt(km, 4), expected=_fmt(expected, 4)),
                                 layer_name=layer.name(), layer_id=layer.id(),
                                 feature_id=feat.id(), fiberq_uuid=_uuid_of(feat),
@@ -971,22 +976,22 @@ def _check_crs_consistency(ctx):
             # Only a problem when nothing can measure in metres: with a project
             # ellipsoid set, QgsDistanceArea handles a geographic CRS fine.
             if canonical in _STORED_LENGTH_FIELD and not _measures_metres(ctx, layer):
-                src = ("Layer uses a geographic CRS ({crs}) and the project has no "
-                       "ellipsoid set, so lengths cannot be checked")
+                src = (QT_TRANSLATE_NOOP(
+                    'ValidationRules', "Layer uses a geographic CRS ({crs}) and the project has no ellipsoid set, so lengths cannot be checked"))
                 yield ValidationIssue(
                     rule_id="E1", severity=Severity.WARNING, category=_CAT_DOMAIN,
                     message=_safe_format(
-                        QCoreApplication.translate(_CTX, src), src, crs=authid),
+                        QCoreApplication.translate('ValidationRules', src), src, crs=authid),
                     layer_name=layer.name(), layer_id=layer.id(),
                     details={"crs": authid, "geographic": True},
                 )
 
     if len(seen) > 1:
-        src = "FiberQ layers do not all share one CRS: {list}"
+        src = QT_TRANSLATE_NOOP('ValidationRules', "FiberQ layers do not all share one CRS: {list}")
         yield ValidationIssue(
             rule_id="E1", severity=Severity.WARNING, category=_CAT_DOMAIN,
             message=_safe_format(
-                QCoreApplication.translate(_CTX, src), src,
+                QCoreApplication.translate('ValidationRules', src), src,
                 list=", ".join(sorted(seen))),
             details={"crs_list": sorted(seen), "layers_by_crs": seen},
         )
@@ -1014,10 +1019,10 @@ def _check_geometry_validity(ctx):
                 geom = feat.geometry()
 
                 if geom is None or geom.isNull() or geom.isEmpty():
-                    src = "Feature has no geometry"
+                    src = QT_TRANSLATE_NOOP('ValidationRules', "Feature has no geometry")
                     yield ValidationIssue(
                         rule_id="E2", severity=Severity.ERROR, category=_CAT_DOMAIN,
-                        message=QCoreApplication.translate(_CTX, src),
+                        message=QCoreApplication.translate('ValidationRules', src),
                         layer_name=layer.name(), layer_id=layer.id(),
                         feature_id=feat.id(), fiberq_uuid=_uuid_of(feat),
                         details={"expected_geometry": expected},
@@ -1027,18 +1032,18 @@ def _check_geometry_validity(ctx):
                 gtype = geom.type()
                 if gtype == QgsWkbTypes.GeometryType.LineGeometry:
                     if geom.length() <= 0:
-                        src = "Line has zero length"
+                        src = QT_TRANSLATE_NOOP('ValidationRules', "Line has zero length")
                     elif not geom.isSimple():
                         # A self-crossing LineString is OGC-valid, so
                         # isGeosValid() will not catch it -- isSimple() does.
-                        src = "Line crosses itself"
+                        src = QT_TRANSLATE_NOOP('ValidationRules', "Line crosses itself")
                     else:
                         continue
                 elif gtype == QgsWkbTypes.GeometryType.PolygonGeometry:
                     if geom.area() <= 0:
-                        src = "Polygon has zero area"
+                        src = QT_TRANSLATE_NOOP('ValidationRules', "Polygon has zero area")
                     elif not geom.isGeosValid():
-                        src = "Polygon boundary is self-intersecting"
+                        src = QT_TRANSLATE_NOOP('ValidationRules', "Polygon boundary is self-intersecting")
                     else:
                         continue
                 else:
@@ -1046,7 +1051,7 @@ def _check_geometry_validity(ctx):
 
                 yield ValidationIssue(
                     rule_id="E2", severity=Severity.WARNING, category=_CAT_DOMAIN,
-                    message=QCoreApplication.translate(_CTX, src),
+                    message=QCoreApplication.translate('ValidationRules', src),
                     layer_name=layer.name(), layer_id=layer.id(),
                     feature_id=feat.id(), fiberq_uuid=_uuid_of(feat),
                     where=_feature_xy(feat),
@@ -1062,7 +1067,7 @@ def _check_geometry_validity(ctx):
 RULES = [
     ValidationRule(
         id="A1",
-        title=QT_TRANSLATE_NOOP(_CTX, "Cable endpoints are connected"),
+        title=QT_TRANSLATE_NOOP('ValidationRules', "Cable endpoints are connected"),
         category=_CAT_TOPOLOGY,
         default_severity=Severity.WARNING,
         check=_check_cable_dangles,
@@ -1070,7 +1075,7 @@ RULES = [
     ),
     ValidationRule(
         id="A2",
-        title=QT_TRANSLATE_NOOP(_CTX, "Cable endpoints are not near-misses"),
+        title=QT_TRANSLATE_NOOP('ValidationRules', "Cable endpoints are not near-misses"),
         category=_CAT_TOPOLOGY,
         default_severity=Severity.INFO,
         check=_check_near_miss,
@@ -1078,7 +1083,7 @@ RULES = [
     ),
     ValidationRule(
         id="A3",
-        title=QT_TRANSLATE_NOOP(_CTX, "Elements are attached to the network"),
+        title=QT_TRANSLATE_NOOP('ValidationRules', "Elements are attached to the network"),
         category=_CAT_TOPOLOGY,
         default_severity=Severity.WARNING,
         check=_check_orphan_elements,
@@ -1086,7 +1091,7 @@ RULES = [
     ),
     ValidationRule(
         id="B1",
-        title=QT_TRANSLATE_NOOP(_CTX, "Optical slack references an existing cable"),
+        title=QT_TRANSLATE_NOOP('ValidationRules', "Optical slack references an existing cable"),
         category=_CAT_REFERENTIAL,
         default_severity=Severity.ERROR,
         check=_fk_checker("Optical slack", "B1"),
@@ -1094,7 +1099,7 @@ RULES = [
     ),
     ValidationRule(
         id="B2",
-        title=QT_TRANSLATE_NOOP(_CTX, "Fiber break references an existing cable"),
+        title=QT_TRANSLATE_NOOP('ValidationRules', "Fiber break references an existing cable"),
         category=_CAT_REFERENTIAL,
         default_severity=Severity.ERROR,
         check=_fk_checker("Fiber break", "B2"),
@@ -1102,7 +1107,7 @@ RULES = [
     ),
     ValidationRule(
         id="B3",
-        title=QT_TRANSLATE_NOOP(_CTX, "Cable references are spatially coherent"),
+        title=QT_TRANSLATE_NOOP('ValidationRules', "Cable references are spatially coherent"),
         category=_CAT_REFERENTIAL,
         default_severity=Severity.WARNING,
         check=_check_fk_spatial,
@@ -1110,35 +1115,35 @@ RULES = [
     ),
     ValidationRule(
         id="B4",
-        title=QT_TRANSLATE_NOOP(_CTX, "Feature identity present and unique"),
+        title=QT_TRANSLATE_NOOP('ValidationRules', "Feature identity present and unique"),
         category=_CAT_IDENTITY,
         default_severity=Severity.ERROR,
         check=_check_identity,
     ),
     ValidationRule(
         id="C1",
-        title=QT_TRANSLATE_NOOP(_CTX, "Required attributes present"),
+        title=QT_TRANSLATE_NOOP('ValidationRules', "Required attributes present"),
         category=_CAT_COMPLETENESS,
         default_severity=Severity.WARNING,
         check=_check_required_fields,
     ),
     ValidationRule(
         id="D1",
-        title=QT_TRANSLATE_NOOP(_CTX, "Attribute values within allowed domain"),
+        title=QT_TRANSLATE_NOOP('ValidationRules', "Attribute values within allowed domain"),
         category=_CAT_DOMAIN,
         default_severity=Severity.WARNING,
         check=_check_enum_conformance,
     ),
     ValidationRule(
         id="D2",
-        title=QT_TRANSLATE_NOOP(_CTX, "Numeric attributes within plausible ranges"),
+        title=QT_TRANSLATE_NOOP('ValidationRules', "Numeric attributes within plausible ranges"),
         category=_CAT_DOMAIN,
         default_severity=Severity.WARNING,
         check=_check_numeric_ranges,
     ),
     ValidationRule(
         id="D3",
-        title=QT_TRANSLATE_NOOP(_CTX, "Stored lengths agree with geometry"),
+        title=QT_TRANSLATE_NOOP('ValidationRules', "Stored lengths agree with geometry"),
         category=_CAT_DOMAIN,
         default_severity=Severity.WARNING,
         check=_check_length_coherence,
@@ -1146,14 +1151,14 @@ RULES = [
     ),
     ValidationRule(
         id="E1",
-        title=QT_TRANSLATE_NOOP(_CTX, "Coordinate reference systems are consistent"),
+        title=QT_TRANSLATE_NOOP('ValidationRules', "Coordinate reference systems are consistent"),
         category=_CAT_DOMAIN,
         default_severity=Severity.WARNING,
         check=_check_crs_consistency,
     ),
     ValidationRule(
         id="E2",
-        title=QT_TRANSLATE_NOOP(_CTX, "Geometries are present and well formed"),
+        title=QT_TRANSLATE_NOOP('ValidationRules', "Geometries are present and well formed"),
         category=_CAT_DOMAIN,
         default_severity=Severity.ERROR,
         check=_check_geometry_validity,
