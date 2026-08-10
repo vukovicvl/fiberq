@@ -113,12 +113,43 @@ def test_works_without_a_layer_argument(project):
         ground_length(geom, _layer(), project=project))
 
 
-def test_no_ellipsoid_falls_back_to_planar(project):
-    """Old projects with measurement off keep the previous behaviour."""
+def test_an_unconfigured_project_still_measures_ground_metres(project):
+    """The blocker this guards: QGIS leaves a new project on ellipsoid 'NONE',
+    even after the CRS is set. Trusting that turned every measurement back into
+    map units -- 1.37x too long here -- while the UI promised ellipsoidal."""
     project.setEllipsoid("NONE")
     clear_cache()
     geom = _mercator_line(1000.0)
-    assert ground_length(geom, _layer(), project=project) == pytest.approx(geom.length(), rel=1e-6)
+    ground = ground_length(geom, _layer(), project=project)
+
+    assert ground == pytest.approx(geom.length() / SCALE, rel=0.01)
+    assert ground < geom.length()
+
+
+def test_measures_metres_is_false_only_when_measurement_really_is_planar(project):
+    """It must answer "will this be ellipsoidal?", not "is the CRS linear?"."""
+    from fiberq.utils.measure import measures_metres
+
+    project.setEllipsoid("NONE")
+    clear_cache()
+    # A projected CRS with no project ellipsoid still resolves one from the CRS.
+    assert measures_metres(_layer(), project=project) is True
+
+
+def test_the_crs_ellipsoid_is_the_fallback(project):
+    """EPSG:3857 names EPSG:7030; that is what the QGIS measure tool falls back to."""
+    from fiberq.utils.measure import resolve_ellipsoid
+
+    project.setEllipsoid("NONE")
+    clear_cache()
+    assert resolve_ellipsoid(
+        QgsCoordinateReferenceSystem("EPSG:3857"), project) == "EPSG:7030"
+
+    # An explicit project ellipsoid always wins over the CRS default.
+    project.setEllipsoid("EPSG:7004")
+    clear_cache()
+    assert resolve_ellipsoid(
+        QgsCoordinateReferenceSystem("EPSG:3857"), project) == "EPSG:7004"
 
 
 def test_geographic_crs_returns_metres_not_degrees(project):
@@ -132,10 +163,10 @@ def test_geographic_crs_returns_metres_not_degrees(project):
 def test_cache_is_keyed_on_crs_and_ellipsoid(project):
     """Changing the project ellipsoid must change the answer, not reuse a stale one."""
     geom = _mercator_line(1000.0)
-    ellipsoidal = ground_length(geom, _layer(), project=project)
-    project.setEllipsoid("NONE")
+    on_wgs84 = ground_length(geom, _layer(), project=project)
+    project.setEllipsoid("EPSG:7004")  # Bessel 1841 -- a different figure
     clear_cache()
-    assert ground_length(geom, _layer(), project=project) != pytest.approx(ellipsoidal)
+    assert ground_length(geom, _layer(), project=project) != pytest.approx(on_wgs84)
 
 
 # ---------------------------------------------------------------------------

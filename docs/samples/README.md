@@ -35,7 +35,7 @@ really uses, and it is where the length rules have something to say.
 
 ## The planted faults
 
-Seven of the thirteen rules fire, each from exactly one planted fault. Nothing else
+Seven of the fourteen rules fire, each from exactly one planted fault. Nothing else
 fires — that is asserted by `tests/test_demo_project.py`, so a rule that starts
 reporting something new here fails the build rather than quietly changing the
 published sample.

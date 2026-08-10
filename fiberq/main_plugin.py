@@ -1,5 +1,5 @@
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
-from qgis.PyQt.QtCore import Qt, QCoreApplication
+from qgis.PyQt.QtCore import QT_TRANSLATE_NOOP, Qt, QCoreApplication
 from qgis.PyQt.QtGui import QKeySequence
 from qgis.PyQt.QtWidgets import (
     QAction, QMessageBox, QInputDialog, QDialog, QVBoxLayout, QLabel, QDialogButtonBox,
@@ -357,7 +357,7 @@ class FiberQPlugin:
             logger.warning(f"Validation failed: {e}")
             panel.set_busy(False)
             panel.set_result(None)
-            src = 'Validation could not run: {details}'
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Validation could not run: {details}')
             self.iface.messageBar().pushWarning(
                 'FiberQ', safe_format(self.tr(src), src, details=e))
             return
@@ -423,12 +423,12 @@ class FiberQPlugin:
             fmt = write_report(result, path, format_for_path(path))
         except OSError as e:
             logger.warning(f"Could not write validation report: {e}")
-            src = 'Could not save the report: {details}'
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Could not save the report: {details}')
             self.iface.messageBar().pushWarning(
                 'FiberQ', safe_format(self.tr(src), src, details=e))
             return
 
-        src = 'Saved {format} report to {path}'
+        src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Saved {format} report to {path}')
         self.iface.messageBar().pushSuccess('FiberQ', safe_format(
             self.tr(src), src, format=fmt.upper(), path=os.path.basename(path)))
 
@@ -450,17 +450,36 @@ class FiberQPlugin:
             plan = plan_recalculation()
         except Exception as e:
             logger.warning(f"Length recalculation could not be planned: {e}")
-            src = 'Could not check lengths: {details}'
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Could not check lengths: {details}')
             bar.pushWarning('FiberQ', safe_format(self.tr(src), src, details=e))
             return
 
         if plan.skipped_layers:
-            src = 'Skipped {layers}: lengths cannot be measured without a projected CRS or a project ellipsoid'
-            bar.pushInfo('FiberQ', safe_format(
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                'Skipped {layers}: lengths cannot be measured without an ellipsoid. '
+                'Set one in Project Properties > General.')
+            bar.pushWarning('FiberQ', safe_format(
                 self.tr(src), src, layers=', '.join(sorted(set(plan.skipped_layers)))))
 
+        if plan.failed_layers:
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Could not check {layers}.')
+            bar.pushWarning('FiberQ', safe_format(
+                self.tr(src), src,
+                layers=', '.join(sorted(set(plan.failed_layers))[:3])))
+
         if not plan:
-            bar.pushSuccess('FiberQ', self.tr('All stored lengths already match the geometry.'))
+            # Only a clean bill of health when something was actually measured;
+            # "everything matches" after skipping every layer is a lie.
+            if plan.skipped_layers or plan.failed_layers:
+                bar.pushInfo('FiberQ', self.tr(
+                    'No lengths were checked. See the warnings above.'))
+            elif not plan.layers_seen:
+                bar.pushInfo('FiberQ', self.tr(
+                    'No FiberQ layers with stored lengths in this project.'))
+            else:
+                bar.pushSuccess('FiberQ', self.tr(
+                    'All stored lengths already match the geometry.'))
             return
 
         lines = [
@@ -473,7 +492,7 @@ class FiberQPlugin:
 
         biggest = plan.largest_change()
         if biggest is not None:
-            src = 'Largest change: {field} {old} -> {new} on {layer}'
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Largest change: {field} {old} -> {new} on {layer}')
             lines += ['', safe_format(
                 self.tr(src), src, field=biggest.field_name,
                 old=f'{biggest.old_value:.2f}', new=f'{biggest.new_value:.2f}',
@@ -496,11 +515,18 @@ class FiberQPlugin:
         outcome = apply_recalculation(plan)
 
         if outcome.applied:
-            src = 'Recalculated lengths on {count} feature(s).'
-            bar.pushSuccess('FiberQ', safe_format(
-                self.tr(src), src, count=outcome.feature_count))
+            bar.pushSuccess('FiberQ', self.tr(
+                'Recalculated lengths on %n feature(s).', '', outcome.feature_count))
+        if outcome.blocked_by_edits:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                '{layers} left unchanged: save or discard the open edits there, '
+                'then run this again.')
+            bar.pushWarning('FiberQ', safe_format(
+                self.tr(src), src,
+                layers=', '.join(sorted(set(outcome.blocked_by_edits)))))
         if outcome.failures:
-            src = 'Some layers could not be updated: {details}'
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Some layers could not be updated: {details}')
             bar.pushWarning('FiberQ', safe_format(
                 self.tr(src), src, details='; '.join(outcome.failures[:3])))
 

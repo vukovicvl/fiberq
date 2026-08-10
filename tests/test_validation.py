@@ -161,9 +161,12 @@ def test_clean_project_has_no_issues():
     assert result.feature_counts.get("Underground cables") == 1
 
 
-def test_empty_project_runs_clean():
+def test_empty_project_says_nothing_was_checked():
+    """Silence here would read as a clean bill of health for a project that was
+    never validated at all -- every rule iterates layers, and there are none."""
     result = vm.run_validation(QgsProject())
-    assert result.issues == []
+    assert [i.rule_id for i in result.issues] == ["C2"]
+    assert result.issues[0].severity == vm.Severity.WARNING
     assert result.ran_rules  # every rule still ran (over zero layers)
     assert not result.rule_errors
 

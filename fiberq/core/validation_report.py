@@ -111,9 +111,11 @@ def result_to_dict(result: ValidationResult) -> Dict[str, Any]:
             "by_category": result.counts_by_category(),
             "by_rule": dict(sorted(by_rule.items())),
             "by_layer": dict(sorted(by_layer.items())),
-            # The one judgement the report makes: errors mean the project is not
-            # fit to hand over. Warnings and info do not.
-            "passed": counts["error"] == 0,
+            # The one judgement the report makes: errors mean the project is
+            # not fit to hand over. Warnings and info do not -- but a rule that
+            # crashed means coverage was incomplete, and "passed" must not paper
+            # over a check that never ran.
+            "passed": counts["error"] == 0 and not result.rule_errors,
         },
         "issues": issues,
     }

@@ -219,12 +219,12 @@
 <context>
     <name>FiberQ</name>
     <message>
-        <location filename="../main_plugin.py" line="3963"/>
+        <location filename="../main_plugin.py" line="3989"/>
         <source>FiberQ – Preview Map</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3964"/>
+        <location filename="../main_plugin.py" line="3990"/>
         <source>Error opening the preview map:
 {details}</source>
         <translation type="unfinished"></translation>
@@ -293,8 +293,53 @@
 <context>
     <name>FiberQPlugin</name>
     <message>
-        <location filename="../main_plugin.py" line="1268"/>
-        <location filename="../main_plugin.py" line="1252"/>
+        <location filename="../main_plugin.py" line="360"/>
+        <source>Validation could not run: {details}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="426"/>
+        <source>Could not save the report: {details}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="431"/>
+        <source>Saved {format} report to {path}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="453"/>
+        <source>Could not check lengths: {details}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="458"/>
+        <source>Skipped {layers}: lengths cannot be measured without an ellipsoid. Set one in Project Properties &gt; General.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="466"/>
+        <source>Could not check {layers}.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="495"/>
+        <source>Largest change: {field} {old} -&gt; {new} on {layer}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="521"/>
+        <source>{layers} left unchanged: save or discard the open edits there, then run this again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="529"/>
+        <source>Some layers could not be updated: {details}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="1294"/>
+        <location filename="../main_plugin.py" line="1278"/>
         <location filename="../main_plugin.py" line="230"/>
         <location filename="../main_plugin.py" line="214"/>
         <source>Interface language</source>
@@ -314,15 +359,15 @@ Language will change when QGIS restarts.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3758"/>
-        <location filename="../main_plugin.py" line="2383"/>
+        <location filename="../main_plugin.py" line="3784"/>
+        <location filename="../main_plugin.py" line="2409"/>
+        <location filename="../main_plugin.py" line="2288"/>
         <location filename="../main_plugin.py" line="2262"/>
-        <location filename="../main_plugin.py" line="2236"/>
-        <location filename="../main_plugin.py" line="2218"/>
-        <location filename="../main_plugin.py" line="2127"/>
-        <location filename="../main_plugin.py" line="1046"/>
-        <location filename="../main_plugin.py" line="901"/>
-        <location filename="../main_plugin.py" line="756"/>
+        <location filename="../main_plugin.py" line="2244"/>
+        <location filename="../main_plugin.py" line="2153"/>
+        <location filename="../main_plugin.py" line="1072"/>
+        <location filename="../main_plugin.py" line="927"/>
+        <location filename="../main_plugin.py" line="782"/>
         <location filename="../main_plugin.py" line="248"/>
         <source>Error: {details}</source>
         <translation type="unfinished"></translation>
@@ -377,12 +422,22 @@ Language will change when QGIS restarts.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="463"/>
+        <location filename="../main_plugin.py" line="475"/>
+        <source>No lengths were checked. See the warnings above.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="478"/>
+        <source>No FiberQ layers with stored lengths in this project.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="481"/>
         <source>All stored lengths already match the geometry.</source>
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <location filename="../main_plugin.py" line="467"/>
+        <location filename="../main_plugin.py" line="486"/>
         <source>%n feature(s) will have their stored length rewritten from the drawn geometry.</source>
         <translation type="unfinished">
             <numerusform></numerusform>
@@ -390,68 +445,76 @@ Language will change when QGIS restarts.</source>
         </translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="484"/>
+        <location filename="../main_plugin.py" line="503"/>
         <source>Recalculate lengths</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="485"/>
+        <location filename="../main_plugin.py" line="504"/>
         <source>Recalculate stored lengths?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="487"/>
+        <location filename="../main_plugin.py" line="506"/>
         <source>Lengths are measured on the project ellipsoid, the same way the QGIS measure tool does. Slack values are read but never changed.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message numerus="yes">
+        <location filename="../main_plugin.py" line="518"/>
+        <source>Recalculated lengths on %n feature(s).</source>
+        <translation type="unfinished">
+            <numerusform></numerusform>
+            <numerusform></numerusform>
+        </translation>
+    </message>
     <message>
-        <location filename="../main_plugin.py" line="523"/>
+        <location filename="../main_plugin.py" line="549"/>
         <source>This issue is not tied to a map location.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1361"/>
-        <location filename="../main_plugin.py" line="755"/>
+        <location filename="../main_plugin.py" line="1387"/>
+        <location filename="../main_plugin.py" line="781"/>
         <source>Publish to PostGIS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="818"/>
+        <location filename="../main_plugin.py" line="844"/>
         <source>Health check</source>
         <extracomment>Dialog title. &quot;Health check&quot; = a validation pass over the QGIS PROJECT&apos;s data (are the Route/Poles/Manholes layers present, of the right geometry type, and internally consistent). It is a data-integrity check, NOT a measurement of optical/network health and not hardware diagnostics.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="819"/>
+        <location filename="../main_plugin.py" line="845"/>
         <source>Error while running detailed route check:
 {details}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1931"/>
-        <location filename="../main_plugin.py" line="900"/>
+        <location filename="../main_plugin.py" line="1957"/>
+        <location filename="../main_plugin.py" line="926"/>
         <source>Change element type</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3671"/>
-        <location filename="../main_plugin.py" line="999"/>
-        <location filename="../main_plugin.py" line="946"/>
+        <location filename="../main_plugin.py" line="3697"/>
+        <location filename="../main_plugin.py" line="1025"/>
+        <location filename="../main_plugin.py" line="972"/>
         <source>Select one or more elements and try again.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="953"/>
+        <location filename="../main_plugin.py" line="979"/>
         <source>Choose image</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="955"/>
+        <location filename="../main_plugin.py" line="981"/>
         <source>Images (*.jpg *.jpeg *.png *.gif);;All files (*.*)</source>
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <location filename="../main_plugin.py" line="968"/>
+        <location filename="../main_plugin.py" line="994"/>
         <source>Image linked to %n element(s).</source>
         <extracomment>Confirmation after attaching one photo to the selected map elements. %n is how many elements now point at that image; Qt substitutes it, so keep %n and do not turn it into {count}.</extracomment>
         <translation type="unfinished">
@@ -460,17 +523,17 @@ Language will change when QGIS restarts.</source>
         </translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="985"/>
+        <location filename="../main_plugin.py" line="1011"/>
         <source>Image</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="986"/>
+        <location filename="../main_plugin.py" line="1012"/>
         <source>Click on an element to open its image (ESC to exit).</source>
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <location filename="../main_plugin.py" line="1008"/>
+        <location filename="../main_plugin.py" line="1034"/>
         <source>Image link removed for %n element(s).</source>
         <extracomment>Confirmation after detaching the photo from the selected map elements. Only the link is cleared - the image file itself is not deleted. %n is how many elements were unlinked; keep %n.</extracomment>
         <translation type="unfinished">
@@ -479,428 +542,428 @@ Language will change when QGIS restarts.</source>
         </translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1034"/>
+        <location filename="../main_plugin.py" line="1060"/>
         <source>Cutting</source>
         <extracomment>Message-bar heading for the geometry-splitting tool. &quot;Cutting&quot; = the act of splitting a line feature in two, NOT a cable fault/outage. Verbal noun; keep it short (banner title). The body text below belongs to the same tool.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1035"/>
+        <location filename="../main_plugin.py" line="1061"/>
         <source>Tool activated. Move mouse over line (red cross), left click to cut, right/ESC exit.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1045"/>
+        <location filename="../main_plugin.py" line="1071"/>
         <source>Infrastructure cutting</source>
         <extracomment>Error-dialog title for the geometry-splitting tool. &quot;cutting&quot; = splitting a line feature at a clicked point, NOT a cable fault. Same tool as the &quot;Cut infrastructure&quot; button.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1090"/>
+        <location filename="../main_plugin.py" line="1116"/>
         <source>{name} – About</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1134"/>
+        <location filename="../main_plugin.py" line="1160"/>
         <source>About dialog error: {details}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1294"/>
+        <location filename="../main_plugin.py" line="1320"/>
         <source>Undo (FiberQ)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1296"/>
+        <location filename="../main_plugin.py" line="1322"/>
         <source>Undo last FiberQ action (Ctrl+Shift+Z)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1304"/>
+        <location filename="../main_plugin.py" line="1330"/>
         <source>Redo (FiberQ)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1306"/>
+        <location filename="../main_plugin.py" line="1332"/>
         <source>Redo last undone FiberQ action (Ctrl+Shift+Y)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1329"/>
+        <location filename="../main_plugin.py" line="1355"/>
         <source>Help / About</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1330"/>
+        <location filename="../main_plugin.py" line="1356"/>
         <source>Help and information about FiberQ</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1367"/>
+        <location filename="../main_plugin.py" line="1393"/>
         <source>Publish the active (or selected) layer to PostGIS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1409"/>
+        <location filename="../main_plugin.py" line="1435"/>
         <source>Terminal slack (shortcut)</source>
         <extracomment>Label of a HIDDEN action that only exists to bind the &quot;R&quot; key; it shows up in the QGIS keyboard-shortcuts list, not on a toolbar. &quot;Slack&quot; = spare cable length coiled at a point for later re-splicing (fr &quot;love&quot;/&quot;reserve&quot;); TERMINAL slack is the type that sits at a cable END - keep it distinct from &quot;mid span&quot; slack. &quot;(shortcut)&quot; refers to the key binding, not to a Windows shortcut file.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1420"/>
+        <location filename="../main_plugin.py" line="1446"/>
         <source>Optical schematic view</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1427"/>
+        <location filename="../main_plugin.py" line="1453"/>
         <source>Import points</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3390"/>
-        <location filename="../main_plugin.py" line="3366"/>
-        <location filename="../main_plugin.py" line="3346"/>
-        <location filename="../main_plugin.py" line="3297"/>
-        <location filename="../main_plugin.py" line="3213"/>
-        <location filename="../main_plugin.py" line="3202"/>
-        <location filename="../main_plugin.py" line="1438"/>
+        <location filename="../main_plugin.py" line="3416"/>
+        <location filename="../main_plugin.py" line="3392"/>
+        <location filename="../main_plugin.py" line="3372"/>
+        <location filename="../main_plugin.py" line="3323"/>
+        <location filename="../main_plugin.py" line="3239"/>
+        <location filename="../main_plugin.py" line="3228"/>
+        <location filename="../main_plugin.py" line="1464"/>
         <source>Export</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1443"/>
+        <location filename="../main_plugin.py" line="1469"/>
         <source>Export selected...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1447"/>
+        <location filename="../main_plugin.py" line="1473"/>
         <source>Export selected features of the active layer to GPX / KML / KMZ / GeoPackage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1457"/>
+        <location filename="../main_plugin.py" line="1483"/>
         <source>Export all...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1461"/>
+        <location filename="../main_plugin.py" line="1487"/>
         <source>Export all features of the active layer to GPX / KML / KMZ / GeoPackage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1473"/>
+        <location filename="../main_plugin.py" line="1499"/>
         <source>Export active layer</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1493"/>
+        <location filename="../main_plugin.py" line="1519"/>
         <source>Hide locator</source>
         <extracomment>Toolbar button that removes the address marker the Locator dropped on the map. &quot;Hide&quot; is a VERB (imperative); &quot;locator&quot; is the same address-finder feature as the &quot;Locator&quot; button above.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1505"/>
+        <location filename="../main_plugin.py" line="1531"/>
         <source>Relations</source>
         <extracomment>Toolbar button opening &quot;Optical relations management&quot;. A FiberQ &quot;relation&quot; is a named end-to-end optical link (a logical route between two sites) that cables get assigned to - telecom domain sense, plural NOUN. NOT QGIS layer relations (foreign keys between tables), and not &quot;relationship&quot; in the general sense.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1516"/>
+        <location filename="../main_plugin.py" line="1542"/>
         <source>List of latent elements</source>
         <extracomment>Toolbar button opening a table of &quot;latent&quot; elements. In FiberQ a latent element is a passive optical element (joint closure, ODF, OTB, termination box) that sits ON a cable&apos;s path at a recorded distance along it, between the cable&apos;s two endpoints - recorded as data, not drawn as a separate map feature. &quot;latent&quot; = intermediate/pass-through, NOT &quot;faulty&quot;, &quot;hidden bug&quot; or &quot;dormant&quot;.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1539"/>
+        <location filename="../main_plugin.py" line="1565"/>
         <source>Cut infrastructure</source>
         <extracomment>Toolbar button. &quot;Cut&quot; is a VERB, imperative, in the GEOMETRY -EDITING sense: the tool splits one line feature into two at the point you click (see addons/infrastructure_cut.py, _split_feature_at_point). It is NOT a cable fault/break - French &quot;decouper&quot;/&quot;scinder&quot;, never &quot;coupure&quot;. The separate fault tool is &quot;Fiber break&quot;.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1580"/>
+        <location filename="../main_plugin.py" line="1606"/>
         <source>Fiber break</source>
         <extracomment>Toolbar button. NOUN: a fault - the point where a fibre is broken or severed (fr &quot;coupure&quot;/&quot;rupture&quot;). This IS the fault concept, unlike &quot;Cut infrastructure&quot; above, which is geometry editing. The tool marks a break location on the map. &quot;break&quot; is not a pause and not a rest.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1594"/>
+        <location filename="../main_plugin.py" line="1620"/>
         <source>Color catalog</source>
         <extracomment>Toolbar entry opening the FIBRE COLOUR CODE: the standard sequence of colours identifying each tube and each fibre within a cable (e.g. the TIA-598 or IEC ordering). This is industry cable terminology - it is NOT a QGIS symbology palette or a map-styling colour picker.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1605"/>
+        <location filename="../main_plugin.py" line="1631"/>
         <source>Save all layers to GeoPackage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1606"/>
+        <location filename="../main_plugin.py" line="1632"/>
         <source>Export all vector layers (including Temporary scratch) to a single .gpkg and redirect the project to it</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1626"/>
+        <location filename="../main_plugin.py" line="1652"/>
         <source>Auto save to GeoPackage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1628"/>
+        <location filename="../main_plugin.py" line="1654"/>
         <source>When enabled: every new or memory layer is automatically written to the selected .gpkg and redirected to it</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1646"/>
+        <location filename="../main_plugin.py" line="1672"/>
         <source>Preview Map</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1647"/>
+        <location filename="../main_plugin.py" line="1673"/>
         <source>Open the FiberQ Preview Map (PostGIS connection from config.ini)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1661"/>
+        <location filename="../main_plugin.py" line="1687"/>
         <source>Create Service Area</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1662"/>
+        <location filename="../main_plugin.py" line="1688"/>
         <source>Create Service Area from selection (buffer around selected cables/elements)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1677"/>
+        <location filename="../main_plugin.py" line="1703"/>
         <source>Draw Service Area Manually</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1678"/>
+        <location filename="../main_plugin.py" line="1704"/>
         <source>Manual Service Area drawing (like Google Earth) and entry into Service Area layer</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1704"/>
+        <location filename="../main_plugin.py" line="1730"/>
         <source>Branch info</source>
         <extracomment>Toolbar button. &quot;Branch&quot; is a NOUN in the cable-network sense - a branching/junction point where cables split off (French &quot;derivation&quot;). Click a cable to see how many cables, of which types and capacities, meet at that point. Not a tree branch, not a company branch office, not a version-control branch.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1712"/>
+        <location filename="../main_plugin.py" line="1738"/>
         <source>Click on cable to show number of cables/types/capacities at that point</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1732"/>
-        <location filename="../main_plugin.py" line="1729"/>
+        <location filename="../main_plugin.py" line="1758"/>
+        <location filename="../main_plugin.py" line="1755"/>
         <source>Show shortcuts</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1764"/>
+        <location filename="../main_plugin.py" line="1790"/>
         <source>BOM report (XLSX/CSV)</source>
         <extracomment>Toolbar button. &quot;BOM&quot; = Bill of Materials, the costed list of cables/closures/poles a design consumes (fr &quot;nomenclature&quot; / &quot;liste de materiel&quot;). It is NOT the Unicode byte-order mark. XLSX/CSV are file formats and stay untranslated. Expand or keep &quot;BOM&quot; per the convention of your language&apos;s telecom/engineering usage.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1823"/>
+        <location filename="../main_plugin.py" line="1849"/>
         <source>Check (health check)</source>
         <extracomment>Toolbar action running the project data-integrity check (are the expected FiberQ layers present, right geometry type, routes consistent). Imperative verb + the feature&apos;s name in brackets; it is NOT optical/network health. Same feature as the &quot;Health check&quot; dialog title - keep the bracketed term identical to that one.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1852"/>
+        <location filename="../main_plugin.py" line="1878"/>
         <source>Validate project</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1879"/>
+        <location filename="../main_plugin.py" line="1905"/>
         <source>Recalculate lengths…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1880"/>
+        <location filename="../main_plugin.py" line="1906"/>
         <source>Rewrite stored lengths that disagree with the drawn geometry</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1909"/>
+        <location filename="../main_plugin.py" line="1935"/>
         <source>Settings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1932"/>
+        <location filename="../main_plugin.py" line="1958"/>
         <source>Smart selection + change element type (visual style)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1951"/>
+        <location filename="../main_plugin.py" line="1977"/>
         <source>Move elements</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1952"/>
+        <location filename="../main_plugin.py" line="1978"/>
         <source>Move elements on the map (click-move-click)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1956"/>
+        <location filename="../main_plugin.py" line="1982"/>
         <source>Import picture to element</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1960"/>
+        <location filename="../main_plugin.py" line="1986"/>
         <source>Link a .jpg/.png picture to selected element(s)</source>
         <extracomment>Toolbar tooltip. Static text built once at startup, so there is no count to plug in: &quot;(s)&quot; here just means &quot;one or more&quot;. Render it with whatever generic/plural form reads naturally.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1964"/>
+        <location filename="../main_plugin.py" line="1990"/>
         <source>Clear picture from element</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1968"/>
+        <location filename="../main_plugin.py" line="1994"/>
         <source>Unlink picture from selected element(s)</source>
         <extracomment>Toolbar tooltip. &quot;Unlink&quot; = detach the picture reference from the element; the image file on disk is NOT deleted. Static text, so &quot;(s)&quot; just means &quot;one or more&quot; - no count is substituted.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2126"/>
+        <location filename="../main_plugin.py" line="2152"/>
         <source>Placing elements</source>
         <extracomment>Error-dialog title. &quot;Placing elements&quot; is FiberQ&apos;s name for the CATEGORY of passive optical elements you drop on the map (ODF, TB, OTB, TO, patch panel, joint closures) - it is the layer-group label, not the -ing action of placing. Treat as a noun phrase.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2150"/>
+        <location filename="../main_plugin.py" line="2176"/>
         <source>Error activating: {details}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2217"/>
-        <location filename="../main_plugin.py" line="2212"/>
+        <location filename="../main_plugin.py" line="2243"/>
+        <location filename="../main_plugin.py" line="2238"/>
         <source>Smart selection</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2213"/>
+        <location filename="../main_plugin.py" line="2239"/>
         <source>Click on the elements to select/deselect them. Selections on other layers are not touched.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2228"/>
+        <location filename="../main_plugin.py" line="2254"/>
         <source>Click on cable to show number of cables/types/capacities at that point (right click or ESC to exit).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2261"/>
+        <location filename="../main_plugin.py" line="2287"/>
         <source>Optical schematic</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2271"/>
+        <location filename="../main_plugin.py" line="2297"/>
         <source>Error opening dialog: {details}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2875"/>
-        <location filename="../main_plugin.py" line="2870"/>
+        <location filename="../main_plugin.py" line="2901"/>
+        <location filename="../main_plugin.py" line="2896"/>
         <source>Delete</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2871"/>
+        <location filename="../main_plugin.py" line="2897"/>
         <source>No selected features to delete.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2876"/>
+        <location filename="../main_plugin.py" line="2902"/>
         <source>Deleted {count} selected features from all layers.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2942"/>
+        <location filename="../main_plugin.py" line="2968"/>
         <source>Shortcuts</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3008"/>
+        <location filename="../main_plugin.py" line="3034"/>
         <source>Choose a file with points (KML/KMZ/DWG/Shape/GPX)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3010"/>
+        <location filename="../main_plugin.py" line="3036"/>
         <source>GIS files (*.kml *.kmz *.shp *.dwg *.gpx);;All files (*)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3018"/>
+        <location filename="../main_plugin.py" line="3044"/>
         <source>Unable to load or invalid file!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3023"/>
+        <location filename="../main_plugin.py" line="3049"/>
         <source>The selected file does not contain points!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3094"/>
-        <location filename="../main_plugin.py" line="3090"/>
+        <location filename="../main_plugin.py" line="3120"/>
+        <location filename="../main_plugin.py" line="3116"/>
         <source>Unable to create or find the Poles layer!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3129"/>
+        <location filename="../main_plugin.py" line="3155"/>
         <source>Unable to find the target layer!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3191"/>
+        <location filename="../main_plugin.py" line="3217"/>
         <source>Imported {count} points into layer &apos;{layer}&apos;!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3203"/>
+        <location filename="../main_plugin.py" line="3229"/>
         <source>Please select an active vector layer before exporting.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3214"/>
+        <location filename="../main_plugin.py" line="3240"/>
         <source>There are no selected features on the active layer.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3227"/>
+        <location filename="../main_plugin.py" line="3253"/>
         <source>Export format</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3228"/>
+        <location filename="../main_plugin.py" line="3254"/>
         <source>Select output format:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3256"/>
+        <location filename="../main_plugin.py" line="3282"/>
         <source>Export layer</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3298"/>
+        <location filename="../main_plugin.py" line="3324"/>
         <source>Unknown driver for extension &apos;{ext}&apos;.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3347"/>
+        <location filename="../main_plugin.py" line="3373"/>
         <source>Error while exporting:
 {details}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3367"/>
+        <location filename="../main_plugin.py" line="3393"/>
         <source>Export failed: {details}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3380"/>
+        <location filename="../main_plugin.py" line="3406"/>
         <source>Successfully exported the selected features of layer &apos;{layer}&apos;
 to:
 {path}</source>
@@ -908,7 +971,7 @@ to:
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3386"/>
+        <location filename="../main_plugin.py" line="3412"/>
         <source>Successfully exported all features of layer &apos;{layer}&apos;
 to:
 {path}</source>
@@ -916,33 +979,33 @@ to:
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3467"/>
+        <location filename="../main_plugin.py" line="3493"/>
         <source>Route correction</source>
         <extracomment>Dialog title for the results of the route-consistency check (e.g. route lines whose ends do not meet a pole). &quot;Route&quot; = the physical cable route/trench on the map, not a road and not a network route. &quot;Correction&quot; is a NOUN: the fixing-up of those defects.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3468"/>
+        <location filename="../main_plugin.py" line="3494"/>
         <source>No errors found!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3482"/>
+        <location filename="../main_plugin.py" line="3508"/>
         <source>Layer &apos;Poles&apos; not found!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3522"/>
+        <location filename="../main_plugin.py" line="3548"/>
         <source>Route layer &apos;Route&apos; not found!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3532"/>
+        <location filename="../main_plugin.py" line="3558"/>
         <source>Route has been automatically attached to a pole.</source>
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <location filename="../main_plugin.py" line="3692"/>
+        <location filename="../main_plugin.py" line="3718"/>
         <source>Drawing link removed for %n element(s).</source>
         <extracomment>Confirmation after detaching a drawing (a CAD/PDF document attached to an element) from the selected map elements. Only the link is cleared - the drawing file is not deleted. %n is how many elements were actually unlinked; keep %n.</extracomment>
         <translation type="unfinished">
@@ -951,17 +1014,17 @@ to:
         </translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3753"/>
+        <location filename="../main_plugin.py" line="3779"/>
         <source>Placing manhole</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3754"/>
+        <location filename="../main_plugin.py" line="3780"/>
         <source>Click on the map to place the manhole (ESC to exit).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3757"/>
+        <location filename="../main_plugin.py" line="3783"/>
         <source>Manhole</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1184,6 +1247,11 @@ to:
 <context>
     <name>ValidationPanel</name>
     <message>
+        <location filename="../ui/validation_panel.py" line="289"/>
+        <source>{summary} — showing {shown} of {total}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../ui/validation_panel.py" line="96"/>
         <source>FiberQ validation</source>
         <translation type="unfinished"></translation>
@@ -1322,145 +1390,145 @@ to:
 <context>
     <name>ValidationReport</name>
     <message>
-        <location filename="../core/validation_report.py" line="258"/>
+        <location filename="../core/validation_report.py" line="260"/>
         <source>FiberQ validation report</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="259"/>
+        <location filename="../core/validation_report.py" line="261"/>
         <source>Untitled project</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="264"/>
+        <location filename="../core/validation_report.py" line="266"/>
         <source>No errors — project is structurally sound</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="266"/>
+        <location filename="../core/validation_report.py" line="268"/>
         <source>Errors found — not ready to hand over</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="279"/>
+        <location filename="../core/validation_report.py" line="281"/>
         <source>Errors</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="280"/>
+        <location filename="../core/validation_report.py" line="282"/>
         <source>Warnings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="323"/>
-        <location filename="../core/validation_report.py" line="281"/>
+        <location filename="../core/validation_report.py" line="325"/>
+        <location filename="../core/validation_report.py" line="283"/>
         <source>Info</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="282"/>
+        <location filename="../core/validation_report.py" line="284"/>
         <source>Total</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="288"/>
+        <location filename="../core/validation_report.py" line="290"/>
         <source>Coordinate system</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="289"/>
+        <location filename="../core/validation_report.py" line="291"/>
         <source>Schema version</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="290"/>
+        <location filename="../core/validation_report.py" line="292"/>
         <source>Plugin version</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="291"/>
+        <location filename="../core/validation_report.py" line="293"/>
         <source>Run at</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="292"/>
+        <location filename="../core/validation_report.py" line="294"/>
         <source>Rules run</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="295"/>
+        <location filename="../core/validation_report.py" line="297"/>
         <source>Rules skipped</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="296"/>
+        <location filename="../core/validation_report.py" line="298"/>
         <source>Run</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="306"/>
+        <location filename="../core/validation_report.py" line="308"/>
         <source>Rules that failed to run</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="346"/>
-        <location filename="../core/validation_report.py" line="312"/>
+        <location filename="../core/validation_report.py" line="348"/>
+        <location filename="../core/validation_report.py" line="314"/>
         <source>Issues</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="314"/>
+        <location filename="../core/validation_report.py" line="316"/>
         <source>No issues found.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="317"/>
+        <location filename="../core/validation_report.py" line="319"/>
         <source>Severity</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="317"/>
+        <location filename="../core/validation_report.py" line="319"/>
         <source>Rule</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="345"/>
-        <location filename="../core/validation_report.py" line="317"/>
+        <location filename="../core/validation_report.py" line="347"/>
+        <location filename="../core/validation_report.py" line="319"/>
         <source>Layer</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="318"/>
+        <location filename="../core/validation_report.py" line="320"/>
         <source>Feature</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="318"/>
+        <location filename="../core/validation_report.py" line="320"/>
         <source>Message</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="322"/>
+        <location filename="../core/validation_report.py" line="324"/>
         <source>Error</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="322"/>
+        <location filename="../core/validation_report.py" line="324"/>
         <source>Warning</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="343"/>
+        <location filename="../core/validation_report.py" line="345"/>
         <source>Issues by layer</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="356"/>
+        <location filename="../core/validation_report.py" line="358"/>
         <source>Generated by the FiberQ QGIS plugin.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_report.py" line="358"/>
+        <location filename="../core/validation_report.py" line="360"/>
         <source>Machine-readable JSON and CSV of the same run are available from the same export menu.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1518,137 +1586,162 @@ to:
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="675"/>
+        <location filename="../core/validation_rules.py" line="668"/>
+        <source>No FiberQ layers found in this project, so nothing was checked.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/validation_rules.py" line="674"/>
+        <source>Open a FiberQ project, or create the layers with the FiberQ toolbar.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/validation_rules.py" line="697"/>
         <source>Required field(s) missing or empty: {fields}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="715"/>
+        <location filename="../core/validation_rules.py" line="737"/>
         <source>Field {field}: value {value} is not one of the allowed values ({allowed})</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="783"/>
+        <location filename="../core/validation_rules.py" line="805"/>
         <source>Field {field}: {value} is out of range (expected {bound})</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="874"/>
+        <location filename="../core/validation_rules.py" line="888"/>
         <source>Length checks skipped: they need either a projected CRS or a project ellipsoid, but this layer uses {crs} with none set</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="896"/>
+        <location filename="../core/validation_rules.py" line="913"/>
         <source>Stored {field} ({stored}) does not match the drawn geometry ({computed})</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="919"/>
+        <location filename="../core/validation_rules.py" line="936"/>
         <source>total_len_m ({total}) should equal duzina_m + slack_m ({expected})</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="948"/>
+        <location filename="../core/validation_rules.py" line="965"/>
         <source>duzina_km ({km}) does not match duzina/1000 ({expected})</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="979"/>
-        <source>Layer uses a geographic CRS ({crs}) and the project has no ellipsoid set, so lengths cannot be checked</source>
+        <location filename="../core/validation_rules.py" line="998"/>
+        <source>Layer uses a geographic CRS ({crs}), where the connectivity tolerance is measured in degrees rather than metres</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="990"/>
+        <location filename="../core/validation_rules.py" line="1006"/>
+        <source>Reproject to a national grid, or lower the tolerance to a fraction of a degree.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/validation_rules.py" line="1015"/>
+        <source>No ellipsoid could be resolved for {crs}, so lengths cannot be checked</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/validation_rules.py" line="1027"/>
         <source>FiberQ layers do not all share one CRS: {list}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1022"/>
+        <location filename="../core/validation_rules.py" line="1059"/>
         <source>Feature has no geometry</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1035"/>
+        <location filename="../core/validation_rules.py" line="1072"/>
         <source>Line has zero length</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1039"/>
+        <location filename="../core/validation_rules.py" line="1076"/>
         <source>Line crosses itself</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1044"/>
+        <location filename="../core/validation_rules.py" line="1081"/>
         <source>Polygon has zero area</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1046"/>
+        <location filename="../core/validation_rules.py" line="1083"/>
         <source>Polygon boundary is self-intersecting</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1070"/>
+        <location filename="../core/validation_rules.py" line="1107"/>
         <source>Cable endpoints are connected</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1078"/>
+        <location filename="../core/validation_rules.py" line="1115"/>
         <source>Cable endpoints are not near-misses</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1086"/>
+        <location filename="../core/validation_rules.py" line="1123"/>
         <source>Elements are attached to the network</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1094"/>
+        <location filename="../core/validation_rules.py" line="1131"/>
         <source>Optical slack references an existing cable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1102"/>
+        <location filename="../core/validation_rules.py" line="1139"/>
         <source>Fiber break references an existing cable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1110"/>
+        <location filename="../core/validation_rules.py" line="1147"/>
         <source>Cable references are spatially coherent</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1118"/>
+        <location filename="../core/validation_rules.py" line="1155"/>
         <source>Feature identity present and unique</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1125"/>
+        <location filename="../core/validation_rules.py" line="1162"/>
         <source>Required attributes present</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1132"/>
+        <location filename="../core/validation_rules.py" line="1169"/>
+        <source>Project contains FiberQ layers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/validation_rules.py" line="1176"/>
         <source>Attribute values within allowed domain</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1139"/>
+        <location filename="../core/validation_rules.py" line="1183"/>
         <source>Numeric attributes within plausible ranges</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1146"/>
+        <location filename="../core/validation_rules.py" line="1190"/>
         <source>Stored lengths agree with geometry</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1154"/>
+        <location filename="../core/validation_rules.py" line="1198"/>
         <source>Coordinate reference systems are consistent</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1161"/>
+        <location filename="../core/validation_rules.py" line="1205"/>
         <source>Geometries are present and well formed</source>
         <translation type="unfinished"></translation>
     </message>

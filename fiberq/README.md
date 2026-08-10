@@ -4,7 +4,7 @@ A QGIS plugin for fiber optic network design and documentation.
 
 ## What's New in v1.4.0 — Project Validation
 
-**Validate project** runs thirteen checks over the whole design and lists what it
+**Validate project** runs fourteen checks over the whole design and lists what it
 finds in a dockable panel — filter by severity, layer or rule, and click any issue
 to jump straight to it on the map.
 

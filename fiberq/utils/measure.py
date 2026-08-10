@@ -30,12 +30,42 @@ def _project(project=None):
     return project if project is not None else QgsProject.instance()
 
 
+def _resolve_crs(crs, project):
+    if crs is None or not crs.isValid():
+        return _project(project).crs()
+    return crs
+
+
+def resolve_ellipsoid(crs=None, project=None) -> str:
+    """The ellipsoid to measure on: the project's if set, else the CRS's own.
+
+    QGIS leaves a brand-new project on ``'NONE'`` -- and keeps it there even after
+    the project CRS is set. Taking that at face value turns every measurement back
+    into map units, which in Web Mercator overstates distance by 1/cos(latitude):
+    1.37x at Serbian latitudes. That is the very error this module exists to
+    remove, so an unconfigured project falls back to the ellipsoid its own CRS
+    names (EPSG:3857 -> EPSG:7030), which is what the QGIS measure tool shows and
+    is right wherever the project has simply never been configured.
+
+    Returns ``''`` when neither is available; the caller then measures in map
+    units, and :func:`measures_metres` reports that honestly.
+    """
+    prj = _project(project)
+    ellipsoid = (prj.ellipsoid() or "").strip()
+    if ellipsoid and ellipsoid.upper() != "NONE":
+        return ellipsoid
+    try:
+        return (_resolve_crs(crs, prj).ellipsoidAcronym() or "").strip()
+    except Exception as e:
+        logger.debug(f"Could not read the ellipsoid from the CRS: {e}")
+        return ""
+
+
 def distance_area(crs=None, project=None):
     """A :class:`QgsDistanceArea` configured from the project's measurement settings."""
     prj = _project(project)
-    if crs is None or not crs.isValid():
-        crs = prj.crs()
-    ellipsoid = prj.ellipsoid() or ""
+    crs = _resolve_crs(crs, prj)
+    ellipsoid = resolve_ellipsoid(crs, prj)
     key = (crs.authid() or crs.toWkt(), ellipsoid)
 
     cached = _CACHE.get(key)
@@ -53,29 +83,25 @@ def distance_area(crs=None, project=None):
     return cached
 
 
-def has_ellipsoid(project=None) -> bool:
-    """Whether the project has measurement on an ellipsoid switched on."""
-    ellipsoid = (_project(project).ellipsoid() or "").strip().upper()
-    return bool(ellipsoid) and ellipsoid != "NONE"
-
-
 def measures_metres(layer=None, crs=None, project=None) -> bool:
-    """Whether :func:`ground_length` will return metres rather than degrees.
+    """Whether :func:`ground_length` will really return metres.
 
-    With an ellipsoid configured, QgsDistanceArea returns metres from any CRS,
-    geographic included. Without one it falls back to planar maths, which is only
-    meaningful where the CRS itself is linear.
+    Asks the configured measurer rather than inferring from the CRS. "Projected,
+    therefore linear, therefore metres" is the trap: a projected CRS with no
+    usable ellipsoid measures in *map* units, and Web Mercator map units are not
+    metres. ``willUseEllipsoid()`` is the only thing that knows which mode the
+    measurement will actually run in.
     """
-    if has_ellipsoid(project):
-        return True
     if crs is None and layer is not None:
         try:
             crs = layer.crs()
         except Exception:
             crs = None
-    if crs is None:
-        crs = _project(project).crs()
-    return bool(crs and crs.isValid() and not crs.isGeographic())
+    try:
+        return bool(distance_area(crs, project).willUseEllipsoid())
+    except Exception as e:
+        logger.debug(f"Could not determine the measurement mode: {e}")
+        return False
 
 
 def ground_length(geom, layer=None, crs=None, project=None) -> float:

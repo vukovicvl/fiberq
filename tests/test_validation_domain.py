@@ -202,17 +202,21 @@ def test_d3_checks_route_kilometres_against_metres(qgis_app):
     assert km[0].details["expected"] == 1.0
 
 
-def test_d3_skips_and_says_so_in_a_geographic_crs(qgis_app):
-    """The whole point: degrees vs metres would produce nonsense warnings."""
+def test_d3_measures_a_geographic_crs_rather_than_skipping_it(qgis_app):
+    """A geographic CRS is measurable -- the ellipsoid comes from the CRS itself.
+
+    One degree of longitude at the equator is ~111 km, so a stored 100.0 m is a
+    genuine mismatch and D3 should say so, not shrug.
+    """
     project = QgsProject()
     project.addMapLayer(_layer("Underground cables", "LineString", CABLE_FIELDS, [
         ({"fiberq_uuid": "c1", "duzina_m": 100.0}, _line((0, 0), (1, 0))),
     ], crs=GEOGRAPHIC))
     issues = _ids(_run(project, {"D3"}), "D3")
     assert len(issues) == 1
-    assert issues[0].severity == vm.Severity.INFO
-    assert issues[0].details["skipped"] is True
-    assert issues[0].details["crs"] == GEOGRAPHIC
+    assert issues[0].severity == vm.Severity.WARNING
+    assert not issues[0].details.get("skipped")
+    assert issues[0].details["computed"] > 100_000
 
 
 def test_d3_tolerance_is_configurable(qgis_app):
@@ -254,7 +258,7 @@ def test_e1_flags_mixed_crs(qgis_app):
     assert set(mixed[0].details["crs_list"]) == {METRIC, GEOGRAPHIC}
 
 
-def test_e1_flags_a_geographic_crs_where_lengths_are_stored(qgis_app):
+def test_e1_flags_a_geographic_crs_because_tolerances_are_in_degrees(qgis_app):
     project = QgsProject()
     project.addMapLayer(_layer("Underground cables", "LineString", CABLE_FIELDS, [
         ({"fiberq_uuid": "c1"}, _line((0, 0), (1, 0))),
@@ -427,7 +431,7 @@ def test_d3_still_catches_a_wrong_kilometre_value(qgis_app):
 def test_registry_holds_the_full_v140_core_set(qgis_app):
     ids = [r.id for r in vr.RULES]
     assert ids == ["A1", "A2", "A3", "B1", "B2", "B3", "B4",
-                   "C1", "D1", "D2", "D3", "E1", "E2"]
+                   "C1", "C2", "D1", "D2", "D3", "E1", "E2"]
     assert len(ids) == len(set(ids))
     for rule in vr.RULES:
         assert rule.title and rule.category and callable(rule.check)

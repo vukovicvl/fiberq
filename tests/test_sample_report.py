@@ -68,8 +68,10 @@ def test_no_rule_crashes_on_the_demo(demo):
     assert demo.rule_errors == []
 
 
-def test_all_thirteen_rules_actually_run(demo):
-    assert len(demo.ran_rules) == 13
+def test_every_registered_rule_actually_runs(demo):
+    from fiberq.core.validation_rules import RULES
+
+    assert len(demo.ran_rules) == len(RULES)
 
 
 def test_the_headline_numbers_are_what_the_docs_promise(demo):

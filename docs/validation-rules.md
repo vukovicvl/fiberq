@@ -1,7 +1,7 @@
 # FiberQ validation rules
 
 FiberQ can audit a fibre design before it leaves your desk. **Plugins → FiberQ →
-Validate project** runs thirteen rules over the project and lists what it finds in
+Validate project** runs fourteen rules over the project and lists what it finds in
 a dockable panel; from there you can jump to any issue on the map or export the
 whole run as HTML, JSON or CSV.
 
@@ -148,6 +148,17 @@ turn up as blanks in a bill of materials or an as-built document.
 **What to do:** fill them in. A single unnamed cable is what makes a whole schedule
 unusable.
 
+### C2 — Project contains FiberQ layers
+**Warning · project-wide**
+
+There is at least one FiberQ layer to check. Every other rule works by iterating
+layers, so a project with none sails through all of them and reports nothing —
+which reads as a clean bill of health for a project that was never checked at all.
+
+**What to do:** open a FiberQ project, or create the layers from the FiberQ
+toolbar. If you meant to validate a project made in another tool, its layers need
+FiberQ's canonical names before the rules can see them.
+
 ---
 
 ## D — Value domains and attribute sanity
@@ -200,8 +211,10 @@ exactly what will change before writing anything, and rewrites `duzina`,
 `duzina_m`, `duzina_km` and `total_len_m` from the geometry. Slack values are read
 but never changed.
 
-If the project has no ellipsoid set and its CRS is geographic, D3 skips those
-layers and says so rather than comparing metres to degrees.
+Lengths are measured on the project's ellipsoid if one is set, and otherwise on
+the ellipsoid the CRS itself names — so D3 works in a geographic CRS too. Only a
+CRS that names no ellipsoid at all is skipped, and D3 says so rather than
+comparing metres to map units.
 
 ---
 
@@ -210,13 +223,17 @@ layers and says so rather than comparing metres to degrees.
 ### E1 — Coordinate reference systems are consistent
 **Warning · project-wide**
 
-All FiberQ layers share one CRS, and that CRS can express distance meaningfully.
-Mixed CRSs make every tolerance in every other rule mean something different per
-layer.
+All FiberQ layers share one CRS, and that CRS expresses the connectivity
+tolerance meaningfully. Mixed CRSs make every tolerance in every other rule mean
+something different per layer.
 
-**What to do:** reproject the odd layer out. If the whole project is in a
-geographic CRS, either set a measurement ellipsoid in *Project Properties →
-General* or work in a projected CRS.
+A **geographic CRS** (EPSG:4326 and friends) is flagged separately. Lengths are
+fine there — they are measured on the ellipsoid — but the A-rule tolerance is in
+*map units*, and a map unit in a geographic CRS is a degree. The default 5 then
+means roughly 550 km, and A1/A2/A3 stop meaning anything.
+
+**What to do:** reproject the odd layer out, and work in a projected CRS —
+ideally your national grid rather than Web Mercator.
 
 ### E2 — Geometries are present and well formed
 **Error · every FiberQ layer**

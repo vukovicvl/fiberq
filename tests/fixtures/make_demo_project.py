@@ -7,7 +7,7 @@ real design. It is also deterministic -- same coordinates, same UUIDs, same
 lengths on every run -- so regenerating it produces a byte-identical file and the
 committed sample report only changes when the rules do.
 
-The network is deliberately imperfect. Seven of the thirteen validation rules are
+The network is deliberately imperfect. Seven of the fourteen validation rules are
 meant to fire, each from exactly one planted fault, so the sample report shows
 what a real audit looks like instead of an empty table. See ``FAULTS`` below for
 the catalogue; ``docs/samples/README.md`` repeats it for readers of the report.

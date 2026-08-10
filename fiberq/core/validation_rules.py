@@ -656,6 +656,28 @@ def _check_identity(ctx):
 # C1 — required attributes present
 # ---------------------------------------------------------------------------
 
+def _check_project_has_layers(ctx):
+    """A project with no FiberQ layers has not been validated, only skipped.
+
+    Every other rule iterates layers, so an empty or non-FiberQ project sails
+    through all thirteen and reports "no issues" -- which reads as a clean bill of
+    health for a project nothing was ever checked in.
+    """
+    if ctx.layers_for():
+        return
+    src = QT_TRANSLATE_NOOP(
+        'ValidationRules',
+        "No FiberQ layers found in this project, so nothing was checked.")
+    yield ValidationIssue(
+        rule_id="C2", severity=Severity.WARNING, category=_CAT_COMPLETENESS,
+        message=QCoreApplication.translate('ValidationRules', src),
+        fix_hint=QCoreApplication.translate(
+            'ValidationRules',
+            "Open a FiberQ project, or create the layers with the FiberQ toolbar."),
+        details={"layers_found": 0},
+    )
+
+
 def _check_required_fields(ctx):
     from qgis.core import NULL
 
@@ -812,31 +834,23 @@ def _measures_metres(ctx, layer) -> bool:
 
 
 def _distance_area(ctx, layer):
-    """A QgsDistanceArea configured the way :mod:`fiberq.utils.measure` is.
+    """The one measurer, shared with :mod:`fiberq.utils.measure`.
 
-    D3 asks "is the stored length the real length?", so it has to measure the
-    real one: ground metres on the project ellipsoid, not ``QgsGeometry.length()``
-    in map units. The two differ by the local scale factor -- 1/cos(latitude) in
-    Web Mercator, about 1.41x at 45 degrees.
+    D3 asks "is the stored length the real length?", so it has to measure the real
+    one: ground metres, not ``QgsGeometry.length()`` in map units. The two differ
+    by the local scale factor -- 1/cos(latitude) in Web Mercator, 1.37x at Serbian
+    latitudes.
 
-    That distinction is the whole point of the rule. Running it on real projects
-    showed the plugin storing *both* kinds in one file: pipes measured on the
-    ellipsoid, routes and cables measured in map units, so a trench and the duct
-    inside it disagreed by 41%. See :mod:`fiberq.utils.measure`.
+    Configuring a second QgsDistanceArea here is how this rule once ended up
+    measuring planar while :func:`measures_metres` reported metres: the helper
+    resolves an ellipsoid from the CRS when the project has none, and a private
+    copy did not. Delegating keeps the rule and the fix that clears it in step.
     """
     key = f"distance_area:{layer.id()}"
     cached = ctx.cache.get(key)
     if cached is None:
-        from qgis.core import QgsDistanceArea
-        cached = QgsDistanceArea()
-        try:
-            cached.setSourceCrs(layer.crs(), ctx.project.transformContext())
-        except Exception as e:
-            logger.debug(f"Could not set distance-area CRS for {layer.name()}: {e}")
-        try:
-            cached.setEllipsoid(ctx.project.ellipsoid())
-        except Exception as e:
-            logger.debug(f"Could not set distance-area ellipsoid: {e}")
+        from ..utils.measure import distance_area
+        cached = distance_area(layer.crs(), ctx.project)
         ctx.cache[key] = cached
     return cached
 
@@ -892,7 +906,10 @@ def _check_length_coherence(ctx):
                 # 1. stored length vs the geometry it describes
                 if stored_field in names:
                     stored = _as_number(feat.attribute(stored_field), NULL)
-                    if stored is not None and stored > 0 and _disagrees(stored, computed, cfg):
+                    # A stored 0 is the schema default, i.e. a length that was
+                    # never written -- the most common wrong length there is, and
+                    # exactly what a bill of materials reads as "order nothing".
+                    if stored is not None and _disagrees(stored, computed, cfg):
                         src = (QT_TRANSLATE_NOOP(
                             'ValidationRules', "Stored {field} ({stored}) does not match the drawn geometry ({computed})"))
                         yield ValidationIssue(
@@ -973,17 +990,37 @@ def _check_crs_consistency(ctx):
             authid = (crs.authid() if crs and crs.isValid() else "") or "?"
             seen.setdefault(authid, []).append(layer.name())
 
-            # Only a problem when nothing can measure in metres: with a project
-            # ellipsoid set, QgsDistanceArea handles a geographic CRS fine.
+            # Lengths are safe in a geographic CRS -- they are measured on the
+            # ellipsoid. The snap tolerances are not: they are in map units, and
+            # in a geographic CRS a map unit is a degree, so the default 5 reads
+            # as roughly 550 km and A1/A2/A3 stop meaning anything.
+            if crs and crs.isValid() and crs.isGeographic():
+                src = QT_TRANSLATE_NOOP(
+                    'ValidationRules',
+                    "Layer uses a geographic CRS ({crs}), where the connectivity "
+                    "tolerance is measured in degrees rather than metres")
+                yield ValidationIssue(
+                    rule_id="E1", severity=Severity.WARNING, category=_CAT_DOMAIN,
+                    message=_safe_format(
+                        QCoreApplication.translate('ValidationRules', src), src, crs=authid),
+                    fix_hint=QCoreApplication.translate(
+                        'ValidationRules',
+                        "Reproject to a national grid, or lower the tolerance to "
+                        "a fraction of a degree."),
+                    layer_name=layer.name(), layer_id=layer.id(),
+                    details={"crs": authid, "geographic": True},
+                )
+
             if canonical in _STORED_LENGTH_FIELD and not _measures_metres(ctx, layer):
-                src = (QT_TRANSLATE_NOOP(
-                    'ValidationRules', "Layer uses a geographic CRS ({crs}) and the project has no ellipsoid set, so lengths cannot be checked"))
+                src = QT_TRANSLATE_NOOP(
+                    'ValidationRules',
+                    "No ellipsoid could be resolved for {crs}, so lengths cannot be checked")
                 yield ValidationIssue(
                     rule_id="E1", severity=Severity.WARNING, category=_CAT_DOMAIN,
                     message=_safe_format(
                         QCoreApplication.translate('ValidationRules', src), src, crs=authid),
                     layer_name=layer.name(), layer_id=layer.id(),
-                    details={"crs": authid, "geographic": True},
+                    details={"crs": authid, "unmeasurable": True},
                 )
 
     if len(seen) > 1:
@@ -1126,6 +1163,13 @@ RULES = [
         category=_CAT_COMPLETENESS,
         default_severity=Severity.WARNING,
         check=_check_required_fields,
+    ),
+    ValidationRule(
+        id="C2",
+        title=QT_TRANSLATE_NOOP('ValidationRules', "Project contains FiberQ layers"),
+        category=_CAT_COMPLETENESS,
+        default_severity=Severity.WARNING,
+        check=_check_project_has_layers,
     ),
     ValidationRule(
         id="D1",

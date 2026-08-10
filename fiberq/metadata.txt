@@ -24,7 +24,7 @@ class_name=FiberQPlugin
 
 changelog=
     1.4.0 - Project validation: find the problems before the client does
-        * New: "Validate project" runs thirteen checks over the whole design and
+        * New: "Validate project" runs fourteen checks over the whole design and
           lists what it finds in a dockable panel - topology and connectivity,
           referential integrity, feature identity, required attributes, value
           domains, length coherence, CRS consistency and geometry health.

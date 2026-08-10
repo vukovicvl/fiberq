@@ -13,7 +13,7 @@ i18n: ``tr()`` below must keep the context string equal to the class name --
 pylupdate6 derives the catalogue context from the enclosing class, so renaming
 the class without renaming the context silently reverts every string to English.
 """
-from qgis.PyQt.QtCore import QCoreApplication, Qt, pyqtSignal
+from qgis.PyQt.QtCore import QT_TRANSLATE_NOOP, QCoreApplication, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QBrush, QColor
 from qgis.PyQt.QtWidgets import (
     QComboBox,
@@ -286,7 +286,7 @@ class ValidationPanel(QDockWidget):
         ]
         text = ', '.join(parts)
         if shown is not None and shown != len(self._issues):
-            src = '{summary} — showing {shown} of {total}'
+            src = QT_TRANSLATE_NOOP('ValidationPanel', '{summary} — showing {shown} of {total}')
             text = safe_format(self.tr(src), src,
                                summary=text, shown=shown, total=len(self._issues))
         if self._result.rule_errors:
