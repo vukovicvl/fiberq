@@ -377,8 +377,19 @@ class FiberQPlugin:
             bar.pushWarning('FiberQ', summary)
         elif result.issues:
             bar.pushInfo('FiberQ', summary)
+        elif result.rule_errors:
+            # No issues, but not a clean project: some rules never got to look.
+            bar.pushWarning('FiberQ', self.tr(
+                '%n rule(s) failed to run; the rules that did found no issues',
+                '', len(result.rule_errors)))
         else:
-            bar.pushSuccess('FiberQ', self.tr('Validation found no issues.'))
+            # Name the scope: "no issues" from fourteen rules and "no issues"
+            # from a project the rules found nothing to check in read alike.
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin', 'Validation found no issues ({rules} rules, {layers} layers).')
+            bar.pushSuccess('FiberQ', safe_format(
+                self.tr(src), src,
+                rules=len(result.ran_rules), layers=len(result.feature_counts or {})))
 
     def export_validation_report(self):
         """Save the current validation result as HTML, JSON or CSV.
