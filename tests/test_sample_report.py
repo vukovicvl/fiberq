@@ -171,6 +171,29 @@ def test_the_rules_doc_covers_every_registered_rule():
         assert f"### {rule.id} " in doc, f"{rule.id} is undocumented"
 
 
+def test_the_demo_opens_on_its_network(tmp_path):
+    """The committed demo must not open on a blank canvas.
+
+    A project written headlessly has never had a canvas, so unless the extent is
+    set explicitly QGIS stores none and the sample opens on empty white -- which
+    reads as a broken plugin to the first person who tries it.
+    """
+    from qgis.core import QgsProject, QgsRectangle, QgsVectorLayer
+
+    project = QgsProject()
+    assert project.read(str(SAMPLES / "demo_project.qgz"))
+
+    saved = project.viewSettings().defaultViewExtent()
+    assert not saved.isNull(), "demo_project.qgz saves no view extent"
+
+    data = QgsRectangle()
+    data.setNull()
+    for layer in project.mapLayers().values():
+        if isinstance(layer, QgsVectorLayer) and not layer.extent().isNull():
+            data.combineExtentWith(layer.extent())
+    assert saved.contains(data), f"saved view {saved} does not cover the data {data}"
+
+
 def test_the_demo_is_stamped_with_the_current_schema_version(demo):
     """A sample report reading 'schema version 0' would tell readers to migrate."""
     from fiberq.models import schema

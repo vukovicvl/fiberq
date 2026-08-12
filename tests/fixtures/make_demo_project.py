@@ -3,9 +3,15 @@
 
 Synthetic on purpose. A published sample report has to be safe to hand to anyone,
 so this invents a small GPON drop in a fictional street rather than anonymising a
-real design. It is also deterministic -- same coordinates, same UUIDs, same
-lengths on every run -- so regenerating it produces a byte-identical file and the
-committed sample report only changes when the rules do.
+real design. The *content* is deterministic -- same coordinates, same fiberq_uuids,
+same lengths on every run -- so the findings a regenerated report contains change
+only when the rules do.
+
+Two things do change on every regeneration and are not worth chasing: QGIS mints a
+fresh random layer id when a layer is loaded (so ``layer_id`` in the JSON report
+and the .qgz differ), and GeoPackage stamps ``gpkg_contents.last_change``. Neither
+is content; ``tests/test_sample_report.py`` compares rules, severities and issue
+order rather than bytes.
 
 The network is deliberately imperfect. Seven of the fourteen validation rules are
 meant to fire, each from exactly one planted fault, so the sample report shows
@@ -338,8 +344,37 @@ def build_demo_project(gpkg_path, qgz_path):
             slack.changeAttributeValue(target, index, cables.id())
             slack.commitChanges()
 
+    _set_view_extent(project, layers.values())
     project.write(qgz_path)
     return qgz_path
+
+
+def _set_view_extent(project, layers):
+    """Save the canvas extent, so the demo opens on the network.
+
+    A project written headlessly has never had a canvas, so QGIS stores no
+    ``<mapcanvas>`` and opens the demo on a blank white map -- which reads as a
+    broken sample to anyone we hand it to. The union of the layer extents,
+    padded, is what "Zoom to all layers" would give.
+
+    Degenerate extents are normal here (a single joint closure is a point; the
+    stranded cable runs due east) so the union is grown by an absolute margin
+    rather than a percentage, which would be zero on a flat side.
+    """
+    from qgis.core import (QgsCoordinateReferenceSystem, QgsRectangle,
+                           QgsReferencedRectangle)
+
+    extent = QgsRectangle()
+    extent.setNull()
+    for layer in layers:
+        rect = layer.extent()
+        if not rect.isNull():
+            extent.combineExtentWith(rect)
+    if extent.isNull():
+        return
+    extent.grow(40.0)  # metres of the projected CRS
+    project.viewSettings().setDefaultViewExtent(
+        QgsReferencedRectangle(extent, QgsCoordinateReferenceSystem(f"EPSG:{EPSG}")))
 
 
 def main(argv):
