@@ -1075,12 +1075,21 @@ class FiberQPlugin:
 # --- Help/About ---
 
     def _fiberq_read_metadata(self) -> dict:
+        """Read metadata.txt.
+
+        ``interpolation=None`` is not optional. ConfigParser's default
+        BasicInterpolation treats ``%`` as a directive, and ``dict(cp.items(...))``
+        interpolates *every* value in the section -- so a single percent sign
+        anywhere in the changelog raises InterpolationSyntaxError, this returns
+        ``{}``, and the About dialog quietly falls back to "Version: 1.0" with no
+        author or email. metadata.txt is plain data, never a template.
+        """
         import os
         import configparser
         md = {}
         try:
             md_path = os.path.join(os.path.dirname(__file__), 'metadata.txt')
-            cp = configparser.ConfigParser()
+            cp = configparser.ConfigParser(interpolation=None)
             cp.read(md_path, encoding='utf-8')
             if cp.has_section('general'):
                 md = dict(cp.items('general'))
@@ -1093,7 +1102,7 @@ class FiberQPlugin:
         import configparser
         try:
             cfg_path = os.path.join(os.path.dirname(__file__), 'config.ini')
-            cp = configparser.ConfigParser()
+            cp = configparser.ConfigParser(interpolation=None)
             cp.read(cfg_path, encoding='utf-8')
             if cp.has_section(section) and cp.has_option(section, key):
                 return cp.get(section, key)

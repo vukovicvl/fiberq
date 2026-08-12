@@ -38,7 +38,8 @@ changelog=
         * Fix: lengths are now measured on the project ellipsoid - true metres on
           the ground - everywhere. Routes and cables previously stored the length
           in map units, which in Web Mercator is inflated by 1/cos(latitude):
-          about 41% at Serbian latitudes, 55% in the Netherlands, 86% in Finland.
+          about 1.4x at Serbian latitudes, 1.55x in the Netherlands, 1.86x in
+          Finland.
           Pipes were already correct, so a trench and the duct inside it could
           disagree by that margin in the same project, and a bill of materials
           over-ordered cable to match. New features are measured correctly;

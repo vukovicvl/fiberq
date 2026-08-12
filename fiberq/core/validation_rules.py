@@ -110,6 +110,30 @@ _REQUIRED_BY_LAYER = {
 # Small helpers (QGIS-aware, called only from checks)
 # ---------------------------------------------------------------------------
 
+#: Canonical field name -> the pre-1.0 Serbian names a real project may still
+#: carry. The identity migration renames nothing but ``fiberq_uuid`` (by design --
+#: it is an identity migration), so a project made before the English rename keeps
+#: these forever. A rule that looks only for the canonical name silently skips the
+#: whole layer, which for the B-rules means an ERROR-severity check quietly never
+#: runs and the project is reported clean. Confirmed on a real QGIS 3.40 project
+#: whose Optical slack layer carries kabl_fid / kabl_layer_id.
+_LEGACY_FIELD_NAMES = {
+    "cable_layer_id": ("kabl_layer_id",),
+    "cable_fid": ("kabl_fid",),
+    "cable_laying": ("polaganje_kabla",),
+}
+
+
+def _actual_field(names, canonical):
+    """The name ``canonical`` actually goes by in this layer, or ``''``."""
+    if canonical in names:
+        return canonical
+    for legacy in _LEGACY_FIELD_NAMES.get(canonical, ()):
+        if legacy in names:
+            return legacy
+    return ""
+
+
 def _is_blank(value, null) -> bool:
     """True for a missing / null / whitespace-only attribute value."""
     if value is None or value == null:
@@ -508,11 +532,13 @@ def _fk_rows(ctx, canonical):
 
     for layer in ctx.layers_for(canonical):
         names = set(layer.fields().names())
-        if not {"cable_layer_id", "cable_fid"} <= names:
+        layer_id_field = _actual_field(names, "cable_layer_id")
+        fid_field = _actual_field(names, "cable_fid")
+        if not (layer_id_field and fid_field):
             continue
         for feat in layer.getFeatures():
-            raw_layer_id = feat.attribute("cable_layer_id")
-            raw_fid = feat.attribute("cable_fid")
+            raw_layer_id = feat.attribute(layer_id_field)
+            raw_fid = feat.attribute(fid_field)
             if _is_blank(raw_layer_id, NULL) and _is_blank(raw_fid, NULL):
                 continue
             yield layer, feat, raw_layer_id, raw_fid
@@ -726,10 +752,14 @@ def _check_enum_conformance(ctx):
             continue
         for layer in layers:
             names = set(layer.fields().names())
-            active = [(key, dom) for key, dom in enum_fields if key in names]
+            # Resolve through the legacy aliases, or a pre-1.0 project's
+            # polaganje_kabla is simply never checked.
+            active = [(key, _actual_field(names, key), dom)
+                      for key, dom in enum_fields]
+            active = [(key, actual, dom) for key, actual, dom in active if actual]
             for feat in layer.getFeatures():
-                for key, allowed in active:
-                    value = feat.attribute(key)
+                for key, actual, allowed in active:
+                    value = feat.attribute(actual)
                     if _is_blank(value, NULL):
                         continue  # emptiness is C1's concern, not D1's
                     if str(value) in allowed:
@@ -740,7 +770,7 @@ def _check_enum_conformance(ctx):
                         rule_id="D1", severity=Severity.WARNING, category=_CAT_DOMAIN,
                         message=_safe_format(
                             QCoreApplication.translate('ValidationRules', src), src,
-                            field=key, value=value,
+                            field=actual, value=value,
                             allowed=", ".join(sorted(allowed))),
                         layer_name=layer.name(), layer_id=layer.id(),
                         feature_id=feat.id(), fiberq_uuid=_uuid_of(feat),

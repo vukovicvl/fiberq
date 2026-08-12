@@ -460,3 +460,42 @@ def test_a_clean_project_passes_every_rule(qgis_app):
     assert not result.rule_errors, result.rule_errors
     assert result.issues == [], [(i.rule_id, i.message) for i in result.issues]
     assert len(result.ran_rules) == len(vr.RULES)
+
+
+# ---------------------------------------------------------------------------
+# Legacy field names (pre-1.0 projects)
+# ---------------------------------------------------------------------------
+
+SLACK_LEGACY_FIELDS = ("fiberq_uuid:string", "kabl_layer_id:string",
+                       "kabl_fid:integer", "duzina_m:double")
+
+
+def test_b1_sees_through_the_legacy_serbian_fk_field_names(qgis_app):
+    """A real QGIS 3.40 project's Optical slack carries kabl_fid / kabl_layer_id.
+
+    The identity migration renames nothing but fiberq_uuid, so those names survive
+    forever. Looking only for cable_fid skipped the layer outright -- an
+    ERROR-severity rule that silently never ran, on a project reported clean.
+    """
+    project = QgsProject()
+    project.addMapLayer(_layer("Optical slack", "Point", SLACK_LEGACY_FIELDS, [
+        ({"fiberq_uuid": "s1", "kabl_layer_id": "no-such-layer", "kabl_fid": 1},
+         QgsGeometry.fromPointXY(QgsPointXY(0, 0))),
+    ]))
+    issues = _ids(_run(project, {"B1"}), "B1")
+    assert len(issues) == 1
+    assert issues[0].severity == vm.Severity.ERROR
+
+
+def test_d1_checks_a_legacy_named_enum_field(qgis_app):
+    """polaganje_kabla is the pre-rename cable_laying; it must still be checked."""
+    project = QgsProject()
+    project.addMapLayer(_layer(
+        "Underground cables", "LineString",
+        ("fiberq_uuid:string", "polaganje_kabla:string"), [
+            ({"fiberq_uuid": "c1", "polaganje_kabla": "Sideways"},
+             _line((0, 0), (1, 0))),
+        ]))
+    issues = _ids(_run(project, {"D1"}), "D1")
+    assert len(issues) == 1
+    assert "polaganje_kabla" in issues[0].message

@@ -279,3 +279,23 @@ def test_csv_file_has_no_blank_line_between_rows(tmp_path):
     raw = path.read_bytes()
     assert b"\r\r\n" not in raw
     assert len([line for line in raw.split(b"\r\n") if line.strip()]) == 3
+
+
+def test_metadata_is_readable_with_percent_signs_in_the_changelog():
+    """The About dialog reads dict(cp.items('general')), which interpolates every
+    value -- so one '%' in the changelog blanks the whole section and the version
+    silently falls back to '1.0'. Shipped once; never again."""
+    import configparser
+    import pathlib
+
+    md = pathlib.Path(__file__).resolve().parent.parent / "fiberq" / "metadata.txt"
+    cp = configparser.ConfigParser(interpolation=None)
+    cp.read(md, encoding="utf-8")
+    general = dict(cp.items("general"))
+    assert general.get("version")
+    assert general.get("name") and general.get("author")
+
+    # And with the default interpolating parser, which is what QGIS and the
+    # plugins.qgis.org tooling may use: a bare '%' must not appear at all.
+    raw = md.read_text(encoding="utf-8")
+    assert "%" not in raw, "a bare % in metadata.txt breaks configparser interpolation"
