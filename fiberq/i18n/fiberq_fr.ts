@@ -1559,197 +1559,202 @@ to:
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="573"/>
+        <location filename="../core/validation_rules.py" line="571"/>
         <source>Referenced cable layer {layer_id} is not in the project</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="578"/>
+        <location filename="../core/validation_rules.py" line="576"/>
         <source>Referenced cable feature {fid} does not exist in layer {layer}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="612"/>
+        <location filename="../core/validation_rules.py" line="586"/>
+        <source>Referenced layer {layer} is not a cable layer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core/validation_rules.py" line="622"/>
         <source>Feature is {distance} from the cable it references (tolerance {tol}) -- the cable may have been re-routed</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="642"/>
+        <location filename="../core/validation_rules.py" line="652"/>
         <source>Layer is missing the fiberq_uuid identity field</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="645"/>
+        <location filename="../core/validation_rules.py" line="655"/>
         <source>Re-open the project so migration can add fiberq_uuid, or re-create the layer.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="656"/>
+        <location filename="../core/validation_rules.py" line="666"/>
         <source>Feature has no fiberq_uuid value</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="665"/>
+        <location filename="../core/validation_rules.py" line="675"/>
         <source>Duplicate fiberq_uuid — the same identity is already used by feature {fid} in layer {layer}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="694"/>
+        <location filename="../core/validation_rules.py" line="704"/>
         <source>No FiberQ layers found in this project, so nothing was checked.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="700"/>
+        <location filename="../core/validation_rules.py" line="710"/>
         <source>Open a FiberQ project, or create the layers with the FiberQ toolbar.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="723"/>
+        <location filename="../core/validation_rules.py" line="733"/>
         <source>Required field(s) missing or empty: {fields}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="767"/>
+        <location filename="../core/validation_rules.py" line="777"/>
         <source>Field {field}: value {value} is not one of the allowed values ({allowed})</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="835"/>
+        <location filename="../core/validation_rules.py" line="845"/>
         <source>Field {field}: {value} is out of range (expected {bound})</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="918"/>
+        <location filename="../core/validation_rules.py" line="928"/>
         <source>Length checks skipped: they need either a projected CRS or a project ellipsoid, but this layer uses {crs} with none set</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="943"/>
+        <location filename="../core/validation_rules.py" line="953"/>
         <source>Stored {field} ({stored}) does not match the drawn geometry ({computed})</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="966"/>
+        <location filename="../core/validation_rules.py" line="976"/>
         <source>total_len_m ({total}) should equal duzina_m + slack_m ({expected})</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="995"/>
+        <location filename="../core/validation_rules.py" line="1005"/>
         <source>duzina_km ({km}) does not match duzina/1000 ({expected})</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1028"/>
+        <location filename="../core/validation_rules.py" line="1038"/>
         <source>Layer uses a geographic CRS ({crs}), where the connectivity tolerance is measured in degrees rather than metres</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1036"/>
+        <location filename="../core/validation_rules.py" line="1046"/>
         <source>Reproject to a national grid, or lower the tolerance to a fraction of a degree.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1045"/>
+        <location filename="../core/validation_rules.py" line="1055"/>
         <source>No ellipsoid could be resolved for {crs}, so lengths cannot be checked</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1057"/>
+        <location filename="../core/validation_rules.py" line="1067"/>
         <source>FiberQ layers do not all share one CRS: {list}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1089"/>
+        <location filename="../core/validation_rules.py" line="1099"/>
         <source>Feature has no geometry</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1102"/>
+        <location filename="../core/validation_rules.py" line="1112"/>
         <source>Line has zero length</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1106"/>
+        <location filename="../core/validation_rules.py" line="1116"/>
         <source>Line crosses itself</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1111"/>
+        <location filename="../core/validation_rules.py" line="1121"/>
         <source>Polygon has zero area</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1113"/>
+        <location filename="../core/validation_rules.py" line="1123"/>
         <source>Polygon boundary is self-intersecting</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1137"/>
+        <location filename="../core/validation_rules.py" line="1147"/>
         <source>Cable endpoints are connected</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1145"/>
+        <location filename="../core/validation_rules.py" line="1155"/>
         <source>Cable endpoints are not near-misses</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1153"/>
+        <location filename="../core/validation_rules.py" line="1163"/>
         <source>Elements are attached to the network</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1161"/>
+        <location filename="../core/validation_rules.py" line="1171"/>
         <source>Optical slack references an existing cable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1169"/>
+        <location filename="../core/validation_rules.py" line="1179"/>
         <source>Fiber break references an existing cable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1177"/>
+        <location filename="../core/validation_rules.py" line="1187"/>
         <source>Cable references are spatially coherent</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1185"/>
+        <location filename="../core/validation_rules.py" line="1195"/>
         <source>Feature identity present and unique</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1192"/>
+        <location filename="../core/validation_rules.py" line="1202"/>
         <source>Required attributes present</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1199"/>
+        <location filename="../core/validation_rules.py" line="1209"/>
         <source>Project contains FiberQ layers</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1206"/>
+        <location filename="../core/validation_rules.py" line="1216"/>
         <source>Attribute values within allowed domain</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1213"/>
+        <location filename="../core/validation_rules.py" line="1223"/>
         <source>Numeric attributes within plausible ranges</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1220"/>
+        <location filename="../core/validation_rules.py" line="1230"/>
         <source>Stored lengths agree with geometry</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1228"/>
+        <location filename="../core/validation_rules.py" line="1238"/>
         <source>Coordinate reference systems are consistent</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/validation_rules.py" line="1235"/>
+        <location filename="../core/validation_rules.py" line="1245"/>
         <source>Geometries are present and well formed</source>
         <translation type="unfinished"></translation>
     </message>

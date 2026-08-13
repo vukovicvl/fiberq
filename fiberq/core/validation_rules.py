@@ -567,19 +567,29 @@ def _fk_checker(canonical, rule_id):
     def check(ctx):
         for layer, feat, raw_layer_id, raw_fid in _fk_rows(ctx, canonical):
             cable_layer, cable_feat = _resolve_cable(ctx, raw_layer_id, raw_fid)
-            if cable_feat is not None:
-                continue
             if cable_layer is None:
                 src = QT_TRANSLATE_NOOP(
                     'ValidationRules', "Referenced cable layer {layer_id} is not in the project")
                 message = _safe_format(
                     QCoreApplication.translate('ValidationRules', src), src, layer_id=raw_layer_id)
-            else:
+            elif cable_feat is None:
                 src = QT_TRANSLATE_NOOP(
                     'ValidationRules', "Referenced cable feature {fid} does not exist in layer {layer}")
                 message = _safe_format(
                     QCoreApplication.translate('ValidationRules', src), src,
                     fid=raw_fid, layer=cable_layer.name())
+            elif schema.canonical_layer_name(cable_layer.name()) not in _CABLE_LAYERS:
+                # Resolving is not enough: the reference must point at a *cable*.
+                # Found in the field -- a fiber break recorded against the Route
+                # layer, because the break tool searched every line layer. A
+                # break on a trench, or slack on a duct, is not a thing.
+                src = QT_TRANSLATE_NOOP(
+                    'ValidationRules', "Referenced layer {layer} is not a cable layer")
+                message = _safe_format(
+                    QCoreApplication.translate('ValidationRules', src), src,
+                    layer=cable_layer.name())
+            else:
+                continue
             yield ValidationIssue(
                 rule_id=rule_id, severity=Severity.ERROR, category=_CAT_REFERENTIAL,
                 message=message,

@@ -42,8 +42,10 @@ Whether the network actually joins up. These rules use a snap tolerance (default
 > **A note on tolerance and your CRS.** The tolerance is in *map units*. In a
 > national grid those are true metres. In Web Mercator (EPSG:3857) they are not:
 > distances there are inflated by 1/cos(latitude), so a 5-unit tolerance behaves
-> like 3.6 m in Serbia and 3.2 m in the Netherlands. If you work in Web Mercator,
-> rule E1 will tell you.
+> like 3.6 m in Serbia and 3.2 m in the Netherlands — the A-rules are stricter
+> than the number suggests. Raise the tolerance if that matters to you. (E1
+> reports a *geographic* CRS, where the effect is drastic enough to break the
+> rules outright; it does not report Web Mercator, where they still work.)
 
 ### A1 — Cable endpoints are connected
 **Warning · every cable layer**
@@ -97,11 +99,16 @@ Whether the links between features still resolve.
 **Error · Optical slack**
 
 Every slack loop records which cable it belongs to (`cable_layer_id` +
-`cable_fid`). This checks the reference resolves: the layer is in the project, and
-the feature is in that layer.
+`cable_fid`). This checks the reference resolves *and points at a cable*: the
+layer is in the project, it is a cable layer, and the feature is in it.
+
+The layer check is not pedantry. A reference to a route or a duct resolves
+perfectly well, so without it a slack loop recorded against a trench reads as a
+valid link and the whole bill of materials inherits the error.
 
 **Typical causes:** the cable was deleted; the layer was removed or replaced; the
-project was rebuilt from parts.
+project was rebuilt from parts; the feature was placed by clicking near a trench
+rather than the cable.
 
 **What to do:** re-link the slack, or delete it. A slack whose cable is gone
 inflates the bill of materials for a cable that no longer exists.
@@ -109,7 +116,9 @@ inflates the bill of materials for a cable that no longer exists.
 ### B2 — Fiber break references an existing cable
 **Error · Fiber break**
 
-The same check for fibre-break records.
+The same check for fibre-break records. A break recorded against the Route layer
+is reported here: a fibre break is a break in a fibre, and before v1.4.0 the
+break tool would accept a click near any line — including a trench or a duct.
 
 ### B3 — Cable references are spatially coherent
 **Warning · Optical slack, Fiber break**

@@ -46,6 +46,10 @@ changelog=
           use "Recalculate lengths" to repair existing ones.
         * Fix: placing an extension or a fiber break no longer creates an empty
           "Poles" layer as a side effect.
+        * Fix: the fiber break tool accepted a click near any line, so a break
+          could be recorded against a route or a duct and stored as if it were
+          on a cable. It now targets cable layers only, and B1/B2 report the
+          bad references already in your projects.
         * Docs: docs/validation-rules.md documents every rule - what it checks,
           why it matters, and what to do about a finding. docs/samples/ ships a
           small demo project you can open and validate yourself, alongside the
