@@ -262,7 +262,9 @@ class FiberQPlugin:
         canvas = self.iface.mapCanvas()
         try:
             from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject
-            wgs84 = QgsCoordinateReferenceSystem(4326)
+            # The integer constructor is deprecated in QGIS 4 (it warns on every
+            # call); the authid string works on 3.22 and 4 alike.
+            wgs84 = QgsCoordinateReferenceSystem('EPSG:4326')
             dest = canvas.mapSettings().destinationCrs()
             xform = QgsCoordinateTransform(wgs84, dest, QgsProject.instance())
             pt = xform.transform(QgsPointXY(lon, lat))

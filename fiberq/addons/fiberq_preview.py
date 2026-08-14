@@ -1176,7 +1176,9 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
         """
         Move the preview map to the given WGS84 coordinates.
         """
-        wgs84 = QgsCoordinateReferenceSystem(4326)
+        # The integer constructor is deprecated in QGIS 4; the authid string
+        # works on 3.22 and 4 alike.
+        wgs84 = QgsCoordinateReferenceSystem('EPSG:4326')
 
         # Get current canvas CRS
         dest = self._current_crs
