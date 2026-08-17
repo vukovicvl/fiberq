@@ -1,7 +1,7 @@
 # FiberQ validation rules
 
 FiberQ can audit a fibre design before it leaves your desk. **Plugins → FiberQ →
-Validate project** runs thirteen rules over the project and lists what it finds in
+Validate project** runs fourteen rules over the project and lists what it finds in
 a dockable panel; from there you can jump to any issue on the map or export the
 whole run as HTML, JSON or CSV.
 
@@ -42,8 +42,10 @@ Whether the network actually joins up. These rules use a snap tolerance (default
 > **A note on tolerance and your CRS.** The tolerance is in *map units*. In a
 > national grid those are true metres. In Web Mercator (EPSG:3857) they are not:
 > distances there are inflated by 1/cos(latitude), so a 5-unit tolerance behaves
-> like 3.6 m in Serbia and 3.2 m in the Netherlands. If you work in Web Mercator,
-> rule E1 will tell you.
+> like 3.6 m in Serbia and 3.2 m in the Netherlands — the A-rules are stricter
+> than the number suggests. Raise the tolerance if that matters to you. (E1
+> reports a *geographic* CRS, where the effect is drastic enough to break the
+> rules outright; it does not report Web Mercator, where they still work.)
 
 ### A1 — Cable endpoints are connected
 **Warning · every cable layer**
@@ -97,11 +99,16 @@ Whether the links between features still resolve.
 **Error · Optical slack**
 
 Every slack loop records which cable it belongs to (`cable_layer_id` +
-`cable_fid`). This checks the reference resolves: the layer is in the project, and
-the feature is in that layer.
+`cable_fid`). This checks the reference resolves *and points at a cable*: the
+layer is in the project, it is a cable layer, and the feature is in it.
+
+The layer check is not pedantry. A reference to a route or a duct resolves
+perfectly well, so without it a slack loop recorded against a trench reads as a
+valid link and the whole bill of materials inherits the error.
 
 **Typical causes:** the cable was deleted; the layer was removed or replaced; the
-project was rebuilt from parts.
+project was rebuilt from parts; the feature was placed by clicking near a trench
+rather than the cable.
 
 **What to do:** re-link the slack, or delete it. A slack whose cable is gone
 inflates the bill of materials for a cable that no longer exists.
@@ -109,7 +116,9 @@ inflates the bill of materials for a cable that no longer exists.
 ### B2 — Fiber break references an existing cable
 **Error · Fiber break**
 
-The same check for fibre-break records.
+The same check for fibre-break records. A break recorded against the Route layer
+is reported here: a fibre break is a break in a fibre, and before v1.4.0 the
+break tool would accept a click near any line — including a trench or a duct.
 
 ### B3 — Cable references are spatially coherent
 **Warning · Optical slack, Fiber break**
@@ -147,6 +156,17 @@ turn up as blanks in a bill of materials or an as-built document.
 
 **What to do:** fill them in. A single unnamed cable is what makes a whole schedule
 unusable.
+
+### C2 — Project contains FiberQ layers
+**Warning · project-wide**
+
+There is at least one FiberQ layer to check. Every other rule works by iterating
+layers, so a project with none sails through all of them and reports nothing —
+which reads as a clean bill of health for a project that was never checked at all.
+
+**What to do:** open a FiberQ project, or create the layers from the FiberQ
+toolbar. If you meant to validate a project made in another tool, its layers need
+FiberQ's canonical names before the rules can see them.
 
 ---
 
@@ -200,8 +220,10 @@ exactly what will change before writing anything, and rewrites `duzina`,
 `duzina_m`, `duzina_km` and `total_len_m` from the geometry. Slack values are read
 but never changed.
 
-If the project has no ellipsoid set and its CRS is geographic, D3 skips those
-layers and says so rather than comparing metres to degrees.
+Lengths are measured on the project's ellipsoid if one is set, and otherwise on
+the ellipsoid the CRS itself names — so D3 works in a geographic CRS too. Only a
+CRS that names no ellipsoid at all is skipped, and D3 says so rather than
+comparing metres to map units.
 
 ---
 
@@ -210,13 +232,26 @@ layers and says so rather than comparing metres to degrees.
 ### E1 — Coordinate reference systems are consistent
 **Warning · project-wide**
 
-All FiberQ layers share one CRS, and that CRS can express distance meaningfully.
-Mixed CRSs make every tolerance in every other rule mean something different per
-layer.
+The project has a CRS, all FiberQ layers share one, and that CRS expresses the
+connectivity tolerance meaningfully. Mixed CRSs make every tolerance in every
+other rule mean something different per layer.
 
-**What to do:** reproject the odd layer out. If the whole project is in a
-geographic CRS, either set a measurement ellipsoid in *Project Properties →
-General* or work in a projected CRS.
+**A project with no CRS at all** is reported separately. Every other rule reads
+each *layer's* CRS, so your existing data is unaffected and lengths stay correct
+— but the canvas has no projection, so a basemap cannot line up and the next
+feature you draw is placed in an undefined system.
+
+This is not hypothetical: opening a project saved by QGIS 4.2 in QGIS 3.40 drops
+the project CRS (QGIS reports "could not be completely loaded"), while the layers
+keep theirs. Set it again in **Project → Properties → CRS** before drawing.
+
+A **geographic CRS** (EPSG:4326 and friends) is flagged separately. Lengths are
+fine there — they are measured on the ellipsoid — but the A-rule tolerance is in
+*map units*, and a map unit in a geographic CRS is a degree. The default 5 then
+means roughly 550 km, and A1/A2/A3 stop meaning anything.
+
+**What to do:** reproject the odd layer out, and work in a projected CRS —
+ideally your national grid rather than Web Mercator.
 
 ### E2 — Geometries are present and well formed
 **Error · every FiberQ layer**

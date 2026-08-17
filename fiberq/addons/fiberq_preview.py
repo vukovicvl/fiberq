@@ -85,7 +85,7 @@ def _load_postgis_config():
             f"Expected path:\n{cfg_path}"
         )
 
-    cp = configparser.ConfigParser()
+    cp = configparser.ConfigParser(interpolation=None)
     cp.read(cfg_path, encoding="utf-8")
     if "postgis" not in cp:
         raise RuntimeError("The [postgis] section is missing in config.ini.")
@@ -564,7 +564,7 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
             plugin_dir = _plugin_root_dir()
             cfg_path = os.path.join(plugin_dir, "config.ini")
             if os.path.exists(cfg_path):
-                cp = configparser.ConfigParser()
+                cp = configparser.ConfigParser(interpolation=None)
                 cp.read(cfg_path, encoding="utf-8")
                 if cp.has_section("basemaps"):
                     sec = cp["basemaps"]
@@ -1176,7 +1176,9 @@ class FiberQPreviewDialog(QtWidgets.QDialog):
         """
         Move the preview map to the given WGS84 coordinates.
         """
-        wgs84 = QgsCoordinateReferenceSystem(4326)
+        # The integer constructor is deprecated in QGIS 4; the authid string
+        # works on 3.22 and 4 alike.
+        wgs84 = QgsCoordinateReferenceSystem('EPSG:4326')
 
         # Get current canvas CRS
         dest = self._current_crs

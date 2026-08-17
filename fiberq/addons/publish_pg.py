@@ -39,7 +39,7 @@ def _load_pg_config():
             f"Expected path:\n{cfg_path}"
         )
 
-    cp = configparser.ConfigParser()
+    cp = configparser.ConfigParser(interpolation=None)
     cp.read(cfg_path, encoding="utf-8")
     if "postgis" not in cp:
         raise RuntimeError("The [postgis] section is missing in config.ini.")

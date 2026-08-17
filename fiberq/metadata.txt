@@ -3,7 +3,7 @@ name=FiberQ
 description=Open-source fiber network design tools for QGIS (FTTH/GPON/FTTx)
 about=FiberQ helps telecom engineers and GIS professionals design, analyze, and document fiber optic networks inside QGIS. FiberQ supports QGIS 4 / Qt6 while keeping support for QGIS 3.22 LTR and later, and clears all findings from the QGIS repository security scan. Some advanced features may require an activation key.
 
-version=1.3.0
+version=1.4.0
 qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
 
@@ -23,6 +23,53 @@ license=GPL-3.0-or-later
 class_name=FiberQPlugin
 
 changelog=
+    1.4.0 - Project validation: find the problems before the client does
+        * New: "Validate project" runs fourteen checks over the whole design and
+          lists what it finds in a dockable panel - topology and connectivity,
+          referential integrity, feature identity, required attributes, value
+          domains, length coherence, CRS consistency and geometry health.
+          Filter by severity, layer or rule; click any issue to jump to it.
+        * New: export the results as a self-contained HTML report (for handover
+          and audit files), JSON (machine-readable, stable keys) or CSV (for
+          spreadsheets and issue trackers).
+        * New: "Recalculate lengths" rewrites stored lengths that disagree with
+          the drawn geometry. It shows exactly what will change before writing
+          anything, and never touches slack values.
+        * Fix: lengths are now measured on the project ellipsoid - true metres on
+          the ground - everywhere. Routes and cables previously stored the length
+          in map units, which in Web Mercator is inflated by 1/cos(latitude):
+          about 1.4x at Serbian latitudes, 1.55x in the Netherlands, 1.86x in
+          Finland.
+          Pipes were already correct, so a trench and the duct inside it could
+          disagree by that margin in the same project, and a bill of materials
+          over-ordered cable to match. New features are measured correctly;
+          use "Recalculate lengths" to repair existing ones.
+        * Fix: placing an extension or a fiber break no longer creates an empty
+          "Poles" layer as a side effect.
+        * Fix: shipped layer styles named "MS Shell Dlg 2", a Windows-only font,
+          so every Linux and macOS user got substituted label fonts and a warning
+          per layer on load. They now use the portable "Sans Serif".
+        * Fix: opening a project saved in QGIS 4 no longer re-runs the schema
+          migration in QGIS 3. QGIS 4 stores project properties in a form QGIS 3
+          cannot read, so the schema marker now falls back to the copy in the
+          GeoPackage. Validation also reports a project left with no CRS, which
+          is what that same QGIS limitation does to a downgraded project.
+        * Fix: the fiber break tool accepted a click near any line, so a break
+          could be recorded against a route or a duct and stored as if it were
+          on a cable. It now targets cable layers only, and B1/B2 report the
+          bad references already in your projects.
+        * Docs: docs/validation-rules.md documents every rule - what it checks,
+          why it matters, and what to do about a finding. docs/samples/ ships a
+          small demo project you can open and validate yourself, alongside the
+          report it produces.
+        * i18n: the plugin is now translatable, with the English source catalogue
+          and tooling in place; translations welcome.
+        * The plugin now has a Support page - if FiberQ saves you time, you can
+          help fund its development.
+        (The validation engine and its reporting were developed with support from
+        the NLnet NGI0 Commons Fund. The length-measurement fix, the stray-layer
+        fix, the i18n groundwork and the support links were not funded by it.)
+
     1.3.0 - Project schema versioning, safe migrations, and stable feature IDs
         * New: every FiberQ project now carries a schema-version marker, also
           mirrored into the GeoPackage, so future releases can recognise and

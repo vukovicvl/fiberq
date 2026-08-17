@@ -1,6 +1,36 @@
-# FiberQ v1.3
+# FiberQ v1.4
 
 A QGIS plugin for fiber optic network design and documentation.
+
+## What's New in v1.4.0 — Project Validation
+
+**Validate project** runs fourteen checks over the whole design and lists what it
+finds in a dockable panel — filter by severity, layer or rule, and click any issue
+to jump straight to it on the map.
+
+- **Thirteen rules** — topology and connectivity, referential integrity, feature
+  identity, required attributes, value domains, length coherence, CRS consistency
+  and geometry health. Every rule is documented in
+  [docs/validation-rules.md](https://github.com/vukovicvl/fiberq/blob/main/docs/validation-rules.md).
+- **Audit-ready reports** — export a run as self-contained HTML (for handover and
+  audit files), JSON (machine-readable, stable keys) or CSV (for spreadsheets and
+  issue trackers).
+- **Recalculate lengths** — rewrites stored lengths that disagree with the drawn
+  geometry. Shows exactly what will change before writing anything, and never
+  touches your slack values.
+- **True ground metres, everywhere** — lengths are now measured on the project
+  ellipsoid. Routes and cables previously stored the length in *map units*, which
+  in Web Mercator is inflated by 1/cos(latitude): about 41% at Serbian latitudes,
+  55% in the Netherlands, 86% in Finland. Pipes were already correct, so a trench
+  and the duct inside it could disagree by that margin in the same project — and a
+  bill of materials over-ordered cable to match. New features are measured
+  correctly; run **Recalculate lengths** to repair existing ones.
+- **Try it** — [docs/samples/](https://github.com/vukovicvl/fiberq/tree/main/docs/samples)
+  ships a small demo project with deliberate faults, and the report it produces.
+- **Fix** — placing an extension or a fiber break no longer creates an empty
+  "Poles" layer as a side effect.
+- **Translatable** — the plugin now carries an English source catalogue and the
+  tooling to build translations. Contributions welcome.
 
 ## What's New in v1.3.0 — Schema Versioning & Stable IDs
 

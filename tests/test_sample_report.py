@@ -19,7 +19,8 @@ FIXTURES = REPO / "tests" / "fixtures"
 if str(FIXTURES) not in sys.path:
     sys.path.insert(0, str(FIXTURES))
 
-from make_demo_project import FAULTS, build_demo_gpkg, build_demo_project  # noqa: E402
+from make_demo_project import (  # noqa: E402
+    FAULTS, NOT_DEMONSTRABLE, build_demo_gpkg, build_demo_project)
 
 
 @pytest.fixture(scope="module")
@@ -68,18 +69,42 @@ def test_no_rule_crashes_on_the_demo(demo):
     assert demo.rule_errors == []
 
 
-def test_all_thirteen_rules_actually_run(demo):
-    assert len(demo.ran_rules) == 13
+def test_every_registered_rule_actually_runs(demo):
+    from fiberq.core.validation_rules import RULES
+
+    assert len(demo.ran_rules) == len(RULES)
 
 
 def test_the_headline_numbers_are_what_the_docs_promise(demo):
     counts = demo.counts_by_severity()
-    assert (counts["error"], counts["warning"], counts["info"]) == (1, 7, 0)
+    assert (counts["error"], counts["warning"], counts["info"]) == (4, 9, 1)
 
 
-def test_identity_is_clean_so_b4_stays_quiet(demo):
-    """B4 is an ERROR rule; a demo that trips it would look broken, not instructive."""
-    assert "B4" not in _by_rule(demo)
+def test_the_demo_demonstrates_every_rule_it_can(demo):
+    """The demo is the worked example for docs/validation-rules.md.
+
+    A rule with no demonstrated finding is a rule a reader has never seen fire,
+    so the two that a valid project cannot express are named explicitly rather
+    than left as a silent gap.
+    """
+    from fiberq.core.validation_rules import RULES
+
+    demonstrated = set(_by_rule(demo))
+    every = {rule.id for rule in RULES}
+
+    assert demonstrated == every - set(NOT_DEMONSTRABLE), (
+        f"undemonstrated: {sorted(every - demonstrated - set(NOT_DEMONSTRABLE))}")
+    assert set(NOT_DEMONSTRABLE) <= every, "NOT_DEMONSTRABLE names a rule that no longer exists"
+
+
+def test_b4_fires_once_from_the_planted_duplicate(demo):
+    """The duplicate is between the two poles, not whatever feature happened to
+    be numbered first -- an earlier version derived the twin's id positionally
+    and silently paired it with a Route."""
+    b4 = _by_rule(demo)["B4"]
+    assert len(b4) == 1
+    assert b4[0].layer_name == "Poles"
+    assert "Poles" in b4[0].message
 
 
 def test_the_working_slack_reference_resolves(demo):
@@ -88,7 +113,18 @@ def test_the_working_slack_reference_resolves(demo):
 
 
 def test_a_stranded_cable_reports_both_ends(demo):
-    assert len(_by_rule(demo)["A1"]) == 2
+    """Two from AC-2's two ends, one from AC-3's near miss."""
+    assert len(_by_rule(demo)["A1"]) == 3
+
+
+def test_the_near_miss_is_reported_by_both_a1_and_a2(demo):
+    """A2 refines A1 rather than partitioning it, so the same endpoint appears
+    in both. If A2 ever stops overlapping, the docs are wrong."""
+    a2 = _by_rule(demo)["A2"]
+    assert len(a2) == 1
+    a1_points = {(round(i.where[0], 3), round(i.where[1], 3))
+                 for i in _by_rule(demo)["A1"]}
+    assert (round(a2[0].where[0], 3), round(a2[0].where[1], 3)) in a1_points
 
 
 def test_recalculating_lengths_clears_the_d3_finding(tmp_path):
@@ -167,6 +203,29 @@ def test_the_rules_doc_covers_every_registered_rule():
     doc = (REPO / "docs" / "validation-rules.md").read_text(encoding="utf-8")
     for rule in RULES:
         assert f"### {rule.id} " in doc, f"{rule.id} is undocumented"
+
+
+def test_the_demo_opens_on_its_network(tmp_path):
+    """The committed demo must not open on a blank canvas.
+
+    A project written headlessly has never had a canvas, so unless the extent is
+    set explicitly QGIS stores none and the sample opens on empty white -- which
+    reads as a broken plugin to the first person who tries it.
+    """
+    from qgis.core import QgsProject, QgsRectangle, QgsVectorLayer
+
+    project = QgsProject()
+    assert project.read(str(SAMPLES / "demo_project.qgz"))
+
+    saved = project.viewSettings().defaultViewExtent()
+    assert not saved.isNull(), "demo_project.qgz saves no view extent"
+
+    data = QgsRectangle()
+    data.setNull()
+    for layer in project.mapLayers().values():
+        if isinstance(layer, QgsVectorLayer) and not layer.extent().isNull():
+            data.combineExtentWith(layer.extent())
+    assert saved.contains(data), f"saved view {saved} does not cover the data {data}"
 
 
 def test_the_demo_is_stamped_with_the_current_schema_version(demo):

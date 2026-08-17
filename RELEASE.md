@@ -26,6 +26,8 @@ When to bump which part:
 - [ ] `version=` bumped in `fiberq/metadata.txt`, and `__version__` in
       `fiberq/__init__.py` matches.
 - [ ] `changelog=` block in `fiberq/metadata.txt` updated for this version.
+- [ ] Release notes / `changelog=` include a one-line pointer to sponsorship
+      (e.g. "If FiberQ helps your work, you can now sponsor its development.").
 - [ ] `fiberq/config.ini` contains no credentials or machine-specific paths.
 - [ ] "Use of Generative AI" section present/current in `fiberq/README.md`
       (shipped) and the repo-root `README.md` (public landing page).

@@ -9,6 +9,7 @@ pythonpath = ["."]
 addopts = "-ra"
 markers = [
     "qgis: test needs a running QgsApplication (provided by pytest-qgis)",
+    "slow: builds a large fixture; deselect with -m 'not slow'",
 ]
 
 [tool.coverage.run]

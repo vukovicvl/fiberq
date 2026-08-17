@@ -202,17 +202,21 @@ def test_d3_checks_route_kilometres_against_metres(qgis_app):
     assert km[0].details["expected"] == 1.0
 
 
-def test_d3_skips_and_says_so_in_a_geographic_crs(qgis_app):
-    """The whole point: degrees vs metres would produce nonsense warnings."""
+def test_d3_measures_a_geographic_crs_rather_than_skipping_it(qgis_app):
+    """A geographic CRS is measurable -- the ellipsoid comes from the CRS itself.
+
+    One degree of longitude at the equator is ~111 km, so a stored 100.0 m is a
+    genuine mismatch and D3 should say so, not shrug.
+    """
     project = QgsProject()
     project.addMapLayer(_layer("Underground cables", "LineString", CABLE_FIELDS, [
         ({"fiberq_uuid": "c1", "duzina_m": 100.0}, _line((0, 0), (1, 0))),
     ], crs=GEOGRAPHIC))
     issues = _ids(_run(project, {"D3"}), "D3")
     assert len(issues) == 1
-    assert issues[0].severity == vm.Severity.INFO
-    assert issues[0].details["skipped"] is True
-    assert issues[0].details["crs"] == GEOGRAPHIC
+    assert issues[0].severity == vm.Severity.WARNING
+    assert not issues[0].details.get("skipped")
+    assert issues[0].details["computed"] > 100_000
 
 
 def test_d3_tolerance_is_configurable(qgis_app):
@@ -230,7 +234,10 @@ def test_d3_tolerance_is_configurable(qgis_app):
 # ---------------------------------------------------------------------------
 
 def test_e1_is_clean_for_one_projected_crs(qgis_app):
+    from qgis.core import QgsCoordinateReferenceSystem
+
     project = QgsProject()
+    project.setCrs(QgsCoordinateReferenceSystem(METRIC))
     project.addMapLayer(_layer("Underground cables", "LineString", CABLE_FIELDS, [
         ({"fiberq_uuid": "c1"}, _line((0, 0), (100, 0))),
     ]))
@@ -238,6 +245,26 @@ def test_e1_is_clean_for_one_projected_crs(qgis_app):
         "ODF", "Point", ("fiberq_uuid:string",),
         [({"fiberq_uuid": "n1"}, QgsGeometry.fromPointXY(QgsPointXY(0, 0)))]))
     assert _ids(_run(project, {"E1"}), "E1") == []
+
+
+def test_e1_flags_a_project_with_no_crs(qgis_app):
+    """An unset project CRS costs the existing data nothing -- every rule reads
+    the layer CRS -- but the canvas has no projection, so the next feature drawn
+    is placed in an undefined system.
+
+    From the field: QGIS 3.40 opening a project saved by QGIS 4.2 drops the
+    project CRS, and the layers keep theirs. Nothing reported it.
+    """
+    project = QgsProject()  # deliberately no setCrs
+    project.addMapLayer(_layer("Underground cables", "LineString", CABLE_FIELDS, [
+        ({"fiberq_uuid": "c1"}, _line((0, 0), (100, 0))),
+    ]))
+
+    unset = [i for i in _ids(_run(project, {"E1"}), "E1")
+             if i.details.get("unset")]
+    assert len(unset) == 1
+    assert unset[0].severity == vm.Severity.WARNING
+    assert unset[0].fix_hint
 
 
 def test_e1_flags_mixed_crs(qgis_app):
@@ -254,7 +281,7 @@ def test_e1_flags_mixed_crs(qgis_app):
     assert set(mixed[0].details["crs_list"]) == {METRIC, GEOGRAPHIC}
 
 
-def test_e1_flags_a_geographic_crs_where_lengths_are_stored(qgis_app):
+def test_e1_flags_a_geographic_crs_because_tolerances_are_in_degrees(qgis_app):
     project = QgsProject()
     project.addMapLayer(_layer("Underground cables", "LineString", CABLE_FIELDS, [
         ({"fiberq_uuid": "c1"}, _line((0, 0), (1, 0))),
@@ -427,7 +454,7 @@ def test_d3_still_catches_a_wrong_kilometre_value(qgis_app):
 def test_registry_holds_the_full_v140_core_set(qgis_app):
     ids = [r.id for r in vr.RULES]
     assert ids == ["A1", "A2", "A3", "B1", "B2", "B3", "B4",
-                   "C1", "D1", "D2", "D3", "E1", "E2"]
+                   "C1", "C2", "D1", "D2", "D3", "E1", "E2"]
     assert len(ids) == len(set(ids))
     for rule in vr.RULES:
         assert rule.title and rule.category and callable(rule.check)
@@ -436,7 +463,10 @@ def test_registry_holds_the_full_v140_core_set(qgis_app):
 
 def test_a_clean_project_passes_every_rule(qgis_app):
     """End-to-end: a small, correct project produces no issues at all."""
+    from qgis.core import QgsCoordinateReferenceSystem
+
     project = QgsProject()
+    project.setCrs(QgsCoordinateReferenceSystem(METRIC))
     cables = _layer("Underground cables", "LineString", CABLE_FIELDS + (
         "tip:string", "naziv:string"), [
         ({"fiberq_uuid": "c1", "tip": "opticki", "broj_vlakana": 24,
@@ -456,3 +486,42 @@ def test_a_clean_project_passes_every_rule(qgis_app):
     assert not result.rule_errors, result.rule_errors
     assert result.issues == [], [(i.rule_id, i.message) for i in result.issues]
     assert len(result.ran_rules) == len(vr.RULES)
+
+
+# ---------------------------------------------------------------------------
+# Legacy field names (pre-1.0 projects)
+# ---------------------------------------------------------------------------
+
+SLACK_LEGACY_FIELDS = ("fiberq_uuid:string", "kabl_layer_id:string",
+                       "kabl_fid:integer", "duzina_m:double")
+
+
+def test_b1_sees_through_the_legacy_serbian_fk_field_names(qgis_app):
+    """A real QGIS 3.40 project's Optical slack carries kabl_fid / kabl_layer_id.
+
+    The identity migration renames nothing but fiberq_uuid, so those names survive
+    forever. Looking only for cable_fid skipped the layer outright -- an
+    ERROR-severity rule that silently never ran, on a project reported clean.
+    """
+    project = QgsProject()
+    project.addMapLayer(_layer("Optical slack", "Point", SLACK_LEGACY_FIELDS, [
+        ({"fiberq_uuid": "s1", "kabl_layer_id": "no-such-layer", "kabl_fid": 1},
+         QgsGeometry.fromPointXY(QgsPointXY(0, 0))),
+    ]))
+    issues = _ids(_run(project, {"B1"}), "B1")
+    assert len(issues) == 1
+    assert issues[0].severity == vm.Severity.ERROR
+
+
+def test_d1_checks_a_legacy_named_enum_field(qgis_app):
+    """polaganje_kabla is the pre-rename cable_laying; it must still be checked."""
+    project = QgsProject()
+    project.addMapLayer(_layer(
+        "Underground cables", "LineString",
+        ("fiberq_uuid:string", "polaganje_kabla:string"), [
+            ({"fiberq_uuid": "c1", "polaganje_kabla": "Sideways"},
+             _line((0, 0), (1, 0))),
+        ]))
+    issues = _ids(_run(project, {"D1"}), "D1")
+    assert len(issues) == 1
+    assert "polaganje_kabla" in issues[0].message

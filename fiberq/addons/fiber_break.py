@@ -193,12 +193,22 @@ class FiberBreakTool(QgsMapTool):
         return vl
 
     def _iter_line_layers(self):
+        """Cable layers only.
+
+        This used to yield every line layer in the project, so a click near a
+        trench recorded the break against Route (or a duct) in cable_layer_id --
+        seen in a real project. A fiber break is a break in a fibre; nothing else
+        is a legitimate target, and the reference is written as a cable id.
+        """
+        from ..utils.helpers import is_cable_layer
+
         for lyr in QgsProject.instance().mapLayers().values():
             try:
                 if (
                     isinstance(lyr, QgsVectorLayer)
                     and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry  # noqa: W503
                     and lyr.isValid()  # noqa: W503
+                    and is_cable_layer(lyr)  # noqa: W503
                 ):
                     yield lyr
             except Exception as e:

@@ -72,10 +72,12 @@ class RecalcPlan:
     """What :func:`plan_recalculation` decided, before anything is written."""
 
     changes: List[LengthChange] = field(default_factory=list)
-    #: Layers that could not be measured meaningfully (geographic CRS, no ellipsoid).
+    #: Layers that could not be measured meaningfully (no usable ellipsoid).
     skipped_layers: List[str] = field(default_factory=list)
     #: Layers examined and already correct, for an honest "nothing to do".
     layers_seen: List[str] = field(default_factory=list)
+    #: Layers that raised while being planned, so "nothing to do" is never a lie.
+    failed_layers: List[str] = field(default_factory=list)
 
     def __bool__(self) -> bool:
         return bool(self.changes)
@@ -86,10 +88,15 @@ class RecalcPlan:
         return len({(c.layer_id, c.feature_id) for c in self.changes})
 
     def counts_by_layer(self) -> Dict[str, int]:
-        counts: Dict[str, int] = {}
+        """Features per layer -- the same unit as :attr:`feature_count`.
+
+        Counting attribute writes here instead would make the per-layer numbers
+        add up to more than the headline, since one feature can carry three.
+        """
+        seen: Dict[str, set] = {}
         for c in self.changes:
-            counts[c.layer_name] = counts.get(c.layer_name, 0) + 1
-        return counts
+            seen.setdefault(c.layer_name, set()).add(c.feature_id)
+        return {name: len(ids) for name, ids in seen.items()}
 
     def largest_change(self) -> Optional[LengthChange]:
         """The change with the biggest absolute difference, for a preview line."""
@@ -103,6 +110,9 @@ class RecalcOutcome:
 
     applied: List[LengthChange] = field(default_factory=list)
     failures: List[str] = field(default_factory=list)
+    #: Layers left untouched because the user has them open for editing. Not a
+    #: failure -- a "save your edits and run this again".
+    blocked_by_edits: List[str] = field(default_factory=list)
 
     @property
     def feature_count(self) -> int:
@@ -144,55 +154,71 @@ def plan_recalculation(project=None, config: Optional[ValidationConfig] = None) 
     for canonical, length_field in STORED_LENGTH_FIELD.items():
         for layer in ctx.layers_for(canonical):
             plan.layers_seen.append(layer.name())
-
-            if not measures_metres(layer, project=project):
-                # Measuring here would produce degrees; refuse rather than write
-                # a number that is confidently wrong.
-                plan.skipped_layers.append(layer.name())
-                continue
-
-            names = set(layer.fields().names())
-            if length_field not in names:
-                continue
-
-            for feat in layer.getFeatures():
-                geom = feat.geometry()
-                if geom is None or geom.isNull() or geom.isEmpty():
-                    continue  # nothing to measure; E2 reports the geometry itself
-
-                computed = ground_length(geom, layer, project=project)
-                if computed <= 0:
-                    continue
-
-                stored = _as_float(feat.attribute(length_field))
-                metres_changed = _disagrees(stored, computed, config)
-                if metres_changed:
-                    plan.changes.append(LengthChange(
-                        layer.name(), layer.id(), feat.id(),
-                        length_field, stored, computed))
-
-                # duzina_km is derived; refresh it whenever it no longer follows,
-                # even if the metre value itself was already right.
-                if KM_FIELD in names:
-                    expected_km = round(computed / 1000.0, 2)
-                    stored_km = _as_float(feat.attribute(KM_FIELD))
-                    if stored_km is None or abs(stored_km - expected_km) > 0.005:
-                        plan.changes.append(LengthChange(
-                            layer.name(), layer.id(), feat.id(),
-                            KM_FIELD, stored_km, expected_km))
-
-                # total_len_m = laid length + slack. Slack is a user decision, so
-                # it is read, never rewritten.
-                if TOTAL_FIELD in names:
-                    slack = _as_float(feat.attribute(SLACK_FIELD)) or 0.0
-                    expected_total = computed + slack
-                    stored_total = _as_float(feat.attribute(TOTAL_FIELD))
-                    if _disagrees(stored_total, expected_total, config):
-                        plan.changes.append(LengthChange(
-                            layer.name(), layer.id(), feat.id(),
-                            TOTAL_FIELD, stored_total, expected_total))
+            try:
+                _plan_layer(plan, layer, length_field, config, project)
+            except Exception as e:
+                # One awkward layer must not cost the user every other fix in the
+                # project, the way an escaping KeyError used to.
+                logger.warning(f"Could not plan lengths for {layer.name()}: {e}")
+                plan.failed_layers.append(f"{layer.name()}: {e}")
 
     return plan
+
+
+def _plan_layer(plan, layer, length_field, config, project):
+    """Decide the changes for one layer. Raises only on genuinely unexpected faults."""
+    if not measures_metres(layer, project=project):
+        # Measuring here would produce map units or degrees; refuse rather than
+        # write a number that is confidently wrong.
+        plan.skipped_layers.append(layer.name())
+        return
+
+    names = set(layer.fields().names())
+    if length_field not in names:
+        return
+
+    for feat in layer.getFeatures():
+        geom = feat.geometry()
+        if geom is None or geom.isNull() or geom.isEmpty():
+            continue  # nothing to measure; E2 reports the geometry itself
+
+        computed = ground_length(geom, layer, project=project)
+
+        # A zero-length geometry is E2's finding, but its stored length is still
+        # wrong and D3 still reports it. Setting it to 0 is the honest answer and
+        # keeps the "recalculate, then validate" guarantee true.
+        if computed < 0:
+            continue
+
+        stored = _as_float(feat.attribute(length_field))
+        if _disagrees(stored, computed, config):
+            plan.changes.append(LengthChange(
+                layer.name(), layer.id(), feat.id(),
+                length_field, stored, computed))
+
+        # duzina_km is derived; refresh it whenever it no longer follows,
+        # even if the metre value itself was already right.
+        if KM_FIELD in names:
+            expected_km = round(computed / 1000.0, 2)
+            stored_km = _as_float(feat.attribute(KM_FIELD))
+            if stored_km is None or abs(stored_km - expected_km) > 0.005:
+                plan.changes.append(LengthChange(
+                    layer.name(), layer.id(), feat.id(),
+                    KM_FIELD, stored_km, expected_km))
+
+        # total_len_m = laid length + slack. Slack is a user decision, so it is
+        # read, never rewritten -- and only where the layer actually carries it.
+        # A cable table with total_len_m but no slack_m is reachable today
+        # (cable_manager refuses to add fields on providers it cannot alter), and
+        # feat.attribute() raises KeyError on a name the layer does not have.
+        if TOTAL_FIELD in names:
+            slack = _as_float(feat.attribute(SLACK_FIELD)) if SLACK_FIELD in names else 0.0
+            expected_total = computed + (slack or 0.0)
+            stored_total = _as_float(feat.attribute(TOTAL_FIELD))
+            if _disagrees(stored_total, expected_total, config):
+                plan.changes.append(LengthChange(
+                    layer.name(), layer.id(), feat.id(),
+                    TOTAL_FIELD, stored_total, expected_total))
 
 
 def apply_recalculation(plan: RecalcPlan, project=None) -> RecalcOutcome:
@@ -222,22 +248,36 @@ def apply_recalculation(plan: RecalcPlan, project=None) -> RecalcOutcome:
 
         name = layer.name()
         try:
+            # An already-open edit session is the everyday state right after
+            # drawing something, and startEditing() simply returns False for it.
+            # Committing here would also commit the user's unsaved work, so the
+            # layer is left alone -- but say why, rather than implying the data
+            # source is read-only.
+            if layer.isEditable():
+                outcome.blocked_by_edits.append(name)
+                continue
             if not layer.startEditing():
-                outcome.failures.append(f"{name}: could not be opened for editing")
+                outcome.failures.append(
+                    f"{name}: could not be opened for editing (read-only source?)")
                 continue
 
             indexes = {}
+            written = []
             for change in changes:
                 idx = indexes.get(change.field_name)
                 if idx is None:
                     idx = layer.fields().indexFromName(change.field_name)
                     indexes[change.field_name] = idx
                 if idx < 0:
+                    # The field vanished between planning and applying; do not
+                    # later report it as applied.
+                    logger.debug(f"{name}: field {change.field_name} is gone, skipping")
                     continue
-                layer.changeAttributeValue(change.feature_id, idx, change.new_value)
+                if layer.changeAttributeValue(change.feature_id, idx, change.new_value):
+                    written.append(change)
 
             if layer.commitChanges():
-                outcome.applied.extend(changes)
+                outcome.applied.extend(written)
                 layer.triggerRepaint()
             else:
                 errors = '; '.join(layer.commitErrors()[:3])

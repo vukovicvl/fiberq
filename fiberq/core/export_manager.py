@@ -524,7 +524,7 @@ class ExportManager:
             cfg_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.ini")
             settings = {}
             if os.path.isfile(cfg_path):
-                cfg = configparser.ConfigParser()
+                cfg = configparser.ConfigParser(interpolation=None)
                 cfg.read(cfg_path, encoding="utf-8")
                 # Only export relevant non-sensitive sections
                 for section in cfg.sections():

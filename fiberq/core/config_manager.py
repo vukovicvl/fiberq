@@ -190,7 +190,7 @@ class ConfigManager:
         """Load the config.ini file."""
         try:
             if os.path.exists(self.config_file_path):
-                parser = configparser.ConfigParser()
+                parser = configparser.ConfigParser(interpolation=None)
                 parser.read(self.config_file_path, encoding='utf-8')
                 self._config_parser = parser
         except Exception:
@@ -236,7 +236,7 @@ class ConfigManager:
 
         try:
             if os.path.exists(self.metadata_file_path):
-                parser = configparser.ConfigParser()
+                parser = configparser.ConfigParser(interpolation=None)
                 parser.read(self.metadata_file_path, encoding='utf-8')
 
                 if parser.has_section('general'):

@@ -23,10 +23,12 @@ def _issue(rule_id="A1", severity=vm.Severity.WARNING, layer="Underground cables
     )
 
 
-def _result(issues, rule_errors=None):
+def _result(issues, rule_errors=None, ran_rules=None, feature_counts=None):
     result = vm.ValidationResult(project_name="t", crs="EPSG:3857")
     result.issues = list(issues)
     result.rule_errors = list(rule_errors or [])
+    result.ran_rules = list(ran_rules or [])
+    result.feature_counts = dict(feature_counts or {})
     return result
 
 
@@ -87,11 +89,40 @@ def test_clean_result_says_so(qgis_app):
     assert "No issues" in panel.lbl_summary.text()
 
 
+def test_clean_result_states_what_it_covered(qgis_app):
+    """"No issues found" must carry its evidence.
+
+    A user who cannot tell "fourteen rules examined 15 layers" from "no rule
+    found anything to look at" has no reason to trust either. Reported from the
+    field on a real project that was in fact clean.
+    """
+    panel = ValidationPanel()
+    panel.set_result(_result(
+        [],
+        ran_rules=[f"R{i}" for i in range(14)],
+        feature_counts={"Poles": 11, "Route": 9, "Underground cables": 4},
+    ))
+    text = panel.lbl_summary.text()
+    assert "14" in text          # rules that ran
+    assert "3" in text           # layers examined
+    assert "24" in text          # features examined
+
+
 def test_failed_rules_are_surfaced(qgis_app):
     """A rule that blew up must be visible, not silently absent."""
     panel = ValidationPanel()
     panel.set_result(_result([_issue()], rule_errors=["A1: boom"]))
     assert "1" in panel.lbl_summary.text()
+
+
+def test_failed_rules_are_surfaced_when_there_are_no_issues(qgis_app):
+    """The regression that matters: every rule crashing produced no issues, and
+    the panel reported that as a clean project."""
+    panel = ValidationPanel()
+    panel.set_result(_result([], rule_errors=["A1: boom", "D3: boom"]))
+    text = panel.lbl_summary.text()
+    assert "2" in text
+    assert "fail" in text.lower()
 
 
 def test_set_result_none_clears(qgis_app):
@@ -207,6 +238,31 @@ def test_plugin_exposes_the_validation_entry_points(qgis_app):
 
     for name in ("run_validation", "_ensure_validation_panel", "_zoom_to_issue"):
         assert callable(getattr(mp.FiberQPlugin, name, None)), name
+
+
+def test_success_message_is_not_reachable_when_rules_failed(qgis_app):
+    """pushSuccess must be guarded by rule_errors.
+
+    Source level, because reaching the message bar needs a live iface. The
+    branch order is the contract: errors -> issues -> rule_errors -> success.
+    """
+    import fiberq.main_plugin as mp
+
+    src = textwrap.dedent(inspect.getsource(mp.FiberQPlugin.run_validation))
+    tree = ast.parse(src)
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)]
+    success = [n for n in calls if getattr(n.func, "attr", "") == "pushSuccess"]
+    assert len(success) == 1, "expected exactly one clean-project message"
+
+    # Walk the if/elif chain the success call sits in and require that one of the
+    # conditions it falls through is the rule_errors check.
+    guards = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        if success[0] in set(ast.walk(node)):
+            guards.append(ast.unparse(node.test))
+    assert any("rule_errors" in g for g in guards), guards
 
 
 def test_trigger_stays_thin(qgis_app):

@@ -26,6 +26,12 @@ from typing import Any, Dict, List, Optional
 from ..utils.logger import get_logger
 from .validation_manager import SEVERITY_ORDER, Severity, ValidationResult
 
+try:  # pragma: no cover - one branch per environment
+    from qgis.PyQt.QtCore import QT_TRANSLATE_NOOP
+except ImportError:  # keeps this module importable without QGIS (see docstring)
+    def QT_TRANSLATE_NOOP(context, text):
+        return text
+
 logger = get_logger(__name__)
 
 #: Bumped when the JSON shape changes in a way a consumer would notice. WP3 will
@@ -105,9 +111,11 @@ def result_to_dict(result: ValidationResult) -> Dict[str, Any]:
             "by_category": result.counts_by_category(),
             "by_rule": dict(sorted(by_rule.items())),
             "by_layer": dict(sorted(by_layer.items())),
-            # The one judgement the report makes: errors mean the project is not
-            # fit to hand over. Warnings and info do not.
-            "passed": counts["error"] == 0,
+            # The one judgement the report makes: errors mean the project is
+            # not fit to hand over. Warnings and info do not -- but a rule that
+            # crashed means coverage was incomplete, and "passed" must not paper
+            # over a check that never ran.
+            "passed": counts["error"] == 0 and not result.rule_errors,
         },
         "issues": issues,
     }
@@ -249,13 +257,15 @@ def to_html(result: ValidationResult, title: Optional[str] = None) -> str:
     summary = data["summary"]
     counts = summary["by_severity"]
 
-    doc_title = title or _tr("FiberQ validation report")
-    heading = project["name"] or _tr("Untitled project")
+    doc_title = title or _tr(QT_TRANSLATE_NOOP('ValidationReport', "FiberQ validation report"))
+    heading = project["name"] or _tr(QT_TRANSLATE_NOOP('ValidationReport', "Untitled project"))
 
     passed = summary["passed"]
     verdict_class = "pass" if passed else "fail"
-    verdict_text = (_tr("No errors — project is structurally sound")
-                    if passed else _tr("Errors found — not ready to hand over"))
+    verdict_text = (
+        _tr(QT_TRANSLATE_NOOP('ValidationReport', "No errors — project is structurally sound"))
+        if passed else  # noqa: W504
+        _tr(QT_TRANSLATE_NOOP('ValidationReport', "Errors found — not ready to hand over")))
 
     parts: List[str] = [
         "<!DOCTYPE html>",
@@ -268,24 +278,24 @@ def to_html(result: ValidationResult, title: Optional[str] = None) -> str:
         f'<p class="sub">{_esc(heading)}</p>',
         f'<p class="verdict {verdict_class}">{_esc(verdict_text)}</p>',
         "<div class=\"cards\">",
-        _card(counts["error"], _tr("Errors")),
-        _card(counts["warning"], _tr("Warnings")),
-        _card(counts["info"], _tr("Info")),
-        _card(summary["total"], _tr("Total")),
+        _card(counts["error"], _tr(QT_TRANSLATE_NOOP('ValidationReport', "Errors"))),
+        _card(counts["warning"], _tr(QT_TRANSLATE_NOOP('ValidationReport', "Warnings"))),
+        _card(counts["info"], _tr(QT_TRANSLATE_NOOP('ValidationReport', "Info"))),
+        _card(summary["total"], _tr(QT_TRANSLATE_NOOP('ValidationReport', "Total"))),
         "</div>",
     ]
 
     # --- run metadata -------------------------------------------------------
     meta_rows = [
-        (_tr("Coordinate system"), project["crs"]),
-        (_tr("Schema version"), project["schema_version"]),
-        (_tr("Plugin version"), run["plugin_version"]),
-        (_tr("Run at"), run["timestamp"]),
-        (_tr("Rules run"), len(run["rules_run"])),
+        (_tr(QT_TRANSLATE_NOOP('ValidationReport', "Coordinate system")), project["crs"]),
+        (_tr(QT_TRANSLATE_NOOP('ValidationReport', "Schema version")), project["schema_version"]),
+        (_tr(QT_TRANSLATE_NOOP('ValidationReport', "Plugin version")), run["plugin_version"]),
+        (_tr(QT_TRANSLATE_NOOP('ValidationReport', "Run at")), run["timestamp"]),
+        (_tr(QT_TRANSLATE_NOOP('ValidationReport', "Rules run")), len(run["rules_run"])),
     ]
     if run["rules_skipped"]:
-        meta_rows.append((_tr("Rules skipped"), ", ".join(run["rules_skipped"])))
-    parts.append(f'<h2>{_esc(_tr("Run"))}</h2><div class="meta"><dl>')
+        meta_rows.append((_tr(QT_TRANSLATE_NOOP('ValidationReport', "Rules skipped")), ", ".join(run["rules_skipped"])))
+    parts.append(f'<h2>{_esc(_tr(QT_TRANSLATE_NOOP('ValidationReport', "Run")))}</h2><div class="meta"><dl>')
     for key, value in meta_rows:
         if value in (None, "", []):
             continue
@@ -295,24 +305,24 @@ def to_html(result: ValidationResult, title: Optional[str] = None) -> str:
     # A rule that crashed is a gap in coverage, not a clean result. Say so loudly
     # rather than letting the summary imply the project was fully checked.
     if run["rule_errors"]:
-        parts.append(f'<h2>{_esc(_tr("Rules that failed to run"))}</h2><ul>')
+        parts.append(f'<h2>{_esc(_tr(QT_TRANSLATE_NOOP('ValidationReport', "Rules that failed to run")))}</h2><ul>')
         for err in run["rule_errors"]:
             parts.append(f"<li>{_esc(err)}</li>")
         parts.append("</ul>")
 
     # --- issues -------------------------------------------------------------
-    parts.append(f'<h2>{_esc(_tr("Issues"))}</h2>')
+    parts.append(f'<h2>{_esc(_tr(QT_TRANSLATE_NOOP('ValidationReport', "Issues")))}</h2>')
     if not data["issues"]:
-        parts.append(f'<p class="empty">{_esc(_tr("No issues found."))}</p>')
+        parts.append(f'<p class="empty">{_esc(_tr(QT_TRANSLATE_NOOP('ValidationReport', "No issues found.")))}</p>')
     else:
         parts.append('<div class="scroll"><table><thead><tr>')
-        for column in (_tr("Severity"), _tr("Rule"), _tr("Layer"),
-                       _tr("Feature"), _tr("Message")):
+        for column in (_tr(QT_TRANSLATE_NOOP('ValidationReport', "Severity")), _tr(QT_TRANSLATE_NOOP('ValidationReport', "Rule")), _tr(QT_TRANSLATE_NOOP('ValidationReport', "Layer")),
+                       _tr(QT_TRANSLATE_NOOP('ValidationReport', "Feature")), _tr(QT_TRANSLATE_NOOP('ValidationReport', "Message"))):
             parts.append(f"<th>{_esc(column)}</th>")
         parts.append("</tr></thead><tbody>")
 
-        labels = {"error": _tr("Error"), "warning": _tr("Warning"),
-                  "info": _tr("Info")}
+        labels = {"error": _tr(QT_TRANSLATE_NOOP('ValidationReport', "Error")), "warning": _tr(QT_TRANSLATE_NOOP('ValidationReport', "Warning")),
+                  "info": _tr(QT_TRANSLATE_NOOP('ValidationReport', "Info"))}
         for issue in data["issues"]:
             colour = _SEVERITY_COLOUR.get(issue["severity"], "#666")
             label = labels.get(issue["severity"], issue["severity"])
@@ -332,10 +342,10 @@ def to_html(result: ValidationResult, title: Optional[str] = None) -> str:
 
     # --- breakdown ----------------------------------------------------------
     if summary["by_layer"]:
-        parts.append(f'<h2>{_esc(_tr("Issues by layer"))}</h2>'
+        parts.append(f'<h2>{_esc(_tr(QT_TRANSLATE_NOOP('ValidationReport', "Issues by layer")))}</h2>'
                      '<div class="scroll"><table><thead><tr>'
-                     f'<th>{_esc(_tr("Layer"))}</th>'
-                     f'<th>{_esc(_tr("Issues"))}</th>'
+                     f'<th>{_esc(_tr(QT_TRANSLATE_NOOP('ValidationReport', "Layer")))}</th>'
+                     f'<th>{_esc(_tr(QT_TRANSLATE_NOOP('ValidationReport', "Issues")))}</th>'
                      "</tr></thead><tbody>")
         for layer, count in sorted(summary["by_layer"].items(),
                                    key=lambda kv: (-kv[1], kv[0])):
@@ -345,10 +355,9 @@ def to_html(result: ValidationResult, title: Optional[str] = None) -> str:
 
     parts += [
         "<footer>",
-        _esc(_tr("Generated by the FiberQ QGIS plugin.")),
+        _esc(_tr(QT_TRANSLATE_NOOP('ValidationReport', "Generated by the FiberQ QGIS plugin."))),
         " ",
-        _esc(_tr("Machine-readable JSON and CSV of the same run are available "
-                 "from the same export menu.")),
+        _esc(_tr(QT_TRANSLATE_NOOP('ValidationReport', "Machine-readable JSON and CSV of the same run are available from the same export menu."))),
         "</footer>",
         "</main></body></html>",
     ]

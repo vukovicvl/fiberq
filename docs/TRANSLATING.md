@@ -31,11 +31,15 @@ time.
 **The file:** `fiberq/i18n/fiberq_fr.ts` for French. (Serbian is
 `fiberq_sr.ts`; other languages follow the same pattern.)
 
-**The size:** **169 strings**, all currently untranslated. They are short — menu
-entries, button labels, tooltips, a handful of error messages. The longest is
-one sentence.
+**The size:** around **300 strings**, all currently untranslated. They are
+short — menu entries, button labels, tooltips, a handful of error messages. The
+longest is one sentence.
 
-**The time:** budget around **9 hours** for a careful full pass. That is an
+To see the exact number for yourself, open the file and count the occurrences of
+`type="unfinished"`; that is the to-do flag. The figure grows as FiberQ gains
+features, so treat any number written here as "about".
+
+**The time:** budget around **15 hours** for a careful full pass. That is an
 honest estimate, not a sales pitch. Much of FiberQ's vocabulary is specialised,
 and the right French term often needs a moment's thought rather than a
 dictionary lookup. Some strings will take you five seconds; a dozen will take
@@ -49,8 +53,8 @@ French interface with some English left in it.
 
 So: translate 20 strings and stop, and those 20 strings ship. Translate the
 toolbar and menus only, and the toolbar and menus ship. Partial work is
-genuinely useful and genuinely welcome. Please do not let "169" stop you from
-starting.
+genuinely useful and genuinely welcome. Please do not let the total stop you
+from starting.
 
 If you would rather work in stages, the section
 [Where each string appears in the plugin](#where-each-string-appears-in-the-plugin)
@@ -160,7 +164,7 @@ Reading that:
 
 ### The `unfinished` marker
 
-`type="unfinished"` is the to-do flag. Every one of the 169 entries currently
+`type="unfinished"` is the to-do flag. Every entry in the file currently
 carries it. Note the exact shape in this file: it is **self-closing**, a single
 tag ending in ` />` with no separate closing tag.
 
@@ -241,7 +245,8 @@ file, so the region does not affect anything).
 1. Click the first string.
 2. Type the French in the translation box.
 3. Press **Ctrl+Enter**. This marks the string as done **and jumps to the next
-   untranslated one**. It is the whole workflow — you will use it 169 times.
+   untranslated one**. It is the whole workflow — you will use it for every
+   string in the file.
 4. Repeat.
 
 If you want to leave a string for later, just click past it without pressing
@@ -282,8 +287,8 @@ aware of what this actually means before choosing it:
 - You are hand-editing **XML in a browser text box**.
 - There is **no placeholder checking**, no progress tracking, no
   accept-and-advance. Every one of Rules 1–3 is yours to enforce by eye.
-- For 169 entries this is genuinely tedious and mistake-prone. Route A exists
-  precisely to avoid it.
+- Across a few hundred entries this is genuinely tedious and mistake-prone.
+  Route A exists precisely to avoid it.
 
 **Use Route B for small fixes** — correcting a term, finishing a handful of
 strings someone else left. For a full translation, please use Qt Linguist.
@@ -331,13 +336,13 @@ you a public place to ask terminology questions along the way.
 (never the `.qm`), and open a PR.
 
 Whichever you choose, **send in batches if you like**. Finishing the toolbar and
-sending it is better than holding 169 half-done strings for a month.
+sending it is better than holding a file of half-done strings for a month.
 
 ---
 
 ## Where each string appears in the plugin
 
-The 169 strings are grouped by which part of the plugin they come from. The
+The strings are grouped by which part of the plugin they come from. The
 group name is the `<context>` name in the file and the folder name in Qt
 Linguist's left panel.
 

@@ -1,5 +1,5 @@
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
-from qgis.PyQt.QtCore import Qt, QCoreApplication
+from qgis.PyQt.QtCore import QT_TRANSLATE_NOOP, Qt, QCoreApplication
 from qgis.PyQt.QtGui import QKeySequence
 from qgis.PyQt.QtWidgets import (
     QAction, QMessageBox, QInputDialog, QDialog, QVBoxLayout, QLabel, QDialogButtonBox,
@@ -262,7 +262,9 @@ class FiberQPlugin:
         canvas = self.iface.mapCanvas()
         try:
             from qgis.core import QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject
-            wgs84 = QgsCoordinateReferenceSystem(4326)
+            # The integer constructor is deprecated in QGIS 4 (it warns on every
+            # call); the authid string works on 3.22 and 4 alike.
+            wgs84 = QgsCoordinateReferenceSystem('EPSG:4326')
             dest = canvas.mapSettings().destinationCrs()
             xform = QgsCoordinateTransform(wgs84, dest, QgsProject.instance())
             pt = xform.transform(QgsPointXY(lon, lat))
@@ -357,7 +359,7 @@ class FiberQPlugin:
             logger.warning(f"Validation failed: {e}")
             panel.set_busy(False)
             panel.set_result(None)
-            src = 'Validation could not run: {details}'
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Validation could not run: {details}')
             self.iface.messageBar().pushWarning(
                 'FiberQ', safe_format(self.tr(src), src, details=e))
             return
@@ -377,8 +379,19 @@ class FiberQPlugin:
             bar.pushWarning('FiberQ', summary)
         elif result.issues:
             bar.pushInfo('FiberQ', summary)
+        elif result.rule_errors:
+            # No issues, but not a clean project: some rules never got to look.
+            bar.pushWarning('FiberQ', self.tr(
+                '%n rule(s) failed to run; the rules that did found no issues',
+                '', len(result.rule_errors)))
         else:
-            bar.pushSuccess('FiberQ', self.tr('Validation found no issues.'))
+            # Name the scope: "no issues" from fourteen rules and "no issues"
+            # from a project the rules found nothing to check in read alike.
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin', 'Validation found no issues ({rules} rules, {layers} layers).')
+            bar.pushSuccess('FiberQ', safe_format(
+                self.tr(src), src,
+                rules=len(result.ran_rules), layers=len(result.feature_counts or {})))
 
     def export_validation_report(self):
         """Save the current validation result as HTML, JSON or CSV.
@@ -423,12 +436,12 @@ class FiberQPlugin:
             fmt = write_report(result, path, format_for_path(path))
         except OSError as e:
             logger.warning(f"Could not write validation report: {e}")
-            src = 'Could not save the report: {details}'
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Could not save the report: {details}')
             self.iface.messageBar().pushWarning(
                 'FiberQ', safe_format(self.tr(src), src, details=e))
             return
 
-        src = 'Saved {format} report to {path}'
+        src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Saved {format} report to {path}')
         self.iface.messageBar().pushSuccess('FiberQ', safe_format(
             self.tr(src), src, format=fmt.upper(), path=os.path.basename(path)))
 
@@ -450,17 +463,36 @@ class FiberQPlugin:
             plan = plan_recalculation()
         except Exception as e:
             logger.warning(f"Length recalculation could not be planned: {e}")
-            src = 'Could not check lengths: {details}'
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Could not check lengths: {details}')
             bar.pushWarning('FiberQ', safe_format(self.tr(src), src, details=e))
             return
 
         if plan.skipped_layers:
-            src = 'Skipped {layers}: lengths cannot be measured without a projected CRS or a project ellipsoid'
-            bar.pushInfo('FiberQ', safe_format(
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                'Skipped {layers}: lengths cannot be measured without an ellipsoid. '
+                'Set one in Project Properties > General.')
+            bar.pushWarning('FiberQ', safe_format(
                 self.tr(src), src, layers=', '.join(sorted(set(plan.skipped_layers)))))
 
+        if plan.failed_layers:
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Could not check {layers}.')
+            bar.pushWarning('FiberQ', safe_format(
+                self.tr(src), src,
+                layers=', '.join(sorted(set(plan.failed_layers))[:3])))
+
         if not plan:
-            bar.pushSuccess('FiberQ', self.tr('All stored lengths already match the geometry.'))
+            # Only a clean bill of health when something was actually measured;
+            # "everything matches" after skipping every layer is a lie.
+            if plan.skipped_layers or plan.failed_layers:
+                bar.pushInfo('FiberQ', self.tr(
+                    'No lengths were checked. See the warnings above.'))
+            elif not plan.layers_seen:
+                bar.pushInfo('FiberQ', self.tr(
+                    'No FiberQ layers with stored lengths in this project.'))
+            else:
+                bar.pushSuccess('FiberQ', self.tr(
+                    'All stored lengths already match the geometry.'))
             return
 
         lines = [
@@ -473,7 +505,7 @@ class FiberQPlugin:
 
         biggest = plan.largest_change()
         if biggest is not None:
-            src = 'Largest change: {field} {old} -> {new} on {layer}'
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Largest change: {field} {old} -> {new} on {layer}')
             lines += ['', safe_format(
                 self.tr(src), src, field=biggest.field_name,
                 old=f'{biggest.old_value:.2f}', new=f'{biggest.new_value:.2f}',
@@ -496,11 +528,18 @@ class FiberQPlugin:
         outcome = apply_recalculation(plan)
 
         if outcome.applied:
-            src = 'Recalculated lengths on {count} feature(s).'
-            bar.pushSuccess('FiberQ', safe_format(
-                self.tr(src), src, count=outcome.feature_count))
+            bar.pushSuccess('FiberQ', self.tr(
+                'Recalculated lengths on %n feature(s).', '', outcome.feature_count))
+        if outcome.blocked_by_edits:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                '{layers} left unchanged: save or discard the open edits there, '
+                'then run this again.')
+            bar.pushWarning('FiberQ', safe_format(
+                self.tr(src), src,
+                layers=', '.join(sorted(set(outcome.blocked_by_edits)))))
         if outcome.failures:
-            src = 'Some layers could not be updated: {details}'
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Some layers could not be updated: {details}')
             bar.pushWarning('FiberQ', safe_format(
                 self.tr(src), src, details='; '.join(outcome.failures[:3])))
 
@@ -1049,12 +1088,21 @@ class FiberQPlugin:
 # --- Help/About ---
 
     def _fiberq_read_metadata(self) -> dict:
+        """Read metadata.txt.
+
+        ``interpolation=None`` is not optional. ConfigParser's default
+        BasicInterpolation treats ``%`` as a directive, and ``dict(cp.items(...))``
+        interpolates *every* value in the section -- so a single percent sign
+        anywhere in the changelog raises InterpolationSyntaxError, this returns
+        ``{}``, and the About dialog quietly falls back to "Version: 1.0" with no
+        author or email. metadata.txt is plain data, never a template.
+        """
         import os
         import configparser
         md = {}
         try:
             md_path = os.path.join(os.path.dirname(__file__), 'metadata.txt')
-            cp = configparser.ConfigParser()
+            cp = configparser.ConfigParser(interpolation=None)
             cp.read(md_path, encoding='utf-8')
             if cp.has_section('general'):
                 md = dict(cp.items('general'))
@@ -1067,7 +1115,7 @@ class FiberQPlugin:
         import configparser
         try:
             cfg_path = os.path.join(os.path.dirname(__file__), 'config.ini')
-            cp = configparser.ConfigParser()
+            cp = configparser.ConfigParser(interpolation=None)
             cp.read(cfg_path, encoding='utf-8')
             if cp.has_section(section) and cp.has_option(section, key):
                 return cp.get(section, key)
@@ -1102,7 +1150,10 @@ class FiberQPlugin:
             if viewer_url:
                 parts.append(f"<b>Preview map URL:</b> <a href='{viewer_url}'>{viewer_url}</a><br>")
             if support_url:
-                parts.append(f"<b>Support URL:</b> <a href='{support_url}'>{support_url}</a><br>")
+                parts.append(
+                    "<b>&#10084; Support FiberQ:</b> "
+                    f"<a href='{support_url}'>sponsor its ongoing development</a><br>"
+                )
             # NEW: call-to-action text
             parts.append("<hr style='margin:10px 0'>")
             parts.append(
@@ -1851,7 +1902,10 @@ class FiberQPlugin:
             self.action_validate = QAction(
                 self.tr('Validate project'), self.iface.mainWindow())
             try:
-                self.action_validate.setIcon(_load_icon('ic_health.svg'))
+                #: Its own icon, not ic_health.svg: sharing one with the health
+                #: check put two different actions on the toolbar as identical
+                #: buttons, which is indistinguishable from a duplicate.
+                self.action_validate.setIcon(_load_icon('ic_validate.svg'))
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.initGui: {e}")
             self.action_validate.triggered.connect(self.run_validation)

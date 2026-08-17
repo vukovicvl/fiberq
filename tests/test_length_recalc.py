@@ -155,19 +155,80 @@ def test_empty_geometry_is_left_alone(project):
     assert not plan_recalculation(project).changes
 
 
-def test_unmeasurable_layer_is_skipped_not_guessed(project):
-    """Degrees must never be written into a metre field."""
+def test_a_geographic_layer_is_measured_not_skipped(project):
+    """A geographic CRS names its own ellipsoid, so metres are available.
+
+    0.01 degree of longitude at this latitude is ~810 m, which is what the stored
+    value says -- so there is nothing to change, and nothing to skip either.
+    """
     project.setEllipsoid("NONE")
     clear_cache()
     geom = QgsGeometry.fromPolylineXY(
         [QgsPointXY(LON, LAT), QgsPointXY(LON + 0.01, LAT)])
     _layer(project, "Route", ["duzina", "duzina_km"],
-           [(geom, {"duzina": 810.0})], crs="EPSG:4326")
+           [(geom, {"duzina": 810.0, "duzina_km": 0.81})], crs="EPSG:4326")
+
+    plan = plan_recalculation(project)
+
+    assert plan.skipped_layers == []
+    assert not plan.changes
+
+
+def test_a_layer_that_cannot_be_measured_is_skipped_not_guessed(project, monkeypatch):
+    """Map units must never be written into a metre field.
+
+    Every CRS QGIS will hand you names an ellipsoid -- even a bare memory layer
+    defaults to EPSG:4326 -- so this path is defensive, and the honest way to test
+    it is to make the measurement report itself unusable rather than to contrive a
+    CRS that no user could produce.
+    """
+    from fiberq.core import length_manager as lm
+
+    geom = _line()
+    _route(project, [(geom, {"duzina": geom.length()})])
+    monkeypatch.setattr(lm, "measures_metres", lambda *a, **k: False)
 
     plan = plan_recalculation(project)
 
     assert plan.skipped_layers == ["Route"]
     assert not plan.changes
+
+
+def test_one_bad_layer_does_not_cost_the_whole_project(project, monkeypatch):
+    """A KeyError on one layer used to escape and abandon every other fix."""
+    from fiberq.core import length_manager as lm
+
+    geom = _line()
+    _route(project, [(geom, {"duzina": geom.length()})])
+    _cables(project, [(geom, {"duzina_m": geom.length(), "slack_m": 0.0,
+                              "total_len_m": geom.length()})])
+
+    real = lm.ground_length
+
+    def explode(g, layer=None, **kwargs):
+        if layer is not None and layer.name() == "Route":
+            raise KeyError("slack_m")
+        return real(g, layer, **kwargs)
+
+    monkeypatch.setattr(lm, "ground_length", explode)
+    plan = plan_recalculation(project)
+
+    assert plan.failed_layers and "Route" in plan.failed_layers[0]
+    assert any(c.layer_name == "Aerial cables" for c in plan.changes)
+
+
+def test_a_cable_layer_without_slack_m_still_plans(project):
+    """total_len_m without slack_m is reachable on a provider FiberQ cannot alter;
+    feat.attribute() raises KeyError on a field the layer does not have."""
+    geom = _line()
+    layer = _layer(project, "Aerial cables", ["duzina_m", "total_len_m"],
+                   [(geom, {"duzina_m": geom.length(), "total_len_m": geom.length()})])
+
+    plan = plan_recalculation(project)
+
+    assert not plan.failed_layers
+    assert {c.field_name for c in plan.changes} == {"duzina_m", "total_len_m"}
+    assert layer.name() in plan.layers_seen
 
 
 def test_largest_change_is_reported_for_the_preview(project):

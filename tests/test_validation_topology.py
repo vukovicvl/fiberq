@@ -278,6 +278,48 @@ def test_b1_ignores_an_unlinked_slack(qgis_app):
     assert _ids(_run(project, {"B1"}), "B1") == []
 
 
+def test_b2_flags_a_break_recorded_against_a_route(qgis_app):
+    """Resolving is not enough -- the target must be a cable.
+
+    From a real project: the break tool searched every line layer, so a click
+    near a trench wrote the Route layer's id into cable_layer_id. The reference
+    resolved, so B2 passed it, and a fibre break on a trench went unreported.
+    """
+    project, _cables, _fid = _project_with_cable()
+    route = _line_layer("Route", [
+        ({"fiberq_uuid": "r1"}, [QgsPointXY(0, 20), QgsPointXY(100, 20)]),
+    ])
+    project.addMapLayer(route)
+    route_fid = next(route.getFeatures()).id()
+    project.addMapLayer(_point_layer("Fiber break", [
+        ({"fiberq_uuid": "b1", "cable_layer_id": route.id(), "cable_fid": route_fid},
+         QgsPointXY(50, 20)),
+    ], fields=_FK_FIELDS))
+
+    issues = _ids(_run(project, {"B2"}), "B2")
+    assert len(issues) == 1
+    assert issues[0].severity == vm.Severity.ERROR
+    assert "Route" in issues[0].message
+
+
+def test_b1_flags_a_slack_attached_to_a_pipe(qgis_app):
+    """The same gap on the slack side: a duct is not a cable."""
+    project, _cables, _fid = _project_with_cable()
+    pipes = _line_layer("PE pipes", [
+        ({"fiberq_uuid": "p1"}, [QgsPointXY(0, 40), QgsPointXY(100, 40)]),
+    ])
+    project.addMapLayer(pipes)
+    pipe_fid = next(pipes.getFeatures()).id()
+    project.addMapLayer(_point_layer("Optical slacks", [
+        ({"fiberq_uuid": "s1", "cable_layer_id": pipes.id(), "cable_fid": pipe_fid},
+         QgsPointXY(50, 40)),
+    ], fields=_FK_FIELDS))
+
+    issues = _ids(_run(project, {"B1"}), "B1")
+    assert len(issues) == 1
+    assert "PE pipes" in issues[0].message
+
+
 def test_b2_checks_fiber_break_the_same_way(qgis_app):
     project, cables, _fid = _project_with_cable()
     project.addMapLayer(_point_layer("Fiber break", [

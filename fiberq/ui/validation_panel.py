@@ -13,7 +13,7 @@ i18n: ``tr()`` below must keep the context string equal to the class name --
 pylupdate6 derives the catalogue context from the enclosing class, so renaming
 the class without renaming the context silently reverts every string to English.
 """
-from qgis.PyQt.QtCore import QCoreApplication, Qt, pyqtSignal
+from qgis.PyQt.QtCore import QT_TRANSLATE_NOOP, QCoreApplication, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QBrush, QColor
 from qgis.PyQt.QtWidgets import (
     QComboBox,
@@ -275,24 +275,39 @@ class ValidationPanel(QDockWidget):
 
         counts = self._result.counts_by_severity()
         if not self._issues:
-            self.lbl_summary.setText(self.tr('No issues found.'))
-            return
-
-        # %n plurals: Qt picks the right form per language from the count.
-        parts = [
-            self.tr('%n error(s)', '', counts['error']),
-            self.tr('%n warning(s)', '', counts['warning']),
-            self.tr('%n info', '', counts['info']),
-        ]
-        text = ', '.join(parts)
-        if shown is not None and shown != len(self._issues):
-            src = '{summary} — showing {shown} of {total}'
-            text = safe_format(self.tr(src), src,
-                               summary=text, shown=shown, total=len(self._issues))
+            # A bare "No issues found." reads the same whether fourteen rules
+            # examined the project or none of them found a layer to look at.
+            # State the scope so a clean bill of health carries its evidence.
+            src = QT_TRANSLATE_NOOP(
+                'ValidationPanel', 'No issues found — {rules} rules ran over {layers} layers, {features} features.')
+            text = safe_format(self.tr(src), src, **self._scope())
+        else:
+            # %n plurals: Qt picks the right form per language from the count.
+            parts = [
+                self.tr('%n error(s)', '', counts['error']),
+                self.tr('%n warning(s)', '', counts['warning']),
+                self.tr('%n info', '', counts['info']),
+            ]
+            text = ', '.join(parts)
+            if shown is not None and shown != len(self._issues):
+                src = QT_TRANSLATE_NOOP('ValidationPanel', '{summary} — showing {shown} of {total}')
+                text = safe_format(self.tr(src), src,
+                                   summary=text, shown=shown, total=len(self._issues))
+        # Outside the branch on purpose: a run where every rule crashed produces
+        # no issues, and must not be reported as a clean project.
         if self._result.rule_errors:
             text += '\n' + self.tr('%n rule(s) failed to run',
                                    '', len(self._result.rule_errors))
         self.lbl_summary.setText(text)
+
+    def _scope(self):
+        """What the run actually covered, for the empty-result summary."""
+        counts = self._result.feature_counts or {}
+        return {
+            'rules': len(self._result.ran_rules),
+            'layers': len(counts),
+            'features': sum(counts.values()),
+        }
 
     def _on_item_activated(self, item, _column=0):
         issue = item.data(0, _ROLE_ISSUE) if item else None
