@@ -159,12 +159,25 @@ def main(argv):
     path, total = build(out, n, faulty)
     print(f"Wrote {path}  ({n} street segments, {total} features"
           f"{', all elements detached' if faulty else ''})")
+
+    try:
+        from qgis.core import QgsApplication
+    except ImportError:
+        print("QGIS not available -- GeoPackage written without a project file")
+        return 0
+
+    # Writing the project needs a running application. Without one QGIS still
+    # produces a file, but prints "Application path not initialized" for every
+    # layer, which makes a working run look broken.
+    QgsApplication.setPrefixPath("/usr", True)
+    app = QgsApplication([], False)
+    app.initQgis()
     try:
         qgz = os.path.splitext(out)[0] + ".qgz"
         build_project(out, qgz)
         print(f"Wrote {qgz}")
-    except ImportError:
-        print("QGIS not available -- GeoPackage written without a project file")
+    finally:
+        app.exitQgis()
     return 0
 
 
