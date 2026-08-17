@@ -1899,7 +1899,10 @@ class FiberQPlugin:
             self.action_validate = QAction(
                 self.tr('Validate project'), self.iface.mainWindow())
             try:
-                self.action_validate.setIcon(_load_icon('ic_health.svg'))
+                #: Its own icon, not ic_health.svg: sharing one with the health
+                #: check put two different actions on the toolbar as identical
+                #: buttons, which is indistinguishable from a duplicate.
+                self.action_validate.setIcon(_load_icon('ic_validate.svg'))
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.initGui: {e}")
             self.action_validate.triggered.connect(self.run_validation)
