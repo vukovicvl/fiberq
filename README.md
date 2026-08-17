@@ -25,6 +25,12 @@ For the full feature list and install instructions, see [fiberq/README.md](fiber
 - 💡 **Feature requests & voting (Discussions → Ideas):** https://github.com/vukovicvl/fiberq/discussions/categories/ideas
 - 🐛 **Bug reports (GitHub Issues):** https://github.com/vukovicvl/fiberq/issues
 - 📊 **Polls (priorities & decisions):** https://github.com/vukovicvl/fiberq/discussions/categories/polls
+- 🌍 **Translate FiberQ into your language:** [docs/TRANSLATING.md](docs/TRANSLATING.md)
+  — a step-by-step guide that assumes no programming, Git or terminal
+  experience. Partial translations are welcome and ship as-is; anything you
+  leave stays in English. Open a
+  [translation issue](https://github.com/vukovicvl/fiberq/issues/new?template=translation.yml)
+  to claim a language.
 
 ## Use of Generative AI
 
