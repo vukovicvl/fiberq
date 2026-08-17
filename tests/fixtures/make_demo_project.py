@@ -48,13 +48,37 @@ ORIGIN_X, ORIGIN_Y = 1_900_000.0, 5_400_000.0
 FAULTS = {
     "A1": ("Aerial cable 'AC-2' is stranded: neither end reaches anything. "
            "One fault, two findings -- a cable has two ends."),
+    "A2": ("Aerial cable 'AC-3' starts 7 m from the third pole: outside the 5 m "
+           "tolerance, close enough that it was plainly meant to connect. "
+           "A2 refines A1 rather than replacing it, so this endpoint is "
+           "reported by both."),
     "A3": "The fourth pole sits 45 m off the network, attached to nothing.",
     "B1": "Optical slack 'SL-2' references a cable layer that is not in the project.",
+    "B2": ("The fibre break is recorded against the Route layer. The reference "
+           "resolves, so only the layer-type check catches it -- a break on a "
+           "trench is not a thing."),
+    "B3": ("Optical slack 'SL-3' names a cable that exists, but sits 80 m away "
+           "from it: a stale link, as if the cable were re-routed afterwards."),
+    "B4": ("Two poles share one fiberq_uuid, the signature of a copied and "
+           "pasted feature."),
     "C1": "Underground cable 'UC-2' has no cable type recorded.",
     "D1": "Underground cable 'UC-2' is in state 'Someday', not a permitted value.",
     "D2": "Aerial cable 'AC-2' claims 9999 fibres.",
     "D3": "Route 'R-3' stores 210.0 m against a real ground length of ~145 m.",
+    "E2": "The fifth pole has no geometry, as an attribute-table edit leaves it.",
 }
+
+#: Rules a valid demo project cannot demonstrate, because each needs the project
+#: itself to be wrong in a way that would invalidate everything else:
+#:
+#: * ``C2`` fires when a project contains no FiberQ layers at all.
+#: * ``E1`` fires on a missing or mixed CRS. Mixing one in would change what the
+#:   A-rule tolerance means for that layer and cascade into every topology
+#:   finding here.
+#:
+#: Both are covered by unit tests instead (tests/test_validation*.py). Asserted
+#: by tests/test_sample_report.py so this list cannot quietly go stale.
+NOT_DEMONSTRABLE = ("C2", "E1")
 
 #: Slack SL-1 must point at the real, runtime layer id of the Underground cables
 #: layer, which only exists once a QgsProject has loaded it. build_demo_project()
@@ -100,12 +124,28 @@ CABLE_BACKBONE = [_p(0, 0), _p(120, 0), _p(280, 0)]
 CABLE_DISTRIBUTION = [_p(120, 0), _p(120, 200)]
 #: Deliberately stranded -- nothing else reaches it (fault A1).
 CABLE_STRANDED = [_p(360, 90), _p(430, 90)]
+#: Starts 7 m from the pole at (280, 0): past the 5 m tolerance, inside 2x it, so
+#: A2 calls it a near miss (fault A2). Its far end lands exactly on JC-2, so the
+#: cable contributes one dangling endpoint rather than two.
+CABLE_NEAR_MISS = [_p(287, 0), _p(287, -60)]
 
 POLE_POSITIONS = [_p(0, 0), _p(120, 0), _p(280, 0)]
 #: 45 m clear of every line (fault A3).
 POLE_ORPHAN = _p(200, 45)
+#: Shares POLE_POSITIONS[0]'s identity (fault B4) and sits on it, so it is
+#: attached and only B4 has anything to say about it.
+POLE_TWIN = _p(0, 0)
 
 MANHOLE_POSITIONS = [_p(120, 0), _p(120, 200)]
+
+#: Terminates CABLE_NEAR_MISS, so that cable's far end is properly connected.
+JOINT_CLOSURE_POSITIONS = [_p(120, 0), _p(287, -60)]
+
+#: On route R-1, but recorded against the Route layer instead of a cable (B2).
+FIBER_BREAK_POSITION = _p(60, 0)
+
+#: Names UC-1, which exists, but sits 80 m off it (fault B3).
+SLACK_STALE = _p(60, 80)
 
 
 def _ground_length(points):
@@ -128,6 +168,11 @@ def _ground_length(points):
 def _uuid(n: int) -> str:
     """A stable, obviously-synthetic UUID. Deterministic by design."""
     return f"fe1b0000-0000-4000-8000-{n:012d}"
+
+
+#: Held by two poles at once (fault B4). Numbered far above the sequential ids
+#: so it can never collide with an auto-assigned one.
+_TWIN_UUID = _uuid(900)
 
 
 def _rows():
@@ -174,16 +219,29 @@ def _rows():
                           "duzina_m": _ground_length(CABLE_STRANDED),
                           "slack_m": 0.0,
                           "total_len_m": _ground_length(CABLE_STRANDED)}),
+        # Fault A2: one end just outside snapping tolerance.
+        (CABLE_NEAR_MISS, {"naziv": "AC-3", "tip": "Optical", "podtip": "Drop",
+                           "stanje_kabla": "Planned", "broj_vlakana": 12,
+                           "duzina_m": _ground_length(CABLE_NEAR_MISS),
+                           "slack_m": 0.0,
+                           "total_len_m": _ground_length(CABLE_NEAR_MISS)}),
     ]
 
     # Poles and manholes have no free-text name field in the schema, so the
     # demo identifies them by feature id rather than inventing a column.
     poles = [(pt, {"tip": "Pole"}) for pt in POLE_POSITIONS]
-    poles.append((POLE_ORPHAN, {"tip": "Pole"}))  # fault A3
+    # Fault B4: one identity on two poles. Both ends of the duplication are
+    # written explicitly -- deriving one from a positional index would silently
+    # re-pair it with whatever layer happens to be numbered there.
+    poles[0][1][schema.IDENTITY_FIELD] = _TWIN_UUID
+    poles.append((POLE_ORPHAN, {"tip": "Pole"}))    # fault A3
+    poles.append((None, {"tip": "Pole"}))           # fault E2: no geometry
+    poles.append((POLE_TWIN, {"tip": "Pole", schema.IDENTITY_FIELD: _TWIN_UUID}))
 
     manholes = [(pt, {"tip": "Manhole"}) for pt in MANHOLE_POSITIONS]
 
-    joint_closures = [(_p(120, 0), {"naziv": "JC-1"})]
+    joint_closures = [(pt, {"naziv": f"JC-{i}"})
+                      for i, pt in enumerate(JOINT_CLOSURE_POSITIONS, start=1)]
 
     slacks = [
         (_p(60, 0), {"napomena": "SL-1", "duzina_m": 15.0, "cable_fid": 1,
@@ -191,6 +249,18 @@ def _rows():
         # Fault B1: points at a cable that was never created.
         (_p(120, 100), {"napomena": "SL-2", "duzina_m": 15.0, "cable_fid": 999,
                         "cable_layer_id": "no-such-layer-id"}),
+        # Fault B3: names UC-1, which exists, but sits 80 m off it.
+        (SLACK_STALE, {"napomena": "SL-3", "duzina_m": 15.0, "cable_fid": 1,
+                       "cable_layer_id": CABLE_LAYER_PLACEHOLDER}),
+    ]
+
+    # Fault B2: a break recorded against the Route layer. Like SL-1 and SL-3 the
+    # layer id is patched in once a project exists; unlike them the target is
+    # Route, which is the whole point.
+    fiber_breaks = [
+        (FIBER_BREAK_POSITION, {"naziv": "FB-1", "distance_m": 60.0,
+                                "cable_fid": 1,
+                                "cable_layer_id": CABLE_LAYER_PLACEHOLDER}),
     ]
 
     data = {
@@ -201,6 +271,7 @@ def _rows():
         "Manholes": manholes,
         "Joint Closures": joint_closures,
         "Optical slack": slacks,
+        "Fiber break": fiber_breaks,
     }
 
     # Identity is not optional -- B4 is an ERROR rule, and a demo that trips it
@@ -253,8 +324,11 @@ def build_demo_gpkg(path: str) -> str:
             for key, value in attrs.items():
                 if layer.GetLayerDefn().GetFieldIndex(key) >= 0:
                     feature.SetField(key, value)
-            feature.SetGeometry(ogr.CreateGeometryFromWkt(
-                _wkt(layer_schema.geometry, coords)))
+            # ``None`` means write the row with no geometry at all, which is what
+            # an attribute-table edit leaves behind and what E2 exists to catch.
+            if coords is not None:
+                feature.SetGeometry(ogr.CreateGeometryFromWkt(
+                    _wkt(layer_schema.geometry, coords)))
             layer.CreateFeature(feature)
             feature = None
 
@@ -333,20 +407,40 @@ def build_demo_project(gpkg_path, qgz_path):
     # readers the demo needs migrating.
     mark_project_current(project)
 
-    cables = layers.get("Underground cables")
-    slack = layers.get("Optical slack")
-    if cables is not None and slack is not None:
-        index = slack.fields().indexFromName("cable_layer_id")
-        target = next((f.id() for f in slack.getFeatures()
-                       if f.attribute("cable_fid") == 1), None)
-        if index >= 0 and target is not None:
-            slack.startEditing()
-            slack.changeAttributeValue(target, index, cables.id())
-            slack.commitChanges()
+    # Which feature points at which layer. The note/name field identifies the
+    # row, because feature ids are the provider's business and the target layer
+    # differs per fault -- SL-1 and SL-3 name a cable, FB-1 names Route, and that
+    # mismatch is fault B2.
+    _relink(layers, "Optical slack", "napomena", "SL-1", "Underground cables")
+    _relink(layers, "Optical slack", "napomena", "SL-3", "Underground cables")
+    _relink(layers, "Fiber break", "naziv", "FB-1", "Route")
 
     _set_view_extent(project, layers.values())
     project.write(qgz_path)
     return qgz_path
+
+
+def _relink(layers, layer_name, key_field, key_value, target_layer_name):
+    """Point one feature's ``cable_layer_id`` at a live layer id.
+
+    A GeoPackage cannot express a *valid* reference on its own -- the value is a
+    runtime QGIS layer id -- so the placeholder written into the file is filled
+    in here, once the project exists.
+    """
+    layer = layers.get(layer_name)
+    target = layers.get(target_layer_name)
+    if layer is None or target is None:
+        return False
+    index = layer.fields().indexFromName("cable_layer_id")
+    if index < 0:
+        return False
+    fid = next((f.id() for f in layer.getFeatures()
+                if f.attribute(key_field) == key_value), None)
+    if fid is None:
+        return False
+    layer.startEditing()
+    layer.changeAttributeValue(fid, index, target.id())
+    return bool(layer.commitChanges())
 
 
 def _set_view_extent(project, layers):

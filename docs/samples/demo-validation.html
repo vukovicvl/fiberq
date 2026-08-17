@@ -63,10 +63,10 @@ footer { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid #e6e6e6;
 <p class="sub">FiberQ demo project</p>
 <p class="verdict fail">Errors found — not ready to hand over</p>
 <div class="cards">
-<div class="card"><span class="n">1</span><span class="k">Errors</span></div>
-<div class="card"><span class="n">7</span><span class="k">Warnings</span></div>
-<div class="card"><span class="n">0</span><span class="k">Info</span></div>
-<div class="card"><span class="n">8</span><span class="k">Total</span></div>
+<div class="card"><span class="n">4</span><span class="k">Errors</span></div>
+<div class="card"><span class="n">9</span><span class="k">Warnings</span></div>
+<div class="card"><span class="n">1</span><span class="k">Info</span></div>
+<div class="card"><span class="n">14</span><span class="k">Total</span></div>
 </div>
 <h2>Run</h2><div class="meta"><dl>
 <dt>Coordinate system</dt><dd>EPSG:3857</dd>
@@ -84,19 +84,26 @@ footer { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid #e6e6e6;
 <th>Message</th>
 </tr></thead><tbody>
 <tr><td class="sev" style="color:#c83c3c">Error</td><td class="rule">B1</td><td>Optical slack</td><td class="num">2</td><td>Referenced cable layer no-such-layer-id is not in the project</td></tr>
+<tr><td class="sev" style="color:#c83c3c">Error</td><td class="rule">B2</td><td>Fiber break</td><td class="num">1</td><td>Referenced layer Route is not a cable layer</td></tr>
+<tr><td class="sev" style="color:#c83c3c">Error</td><td class="rule">B4</td><td>Poles</td><td class="num">6</td><td>Duplicate fiberq_uuid — the same identity is already used by feature 1 in layer Poles</td></tr>
+<tr><td class="sev" style="color:#c83c3c">Error</td><td class="rule">E2</td><td>Poles</td><td class="num">5</td><td>Feature has no geometry</td></tr>
 <tr><td class="sev" style="color:#c88c1e">Warning</td><td class="rule">A1</td><td>Aerial cables</td><td class="num">1</td><td>Cable endpoint is not connected to any element or cable (tolerance 5)</td></tr>
 <tr><td class="sev" style="color:#c88c1e">Warning</td><td class="rule">A1</td><td>Aerial cables</td><td class="num">1</td><td>Cable endpoint is not connected to any element or cable (tolerance 5)</td></tr>
+<tr><td class="sev" style="color:#c88c1e">Warning</td><td class="rule">A1</td><td>Aerial cables</td><td class="num">2</td><td>Cable endpoint is not connected to any element or cable (tolerance 5)</td></tr>
 <tr><td class="sev" style="color:#c88c1e">Warning</td><td class="rule">A3</td><td>Poles</td><td class="num">4</td><td>Element is not on or near any cable or route (tolerance 5)</td></tr>
+<tr><td class="sev" style="color:#c88c1e">Warning</td><td class="rule">B3</td><td>Optical slack</td><td class="num">3</td><td>Feature is 80 from the cable it references (tolerance 5) -- the cable may have been re-routed</td></tr>
 <tr><td class="sev" style="color:#c88c1e">Warning</td><td class="rule">C1</td><td>Underground cables</td><td class="num">2</td><td>Required field(s) missing or empty: tip</td></tr>
 <tr><td class="sev" style="color:#c88c1e">Warning</td><td class="rule">D1</td><td>Underground cables</td><td class="num">2</td><td>Field stanje_kabla: value Someday is not one of the allowed values (Existing, Planned, Postojeće, Projektovano, U izgradnji, Under construction)</td></tr>
 <tr><td class="sev" style="color:#c88c1e">Warning</td><td class="rule">D2</td><td>Aerial cables</td><td class="num">1</td><td>Field broj_vlakana: 9999 is out of range (expected &gt; 0 and &lt;= 1152)</td></tr>
 <tr><td class="sev" style="color:#c88c1e">Warning</td><td class="rule">D3</td><td>Route</td><td class="num">3</td><td>Stored duzina (210) does not match the drawn geometry (144.61)</td></tr>
+<tr><td class="sev" style="color:#5a8cc8">Info</td><td class="rule">A2</td><td>Aerial cables</td><td class="num">2</td><td>Cable endpoint is 7 from Poles -- just outside the 5 snapping tolerance; it probably should connect</td></tr>
 </tbody></table></div>
 <h2>Issues by layer</h2><div class="scroll"><table><thead><tr><th>Layer</th><th>Issues</th></tr></thead><tbody>
-<tr><td>Aerial cables</td><td class="num">3</td></tr>
+<tr><td>Aerial cables</td><td class="num">5</td></tr>
+<tr><td>Poles</td><td class="num">3</td></tr>
+<tr><td>Optical slack</td><td class="num">2</td></tr>
 <tr><td>Underground cables</td><td class="num">2</td></tr>
-<tr><td>Optical slack</td><td class="num">1</td></tr>
-<tr><td>Poles</td><td class="num">1</td></tr>
+<tr><td>Fiber break</td><td class="num">1</td></tr>
 <tr><td>Route</td><td class="num">1</td></tr>
 </tbody></table></div>
 <footer>
