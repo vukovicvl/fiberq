@@ -1,1 +1,8 @@
-github: [vukovicvl]
+# Shown as the "Sponsor" button on the GitHub repo. Personal GitHub Sponsors
+# is the active channel: https://github.com/sponsors/vukovicvl
+# Uncomment the others once those accounts exist — they enable instant,
+# one-off giving without waiting on GitHub Sponsors approval.
+github: vukovicvl
+# ko_fi: <ko-fi-handle>
+# liberapay: <liberapay-handle>
+# custom: ["https://www.fiberq.net/"]
