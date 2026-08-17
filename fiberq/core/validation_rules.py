@@ -1023,6 +1023,28 @@ def _check_length_coherence(ctx):
 
 def _check_crs_consistency(ctx):
     """FiberQ layers should share one CRS, and a metric one where lengths matter."""
+    # The project's own CRS, before the per-layer checks. Every rule here reads
+    # the *layer* CRS, so an unset project CRS costs the existing data nothing --
+    # but the canvas has no projection, so the next feature drawn is placed in an
+    # undefined system and a basemap cannot line up with anything. Seen in the
+    # field: QGIS 3.40 opening a project saved by QGIS 4.2 silently drops the
+    # project CRS ("could not be completely loaded"), and nothing said so.
+    # Only when there is something to place: a project with no FiberQ layers is
+    # C2's finding, and adding a CRS warning to it is noise.
+    project_crs = ctx.project.crs()
+    if ctx.layers_for() and not (project_crs and project_crs.isValid()):
+        src = QT_TRANSLATE_NOOP(
+            'ValidationRules', "The project has no coordinate reference system set")
+        yield ValidationIssue(
+            rule_id="E1", severity=Severity.WARNING, category=_CAT_DOMAIN,
+            message=QCoreApplication.translate('ValidationRules', src),
+            fix_hint=QCoreApplication.translate(
+                'ValidationRules',
+                "Set it in Project -> Properties -> CRS, to the same system the "
+                "layers use. Features drawn without one cannot be placed reliably."),
+            details={"project_crs": "", "unset": True},
+        )
+
     seen = {}
     for canonical, layers in ctx.layers_by_canonical.items():
         for layer in layers:

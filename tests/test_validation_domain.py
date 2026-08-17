@@ -234,7 +234,10 @@ def test_d3_tolerance_is_configurable(qgis_app):
 # ---------------------------------------------------------------------------
 
 def test_e1_is_clean_for_one_projected_crs(qgis_app):
+    from qgis.core import QgsCoordinateReferenceSystem
+
     project = QgsProject()
+    project.setCrs(QgsCoordinateReferenceSystem(METRIC))
     project.addMapLayer(_layer("Underground cables", "LineString", CABLE_FIELDS, [
         ({"fiberq_uuid": "c1"}, _line((0, 0), (100, 0))),
     ]))
@@ -242,6 +245,26 @@ def test_e1_is_clean_for_one_projected_crs(qgis_app):
         "ODF", "Point", ("fiberq_uuid:string",),
         [({"fiberq_uuid": "n1"}, QgsGeometry.fromPointXY(QgsPointXY(0, 0)))]))
     assert _ids(_run(project, {"E1"}), "E1") == []
+
+
+def test_e1_flags_a_project_with_no_crs(qgis_app):
+    """An unset project CRS costs the existing data nothing -- every rule reads
+    the layer CRS -- but the canvas has no projection, so the next feature drawn
+    is placed in an undefined system.
+
+    From the field: QGIS 3.40 opening a project saved by QGIS 4.2 drops the
+    project CRS, and the layers keep theirs. Nothing reported it.
+    """
+    project = QgsProject()  # deliberately no setCrs
+    project.addMapLayer(_layer("Underground cables", "LineString", CABLE_FIELDS, [
+        ({"fiberq_uuid": "c1"}, _line((0, 0), (100, 0))),
+    ]))
+
+    unset = [i for i in _ids(_run(project, {"E1"}), "E1")
+             if i.details.get("unset")]
+    assert len(unset) == 1
+    assert unset[0].severity == vm.Severity.WARNING
+    assert unset[0].fix_hint
 
 
 def test_e1_flags_mixed_crs(qgis_app):
@@ -440,7 +463,10 @@ def test_registry_holds_the_full_v140_core_set(qgis_app):
 
 def test_a_clean_project_passes_every_rule(qgis_app):
     """End-to-end: a small, correct project produces no issues at all."""
+    from qgis.core import QgsCoordinateReferenceSystem
+
     project = QgsProject()
+    project.setCrs(QgsCoordinateReferenceSystem(METRIC))
     cables = _layer("Underground cables", "LineString", CABLE_FIELDS + (
         "tip:string", "naziv:string"), [
         ({"fiberq_uuid": "c1", "tip": "opticki", "broj_vlakana": 24,

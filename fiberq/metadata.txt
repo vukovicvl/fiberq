@@ -46,6 +46,14 @@ changelog=
           use "Recalculate lengths" to repair existing ones.
         * Fix: placing an extension or a fiber break no longer creates an empty
           "Poles" layer as a side effect.
+        * Fix: shipped layer styles named "MS Shell Dlg 2", a Windows-only font,
+          so every Linux and macOS user got substituted label fonts and a warning
+          per layer on load. They now use the portable "Sans Serif".
+        * Fix: opening a project saved in QGIS 4 no longer re-runs the schema
+          migration in QGIS 3. QGIS 4 stores project properties in a form QGIS 3
+          cannot read, so the schema marker now falls back to the copy in the
+          GeoPackage. Validation also reports a project left with no CRS, which
+          is what that same QGIS limitation does to a downgraded project.
         * Fix: the fiber break tool accepted a click near any line, so a break
           could be recorded against a route or a duct and stored as if it were
           on a cable. It now targets cable layers only, and B1/B2 report the

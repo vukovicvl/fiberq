@@ -232,9 +232,18 @@ comparing metres to map units.
 ### E1 — Coordinate reference systems are consistent
 **Warning · project-wide**
 
-All FiberQ layers share one CRS, and that CRS expresses the connectivity
-tolerance meaningfully. Mixed CRSs make every tolerance in every other rule mean
-something different per layer.
+The project has a CRS, all FiberQ layers share one, and that CRS expresses the
+connectivity tolerance meaningfully. Mixed CRSs make every tolerance in every
+other rule mean something different per layer.
+
+**A project with no CRS at all** is reported separately. Every other rule reads
+each *layer's* CRS, so your existing data is unaffected and lengths stay correct
+— but the canvas has no projection, so a basemap cannot line up and the next
+feature you draw is placed in an undefined system.
+
+This is not hypothetical: opening a project saved by QGIS 4.2 in QGIS 3.40 drops
+the project CRS (QGIS reports "could not be completely loaded"), while the layers
+keep theirs. Set it again in **Project → Properties → CRS** before drawing.
 
 A **geographic CRS** (EPSG:4326 and friends) is flagged separately. Lengths are
 fine there — they are measured on the ellipsoid — but the A-rule tolerance is in

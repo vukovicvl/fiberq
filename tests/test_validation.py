@@ -150,7 +150,10 @@ def test_d1_accepts_asbuilt_typo_and_flags_bad_value():
 # ---------------------------------------------------------------------------
 
 def test_clean_project_has_no_issues():
+    from qgis.core import QgsCoordinateReferenceSystem
+
     project = QgsProject()
+    project.setCrs(QgsCoordinateReferenceSystem("EPSG:3857"))
     project.addMapLayer(_mk_layer(
         "Underground cables",
         ["fiberq_uuid:string", "tip:string", "broj_vlakana:integer"],
