@@ -8,6 +8,8 @@ whole run as HTML, JSON or CSV.
 This page documents every rule: what it checks, why that matters in the field, and
 what to do about a finding.
 
+- **User guide:** [`validation-guide.md`](validation-guide.md) — running a validation,
+  reading the panel, exporting a report, and repairing stored lengths
 - **Sample report:** [`samples/demo-validation.html`](samples/demo-validation.html)
 - **Demo project:** [`samples/demo_project.qgz`](samples/demo_project.qgz) — open it
   and run the validator yourself
