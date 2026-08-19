@@ -8,10 +8,12 @@ A QGIS plugin for fiber optic network design and documentation.
 finds in a dockable panel — filter by severity, layer or rule, and click any issue
 to jump straight to it on the map.
 
-- **Thirteen rules** — topology and connectivity, referential integrity, feature
+- **Fourteen rules** — topology and connectivity, referential integrity, feature
   identity, required attributes, value domains, length coherence, CRS consistency
   and geometry health. Every rule is documented in
-  [docs/validation-rules.md](https://github.com/vukovicvl/fiberq/blob/main/docs/validation-rules.md).
+  [docs/validation-rules.md](https://github.com/vukovicvl/fiberq/blob/main/docs/validation-rules.md),
+  and the [user guide](https://github.com/vukovicvl/fiberq/blob/main/docs/validation-guide.md)
+  walks through running a validation, reading the panel and repairing stored lengths.
 - **Audit-ready reports** — export a run as self-contained HTML (for handover and
   audit files), JSON (machine-readable, stable keys) or CSV (for spreadsheets and
   issue trackers).

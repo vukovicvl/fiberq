@@ -2,16 +2,24 @@
 
 Open-source QGIS plugin for fiber optic network design (FTTH / GPON / FTTx).
 
-**Latest release: v1.3.0 — 15.07.2026.** Added on GitHub as a new release.
+**Latest release: v1.4.0 — 19.08.2026.** Added on GitHub as a new release.
 
-v1.3.0 — WP1 · Data model & migrations
+v1.4.0 — WP2 · Validation & reporting
 
-Project schema versioning, safe automatic migrations, and a stable per-feature identity (fiberq_uuid). Verified end to end on QGIS 3.40 (Qt5) and QGIS 4.2 (Qt6), with both new and migrated older projects.
+**Validate project** runs fourteen checks over the whole design — topology and
+connectivity, referential integrity, feature identity, required attributes, value
+domains, length coherence, CRS consistency and geometry health — and lists what it
+finds in a dockable panel you can filter, click through, and export.
 
-    Per-project schema-version marker, mirrored into the GeoPackage
-    Automatic, lossless, idempotent on-load migration of older projects (schema 0 → 1.0)
-    fiberq_uuid — a stable, cross-system ID on every feature
-    Clean plugins.qgis.org security scan (100%); tested on Qt5 and Qt6
+    Fourteen rules, one command; filter by severity, layer or rule, click any issue to jump to it
+    Export the run as HTML (handover), JSON (tooling) or CSV (spreadsheets)
+    Lengths now measured on the project ellipsoid — true ground metres, not map units
+    "Recalculate lengths…" repairs existing projects, showing every change before writing
+    Now translatable; clean plugins.qgis.org security scan; tested on Qt5 and Qt6
+
+Guides: [validating a design](docs/validation-guide.md) ·
+[rule reference](docs/validation-rules.md) ·
+[demo project](docs/samples/) · [project versioning](docs/project-versioning-guide.md)
 
 You can auto-update in QGIS, or download the folder manually from the GitHub release.
 
