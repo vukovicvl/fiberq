@@ -137,15 +137,23 @@ Codes are lowercase, dot-free, and stable forever once published:
 | `closure.joint` | Point | Joint closure |
 | `odf` | Point | Optical distribution frame |
 | `otb` | Point | Optical termination box |
-| `otb.indoor` / `otb.outdoor` / `otb.pole` | Point | OTB placement variants |
 | `to` | Point | Termination outlet |
-| `to.indoor` / `to.outdoor` / `to.pole` / `to.closure` | Point | TO placement variants |
 | `tb` | Point | Termination box |
 | `patch_panel` | Point | Patch panel |
 | `slack` | Point | Optical slack loop |
 | `fiber_break` | Point | Recorded fibre break |
 | `service_area` | Polygon | Service area |
 | `building` | Polygon | Building / object |
+
+**Placement is an attribute, not a type.** Where an element is mounted — indoor,
+outdoor, on a pole, inside a joint closure — travels in a `placement` attribute
+(`indoor` | `outdoor` | `pole` | `closure` | unset), not in the type code. A tool that
+does not care about placement still understands the element; a tool that keeps separate
+layers per placement restores them exactly from `fq_type` + `placement`.
+
+`otb` and `to` are **distinct types**. An optical termination box and a termination
+outlet are different pieces of equipment, and collapsing one into the other loses
+information that cannot be recovered.
 
 A tool encountering an unknown `fq_type` **must not** reclassify it to something it does
 recognise. Mapping an unknown point to the nearest familiar type destroys information
@@ -165,9 +173,15 @@ that makes the format worth having.
 `source_port`, `source_side`, `dest_element_uuid`, `dest_cable_uuid`, `dest_tube`,
 `dest_fiber`, `dest_port`, `dest_side`, `connection_type`, `loss_db`, `tray_ref`, `notes`
 
-Tube and fibre numbers are **1-based**. Fibre colour is *derived* from the colour
-standard (§7) and the tube/fibre index — it is not stored, so a bundle cannot contradict
-itself about which standard it follows.
+Tube and fibre numbers are **1-based**.
+
+**Fibre colour has one normative source and one optional cache.** The colour is
+*derived* from the bundle's `color_standard` (§7) plus the tube/fibre index — that is
+the authority, and it is what makes a bundle internally consistent. A writer may
+additionally record `source_color_hex` / `dest_color_hex` as an **advisory** cache for
+readers that do not carry the standard's tables. Where the two disagree, the derived
+value wins, and a reader may report the mismatch. Never treat the cached hex as
+authoritative.
 
 **`fq_relation`** + **`fq_relation_member`** — named groupings of objects: an optical
 path, a feeder, a named route. `fq_relation(uuid, name, category)` and
@@ -176,9 +190,14 @@ path, a feeder, a named route. `fq_relation(uuid, name, category)` and
 **`fq_container`**, **`fq_container_slot`**, **`fq_slot_assignment`** — the generic model
 for "a thing with numbered positions that other things occupy": duct holes in a manhole
 wall, ports on a panel, trays in a closure.
-`fq_container(uuid, host_uuid, kind, name, geometry_json)`,
+`fq_container(uuid, host_uuid, host_kind, kind, name, geometry_json)`,
 `fq_container_slot(uuid, container_uuid, index, label, kind, spec_json, status)`,
 `fq_slot_assignment(slot_uuid, occupant_uuid, direction, notes, extra_json)`
+
+**Containers nest.** `host_uuid` may reference either a feature or **another
+container**, with `host_kind` (`feature` | `container`) saying which. A splice tray
+inside a joint closure is a container hosted by a container; its positions are ordinary
+slots. This gives arbitrary nesting depth with no extra tables and no special cases.
 
 Generic on purpose: modelling duct holes, tray positions and panel ports as three
 different table sets would mean a new table set for every tool's next idea.
@@ -266,15 +285,32 @@ tool does not support*. The FiberQ plugin asserts exactly this in CI.
   on a feature, and the resolved values alongside it, so a receiver without the catalogue
   still has the numbers it needs.
 
-## 11. Open questions before v1 freezes
+## 11. Decisions taken
 
-1. Should `fq_type` placement variants (`otb.indoor` vs `otb`) be a separate
-   `placement` attribute instead of distinct types? Cleaner, but changes the layer mapping.
-2. Colour: derive from standard + index (current draft) or store resolved colour too, for
-   readers with no catalogue?
-3. Does `fq_container` adequately cover tray-within-closure nesting, or is one level of
-   nesting needed?
-4. Is a GeoPackage-only v1 acceptable, with the GeoJSON profile deferred to v1.1?
+These were open in the first draft and are now settled. Recorded because the reasoning
+matters more than the outcome for anyone implementing against this.
+
+1. **Placement is an attribute, not a type code.** Separate types per mounting position
+   multiply the vocabulary without adding meaning, and a tool that does not model
+   placement should still recognise the element. `otb` and `to` stay distinct.
+2. **Colour is derived, with an optional advisory cache.** Deriving from
+   standard + index keeps a bundle from contradicting itself; the optional hex lets a
+   reader without the colour tables still display something. Precedence is explicit.
+3. **Containers nest through `host_uuid` + `host_kind`.** One field covers
+   tray-inside-closure and every future variant, rather than a new table set per idea.
+4. **The GeoJSON profile stays in v1**, specified and explicitly lossy. It is the right
+   tool for geometry-only handover, and marking it `geojson-lite` means nobody loses a
+   side-car by accident.
+
+## 12. Implementation status
+
+The specification is ahead of the plugin, deliberately. The plugin does not model fibre
+splicing, trays or duct occupancy today, and this format carries all of them — so
+bundles from tools that do model them pass through the plugin intact, and the day the
+plugin gains those features, **bundles written today already contain the data**.
+
+That is rule 1 doing its job: a format that only carried what today's implementation
+understands would have to be redesigned every time an implementation grew.
 
 ---
 
