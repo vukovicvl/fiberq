@@ -547,6 +547,63 @@ class FiberQPlugin:
         if getattr(self, '_validation_panel', None) is not None:
             self.run_validation()
 
+    def export_interchange_bundle(self):
+        """Write the project as a FiberQ interchange bundle (WP3).
+
+        Separate from "Save all layers to GeoPackage" on purpose. That command
+        moves where the project lives -- it repoints every layer at the file it
+        writes. This one produces a handover artefact and leaves the project
+        exactly where it was.
+
+        The format is specified in docs/interchange-format.md.
+        """
+        import os
+
+        from qgis.PyQt.QtWidgets import QFileDialog
+
+        from .core.interchange_bundle import InterchangeBundleWriter
+        from .i18n import safe_format
+
+        bar = self.iface.messageBar()
+        prj = QgsProject.instance()
+        default_dir = os.path.dirname(prj.fileName()) if prj.fileName() else os.path.expanduser('~')
+        suggested = os.path.join(default_dir, 'FiberQ_bundle.gpkg')
+
+        path, _ = QFileDialog.getSaveFileName(
+            self.iface.mainWindow(),
+            self.tr('Export FiberQ interchange bundle'),
+            suggested,
+            'GeoPackage (*.gpkg)')
+        if not path:
+            return
+
+        try:
+            result = InterchangeBundleWriter(prj).write(path)
+        except Exception as e:
+            logger.warning(f"Interchange bundle export failed: {e}")
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Could not write the bundle: {details}')
+            bar.pushWarning('FiberQ', safe_format(self.tr(src), src, details=e))
+            return
+
+        # Anything left out is named, never implied. A bundle that quietly
+        # dropped a layer and one that had nothing to drop look identical from
+        # a success message alone.
+        for name, reason in result.skipped:
+            logger.debug(f"Bundle: not including '{name}' ({reason})")
+        for warning in result.warnings:
+            bar.pushWarning('FiberQ', warning)
+
+        if not result.ok:
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Bundle export failed: {details}')
+            bar.pushWarning('FiberQ', safe_format(
+                self.tr(src), src, details='; '.join(result.errors[:3])))
+            return
+
+        src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Wrote {path} — {summary}')
+        bar.pushSuccess('FiberQ', safe_format(
+            self.tr(src), src,
+            path=os.path.basename(result.path), summary=result.summary()))
+
     def _zoom_to_issue(self, issue):
         """Centre the canvas on an issue and mark it.
 
@@ -1940,6 +1997,27 @@ class FiberQPlugin:
                 logger.debug(f"Error in FiberQPlugin.initGui: {e}")
             try:
                 self.iface.addPluginToMenu('FiberQ', self.action_recalc_lengths)
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+        except Exception as e:
+            logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+
+        # --- Export interchange bundle (WP3 task 3.2) ---
+        try:
+            #: Menu-only, and deliberately not next to "Save all layers to
+            #: GeoPackage": that command repoints the project at the file it
+            #: writes, this one only produces a handover artefact.
+            self.action_export_bundle = QAction(
+                self.tr('Export interchange bundle…'), self.iface.mainWindow())
+            self.action_export_bundle.setToolTip(self.tr(
+                'Write the design as an open FiberQ interchange bundle (.gpkg)'))
+            self.action_export_bundle.triggered.connect(self.export_interchange_bundle)
+            try:
+                self.actions.append(self.action_export_bundle)
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+            try:
+                self.iface.addPluginToMenu('FiberQ', self.action_export_bundle)
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.initGui: {e}")
         except Exception as e:

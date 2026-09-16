@@ -312,6 +312,32 @@ plugin gains those features, **bundles written today already contain the data**.
 That is rule 1 doing its job: a format that only carried what today's implementation
 understands would have to be redesigned every time an implementation grew.
 
+### Reference implementation
+
+In the FiberQ QGIS plugin: **Plugins → FiberQ → Export interchange bundle…**
+
+| Part | Status |
+|---|---|
+| Feature layers, canonical names, `fq_type` + `placement` | written |
+| Storage CRS (§5), `crs_epsg` restore target | written |
+| Identity preserved, never regenerated (§4) | written |
+| Metadata merged, foreign keys preserved (§7) | written |
+| `fq_relation` / `fq_relation_member` from project relations | written |
+| `fq_path_stop` from recorded pass-through elements | written |
+| `fq_extension` passthrough store (§8) | written |
+| All other side-car tables | created, populated by other tools |
+| Reading a bundle back | not yet — WP3 task 3.3 |
+
+Two notes on what "written" means for the relational tables. The plugin stores relations
+and pass-through elements against `(layer_id, feature_id)` — identifiers local to one
+QGIS project, which are meaningless in any other tool and do not survive a round trip.
+The writer resolves them to `fiberq_uuid` on the way out. A reference it cannot resolve
+is **reported and left out**, never mapped to the nearest plausible object.
+
+The other side-car tables are created empty. That is intentional: a reader finds the
+table whether or not this particular writer had anything to put in it, and a tool that
+does model splicing can write into a bundle the plugin produced.
+
 ---
 
 *Part of the FiberQ QGIS plugin, developed with support from the [NLnet](https://nlnet.nl)

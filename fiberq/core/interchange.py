@@ -18,6 +18,7 @@ Three rules from the spec drive the code here:
   ``_fiberq_metadata`` from scratch destroys whatever another tool recorded.
   This is not hypothetical -- it is the defect this module exists to not repeat.
 """
+import uuid as _uuid
 from typing import Dict, Optional, Tuple
 
 #: Format identifier written into every bundle.
@@ -25,6 +26,16 @@ FORMAT = "fiberq-interchange"
 
 #: Version of docs/interchange-format.md that this implementation targets.
 FORMAT_VERSION = "1.0"
+
+#: Where a writer stashes passthrough rows between an import and the next
+#: export, so anything this plugin has no model for survives a round trip
+#: through it (spec section 8). Read and written as a JSON list of fq_extension
+#: rows; import and export must agree on this key or the passthrough is lost.
+PASSTHROUGH_ENTRY = ("FiberQPlugin", "Interchange/passthrough_v1")
+
+#: Fixed namespace for deriving stable identities for objects the plugin stores
+#: without one of its own (see :func:`stable_uuid`).
+UUID_NAMESPACE = _uuid.UUID("1f5b9c4e-3a76-5d0b-9c21-7e4a8d6f0b32")
 
 #: Storage CRS for all geometry in a bundle. The authoring CRS is recorded
 #: separately as ``crs_epsg`` and restored on import (spec section 5).
@@ -123,6 +134,23 @@ SIDECAR_DDL = (
         uuid TEXT PRIMARY KEY, owner_uuid TEXT, kind TEXT, namespace TEXT,
         payload_json TEXT NOT NULL, produced_by TEXT)""",
 )
+
+
+def stable_uuid(*parts) -> str:
+    """A deterministic identity derived from ``parts``.
+
+    Some things the plugin stores -- relations, most obviously -- are keyed by a
+    project-local integer and have no identity of their own. Minting a fresh
+    UUID for them on every export would mean the same relation arrives as a new
+    object each time, which breaks exactly the diffing the format exists to
+    make possible.
+
+    Deriving from the parts instead keeps the identity stable for as long as the
+    parts are. It is not a substitute for a real stored identity -- rename the
+    relation and you get a different UUID -- but it is stable across repeated
+    exports of an unchanged project, which is the case that matters.
+    """
+    return str(_uuid.uuid5(UUID_NAMESPACE, "|".join(str(p) for p in parts)))
 
 
 def type_for_layer(layer_name: str) -> Optional[Tuple[str, Optional[str]]]:
