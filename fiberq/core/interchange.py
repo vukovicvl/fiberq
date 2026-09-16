@@ -136,6 +136,73 @@ SIDECAR_DDL = (
 )
 
 
+#: Every side-car table a bundle may carry, in the order the DDL creates them.
+SIDECAR_TABLES = (
+    "fq_splice_point", "fq_fiber_connection", "fq_relation", "fq_relation_member",
+    "fq_container", "fq_container_slot", "fq_slot_assignment", "fq_path_stop",
+    "fq_extension",
+)
+
+#: The side-car tables this plugin has a real model for. Everything else in
+#: :data:`SIDECAR_TABLES` is read into the passthrough store on import and
+#: written back out unchanged on export -- the plugin does not model fibre
+#: splices, trays or duct occupancy, and a bundle that carries them must still
+#: leave through here complete (spec section 12).
+MODELLED_SIDECAR_TABLES = ("fq_relation", "fq_relation_member", "fq_path_stop")
+
+#: Kinds used in the passthrough store. The kind decides how a row leaves again:
+#:
+#: * ``feature_attributes`` is inlined into the feature's own ``fq_extra_json``
+#:   column, because that is where per-feature extras belong (spec section 8);
+#: * ``sidecar_table`` is written back into the real side-car table it came
+#:   from, so a round trip reproduces the table rather than a blob describing it;
+#: * ``unsupported_feature`` and anything else is emitted as an ``fq_extension``
+#:   row verbatim.
+#: ``bundle_metadata`` holds the ``_fiberq_metadata`` keys another tool wrote.
+#: Merging them into the *same* file is section 7's rule; carrying them into the
+#: *next* bundle is what makes a round trip through this plugin lossless, and a
+#: project is the only place to keep them in between.
+EXTENSION_KIND_METADATA = "bundle_metadata"
+EXTENSION_KIND_ATTRIBUTES = "feature_attributes"
+EXTENSION_KIND_SIDECAR = "sidecar_table"
+EXTENSION_KIND_FEATURE = "unsupported_feature"
+
+#: This implementation's namespace for rows it creates in the passthrough store.
+EXTENSION_NAMESPACE = "net.fiberq.qgis"
+
+
+def format_version_parts(value):
+    """``(major, minor)`` of a format version string, or ``None`` if unreadable."""
+    if not value:
+        return None
+    parts = str(value).strip().split(".")
+    try:
+        major = int(parts[0])
+    except (ValueError, IndexError):
+        return None
+    try:
+        minor = int(parts[1]) if len(parts) > 1 else 0
+    except ValueError:
+        minor = 0
+    return major, minor
+
+
+def can_read_format_version(value) -> bool:
+    """Whether a reader implementing this spec may read that bundle.
+
+    Spec section 9: a reader must refuse, with a clear error, a bundle whose
+    format version has a **major** number it does not implement -- rather than
+    importing it partially, which is how a tool ends up confidently holding half
+    a network. A newer *minor* version is readable: whatever it added is carried
+    through the passthrough store.
+    """
+    theirs = format_version_parts(value)
+    if theirs is None:
+        return False
+    ours = format_version_parts(FORMAT_VERSION)
+    return theirs[0] == ours[0]
+
+
 def stable_uuid(*parts) -> str:
     """A deterministic identity derived from ``parts``.
 

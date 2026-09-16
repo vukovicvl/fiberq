@@ -81,6 +81,7 @@ class BundleResult:
         self.sidecar_rows = {}    # fq_* table -> rows written
         self.metadata = {}        # the merged table as written
         self.preserved = {}       # metadata keys kept on another tool's behalf
+        self.inlined_extras = 0   # features whose kept extras went back into the bundle
         self.warnings = []
         self.errors = []
 
@@ -250,7 +251,8 @@ class InterchangeBundleWriter:
             return True
         return str(value).strip() == ""
 
-    def _canonicalise_layer(self, gpkg_path, table, fq_type, placement, index):
+    def _canonicalise_layer(self, gpkg_path, table, fq_type, placement, index,
+                            extras=None):
         """Turn a written FiberQ table into a conformant bundle layer.
 
         Four things happen here, all of them on the copy in the bundle and none
@@ -308,6 +310,8 @@ class InterchangeBundleWriter:
         cable_layer_idx = fields.indexFromName("cable_layer_id")
         cable_fid_idx = fields.indexFromName("cable_fid")
         cable_uuid_idx = fields.indexFromName(fm.CABLE_REFERENCE_FIELD)
+        identity_idx = fields.indexFromName(FIBERQ_UUID_FIELD)
+        extra_idx = fields.indexFromName("fq_extra_json")
 
         unresolved = 0
         changes = {}
@@ -324,6 +328,12 @@ class InterchangeBundleWriter:
                 translated = fm.canonical_value(roster, canonical_name, raw)
                 if translated != raw:
                     attrs[idx] = translated
+            if extras and extra_idx >= 0 and identity_idx >= 0:
+                identity = feat.attribute(identity_idx)
+                payload = extras.get(str(identity)) if identity else None
+                if payload and self._is_blank(feat.attribute(extra_idx)):
+                    attrs[extra_idx] = (
+                        payload if isinstance(payload, str) else json.dumps(payload))
             if cable_uuid_idx >= 0 and cable_layer_idx >= 0 and cable_fid_idx >= 0:
                 resolved = self._resolve(
                     index, feat.attribute(cable_layer_idx), feat.attribute(cable_fid_idx))
@@ -467,19 +477,68 @@ class InterchangeBundleWriter:
                 written += 1
         return written, unresolved
 
-    def _write_passthrough(self, conn, passthrough=None):
-        """Write back everything a previous import could not model (spec section 8)."""
+    def _load_passthrough(self, passthrough=None):
+        """The passthrough store, split by what each row must become on the way out.
+
+        Returns ``(extensions, attributes, sidecar, metadata)``: rows to emit
+        verbatim as ``fq_extension``, per-feature extras to inline into
+        ``fq_extra_json`` keyed by the feature they belong to, side-car rows to
+        write back into the real table they came from, and the metadata keys
+        another tool wrote, to merge into this bundle's own.
+
+        The kind decides the destination. A side-car table kept as a blob and
+        re-emitted as a blob would still be lossless, but it would stop being
+        *relational* -- and a tool that does model fibre splicing could no longer
+        query it. Rule 1 is about the data arriving usable, not merely present.
+        """
         if passthrough is None:
             raw = self.project.readEntry(*ic.PASSTHROUGH_ENTRY, "")[0]
             if not raw:
-                return 0
+                return [], {}, {}, {}
             try:
                 passthrough = json.loads(raw)
             except ValueError as e:
                 logger.debug(f"Passthrough store is not valid JSON, not exported: {e}")
-                return 0
-        written = 0
+                return [], {}, {}, {}
+
+        extensions, attributes, sidecar, metadata = [], {}, {}, {}
         for row in passthrough or []:
+            kind = row.get("kind")
+            payload = row.get("payload_json")
+            if kind == ic.EXTENSION_KIND_METADATA:
+                try:
+                    parsed = json.loads(payload) if isinstance(payload, str) else payload
+                except ValueError as e:
+                    logger.debug(f"Kept metadata payload is not valid JSON: {e}")
+                    extensions.append(row)
+                    continue
+                if isinstance(parsed, dict):
+                    metadata.update(parsed)
+                else:
+                    extensions.append(row)
+            elif kind == ic.EXTENSION_KIND_ATTRIBUTES and row.get("owner_uuid"):
+                attributes[str(row["owner_uuid"])] = payload
+            elif kind == ic.EXTENSION_KIND_SIDECAR:
+                try:
+                    parsed = json.loads(payload) if isinstance(payload, str) else payload
+                except ValueError as e:
+                    logger.debug(f"Kept side-car payload is not valid JSON: {e}")
+                    extensions.append(row)
+                    continue
+                table = (parsed or {}).get("table")
+                if table in ic.SIDECAR_TABLES:
+                    sidecar.setdefault(table, []).extend((parsed or {}).get("rows", []))
+                else:
+                    extensions.append(row)
+            else:
+                extensions.append(row)
+        return extensions, attributes, sidecar, metadata
+
+    def _write_passthrough(self, conn, extensions):
+        """Write back everything that stays an extension row (spec section 8)."""
+        written = 0
+        for row in extensions or []:
+            payload = row.get("payload_json")
             conn.execute(
                 "INSERT OR REPLACE INTO fq_extension "
                 "(uuid, owner_uuid, kind, namespace, payload_json, produced_by) "
@@ -487,12 +546,36 @@ class InterchangeBundleWriter:
                 (
                     row.get("uuid"), row.get("owner_uuid"), row.get("kind"),
                     row.get("namespace"),
-                    row.get("payload_json") if isinstance(row.get("payload_json"), str)
-                    else json.dumps(row.get("payload_json")),
+                    payload if isinstance(payload, str) else json.dumps(payload),
                     row.get("produced_by"),
                 ),
             )
             written += 1
+        return written
+
+    @staticmethod
+    def _write_kept_sidecar(conn, sidecar):
+        """Write kept side-car rows back into the tables they came from.
+
+        Columns are taken from the bundle's own tables rather than from the
+        kept rows, so a row that arrived with a column this DDL does not have
+        cannot break the insert -- and the rest of it still lands.
+        """
+        written = 0
+        for table, rows in (sidecar or {}).items():
+            if not rows:
+                continue
+            columns = [r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')]
+            if not columns:
+                continue
+            placeholders = ", ".join("?" for _ in columns)
+            quoted = ", ".join(f'"{c}"' for c in columns)
+            # Table and column names come from ic.SIDECAR_TABLES and the
+            # bundle's own schema, never from the row data.
+            sql = f'INSERT OR REPLACE INTO "{table}" ({quoted}) VALUES ({placeholders})'  # nosec B608
+            for row in rows:
+                conn.execute(sql, [row.get(c) for c in columns])
+                written += 1
         return written
 
     @staticmethod
@@ -613,10 +696,15 @@ class InterchangeBundleWriter:
         timestamp = datetime.now(timezone.utc).isoformat()
         conn = None
         try:
+            extensions, extras, kept_sidecar, kept_metadata = self._load_passthrough(
+                passthrough)
+            # Keys another tool wrote reach a *new* bundle through the project;
+            # keys already in *this* file are read straight off it (above).
+            existing = ic.merge_metadata(kept_metadata, existing)
             self._unresolved_cable_refs = 0
             for canonical, (fq_type, placement) in result.types.items():
                 error = self._canonicalise_layer(
-                    gpkg_path, canonical, fq_type, placement, index)
+                    gpkg_path, canonical, fq_type, placement, index, extras)
                 if error:
                     result.errors.append(error)
 
@@ -625,13 +713,17 @@ class InterchangeBundleWriter:
 
             relations, members, unresolved_members = self._write_relations(conn, index)
             stops, unresolved_stops = self._write_path_stops(conn, index)
-            extensions = self._write_passthrough(conn, passthrough)
+            written_extensions = self._write_passthrough(conn, extensions)
             result.sidecar_rows = {
                 "fq_relation": relations,
                 "fq_relation_member": members,
                 "fq_path_stop": stops,
-                "fq_extension": extensions,
+                "fq_extension": written_extensions,
             }
+            for table, rows in kept_sidecar.items():
+                result.sidecar_rows[table] = len(rows)
+            self._write_kept_sidecar(conn, kept_sidecar)
+            result.inlined_extras = len(extras)
             unresolved_members += self._unresolved_cable_refs
             if unresolved_members or unresolved_stops:
                 result.warnings.append(

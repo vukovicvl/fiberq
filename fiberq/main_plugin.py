@@ -613,6 +613,71 @@ class FiberQPlugin:
             self.tr(src), src,
             path=os.path.basename(result.path), summary=result.summary()))
 
+    def import_interchange_bundle(self):
+        """Read a FiberQ interchange bundle into this project (WP3).
+
+        Foreign data is adapted *into* FiberQ: features land in FiberQ's own
+        layers, with FiberQ's own field names and values. Nothing about the
+        plugin's data model changes to accommodate a bundle.
+
+        What FiberQ has no model for -- an element type it lacks, an attribute
+        with no column, a side-car table it does not implement -- is kept whole
+        and written out again unchanged, rather than being reclassified to the
+        nearest thing that fits.
+        """
+        import os
+
+        from qgis.PyQt.QtWidgets import QFileDialog
+
+        from .core.interchange_import import InterchangeBundleReader
+        from .i18n import safe_format
+
+        bar = self.iface.messageBar()
+        prj = QgsProject.instance()
+        default_dir = os.path.dirname(prj.fileName()) if prj.fileName() else os.path.expanduser('~')
+
+        path, _ = QFileDialog.getOpenFileName(
+            self.iface.mainWindow(),
+            self.tr('Import FiberQ interchange bundle'),
+            default_dir,
+            self.tr('GeoPackage bundle (*.gpkg)'))
+        if not path:
+            return
+
+        try:
+            result = InterchangeBundleReader(prj).read(path)
+        except Exception as e:
+            logger.warning(f"Interchange bundle import failed: {e}")
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Could not read the bundle: {details}')
+            bar.pushWarning('FiberQ', safe_format(self.tr(src), src, details=e))
+            return
+
+        for warning in result.warnings:
+            bar.pushWarning('FiberQ', warning)
+
+        if not result.ok:
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Import failed: {details}')
+            bar.pushWarning('FiberQ', safe_format(
+                self.tr(src), src, details='; '.join(result.errors[:3])))
+            return
+
+        # Say what was carried rather than imported. An element type FiberQ
+        # cannot draw is still in the project and still leaves in the next
+        # export, and the user should know it is there.
+        if result.unsupported:
+            kinds = ', '.join(f'{k} ({n})' for k, n in sorted(result.unsupported.items()))
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                'Carried through unchanged, with no FiberQ layer to draw them in: '
+                '{kinds}. They survive the next export.')
+            bar.pushInfo('FiberQ', safe_format(self.tr(src), src, kinds=kinds))
+
+        prj.setDirty(True)
+        src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Imported {path} — {summary}')
+        bar.pushSuccess('FiberQ', safe_format(
+            self.tr(src), src,
+            path=os.path.basename(path), summary=result.summary()))
+
     def _zoom_to_issue(self, issue):
         """Centre the canvas on an issue and mark it.
 
@@ -2027,6 +2092,24 @@ class FiberQPlugin:
                 logger.debug(f"Error in FiberQPlugin.initGui: {e}")
             try:
                 self.iface.addPluginToMenu('FiberQ', self.action_export_bundle)
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+        except Exception as e:
+            logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+
+        # --- Import interchange bundle (WP3 task 3.3) ---
+        try:
+            self.action_import_bundle = QAction(
+                self.tr('Import interchange bundle…'), self.iface.mainWindow())
+            self.action_import_bundle.setToolTip(self.tr(
+                'Read an open FiberQ interchange bundle into this project'))
+            self.action_import_bundle.triggered.connect(self.import_interchange_bundle)
+            try:
+                self.actions.append(self.action_import_bundle)
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+            try:
+                self.iface.addPluginToMenu('FiberQ', self.action_import_bundle)
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.initGui: {e}")
         except Exception as e:

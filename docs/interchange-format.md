@@ -1,14 +1,16 @@
-# FiberQ Interchange Format v1 — draft
+# FiberQ Interchange Format v1
 
-**Status: DRAFT.** This document is under active development as part of WP3 and is
-not yet stable. Version `1.0` of the format is frozen when this notice is removed.
+**Status: stable.** Version `1.0` is frozen. Anything added to it will be a `1.x`
+minor version, which a `1.0` reader must still read — recognising what it knows and
+carrying the rest through (§9). A change that a `1.0` reader could not handle would be
+version `2`.
 
 A tool-neutral, open format for exchanging a complete fibre-access-network design —
 geometry, attributes, identity, and the relationships between elements — between the
 FiberQ QGIS plugin and any other conformant tool, without losing anything on the way.
 
 - **Format identifier:** `fiberq-interchange`
-- **This revision:** `1.0-draft`
+- **This revision:** `1.0`
 - **Container:** GeoPackage (OGC GeoPackage 1.3), with a GeoJSON profile for the
   geometry-only subset
 - **Licence:** this specification is published under CC-BY-4.0 so it can be
@@ -354,9 +356,34 @@ plugin gains those features, **bundles written today already contain the data**.
 That is rule 1 doing its job: a format that only carried what today's implementation
 understands would have to be redesigned every time an implementation grew.
 
+**When the plugin later gains real support** for something it passes through today —
+fibre splicing, trays, a splitter layer — the mapping is upgraded and those objects
+start importing properly. **Bundles written today still work**, and the data is already
+in them, because nothing was ever discarded. That is the only upgrade path that does not
+ask users to re-export everything they have.
+
+### What the round trip actually asserts
+
+`tests/test_interchange_roundtrip.py` imports a bundle deliberately **richer than the
+plugin** and exports it again, then checks that all of the following survived:
+
+| Carried | How |
+|---|---|
+| An element type with no FiberQ layer | Kept whole in the passthrough store, re-emitted unchanged — never reclassified |
+| An attribute with no FiberQ column | Kept against the feature's identity, re-emitted into its `fq_extra_json` |
+| `fq_splice_point`, `fq_fiber_connection` | Kept verbatim and written back **as rows**, so they are still queryable |
+| A passthrough row from a third tool | Untouched |
+| A `_fiberq_metadata` key FiberQ did not write | Carried through the project into the next bundle |
+| Relations and path stops | Out as `fiberq_uuid` references, back as project data, out again |
+
+It runs on **QGIS 3 / Qt5 and QGIS 4 / Qt6** in CI. Import is also idempotent: importing
+the same bundle twice is a no-op, because identity is permanent and a feature with a
+`fiberq_uuid` already in the project is the same feature, not a second one.
+
 ### Reference implementation
 
-In the FiberQ QGIS plugin: **Plugins → FiberQ → Export interchange bundle…**
+In the FiberQ QGIS plugin: **Plugins → FiberQ → Export interchange bundle…** and
+**Import interchange bundle…**
 
 | Part | Status |
 |---|---|
@@ -370,7 +397,9 @@ In the FiberQ QGIS plugin: **Plugins → FiberQ → Export interchange bundle…
 | `fq_extension` passthrough store (§8) | written |
 | GeoJSON profile (§3) | written |
 | All other side-car tables | created, populated by other tools |
-| Reading a bundle back | not yet — WP3 task 3.3 |
+| Reading a bundle back, adapting it into FiberQ's own layers | written |
+| Carrying through types, attributes and side-car tables the plugin does not model | written |
+| Round trip asserted in CI, on both Qt generations | written |
 
 Two notes on what "written" means for the relational tables. The plugin stores relations
 and pass-through elements against `(layer_id, feature_id)` — identifiers local to one
