@@ -423,3 +423,223 @@ def test_the_bundle_does_not_redirect_the_project_layers(project, bundle_path):
 
     assert poles.source() == before
     assert poles.providerType() == "memory"
+
+
+# ---------------------------------------------------------------------------
+# Canonical names and values (spec rule 3 — the format is the contract)
+# ---------------------------------------------------------------------------
+
+def test_stored_field_names_become_canonical_in_the_bundle(project, bundle_path):
+    """A bundle carrying `duzina_m` would be FiberQ's schema in a GeoPackage,
+    not a tool-neutral format: every other tool would have to learn Serbian."""
+    cables = _layer(
+        "Underground cables", "LineString",
+        fields=("fiberq_uuid:string(64)", "naziv:string", "duzina_m:double",
+                "slabljenje_dbkm:double"))
+    _add(cables, _line(), fiberq_uuid="u-cable-1", naziv="C1",
+         duzina_m=120.0, slabljenje_dbkm=0.22)
+
+    InterchangeBundleWriter(project).write(bundle_path, layers=[cables])
+
+    written = QgsVectorLayer(
+        f"{bundle_path}|layername=Underground cables", "check", "ogr")
+    names = set(written.fields().names())
+    assert {"name", "length_m", "attenuation_db_km"} <= names
+    assert not {"naziv", "duzina_m", "slabljenje_dbkm"} & names
+    assert _rows(
+        bundle_path,
+        'SELECT name, length_m, attenuation_db_km FROM "Underground cables"'
+    ) == [("C1", 120.0, 0.22)]
+
+
+def test_the_projects_own_field_names_are_left_alone(project, bundle_path):
+    """Renaming happens on the copy in the bundle. Touching the project's own
+    schema would be a data migration, not an export."""
+    cables = _layer("Underground cables", "LineString",
+                    fields=("fiberq_uuid:string(64)", "naziv:string", "duzina_m:double"))
+    _add(cables, _line(), fiberq_uuid="u-cable-1", naziv="C1", duzina_m=10.0)
+    before = cables.fields().names()
+
+    InterchangeBundleWriter(project).write(bundle_path, layers=[cables])
+
+    assert cables.fields().names() == before
+
+
+def test_stored_values_are_translated_to_the_canonical_vocabulary(project, bundle_path):
+    """`vazdusna` means aerial. A reader should not have to know that."""
+    routes = _layer("Route", "LineString",
+                    fields=("fiberq_uuid:string(64)", "tip_trase:string"))
+    _add(routes, _line(), fiberq_uuid="u-route-1", tip_trase="vazdusna")
+
+    InterchangeBundleWriter(project).write(bundle_path, layers=[routes])
+
+    assert _rows(bundle_path, 'SELECT route_type FROM "Route"') == [("aerial",)]
+
+
+def test_both_as_built_spellings_reach_the_same_canonical_value(project, bundle_path):
+    """FiberQ projects hold the English label on some features and the stored
+    Serbian value on others (validation rule D1). Both are as-built."""
+    cables = _layer("Aerial cables", "LineString",
+                    fields=("fiberq_uuid:string(64)", "tip:string"))
+    _add(cables, _line(), fiberq_uuid="u-a", tip="opticki")
+    _add(cables, _line(50), fiberq_uuid="u-b", tip="Optical")
+
+    InterchangeBundleWriter(project).write(bundle_path, layers=[cables])
+
+    got = dict(_rows(bundle_path, 'SELECT fiberq_uuid, cable_type FROM "Aerial cables"'))
+    assert got == {"u-a": "optical", "u-b": "optical"}
+
+
+def test_a_value_outside_the_domain_is_carried_through(project, bundle_path):
+    """Rule 1 again: tidying a vocabulary is not worth discarding the data."""
+    cables = _layer("Aerial cables", "LineString",
+                    fields=("fiberq_uuid:string(64)", "tip:string"))
+    _add(cables, _line(), fiberq_uuid="u-a", tip="hybrid coax")
+
+    InterchangeBundleWriter(project).write(bundle_path, layers=[cables])
+
+    assert _rows(bundle_path, 'SELECT cable_type FROM "Aerial cables"') == [("hybrid coax",)]
+
+
+def test_a_local_cable_reference_becomes_a_uuid(project, bundle_path):
+    """The plugin records which cable a slack loop belongs to as a QGIS layer id
+    plus a feature id. Neither means anything in another tool, or in the same
+    project after a rebuild. The bundle carries the identity instead."""
+    cables = _layer("Underground cables", "LineString")
+    cable = _add(cables, _line(), fiberq_uuid="u-cable-1")
+    slack = _layer(
+        "Optical slack",
+        fields=("fiberq_uuid:string(64)", "duzina_m:double",
+                "cable_layer_id:string", "cable_fid:integer"))
+    _add(slack, _point(20), fiberq_uuid="u-slack-1", duzina_m=15.0,
+         cable_layer_id=cables.id(), cable_fid=cable.id())
+
+    result = InterchangeBundleWriter(project).write(
+        bundle_path, layers=[cables, slack])
+
+    assert result.ok, result.errors
+    written = QgsVectorLayer(f"{bundle_path}|layername=Optical slack", "check", "ogr")
+    names = set(written.fields().names())
+    assert "cable_uuid" in names
+    assert not {"cable_layer_id", "cable_fid"} & names
+    assert _rows(bundle_path, 'SELECT cable_uuid, length_m FROM "Optical slack"') == [
+        ("u-cable-1", 15.0)
+    ]
+
+
+def test_an_unresolvable_cable_reference_is_reported_not_guessed(project, bundle_path):
+    """A slack loop pointing at a deleted cable must not acquire a different one."""
+    cables = _layer("Underground cables", "LineString")
+    _add(cables, _line(), fiberq_uuid="u-cable-1")
+    slack = _layer("Optical slack",
+                   fields=("fiberq_uuid:string(64)", "cable_layer_id:string",
+                           "cable_fid:integer"))
+    _add(slack, _point(20), fiberq_uuid="u-slack-1",
+         cable_layer_id=cables.id(), cable_fid=4242)
+
+    result = InterchangeBundleWriter(project).write(
+        bundle_path, layers=[cables, slack])
+
+    assert _rows(bundle_path, 'SELECT cable_uuid FROM "Optical slack"') == [(None,)]
+    assert any("could not be resolved" in w for w in result.warnings)
+
+
+# ---------------------------------------------------------------------------
+# The GeoJSON profile (spec section 3) — useful, and honest about being lossy
+# ---------------------------------------------------------------------------
+
+def test_the_geojson_profile_writes_one_file_per_element_type(project, tmp_path):
+    poles = _layer("Poles")
+    _add(poles, _point(), fiberq_uuid="u-pole-1", naziv="P1")
+    indoor = _layer("Indoor OTB")
+    _add(indoor, _point(5), fiberq_uuid="u-otb-1")
+    out = str(tmp_path / "bundle")
+
+    result = InterchangeBundleWriter(project).write_geojson(
+        out, layers=[poles, indoor])
+
+    assert result.ok, result.errors
+    written = sorted(os.listdir(out))
+    assert written == ["_fiberq_metadata.json", "otb.indoor.geojson", "pole.geojson"]
+
+
+def test_the_geojson_profile_carries_canonical_names_and_types(project, tmp_path):
+    """The two profiles come from one canonicalisation, so they cannot disagree
+    about what a field is called."""
+    cables = _layer("Underground cables", "LineString",
+                    fields=("fiberq_uuid:string(64)", "naziv:string",
+                            "duzina_m:double", "tip:string"))
+    _add(cables, _line(), fiberq_uuid="u-cable-1", naziv="C1", duzina_m=42.0,
+         tip="opticki")
+    out = str(tmp_path / "bundle")
+
+    InterchangeBundleWriter(project).write_geojson(out, layers=[cables])
+
+    with open(os.path.join(out, "cable.underground.geojson"), encoding="utf-8") as fh:
+        payload = json.load(fh)
+    props = payload["features"][0]["properties"]
+    assert props["name"] == "C1"
+    assert props["length_m"] == 42.0
+    assert props["cable_type"] == "optical"
+    assert props["fq_type"] == "cable.underground"
+    assert props["fiberq_uuid"] == "u-cable-1"
+    assert "duzina_m" not in props
+
+
+def test_the_geojson_metadata_file_carries_the_required_keys(project, tmp_path):
+    poles = _layer("Poles")
+    _add(poles, _point(), fiberq_uuid="u-pole-1")
+    out = str(tmp_path / "bundle")
+
+    InterchangeBundleWriter(project, plugin_version="9.9.9").write_geojson(
+        out, layers=[poles])
+
+    with open(os.path.join(out, "_fiberq_metadata.json"), encoding="utf-8") as fh:
+        meta = json.load(fh)
+    for key in ("format", "format_version", "schema_version", "produced_by",
+                "produced_at", "crs_epsg", "color_standard"):
+        assert meta.get(key), key
+
+
+def test_a_geojson_bundle_that_drops_side_car_data_says_so(project, tmp_path):
+    """Spec section 3: lossy by construction, and the reader must be able to
+    tell. A bundle that lost the splice data and looks complete is worse than
+    one that refuses."""
+    cables = _layer("Underground cables", "LineString")
+    cable = _add(cables, _line(), fiberq_uuid="u-cable-1")
+    project.writeEntry("StuboviPlugin", "Relacije/relations_v1", json.dumps({
+        "relations": [{"id": 1, "name": "Feeder A",
+                       "cables": [{"layer_id": cables.id(), "fid": cable.id()}]}]
+    }))
+    out = str(tmp_path / "bundle")
+
+    result = InterchangeBundleWriter(project).write_geojson(out, layers=[cables])
+
+    with open(os.path.join(out, "_fiberq_metadata.json"), encoding="utf-8") as fh:
+        meta = json.load(fh)
+    assert meta["profile"] == "geojson-lite"
+    assert any("side-car" in w for w in result.warnings)
+
+
+def test_a_geojson_bundle_with_nothing_to_drop_is_not_marked_lossy(project, tmp_path):
+    """Marking a complete bundle lossy is as misleading as not marking a lossy one."""
+    poles = _layer("Poles")
+    _add(poles, _point(), fiberq_uuid="u-pole-1")
+    out = str(tmp_path / "bundle")
+
+    InterchangeBundleWriter(project).write_geojson(out, layers=[poles])
+
+    with open(os.path.join(out, "_fiberq_metadata.json"), encoding="utf-8") as fh:
+        meta = json.load(fh)
+    assert "profile" not in meta
+
+
+def test_the_geojson_profile_leaves_no_staging_file_behind(project, tmp_path):
+    """It is produced by staging a GeoPackage; that must not survive."""
+    poles = _layer("Poles")
+    _add(poles, _point(), fiberq_uuid="u-pole-1")
+    out = str(tmp_path / "bundle")
+
+    InterchangeBundleWriter(project).write_geojson(out, layers=[poles])
+
+    assert not [n for n in os.listdir(out) if n.endswith(".gpkg")]

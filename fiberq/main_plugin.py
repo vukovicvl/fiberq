@@ -567,18 +567,27 @@ class FiberQPlugin:
         bar = self.iface.messageBar()
         prj = QgsProject.instance()
         default_dir = os.path.dirname(prj.fileName()) if prj.fileName() else os.path.expanduser('~')
-        suggested = os.path.join(default_dir, 'FiberQ_bundle.gpkg')
 
-        path, _ = QFileDialog.getSaveFileName(
+        gpkg_filter = self.tr('GeoPackage bundle (*.gpkg)')
+        json_filter = self.tr('GeoJSON bundle — a folder, no relations (*)')
+        path, chosen = QFileDialog.getSaveFileName(
             self.iface.mainWindow(),
             self.tr('Export FiberQ interchange bundle'),
-            suggested,
-            'GeoPackage (*.gpkg)')
+            os.path.join(default_dir, 'FiberQ_bundle.gpkg'),
+            f'{gpkg_filter};;{json_filter}')
         if not path:
             return
 
+        writer = InterchangeBundleWriter(prj)
         try:
-            result = InterchangeBundleWriter(prj).write(path)
+            if chosen == json_filter:
+                # GeoJSON is one file per element type, so the target is a
+                # folder. The .gpkg the dialog suggested is not one.
+                if path.lower().endswith('.gpkg'):
+                    path = path[:-5]
+                result = writer.write_geojson(path)
+            else:
+                result = writer.write(path)
         except Exception as e:
             logger.warning(f"Interchange bundle export failed: {e}")
             src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Could not write the bundle: {details}')

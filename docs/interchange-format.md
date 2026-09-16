@@ -15,8 +15,8 @@ FiberQ QGIS plugin and any other conformant tool, without losing anything on the
   implemented in any tool, open or closed, without licence conflict. The reference
   implementation inside the FiberQ plugin remains GPL-3.0-or-later.
 
-Related: [schema reference](schema.md) · [validation rules](validation-rules.md) ·
-[project versioning](project-versioning-guide.md)
+Related: [field mapping](interchange-mapping.md) · [schema reference](schema.md) ·
+[validation rules](validation-rules.md) · [project versioning](project-versioning-guide.md)
 
 ---
 
@@ -82,9 +82,26 @@ deliberate.
 
 For exchanges that only need geometry and attributes (web maps, quick handover), a
 bundle may instead be a directory of GeoJSON files, one per element type, plus
-`_fiberq_metadata.json`. The relational side-car is **not** representable in the GeoJSON
-profile; a writer emitting GeoJSON while holding side-car data must say so
-(`profile = "geojson-lite"`) so the receiver knows the bundle is lossy by construction.
+`_fiberq_metadata.json`.
+
+Each file is named for the element type it holds — `pole.geojson`,
+`cable.underground.geojson`, and `<type>.<placement>.geojson` where placement is set, so
+`otb.indoor.geojson`. Every feature still carries `fq_type` and `placement`, so nothing
+depends on the filename.
+
+```
+bundle/
+├── _fiberq_metadata.json
+├── cable.underground.geojson
+├── pole.geojson
+└── otb.indoor.geojson
+```
+
+The relational side-car is **not** representable in the GeoJSON profile; a writer
+emitting GeoJSON while holding side-car data must say so (`profile = "geojson-lite"`) so
+the receiver knows the bundle is lossy by construction. A GeoJSON bundle with no side-car
+data to lose is complete, and omits the key — marking a complete bundle lossy misleads a
+reader as surely as not marking a lossy one.
 
 ## 4. Identity
 
@@ -202,7 +219,30 @@ slots. This gives arbitrary nesting depth with no extra tables and no special ca
 Generic on purpose: modelling duct holes, tray positions and panel ports as three
 different table sets would mean a new table set for every tool's next idea.
 
-### 6.3 Ordered traversal
+### 6.3 Field names and values
+
+Feature attributes use **canonical English field names and canonical values**, not any
+one tool's stored schema. A bundle whose columns were named in one tool's database
+language would be that tool's schema in a GeoPackage, and every other implementer would
+have to learn it — which is mapping directly to a tool rather than to the canonical
+middle, and is what rule 3 exists to prevent.
+
+The full table — canonical field ↔ FiberQ's stored field, with type, units, value
+domains and the rule for each mismatch case — is published separately as the
+[field mapping](interchange-mapping.md). It is generated from the plugin's schema, so it
+cannot fall behind the implementation.
+
+Two rules govern it:
+
+- **`fiberq_uuid` is never renamed.** It is the join key every conformant tool already
+  knows (§4).
+- **A value outside a published domain is carried through unchanged.** Tidying a
+  vocabulary is not worth discarding what the user recorded.
+
+An attribute with no canonical column travels in the feature's own `fq_extra_json`
+rather than being dropped (§8).
+
+### 6.4 Ordered traversal
 
 **`fq_path_stop`** — the ordered list of elements a linear object passes through.
 `cable_uuid`, `element_uuid`, `order_index`, `is_latent`
@@ -266,10 +306,12 @@ A **conformant reader** must:
    does not implement — rather than importing it partially.
 
 A **conformant writer** must:
-1. emit all required metadata keys (§7);
-2. merge, never replace, metadata keys written by other tools;
-3. emit the passthrough store contents unchanged;
-4. never regenerate an identity it did not create.
+1. use the canonical field names and values of the published
+   [field mapping](interchange-mapping.md) (§6.3);
+2. emit all required metadata keys (§7);
+3. merge, never replace, metadata keys written by other tools;
+4. emit the passthrough store contents unchanged;
+5. never regenerate an identity it did not create.
 
 A **conformant round trip** is the real test: import a bundle, change nothing, export it,
 and every object, attribute and relation is still present — *including everything the
@@ -319,12 +361,14 @@ In the FiberQ QGIS plugin: **Plugins → FiberQ → Export interchange bundle…
 | Part | Status |
 |---|---|
 | Feature layers, canonical names, `fq_type` + `placement` | written |
+| Canonical field names and values (§6.3) | written |
 | Storage CRS (§5), `crs_epsg` restore target | written |
 | Identity preserved, never regenerated (§4) | written |
 | Metadata merged, foreign keys preserved (§7) | written |
 | `fq_relation` / `fq_relation_member` from project relations | written |
 | `fq_path_stop` from recorded pass-through elements | written |
 | `fq_extension` passthrough store (§8) | written |
+| GeoJSON profile (§3) | written |
 | All other side-car tables | created, populated by other tools |
 | Reading a bundle back | not yet — WP3 task 3.3 |
 
