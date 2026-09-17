@@ -1,0 +1,9 @@
+{
+  "color_standard": "TIA-598-C",
+  "crs_epsg": "3857",
+  "format": "fiberq-interchange",
+  "format_version": "1.0",
+  "produced_at": "2026-09-17T22:43:17.389960+00:00",
+  "produced_by": "FiberQ QGIS plugin 1.5.0",
+  "schema_version": "1.0"
+}

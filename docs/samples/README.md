@@ -1,7 +1,8 @@
-# FiberQ demo project and sample validation report
+# FiberQ demo project, sample report and example bundle
 
-A small, deliberately imperfect fibre design, and the validation report it
-produces. Everything here is generated — see [Regenerating](#regenerating).
+A small, deliberately imperfect fibre design; the validation report it produces;
+and the same design exported as an interchange bundle. Everything here is
+generated — see [Regenerating](#regenerating).
 
 | File | What it is |
 |---|---|
@@ -10,6 +11,8 @@ produces. Everything here is generated — see [Regenerating](#regenerating).
 | [`demo-validation.html`](demo-validation.html) | The report, as delivered to a client |
 | [`demo-validation.json`](demo-validation.json) | The same run, machine-readable |
 | [`demo-validation.csv`](demo-validation.csv) | The same issues, one row each |
+| [`demo-bundle.gpkg`](demo-bundle.gpkg) | The same design as an **interchange bundle** |
+| [`demo-bundle-geojson/`](demo-bundle-geojson/) | The same bundle in the **GeoJSON profile** |
 
 ## Try it
 
@@ -22,6 +25,35 @@ produces. Everything here is generated — see [Regenerating](#regenerating).
 
 Then try **Plugins → FiberQ → Recalculate lengths…** and validate again: the D3
 finding disappears and the warning count drops to 8.
+
+## The example bundle
+
+[`demo-bundle.gpkg`](demo-bundle.gpkg) is this same design written in the
+[interchange format](../interchange-format.md). Open it next to
+`demo_project.qgz` and the mapping is visible directly: layers under their
+canonical names, fields under their canonical names, geometry in EPSG:4326 with
+the authoring CRS recorded in `_fiberq_metadata`, and `fq_type` / `placement` on
+every feature.
+
+The part worth looking at is `Optical slack`. In the project, a slack loop points
+at its cable through `cable_layer_id` and `cable_fid` — a QGIS layer id and a row
+number, both meaningless outside that one project file. In the bundle the same
+loops carry `cable_uuid` instead. One of the three is deliberately `NULL`: that is
+the planted B1 fault, a slack loop whose cable reference is broken in the source
+design, and the format carries the break honestly rather than inventing a target
+for it.
+
+All nine side-car tables are present, and empty. This design has no named cable
+groupings and no recorded pass-through elements, so there is nothing to put in
+them — but an implementer needs to see the tables and their columns, which an
+omitted table would not show. For a worked example of side-car data surviving a
+round trip, see `tests/test_interchange_roundtrip.py`, which round-trips a bundle
+carrying fibre splices, an element type the plugin has no layer for and a third
+tool's passthrough rows.
+
+[`demo-bundle-geojson/`](demo-bundle-geojson/) is the same export in the GeoJSON
+profile: one file per element type, named for the type rather than the layer, plus
+`_fiberq_metadata.json`.
 
 ## The data
 
@@ -81,13 +113,17 @@ Needs QGIS on the path (the `qgis/qgis` Docker images work):
 python docs/samples/generate.py
 ```
 
-This rewrites the GeoPackage, the project and all three reports. The run timestamp
-is fixed rather than taken from the clock, so a regenerated report differs only
-where the rules differ and the diff stays reviewable.
+This rewrites the GeoPackage, the project, all three reports and both interchange
+bundles. The report's run timestamp is fixed rather than taken from the clock, so a
+regenerated report differs only where the rules differ and the diff stays
+reviewable. (A bundle records the real time it was written, so `produced_at` moves
+on every regeneration — that field is provenance, not content.)
 
-**Re-run it whenever the rules change.** `tests/test_sample_report.py` fails if the
-committed report no longer matches a fresh run, so the published sample cannot
-silently go stale.
+**Re-run it whenever the rules or the format change.** `tests/test_sample_report.py`
+fails if the committed report no longer matches a fresh run, and
+`tests/test_sample_bundle.py` fails if the committed bundle stops declaring the
+format this plugin implements or stops round-tripping through its own importer. The
+published samples cannot silently go stale.
 
 ---
 

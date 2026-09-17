@@ -1,0 +1,10 @@
+{
+"type": "FeatureCollection",
+"name": "slack",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "slack_type": null, "length_m": 15.0, "location": null, "side": null, "note": "SL-1", "fiberq_uuid": "fe1b0000-0000-4000-8000-000000000018", "fq_type": "slack", "placement": null, "fq_extra_json": null, "cable_uuid": "fe1b0000-0000-4000-8000-000000000004" }, "geometry": { "type": "Point", "coordinates": [ 17.06852938744138, 43.575609822145559 ] } },
+{ "type": "Feature", "properties": { "slack_type": null, "length_m": 15.0, "location": null, "side": null, "note": "SL-2", "fiberq_uuid": "fe1b0000-0000-4000-8000-000000000019", "fq_type": "slack", "placement": null, "fq_extra_json": null, "cable_uuid": null }, "geometry": { "type": "Point", "coordinates": [ 17.069068376611852, 43.576260616933823 ] } },
+{ "type": "Feature", "properties": { "slack_type": null, "length_m": 15.0, "location": null, "side": null, "note": "SL-3", "fiberq_uuid": "fe1b0000-0000-4000-8000-000000000020", "fq_type": "slack", "placement": null, "fq_extra_json": null, "cable_uuid": "fe1b0000-0000-4000-8000-000000000004" }, "geometry": { "type": "Point", "coordinates": [ 17.06852938744138, 43.576130458538849 ] } }
+]
+}
