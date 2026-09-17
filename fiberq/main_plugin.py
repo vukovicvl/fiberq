@@ -570,12 +570,28 @@ class FiberQPlugin:
 
         gpkg_filter = self.tr('GeoPackage bundle (*.gpkg)')
         json_filter = self.tr('GeoJSON bundle — a folder, no relations (*)')
-        path, chosen = QFileDialog.getSaveFileName(
+        #: The overwrite prompt is ours, not the file dialog's. A native "file
+        #: exists, replace?" can *delete* the target before it hands the path
+        #: back, and a deleted bundle has no metadata left to merge -- so
+        #: whatever another tool recorded in it is destroyed by the act of
+        #: re-exporting, which is the exact defect this format exists to fix.
+        #: DontConfirmOverwrite keeps the file intact and the decision here.
+        no_confirm = getattr(
+            getattr(QFileDialog, 'Option', QFileDialog), 'DontConfirmOverwrite', None)
+        args = (
             self.iface.mainWindow(),
             self.tr('Export FiberQ interchange bundle'),
             os.path.join(default_dir, 'FiberQ_bundle.gpkg'),
-            f'{gpkg_filter};;{json_filter}')
+            f'{gpkg_filter};;{json_filter}',
+        )
+        if no_confirm is None:
+            # A binding without the flag still works; it just asks twice.
+            path, chosen = QFileDialog.getSaveFileName(*args)
+        else:
+            path, chosen = QFileDialog.getSaveFileName(*args, '', no_confirm)
         if not path:
+            return
+        if not self._confirm_bundle_overwrite(path, chosen == json_filter):
             return
 
         writer = InterchangeBundleWriter(prj)
@@ -612,6 +628,52 @@ class FiberQPlugin:
         bar.pushSuccess('FiberQ', safe_format(
             self.tr(src), src,
             path=os.path.basename(result.path), summary=result.summary()))
+
+    def _confirm_bundle_overwrite(self, path, is_geojson):
+        """Ask before overwriting, and say what overwriting actually does.
+
+        Worth spelling out rather than a bare "replace?": a bundle can hold data
+        this plugin does not model, written by whatever tool the user is
+        exchanging with. FiberQ rewrites its own layers and keeps the rest -- but
+        only a reader of this dialog would know that, so it says so.
+        """
+        import os
+
+        from qgis.PyQt.QtWidgets import QMessageBox
+
+        from .i18n import safe_format
+
+        if is_geojson:
+            # The dialog suggests a .gpkg name; the GeoJSON profile is a folder.
+            target = path[:-5] if path.lower().endswith('.gpkg') else path
+            if not os.path.isdir(target):
+                return True
+            question = QT_TRANSLATE_NOOP(
+                'FiberQPlugin', 'The folder {name} already exists. Write the bundle into it?')
+            detail = self.tr(
+                'Existing GeoJSON files for the same element types are replaced. '
+                'Other files in the folder are left alone.')
+        else:
+            target = path if path.lower().endswith('.gpkg') else path + '.gpkg'
+            if not os.path.isfile(target):
+                return True
+            question = QT_TRANSLATE_NOOP(
+                'FiberQPlugin', 'Replace the bundle {name}?')
+            detail = self.tr(
+                'Its FiberQ layers are rewritten from this project. Anything another '
+                'tool stored in the file -- its own metadata keys and relational '
+                'tables -- is kept, not discarded.')
+
+        confirm = QMessageBox(self.iface.mainWindow())
+        confirm.setIcon(QMessageBox.Icon.Question)
+        confirm.setWindowTitle(self.tr('Export interchange bundle'))
+        confirm.setText(safe_format(
+            self.tr(question), question, name=os.path.basename(target)))
+        confirm.setInformativeText(detail)
+        confirm.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+        confirm.setDefaultButton(QMessageBox.StandardButton.Yes)
+        return confirm.exec() == QMessageBox.StandardButton.Yes
 
     def import_interchange_bundle(self):
         """Read a FiberQ interchange bundle into this project (WP3).
