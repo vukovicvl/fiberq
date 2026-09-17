@@ -2,22 +2,28 @@
 
 Open-source QGIS plugin for fiber optic network design (FTTH / GPON / FTTx).
 
-**Latest release: v1.4.0 — 19.08.2026.** Added on GitHub as a new release.
+**Latest release: v1.5.0 — 17.09.2026.** Added on GitHub as a new release.
 
-v1.4.0 — WP2 · Validation & reporting
+v1.5.0 — WP3 · An open interchange format
 
-**Validate project** runs fourteen checks over the whole design — topology and
-connectivity, referential integrity, feature identity, required attributes, value
-domains, length coherence, CRS consistency and geometry health — and lists what it
-finds in a dockable panel you can filter, click through, and export.
+A fibre design is not a pile of points and lines. A slack loop belongs to a
+*particular* cable; a cable passes *through* particular manholes, in order;
+cables are grouped into named routes. An ordinary GeoPackage export drops all of
+that, because those relationships live in identifiers local to one QGIS project.
+**Export interchange bundle** carries them, keyed by an identity that survives
+the trip, and **Import interchange bundle** reads them back.
 
-    Fourteen rules, one command; filter by severity, layer or rule, click any issue to jump to it
-    Export the run as HTML (handover), JSON (tooling) or CSV (spreadsheets)
-    Lengths now measured on the project ellipsoid — true ground metres, not map units
-    "Recalculate lengths…" repairs existing projects, showing every change before writing
-    Now translatable; clean plugins.qgis.org security scan; tested on Qt5 and Qt6
+    A GeoPackage any GIS tool can open, or a folder of GeoJSON files per element type
+    Cable references, pass-through elements and cable groupings, keyed by fiberq_uuid
+    An element type, attribute or side-car table FiberQ cannot model survives a round trip
+    Nothing is reclassified to the nearest familiar type, and nothing is silently dropped
+    Published as a CC-BY-4.0 specification anyone can implement, with a conformance list
 
-Guides: [validating a design](docs/validation-guide.md) ·
+Guides: [moving a design between tools](docs/interchange-guide.md) ·
+[the specification](docs/interchange-format.md) ·
+[field mapping](docs/interchange-mapping.md)
+
+Earlier: [validating a design](docs/validation-guide.md) ·
 [rule reference](docs/validation-rules.md) ·
 [demo project](docs/samples/) · [project versioning](docs/project-versioning-guide.md)
 

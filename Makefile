@@ -25,6 +25,12 @@ PYTHON ?= python3
 # Set PIP_FLAGS= (empty) when installing into a virtualenv.
 PIP_FLAGS ?= --break-system-packages
 
+# The docs PDFs are rendered with WeasyPrint, which is a repo-root dev
+# dependency and is deliberately absent from the plugin. It lives in the root
+# virtualenv when there is one, so docs-pdf prefers that interpreter and does
+# not install anything into the system Python behind your back.
+DOCS_PYTHON ?= $(shell [ -x .venv/bin/python ] && echo .venv/bin/python || echo $(PYTHON))
+
 DIST_DIR := dist
 ZIP := $(DIST_DIR)/$(PLUGIN_NAME)-$(VERSION).zip
 
@@ -52,7 +58,7 @@ I18N_SOURCES = $(shell find $(PKG) -name '*.py' \
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deps lint flake8 bandit test test-cov package install uninstall clean tag release version mapping-doc \
+.PHONY: help deps lint flake8 bandit test test-cov package install uninstall clean tag release version mapping-doc docs-pdf \
         i18n-update i18n-compile i18n-stats i18n-check
 
 help:
@@ -64,6 +70,10 @@ help:
 	@echo "  install   copy the plugin into your local QGIS profile (manual testing)"
 	@echo "  clean     remove dist/ and caches"
 	@echo "  release   lint + test + package + tag v$(VERSION)  (see RELEASE.md)"
+	@echo ""
+	@echo "  documentation"
+	@echo "    mapping-doc    regenerate docs/interchange-mapping.md from the code"
+	@echo "    docs-pdf       render the published guides to dist/docs/*.pdf (website downloads)"
 	@echo ""
 	@echo "  translations (locales: $(LOCALES))"
 	@echo "    i18n-update    refresh $(I18N_DIR)/*.ts from source (merges; keeps translations)"
@@ -103,6 +113,14 @@ test-cov:
 # published page falls behind the code, so run this after changing either.
 mapping-doc:
 	$(PYTHON) tools/gen_interchange_mapping.py
+
+# The PDFs offered as downloads on fiberq.net. Dev-only: WeasyPrint is a
+# repo-root dependency and never ships in the plugin zip (the plugin itself
+# exports HTML, JSON and CSV). Output lands in dist/docs/, which is gitignored --
+# the Markdown in docs/ is the source of truth, the PDF is a rendering of it.
+# One-time setup:  .venv/bin/pip install weasyprint markdown
+docs-pdf:
+	$(DOCS_PYTHON) tools/make_docs_pdf.py
 
 # ---- i18n -------------------------------------------------------------------
 # Workflow:  make i18n-update  ->  translate the .ts in Qt Linguist  ->
