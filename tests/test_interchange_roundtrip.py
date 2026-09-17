@@ -463,3 +463,97 @@ def test_a_file_that_is_not_a_bundle_is_refused_clearly(tmp_path, target_project
 
     assert not result.ok
     assert "interchange bundle" in result.errors[0]
+
+
+# ---------------------------------------------------------------------------
+# What a second import must not do
+#
+# Found by hand-QA of v1.5.0: the re-import no-op was only ever asserted on
+# feature counts, and everything rebuilt from the uuid index went unchecked.
+# ---------------------------------------------------------------------------
+
+def _import_twice(foreign_bundle, target_project):
+    reader = InterchangeBundleReader(target_project)
+    first = reader.read(foreign_bundle)
+    assert first.ok, first.errors
+    second = reader.read(foreign_bundle)
+    assert second.ok, second.errors
+    return first, second
+
+
+def test_a_second_import_leaves_the_relations_intact(foreign_bundle, target_project):
+    """Relations are rewritten wholesale on every import, from whatever the
+    uuid index resolved. While that index held only the features the current
+    import added, a re-import resolved nothing and wrote the relation back with
+    no members -- a demolition that looked exactly like a successful no-op.
+    """
+    _import_twice(foreign_bundle, target_project)
+
+    stored = json.loads(target_project.readEntry(
+        "StuboviPlugin", "Relacije/relations_v1", "")[0])
+    assert [r["name"] for r in stored["relations"]] == ["Feeder A"]
+    assert len(stored["relations"][0]["cables"]) == 1, "the relation lost its cable"
+
+
+def test_a_second_import_leaves_the_path_stops_intact(foreign_bundle, target_project):
+    """Same defect, same blast radius: the manhole the cable passes through."""
+    _import_twice(foreign_bundle, target_project)
+
+    stored = json.loads(target_project.readEntry(
+        "StuboviPlugin", "LatentElements/latent_v1", "")[0])
+    assert sum(len(stops) for stops in stored["cables"].values()) == 1
+
+
+def test_a_second_import_keeps_the_cable_reference_pointing_at_the_cable(
+        foreign_bundle, target_project):
+    _import_twice(foreign_bundle, target_project)
+
+    slack = target_project.mapLayersByName("Optical slack")[0]
+    cables = target_project.mapLayersByName("Underground cables")[0]
+    pairs = [(f["cable_layer_id"], f["cable_fid"]) for f in slack.getFeatures()]
+    assert pairs
+    assert all(layer_id == cables.id() and fid for layer_id, fid in pairs)
+
+
+def test_a_second_import_does_not_warn_about_references_it_can_see(
+        foreign_bundle, target_project):
+    """The slack loop is already pointing at its cable. Reporting it as
+    unresolvable is not merely noise -- it is the index being blind to what the
+    project already holds, which is what the two tests above are about.
+    """
+    _first, second = _import_twice(foreign_bundle, target_project)
+
+    assert [w for w in second.warnings if "not in this bundle" in w] == []
+
+
+# ---------------------------------------------------------------------------
+# The authoring CRS, in the case that actually happens
+# ---------------------------------------------------------------------------
+
+def test_the_authoring_crs_is_restored_into_a_project_qgis_gave_a_default(
+        foreign_bundle, target_project):
+    """A new QGIS project is never CRS-less: it carries a default nobody chose.
+
+    Conditioning the restore on 'the project has no CRS' therefore meant it
+    never fired in the one flow users take -- File > New, then import -- and
+    every imported design landed in a geographic CRS, which rule E1 objects to
+    on every layer.
+    """
+    target_project.setCrs(QgsCoordinateReferenceSystem("EPSG:4326"))
+
+    InterchangeBundleReader(target_project).read(foreign_bundle)
+
+    assert target_project.crs().authid() == "EPSG:3857"
+
+
+def test_an_import_does_not_reproject_a_project_that_already_holds_work(
+        foreign_bundle, target_project):
+    """The other half of the rule. Adding a bundle to somebody's project is not
+    licence to change the CRS they chose to work in."""
+    target_project.setCrs(QgsCoordinateReferenceSystem("EPSG:32634"))
+    target_project.addMapLayer(
+        _memory_layer("Poles", "Point", ("fiberq_uuid:string(64)",)))
+
+    InterchangeBundleReader(target_project).read(foreign_bundle)
+
+    assert target_project.crs().authid() == "EPSG:32634"

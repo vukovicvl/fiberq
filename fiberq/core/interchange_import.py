@@ -301,8 +301,15 @@ class InterchangeBundleReader:
         return result
 
     def _restore_project_crs(self, metadata, result):
-        """Put the design back in the CRS it was authored in (spec section 5)."""
-        if self.project.crs().isValid():
+        """Put the design back in the CRS it was authored in (spec section 5).
+
+        A project that already holds vector layers keeps its own CRS: an import
+        adds to somebody's work and does not get to reproject it. An empty
+        project has no such claim -- its CRS is a QGIS default nobody chose, and
+        honouring it lands the whole design in a geographic CRS, which FiberQ's
+        own validation rule E1 objects to for good reason.
+        """
+        if self.project.crs().isValid() and self._holds_vector_layers():
             return
         epsg = (metadata.get("crs_epsg") or "").strip()
         if not epsg:
@@ -314,6 +321,11 @@ class InterchangeBundleReader:
             result.warnings.append(
                 f"The bundle names EPSG:{epsg} as its authoring CRS, which this "
                 "QGIS does not recognise. Set the project CRS yourself.")
+
+    def _holds_vector_layers(self):
+        """Does this project already contain work of its own?"""
+        return any(isinstance(layer, QgsVectorLayer)
+                   for layer in self.project.mapLayers().values())
 
     def _import_table(self, gpkg_path, table, storage_crs, passthrough,
                       uuid_index, result):
@@ -353,6 +365,13 @@ class InterchangeBundleReader:
             # Adding it again would put a duplicate identity in the project --
             # which validation rule B4 reports as an error, correctly.
             present = self._existing_identities(target)
+            # Index what the project already holds, not only what this import
+            # adds. Without it a second import resolves nothing, and the
+            # restores below rewrite the project's relations and path stops as
+            # empty -- an import that quietly demolishes what the first one
+            # put back.
+            for identity, fid in present.items():
+                uuid_index.setdefault(identity, (target.id(), fid))
             pending = []
             extras_by_uuid = {}
             for feature in features:
@@ -666,14 +685,21 @@ class InterchangeBundleReader:
 
     @staticmethod
     def _existing_identities(layer):
+        """``fiberq_uuid -> fid`` for what this layer already holds.
+
+        The fids matter as much as the identities. A feature that is already in
+        the project is still a legitimate target for a relation, a path stop or
+        a cable reference carried by the bundle being imported, and the restores
+        below can only reach it through this index.
+        """
         index = layer.fields().indexFromName(FIBERQ_UUID_FIELD)
         if index < 0:
-            return set()
-        found = set()
+            return {}
+        found = {}
         for feature in layer.getFeatures():
             value = feature.attribute(index)
             if value is not None and str(value).strip():
-                found.add(str(value).strip())
+                found[str(value).strip()] = int(feature.id())
         return found
 
     @staticmethod

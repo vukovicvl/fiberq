@@ -51,6 +51,10 @@ changelog=
           same bundle as a new one.
         * Metadata another tool wrote into the same file is merged, never
           replaced, and survives a round trip through FiberQ.
+        * Importing into a new project puts it back into the CRS the design was
+          authored in, instead of leaving it in whatever CRS QGIS gave the new
+          project. A project that already holds layers keeps its own CRS - an
+          import adds to your work, it does not reproject it.
         * A bundle from a newer major version of the format is refused with a
           clear message rather than imported partially. Importing the same bundle
           twice changes nothing.
