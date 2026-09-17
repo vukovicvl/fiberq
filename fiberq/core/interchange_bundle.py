@@ -60,6 +60,26 @@ def _text_field(name):
         return QgsField(name, QVariant.String)
 
 
+def _stored_index(source_fields, stored):
+    """Index of a stored field, under its modern name or a pre-1.0 one.
+
+    A project made before the English field rename still calls the cable
+    reference ``kabl_layer_id`` / ``kabl_fid``. Looking only for the modern
+    name does not merely miss a column -- it misses the *structural* pair, so
+    no ``cable_uuid`` is written and the slack loop reaches the next tool
+    detached from its cable, carrying a layer id from a project that no longer
+    exists.
+    """
+    index = source_fields.indexFromName(stored)
+    if index >= 0:
+        return index
+    for legacy in fm.legacy_names(stored):
+        index = source_fields.indexFromName(legacy)
+        if index >= 0:
+            return index
+    return -1
+
+
 #: Columns this writer stamps onto every feature layer in a bundle. Values
 #: already present on a feature are never overwritten -- that is what lets a
 #: bundle imported from a tool with richer types leave through here unchanged.
@@ -281,7 +301,7 @@ class InterchangeBundleWriter:
         plan = []  # (source index, destination index, canonical name)
         for src_index, source in enumerate(source_fields):
             name = source.name()
-            if name in fm.STRUCTURAL_FIELDS:
+            if fm.modern_field(name) in fm.STRUCTURAL_FIELDS:
                 continue
             canonical_name = fm.canonical_field(roster, name) if roster else None
             field = QgsField(source)
@@ -292,7 +312,7 @@ class InterchangeBundleWriter:
 
         structural = [
             name for name in fm.STRUCTURAL_FIELDS
-            if source_fields.indexFromName(name) >= 0
+            if _stored_index(source_fields, name) >= 0
         ]
         wanted = list(STAMP_COLUMNS)
         if structural:
@@ -323,8 +343,8 @@ class InterchangeBundleWriter:
         extra_index = fields.indexFromName("fq_extra_json")
         cable_index = fields.indexFromName(fm.CABLE_REFERENCE_FIELD)
         uuid_index = source_fields.indexFromName(FIBERQ_UUID_FIELD)
-        cable_layer_index = source_fields.indexFromName("cable_layer_id")
-        cable_fid_index = source_fields.indexFromName("cable_fid")
+        cable_layer_index = _stored_index(source_fields, "cable_layer_id")
+        cable_fid_index = _stored_index(source_fields, "cable_fid")
 
         built = []
         unresolved = 0

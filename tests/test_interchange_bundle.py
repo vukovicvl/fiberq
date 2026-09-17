@@ -104,6 +104,11 @@ def _rows(path, sql, params=()):
         return conn.execute(sql, params).fetchall()
 
 
+def _columns(path, table):
+    with sqlite3.connect(path) as conn:
+        return {row[1] for row in conn.execute(f'PRAGMA table_info("{table}")')}
+
+
 # ---------------------------------------------------------------------------
 # Feature layers: canonical names, stable types, storage CRS
 # ---------------------------------------------------------------------------
@@ -708,3 +713,73 @@ def test_the_geojson_profile_leaves_no_staging_file_behind(project, tmp_path):
     InterchangeBundleWriter(project).write_geojson(out, layers=[poles])
 
     assert not [n for n in os.listdir(out) if n.endswith(".gpkg")]
+
+
+# ---------------------------------------------------------------------------
+# Pre-1.0 field names
+#
+# Section D proved legacy *layer* names export correctly. This is the same
+# defect one level down, found by exporting a real 2019 project: its Optical
+# slack layer calls the cable reference kabl_layer_id / kabl_fid.
+# ---------------------------------------------------------------------------
+
+def test_a_legacy_cable_reference_still_becomes_a_uuid(project, tmp_path):
+    """The structural pair under its pre-1.0 name is still the structural pair.
+
+    Missing it does not merely leave a field with an odd name in the bundle: no
+    cable_uuid is written at all, so the slack loop arrives detached from its
+    cable, carrying a QGIS layer id from a project that no longer exists. The
+    export reports success and the loss is invisible until someone opens the
+    bundle somewhere else.
+    """
+    cables = _layer("Underground cables", "LineString")
+    cable = _add(cables, _line(), fiberq_uuid="u-cable-1")
+    slack = _layer("Optical slack", "Point",
+                   ("fiberq_uuid:string(64)", "duzina_m:double",
+                    "kabl_layer_id:string", "kabl_fid:integer"))
+    _add(slack, _point(5), fiberq_uuid="u-slack-1", duzina_m=15.0,
+         kabl_layer_id=cables.id(), kabl_fid=cable.id())
+    path = str(tmp_path / "legacy.gpkg")
+
+    result = InterchangeBundleWriter(project).write(path, layers=[cables, slack])
+
+    assert result.ok, result.errors
+    assert _rows(path, 'SELECT cable_uuid FROM "Optical slack"') == [("u-cable-1",)]
+
+
+def test_the_legacy_pair_does_not_travel_as_ordinary_columns(project, tmp_path):
+    """Replaced, not carried beside its replacement.
+
+    Both names surviving would put two answers to 'which cable' in one bundle,
+    and the stale one is the one a reader can resolve without a uuid lookup.
+    """
+    cables = _layer("Underground cables", "LineString")
+    cable = _add(cables, _line(), fiberq_uuid="u-cable-1")
+    slack = _layer("Optical slack", "Point",
+                   ("fiberq_uuid:string(64)", "kabl_layer_id:string",
+                    "kabl_fid:integer"))
+    _add(slack, _point(5), fiberq_uuid="u-slack-1",
+         kabl_layer_id=cables.id(), kabl_fid=cable.id())
+    path = str(tmp_path / "legacy.gpkg")
+
+    InterchangeBundleWriter(project).write(path, layers=[cables, slack])
+
+    columns = _columns(path, "Optical slack")
+    assert "kabl_layer_id" not in columns
+    assert "kabl_fid" not in columns
+
+
+def test_an_ordinary_legacy_field_is_renamed_not_passed_through(project, tmp_path):
+    """polaganje_kabla is cable_laying under an older name, and the bundle owes
+    the receiver the canonical name (conformance rule 1), not a Serbian one it
+    has no mapping for."""
+    cables = _layer("Underground cables", "LineString",
+                    ("fiberq_uuid:string(64)", "polaganje_kabla:string"))
+    _add(cables, _line(), fiberq_uuid="u-cable-1", polaganje_kabla="U kanalizaciji")
+    path = str(tmp_path / "legacy.gpkg")
+
+    InterchangeBundleWriter(project).write(path, layers=[cables])
+
+    columns = _columns(path, "Underground cables")
+    assert "installation_type" in columns
+    assert "polaganje_kabla" not in columns

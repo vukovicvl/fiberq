@@ -23,7 +23,7 @@ afterwards. Hence rosters.
 
 Published as ``docs/interchange-mapping.md``, which a test keeps in step.
 """
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 #: The identity field keeps its name in a bundle. It is the one field every
 #: conformant tool must already know (spec section 4), so translating it would
@@ -41,6 +41,32 @@ STRUCTURAL_FIELDS = frozenset({"cable_layer_id", "cable_fid"})
 
 #: Canonical name for what those two fields together mean.
 CABLE_REFERENCE_FIELD = "cable_uuid"
+
+#: Stored field name -> the pre-1.0 Serbian name a real project may still carry.
+#:
+#: The identity migration renames ``fiberq_uuid`` and nothing else -- by design,
+#: it is an identity migration -- so a project made before the English field
+#: rename keeps these names forever. Confirmed on a real QGIS 3.40 project whose
+#: Optical slack layer carries ``kabl_fid`` / ``kabl_layer_id``.
+#:
+#: This matters more here than it looks. ``kabl_layer_id`` unrecognised is not a
+#: field with an odd name: it is the *structural* pair going unnoticed, so no
+#: ``cable_uuid`` is written and the slack loop reaches the next tool detached
+#: from its cable. The old layer id travels with it and means nothing there.
+#: WP2's validation engine already carried this map privately; it lives here now
+#: so the exporter and the validator cannot learn it separately and drift.
+LEGACY_FIELD_NAMES: Dict[str, Tuple[str, ...]] = {
+    "cable_layer_id": ("kabl_layer_id",),
+    "cable_fid": ("kabl_fid",),
+    "cable_laying": ("polaganje_kabla",),
+}
+
+#: The reverse: what a legacy field is called today.
+_LEGACY_TO_STORED: Dict[str, str] = {
+    legacy: stored
+    for stored, names in LEGACY_FIELD_NAMES.items()
+    for legacy in names
+}
 
 # ---------------------------------------------------------------------------
 # Field rosters: plugin stored name -> canonical bundle name
@@ -308,7 +334,23 @@ def canonical_field(roster: str, stored_name: str) -> Optional[str]:
     """
     if stored_name == IDENTITY_FIELD:
         return IDENTITY_FIELD
-    return ROSTERS.get(roster, {}).get(stored_name)
+    return ROSTERS.get(roster, {}).get(modern_field(stored_name))
+
+
+def modern_field(stored_name: str) -> str:
+    """The name a pre-1.0 project's field goes by today, or the name unchanged.
+
+    Every lookup that starts from a *project's* field name must go through
+    this, or a legacy project silently takes the "field the format does not
+    model" path -- which is lossless for an ordinary column and lossy for the
+    structural pair.
+    """
+    return _LEGACY_TO_STORED.get(stored_name, stored_name)
+
+
+def legacy_names(stored_name: str) -> Tuple[str, ...]:
+    """The pre-1.0 names a stored field may still be called, if any."""
+    return LEGACY_FIELD_NAMES.get(stored_name, ())
 
 
 def stored_field(roster: str, canonical_name: str) -> Optional[str]:
@@ -351,6 +393,7 @@ def stored_value(roster: str, canonical_name: str, value):
 
 __all__ = [
     "CABLE_REFERENCE_FIELD", "ENGLISH_ALIASES", "IDENTITY_FIELD", "ROSTERS",
-    "STRUCTURAL_FIELDS", "TYPE_ROSTER", "VALUE_DOMAINS", "canonical_field",
+    "LEGACY_FIELD_NAMES", "STRUCTURAL_FIELDS", "TYPE_ROSTER", "VALUE_DOMAINS",
+    "canonical_field", "legacy_names", "modern_field",
     "canonical_value", "roster_for_type", "stored_field", "stored_value",
 ]

@@ -47,8 +47,10 @@ changelog=
           receiving tool does not have to learn FiberQ's stored schema. Your
           project keeps its own field names and values exactly as they are - the
           translation happens only in the exported copy.
-        * A pre-1.0 project with the original Serbian layer names now exports the
-          same bundle as a new one.
+        * A pre-1.0 project with the original Serbian layer and field names now
+          exports the same bundle as a new one - including the slack loops and
+          fibre breaks whose cable reference such a project still stores as
+          kabl_layer_id / kabl_fid.
         * Metadata another tool wrote into the same file is merged, never
           replaced, and survives a round trip through FiberQ.
         * Importing into a new project puts it back into the CRS the design was

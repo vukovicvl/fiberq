@@ -26,6 +26,7 @@ imported lazily inside the checks, which only run under QGIS.
 """
 from ..models import schema
 from ..utils.logger import get_logger
+from . import interchange_fields as fm
 from .validation_manager import Severity, ValidationIssue, ValidationRule
 
 logger = get_logger(__name__)
@@ -110,18 +111,17 @@ _REQUIRED_BY_LAYER = {
 # Small helpers (QGIS-aware, called only from checks)
 # ---------------------------------------------------------------------------
 
-#: Canonical field name -> the pre-1.0 Serbian names a real project may still
-#: carry. The identity migration renames nothing but ``fiberq_uuid`` (by design --
-#: it is an identity migration), so a project made before the English rename keeps
-#: these forever. A rule that looks only for the canonical name silently skips the
-#: whole layer, which for the B-rules means an ERROR-severity check quietly never
-#: runs and the project is reported clean. Confirmed on a real QGIS 3.40 project
-#: whose Optical slack layer carries kabl_fid / kabl_layer_id.
-_LEGACY_FIELD_NAMES = {
-    "cable_layer_id": ("kabl_layer_id",),
-    "cable_fid": ("kabl_fid",),
-    "cable_laying": ("polaganje_kabla",),
-}
+#: The pre-1.0 Serbian field names a real project may still carry. A rule that
+#: looks only for the canonical name silently skips the whole layer, which for
+#: the B-rules means an ERROR-severity check quietly never runs and the project
+#: is reported clean.
+#:
+#: Defined in :mod:`interchange_fields` and used from there rather than kept as
+#: a second copy: WP3's exporter needs the same knowledge, and two modules
+#: learning the same legacy map separately is how one of them ends up not
+#: knowing. (It already happened: the exporter shipped without it and dropped
+#: the cable reference of every slack loop in a pre-1.0 project.)
+_LEGACY_FIELD_NAMES = fm.LEGACY_FIELD_NAMES
 
 
 def _actual_field(names, canonical):
