@@ -37,6 +37,21 @@ PUBLISHED = [
     "TRANSLATING.md",
 ]
 
+#: The filename each document is published under on fiberq.net. The site has
+#: used Title-Case FiberQ-prefixed names since the first grant deliverable, and
+#: the links are already out in payment requests and release notes -- so the
+#: renaming happens here, once, rather than by hand on every upload.
+WEB_NAMES = {
+    "interchange-guide": "FiberQ-Interchange-Guide",
+    "interchange-format": "FiberQ-Interchange-Format-Specification",
+    "interchange-mapping": "FiberQ-Interchange-Field-Mapping",
+    "validation-guide": "FiberQ-Validation-Guide",
+    "validation-rules": "FiberQ-Validation-Rules-Reference",
+    "project-versioning-guide": "FiberQ-Project-Versioning-Guide",
+    "schema": "FiberQ-Schema-Reference",
+    "TRANSLATING": "FiberQ-Translator-Guide",
+}
+
 #: Print stylesheet. Deliberately plain: these are reference documents that get
 #: read on screen, printed on office paper and emailed to a client, so they use
 #: a serif body at a size that survives all three, and no colour that turns to
@@ -203,7 +218,7 @@ def render(md_path, out_dir=OUT, base_url=None):
     body = _relative_links_to_absolute(body, base_url)
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / (md_path.stem + ".pdf")
+    out_path = out_dir / (WEB_NAMES.get(md_path.stem, md_path.stem) + ".pdf")
     # str.replace, not %-formatting: the CSS contains "width: 100%" and the
     # rendered body contains percentages of its own, both of which a format
     # string would try to interpret.
