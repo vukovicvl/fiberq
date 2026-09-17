@@ -124,7 +124,7 @@ class _FiberQStub:
 # PACKAGE INFO
 # =============================================================================
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 __author__ = "Vladimir Vukovic"
 __email__ = "vukovicvl@fiberq.net"
 __license__ = "GPL-3.0-or-later"

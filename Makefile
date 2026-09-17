@@ -52,7 +52,7 @@ I18N_SOURCES = $(shell find $(PKG) -name '*.py' \
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deps lint flake8 bandit test test-cov package install uninstall clean tag release version \
+.PHONY: help deps lint flake8 bandit test test-cov package install uninstall clean tag release version mapping-doc \
         i18n-update i18n-compile i18n-stats i18n-check
 
 help:
@@ -96,6 +96,13 @@ test:
 
 test-cov:
 	QT_QPA_PLATFORM=offscreen $(PYTHON) -m pytest --cov=$(PKG) --cov-report=term-missing --cov-report=xml
+
+# ---- generated docs ---------------------------------------------------------
+# docs/interchange-mapping.md is generated from models/schema.py and
+# core/interchange_fields.py. tests/test_interchange_mapping.py fails if the
+# published page falls behind the code, so run this after changing either.
+mapping-doc:
+	$(PYTHON) tools/gen_interchange_mapping.py
 
 # ---- i18n -------------------------------------------------------------------
 # Workflow:  make i18n-update  ->  translate the .ts in Qt Linguist  ->

@@ -547,6 +547,199 @@ class FiberQPlugin:
         if getattr(self, '_validation_panel', None) is not None:
             self.run_validation()
 
+    def export_interchange_bundle(self):
+        """Write the project as a FiberQ interchange bundle (WP3).
+
+        Separate from "Save all layers to GeoPackage" on purpose. That command
+        moves where the project lives -- it repoints every layer at the file it
+        writes. This one produces a handover artefact and leaves the project
+        exactly where it was.
+
+        The format is specified in docs/interchange-format.md.
+        """
+        import os
+
+        from qgis.PyQt.QtWidgets import QFileDialog
+
+        from .core.interchange_bundle import InterchangeBundleWriter
+        from .i18n import safe_format
+
+        bar = self.iface.messageBar()
+        prj = QgsProject.instance()
+        default_dir = os.path.dirname(prj.fileName()) if prj.fileName() else os.path.expanduser('~')
+
+        gpkg_filter = self.tr('GeoPackage bundle (*.gpkg)')
+        json_filter = self.tr('GeoJSON bundle — a folder, no relations (*)')
+        #: The overwrite prompt is ours, not the file dialog's. A native "file
+        #: exists, replace?" can *delete* the target before it hands the path
+        #: back, and a deleted bundle has no metadata left to merge -- so
+        #: whatever another tool recorded in it is destroyed by the act of
+        #: re-exporting, which is the exact defect this format exists to fix.
+        #: DontConfirmOverwrite keeps the file intact and the decision here.
+        no_confirm = getattr(
+            getattr(QFileDialog, 'Option', QFileDialog), 'DontConfirmOverwrite', None)
+        args = (
+            self.iface.mainWindow(),
+            self.tr('Export FiberQ interchange bundle'),
+            os.path.join(default_dir, 'FiberQ_bundle.gpkg'),
+            f'{gpkg_filter};;{json_filter}',
+        )
+        if no_confirm is None:
+            # A binding without the flag still works; it just asks twice.
+            path, chosen = QFileDialog.getSaveFileName(*args)
+        else:
+            path, chosen = QFileDialog.getSaveFileName(*args, '', no_confirm)
+        if not path:
+            return
+        if not self._confirm_bundle_overwrite(path, chosen == json_filter):
+            return
+
+        writer = InterchangeBundleWriter(prj)
+        try:
+            if chosen == json_filter:
+                # GeoJSON is one file per element type, so the target is a
+                # folder. The .gpkg the dialog suggested is not one.
+                if path.lower().endswith('.gpkg'):
+                    path = path[:-5]
+                result = writer.write_geojson(path)
+            else:
+                result = writer.write(path)
+        except Exception as e:
+            logger.warning(f"Interchange bundle export failed: {e}")
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Could not write the bundle: {details}')
+            bar.pushWarning('FiberQ', safe_format(self.tr(src), src, details=e))
+            return
+
+        # Anything left out is named, never implied. A bundle that quietly
+        # dropped a layer and one that had nothing to drop look identical from
+        # a success message alone.
+        for name, reason in result.skipped:
+            logger.debug(f"Bundle: not including '{name}' ({reason})")
+        for warning in result.warnings:
+            bar.pushWarning('FiberQ', warning)
+
+        if not result.ok:
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Bundle export failed: {details}')
+            bar.pushWarning('FiberQ', safe_format(
+                self.tr(src), src, details='; '.join(result.errors[:3])))
+            return
+
+        src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Wrote {path} — {summary}')
+        bar.pushSuccess('FiberQ', safe_format(
+            self.tr(src), src,
+            path=os.path.basename(result.path), summary=result.summary()))
+
+    def _confirm_bundle_overwrite(self, path, is_geojson):
+        """Ask before overwriting, and say what overwriting actually does.
+
+        Worth spelling out rather than a bare "replace?": a bundle can hold data
+        this plugin does not model, written by whatever tool the user is
+        exchanging with. FiberQ rewrites its own layers and keeps the rest -- but
+        only a reader of this dialog would know that, so it says so.
+        """
+        import os
+
+        from qgis.PyQt.QtWidgets import QMessageBox
+
+        from .i18n import safe_format
+
+        if is_geojson:
+            # The dialog suggests a .gpkg name; the GeoJSON profile is a folder.
+            target = path[:-5] if path.lower().endswith('.gpkg') else path
+            if not os.path.isdir(target):
+                return True
+            question = QT_TRANSLATE_NOOP(
+                'FiberQPlugin', 'The folder {name} already exists. Write the bundle into it?')
+            detail = self.tr(
+                'Existing GeoJSON files for the same element types are replaced. '
+                'Other files in the folder are left alone.')
+        else:
+            target = path if path.lower().endswith('.gpkg') else path + '.gpkg'
+            if not os.path.isfile(target):
+                return True
+            question = QT_TRANSLATE_NOOP(
+                'FiberQPlugin', 'Replace the bundle {name}?')
+            detail = self.tr(
+                'Its FiberQ layers are rewritten from this project. Anything another '
+                'tool stored in the file -- its own metadata keys and relational '
+                'tables -- is kept, not discarded.')
+
+        confirm = QMessageBox(self.iface.mainWindow())
+        confirm.setIcon(QMessageBox.Icon.Question)
+        confirm.setWindowTitle(self.tr('Export interchange bundle'))
+        confirm.setText(safe_format(
+            self.tr(question), question, name=os.path.basename(target)))
+        confirm.setInformativeText(detail)
+        confirm.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+        confirm.setDefaultButton(QMessageBox.StandardButton.Yes)
+        return confirm.exec() == QMessageBox.StandardButton.Yes
+
+    def import_interchange_bundle(self):
+        """Read a FiberQ interchange bundle into this project (WP3).
+
+        Foreign data is adapted *into* FiberQ: features land in FiberQ's own
+        layers, with FiberQ's own field names and values. Nothing about the
+        plugin's data model changes to accommodate a bundle.
+
+        What FiberQ has no model for -- an element type it lacks, an attribute
+        with no column, a side-car table it does not implement -- is kept whole
+        and written out again unchanged, rather than being reclassified to the
+        nearest thing that fits.
+        """
+        import os
+
+        from qgis.PyQt.QtWidgets import QFileDialog
+
+        from .core.interchange_import import InterchangeBundleReader
+        from .i18n import safe_format
+
+        bar = self.iface.messageBar()
+        prj = QgsProject.instance()
+        default_dir = os.path.dirname(prj.fileName()) if prj.fileName() else os.path.expanduser('~')
+
+        path, _ = QFileDialog.getOpenFileName(
+            self.iface.mainWindow(),
+            self.tr('Import FiberQ interchange bundle'),
+            default_dir,
+            self.tr('GeoPackage bundle (*.gpkg)'))
+        if not path:
+            return
+
+        try:
+            result = InterchangeBundleReader(prj).read(path)
+        except Exception as e:
+            logger.warning(f"Interchange bundle import failed: {e}")
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Could not read the bundle: {details}')
+            bar.pushWarning('FiberQ', safe_format(self.tr(src), src, details=e))
+            return
+
+        for warning in result.warnings:
+            bar.pushWarning('FiberQ', warning)
+
+        if not result.ok:
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Import failed: {details}')
+            bar.pushWarning('FiberQ', safe_format(
+                self.tr(src), src, details='; '.join(result.errors[:3])))
+            return
+
+        # Say what was carried rather than imported. An element type FiberQ
+        # cannot draw is still in the project and still leaves in the next
+        # export, and the user should know it is there.
+        if result.unsupported:
+            kinds = ', '.join(f'{k} ({n})' for k, n in sorted(result.unsupported.items()))
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                'Carried through unchanged, with no FiberQ layer to draw them in: '
+                '{kinds}. They survive the next export.')
+            bar.pushInfo('FiberQ', safe_format(self.tr(src), src, kinds=kinds))
+
+        prj.setDirty(True)
+        src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Imported {path} — {summary}')
+        bar.pushSuccess('FiberQ', safe_format(
+            self.tr(src), src,
+            path=os.path.basename(path), summary=result.summary()))
+
     def _zoom_to_issue(self, issue):
         """Centre the canvas on an issue and mark it.
 
@@ -1940,6 +2133,45 @@ class FiberQPlugin:
                 logger.debug(f"Error in FiberQPlugin.initGui: {e}")
             try:
                 self.iface.addPluginToMenu('FiberQ', self.action_recalc_lengths)
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+        except Exception as e:
+            logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+
+        # --- Export interchange bundle (WP3 task 3.2) ---
+        try:
+            #: Menu-only, and deliberately not next to "Save all layers to
+            #: GeoPackage": that command repoints the project at the file it
+            #: writes, this one only produces a handover artefact.
+            self.action_export_bundle = QAction(
+                self.tr('Export interchange bundle…'), self.iface.mainWindow())
+            self.action_export_bundle.setToolTip(self.tr(
+                'Write the design as an open FiberQ interchange bundle (.gpkg)'))
+            self.action_export_bundle.triggered.connect(self.export_interchange_bundle)
+            try:
+                self.actions.append(self.action_export_bundle)
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+            try:
+                self.iface.addPluginToMenu('FiberQ', self.action_export_bundle)
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+        except Exception as e:
+            logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+
+        # --- Import interchange bundle (WP3 task 3.3) ---
+        try:
+            self.action_import_bundle = QAction(
+                self.tr('Import interchange bundle…'), self.iface.mainWindow())
+            self.action_import_bundle.setToolTip(self.tr(
+                'Read an open FiberQ interchange bundle into this project'))
+            self.action_import_bundle.triggered.connect(self.import_interchange_bundle)
+            try:
+                self.actions.append(self.action_import_bundle)
+            except Exception as e:
+                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
+            try:
+                self.iface.addPluginToMenu('FiberQ', self.action_import_bundle)
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.initGui: {e}")
         except Exception as e:

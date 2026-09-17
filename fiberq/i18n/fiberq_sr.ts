@@ -219,12 +219,12 @@
 <context>
     <name>FiberQ</name>
     <message>
-        <location filename="../main_plugin.py" line="4011"/>
+        <location filename="../main_plugin.py" line="4187"/>
         <source>FiberQ – Preview Map</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4012"/>
+        <location filename="../main_plugin.py" line="4188"/>
         <source>Error opening the preview map:
 {details}</source>
         <translation type="unfinished"></translation>
@@ -343,8 +343,43 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1316"/>
-        <location filename="../main_plugin.py" line="1300"/>
+        <location filename="../main_plugin.py" line="593"/>
+        <source>Could not write the bundle: {details}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="606"/>
+        <source>Bundle export failed: {details}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="611"/>
+        <source>Wrote {path} — {summary}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="651"/>
+        <source>Could not read the bundle: {details}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="659"/>
+        <source>Import failed: {details}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="669"/>
+        <source>Carried through unchanged, with no FiberQ layer to draw them in: {kinds}. They survive the next export.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="676"/>
+        <source>Imported {path} — {summary}</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="1450"/>
+        <location filename="../main_plugin.py" line="1434"/>
         <location filename="../main_plugin.py" line="230"/>
         <location filename="../main_plugin.py" line="214"/>
         <source>Interface language</source>
@@ -364,15 +399,15 @@ Language will change when QGIS restarts.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3806"/>
-        <location filename="../main_plugin.py" line="2431"/>
-        <location filename="../main_plugin.py" line="2310"/>
-        <location filename="../main_plugin.py" line="2284"/>
-        <location filename="../main_plugin.py" line="2266"/>
-        <location filename="../main_plugin.py" line="2175"/>
-        <location filename="../main_plugin.py" line="1085"/>
-        <location filename="../main_plugin.py" line="940"/>
-        <location filename="../main_plugin.py" line="795"/>
+        <location filename="../main_plugin.py" line="3982"/>
+        <location filename="../main_plugin.py" line="2607"/>
+        <location filename="../main_plugin.py" line="2486"/>
+        <location filename="../main_plugin.py" line="2460"/>
+        <location filename="../main_plugin.py" line="2442"/>
+        <location filename="../main_plugin.py" line="2351"/>
+        <location filename="../main_plugin.py" line="1216"/>
+        <location filename="../main_plugin.py" line="1071"/>
+        <location filename="../main_plugin.py" line="926"/>
         <location filename="../main_plugin.py" line="248"/>
         <source>Error: {details}</source>
         <translation type="unfinished"></translation>
@@ -482,53 +517,74 @@ Language will change when QGIS restarts.</source>
         </translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="562"/>
+        <location filename="../main_plugin.py" line="643"/>
+        <location filename="../main_plugin.py" line="571"/>
+        <source>GeoPackage bundle (*.gpkg)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="572"/>
+        <source>GeoJSON bundle — a folder, no relations (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="575"/>
+        <source>Export FiberQ interchange bundle</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="641"/>
+        <source>Import FiberQ interchange bundle</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="693"/>
         <source>This issue is not tied to a map location.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1409"/>
-        <location filename="../main_plugin.py" line="794"/>
+        <location filename="../main_plugin.py" line="1543"/>
+        <location filename="../main_plugin.py" line="925"/>
         <source>Publish to PostGIS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="857"/>
+        <location filename="../main_plugin.py" line="988"/>
         <source>Health check</source>
         <extracomment>Dialog title. &quot;Health check&quot; = a validation pass over the QGIS PROJECT&apos;s data (are the Route/Poles/Manholes layers present, of the right geometry type, and internally consistent). It is a data-integrity check, NOT a measurement of optical/network health and not hardware diagnostics.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="858"/>
+        <location filename="../main_plugin.py" line="989"/>
         <source>Error while running detailed route check:
 {details}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1979"/>
-        <location filename="../main_plugin.py" line="939"/>
+        <location filename="../main_plugin.py" line="2155"/>
+        <location filename="../main_plugin.py" line="1070"/>
         <source>Change element type</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3719"/>
-        <location filename="../main_plugin.py" line="1038"/>
-        <location filename="../main_plugin.py" line="985"/>
+        <location filename="../main_plugin.py" line="3895"/>
+        <location filename="../main_plugin.py" line="1169"/>
+        <location filename="../main_plugin.py" line="1116"/>
         <source>Select one or more elements and try again.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="992"/>
+        <location filename="../main_plugin.py" line="1123"/>
         <source>Choose image</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="994"/>
+        <location filename="../main_plugin.py" line="1125"/>
         <source>Images (*.jpg *.jpeg *.png *.gif);;All files (*.*)</source>
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <location filename="../main_plugin.py" line="1007"/>
+        <location filename="../main_plugin.py" line="1138"/>
         <source>Image linked to %n element(s).</source>
         <extracomment>Confirmation after attaching one photo to the selected map elements. %n is how many elements now point at that image; Qt substitutes it, so keep %n and do not turn it into {count}.</extracomment>
         <translation type="unfinished">
@@ -538,17 +594,17 @@ Language will change when QGIS restarts.</source>
         </translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1024"/>
+        <location filename="../main_plugin.py" line="1155"/>
         <source>Image</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1025"/>
+        <location filename="../main_plugin.py" line="1156"/>
         <source>Click on an element to open its image (ESC to exit).</source>
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <location filename="../main_plugin.py" line="1047"/>
+        <location filename="../main_plugin.py" line="1178"/>
         <source>Image link removed for %n element(s).</source>
         <extracomment>Confirmation after detaching the photo from the selected map elements. Only the link is cleared - the image file itself is not deleted. %n is how many elements were unlinked; keep %n.</extracomment>
         <translation type="unfinished">
@@ -558,428 +614,448 @@ Language will change when QGIS restarts.</source>
         </translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1073"/>
+        <location filename="../main_plugin.py" line="1204"/>
         <source>Cutting</source>
         <extracomment>Message-bar heading for the geometry-splitting tool. &quot;Cutting&quot; = the act of splitting a line feature in two, NOT a cable fault/outage. Verbal noun; keep it short (banner title). The body text below belongs to the same tool.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1074"/>
+        <location filename="../main_plugin.py" line="1205"/>
         <source>Tool activated. Move mouse over line (red cross), left click to cut, right/ESC exit.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1084"/>
+        <location filename="../main_plugin.py" line="1215"/>
         <source>Infrastructure cutting</source>
         <extracomment>Error-dialog title for the geometry-splitting tool. &quot;cutting&quot; = splitting a line feature at a clicked point, NOT a cable fault. Same tool as the &quot;Cut infrastructure&quot; button.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1138"/>
+        <location filename="../main_plugin.py" line="1269"/>
         <source>{name} – About</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1182"/>
+        <location filename="../main_plugin.py" line="1316"/>
         <source>About dialog error: {details}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1342"/>
+        <location filename="../main_plugin.py" line="1476"/>
         <source>Undo (FiberQ)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1344"/>
+        <location filename="../main_plugin.py" line="1478"/>
         <source>Undo last FiberQ action (Ctrl+Shift+Z)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1352"/>
+        <location filename="../main_plugin.py" line="1486"/>
         <source>Redo (FiberQ)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1354"/>
+        <location filename="../main_plugin.py" line="1488"/>
         <source>Redo last undone FiberQ action (Ctrl+Shift+Y)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1377"/>
+        <location filename="../main_plugin.py" line="1511"/>
         <source>Help / About</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1378"/>
+        <location filename="../main_plugin.py" line="1512"/>
         <source>Help and information about FiberQ</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1415"/>
+        <location filename="../main_plugin.py" line="1549"/>
         <source>Publish the active (or selected) layer to PostGIS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1457"/>
+        <location filename="../main_plugin.py" line="1591"/>
         <source>Terminal slack (shortcut)</source>
         <extracomment>Label of a HIDDEN action that only exists to bind the &quot;R&quot; key; it shows up in the QGIS keyboard-shortcuts list, not on a toolbar. &quot;Slack&quot; = spare cable length coiled at a point for later re-splicing (fr &quot;love&quot;/&quot;reserve&quot;); TERMINAL slack is the type that sits at a cable END - keep it distinct from &quot;mid span&quot; slack. &quot;(shortcut)&quot; refers to the key binding, not to a Windows shortcut file.</extracomment>
         <translation>Završna rezerva (prečica)</translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1468"/>
+        <location filename="../main_plugin.py" line="1602"/>
         <source>Optical schematic view</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1475"/>
+        <location filename="../main_plugin.py" line="1609"/>
         <source>Import points</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3438"/>
-        <location filename="../main_plugin.py" line="3414"/>
-        <location filename="../main_plugin.py" line="3394"/>
-        <location filename="../main_plugin.py" line="3345"/>
-        <location filename="../main_plugin.py" line="3261"/>
-        <location filename="../main_plugin.py" line="3250"/>
-        <location filename="../main_plugin.py" line="1486"/>
+        <location filename="../main_plugin.py" line="3614"/>
+        <location filename="../main_plugin.py" line="3590"/>
+        <location filename="../main_plugin.py" line="3570"/>
+        <location filename="../main_plugin.py" line="3521"/>
+        <location filename="../main_plugin.py" line="3437"/>
+        <location filename="../main_plugin.py" line="3426"/>
+        <location filename="../main_plugin.py" line="1620"/>
         <source>Export</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1491"/>
+        <location filename="../main_plugin.py" line="1625"/>
         <source>Export selected...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1495"/>
+        <location filename="../main_plugin.py" line="1629"/>
         <source>Export selected features of the active layer to GPX / KML / KMZ / GeoPackage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1505"/>
+        <location filename="../main_plugin.py" line="1639"/>
         <source>Export all...</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1509"/>
+        <location filename="../main_plugin.py" line="1643"/>
         <source>Export all features of the active layer to GPX / KML / KMZ / GeoPackage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1521"/>
+        <location filename="../main_plugin.py" line="1655"/>
         <source>Export active layer</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1541"/>
+        <location filename="../main_plugin.py" line="1675"/>
         <source>Hide locator</source>
         <extracomment>Toolbar button that removes the address marker the Locator dropped on the map. &quot;Hide&quot; is a VERB (imperative); &quot;locator&quot; is the same address-finder feature as the &quot;Locator&quot; button above.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1553"/>
+        <location filename="../main_plugin.py" line="1687"/>
         <source>Relations</source>
         <extracomment>Toolbar button opening &quot;Optical relations management&quot;. A FiberQ &quot;relation&quot; is a named end-to-end optical link (a logical route between two sites) that cables get assigned to - telecom domain sense, plural NOUN. NOT QGIS layer relations (foreign keys between tables), and not &quot;relationship&quot; in the general sense.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1564"/>
+        <location filename="../main_plugin.py" line="1698"/>
         <source>List of latent elements</source>
         <extracomment>Toolbar button opening a table of &quot;latent&quot; elements. In FiberQ a latent element is a passive optical element (joint closure, ODF, OTB, termination box) that sits ON a cable&apos;s path at a recorded distance along it, between the cable&apos;s two endpoints - recorded as data, not drawn as a separate map feature. &quot;latent&quot; = intermediate/pass-through, NOT &quot;faulty&quot;, &quot;hidden bug&quot; or &quot;dormant&quot;.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1587"/>
+        <location filename="../main_plugin.py" line="1721"/>
         <source>Cut infrastructure</source>
         <extracomment>Toolbar button. &quot;Cut&quot; is a VERB, imperative, in the GEOMETRY -EDITING sense: the tool splits one line feature into two at the point you click (see addons/infrastructure_cut.py, _split_feature_at_point). It is NOT a cable fault/break - French &quot;decouper&quot;/&quot;scinder&quot;, never &quot;coupure&quot;. The separate fault tool is &quot;Fiber break&quot;.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1628"/>
+        <location filename="../main_plugin.py" line="1762"/>
         <source>Fiber break</source>
         <extracomment>Toolbar button. NOUN: a fault - the point where a fibre is broken or severed (fr &quot;coupure&quot;/&quot;rupture&quot;). This IS the fault concept, unlike &quot;Cut infrastructure&quot; above, which is geometry editing. The tool marks a break location on the map. &quot;break&quot; is not a pause and not a rest.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1642"/>
+        <location filename="../main_plugin.py" line="1776"/>
         <source>Color catalog</source>
         <extracomment>Toolbar entry opening the FIBRE COLOUR CODE: the standard sequence of colours identifying each tube and each fibre within a cable (e.g. the TIA-598 or IEC ordering). This is industry cable terminology - it is NOT a QGIS symbology palette or a map-styling colour picker.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1653"/>
+        <location filename="../main_plugin.py" line="1787"/>
         <source>Save all layers to GeoPackage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1654"/>
+        <location filename="../main_plugin.py" line="1788"/>
         <source>Export all vector layers (including Temporary scratch) to a single .gpkg and redirect the project to it</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1674"/>
+        <location filename="../main_plugin.py" line="1808"/>
         <source>Auto save to GeoPackage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1676"/>
+        <location filename="../main_plugin.py" line="1810"/>
         <source>When enabled: every new or memory layer is automatically written to the selected .gpkg and redirected to it</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1694"/>
+        <location filename="../main_plugin.py" line="1828"/>
         <source>Preview Map</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1695"/>
+        <location filename="../main_plugin.py" line="1829"/>
         <source>Open the FiberQ Preview Map (PostGIS connection from config.ini)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1709"/>
+        <location filename="../main_plugin.py" line="1843"/>
         <source>Create Service Area</source>
         <translation>Kreiraj rejon</translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1710"/>
+        <location filename="../main_plugin.py" line="1844"/>
         <source>Create Service Area from selection (buffer around selected cables/elements)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1725"/>
+        <location filename="../main_plugin.py" line="1859"/>
         <source>Draw Service Area Manually</source>
         <translation>Nacrtaj rejon ručno</translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1726"/>
+        <location filename="../main_plugin.py" line="1860"/>
         <source>Manual Service Area drawing (like Google Earth) and entry into Service Area layer</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1752"/>
+        <location filename="../main_plugin.py" line="1886"/>
         <source>Branch info</source>
         <extracomment>Toolbar button. &quot;Branch&quot; is a NOUN in the cable-network sense - a branching/junction point where cables split off (French &quot;derivation&quot;). Click a cable to see how many cables, of which types and capacities, meet at that point. Not a tree branch, not a company branch office, not a version-control branch.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1760"/>
+        <location filename="../main_plugin.py" line="1894"/>
         <source>Click on cable to show number of cables/types/capacities at that point</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1780"/>
-        <location filename="../main_plugin.py" line="1777"/>
+        <location filename="../main_plugin.py" line="1914"/>
+        <location filename="../main_plugin.py" line="1911"/>
         <source>Show shortcuts</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1812"/>
+        <location filename="../main_plugin.py" line="1946"/>
         <source>BOM report (XLSX/CSV)</source>
         <extracomment>Toolbar button. &quot;BOM&quot; = Bill of Materials, the costed list of cables/closures/poles a design consumes (fr &quot;nomenclature&quot; / &quot;liste de materiel&quot;). It is NOT the Unicode byte-order mark. XLSX/CSV are file formats and stay untranslated. Expand or keep &quot;BOM&quot; per the convention of your language&apos;s telecom/engineering usage.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1871"/>
+        <location filename="../main_plugin.py" line="2005"/>
         <source>Check (health check)</source>
         <extracomment>Toolbar action running the project data-integrity check (are the expected FiberQ layers present, right geometry type, routes consistent). Imperative verb + the feature&apos;s name in brackets; it is NOT optical/network health. Same feature as the &quot;Health check&quot; dialog title - keep the bracketed term identical to that one.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1900"/>
+        <location filename="../main_plugin.py" line="2034"/>
         <source>Validate project</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1927"/>
+        <location filename="../main_plugin.py" line="2064"/>
         <source>Recalculate lengths…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1928"/>
+        <location filename="../main_plugin.py" line="2065"/>
         <source>Rewrite stored lengths that disagree with the drawn geometry</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1957"/>
+        <location filename="../main_plugin.py" line="2085"/>
+        <source>Export interchange bundle…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="2086"/>
+        <source>Write the design as an open FiberQ interchange bundle (.gpkg)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="2103"/>
+        <source>Import interchange bundle…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="2104"/>
+        <source>Read an open FiberQ interchange bundle into this project</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main_plugin.py" line="2133"/>
         <source>Settings</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1980"/>
+        <location filename="../main_plugin.py" line="2156"/>
         <source>Smart selection + change element type (visual style)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="1999"/>
+        <location filename="../main_plugin.py" line="2175"/>
         <source>Move elements</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2000"/>
+        <location filename="../main_plugin.py" line="2176"/>
         <source>Move elements on the map (click-move-click)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2004"/>
+        <location filename="../main_plugin.py" line="2180"/>
         <source>Import picture to element</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2008"/>
+        <location filename="../main_plugin.py" line="2184"/>
         <source>Link a .jpg/.png picture to selected element(s)</source>
         <extracomment>Toolbar tooltip. Static text built once at startup, so there is no count to plug in: &quot;(s)&quot; here just means &quot;one or more&quot;. Render it with whatever generic/plural form reads naturally.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2012"/>
+        <location filename="../main_plugin.py" line="2188"/>
         <source>Clear picture from element</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2016"/>
+        <location filename="../main_plugin.py" line="2192"/>
         <source>Unlink picture from selected element(s)</source>
         <extracomment>Toolbar tooltip. &quot;Unlink&quot; = detach the picture reference from the element; the image file on disk is NOT deleted. Static text, so &quot;(s)&quot; just means &quot;one or more&quot; - no count is substituted.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2174"/>
+        <location filename="../main_plugin.py" line="2350"/>
         <source>Placing elements</source>
         <extracomment>Error-dialog title. &quot;Placing elements&quot; is FiberQ&apos;s name for the CATEGORY of passive optical elements you drop on the map (ODF, TB, OTB, TO, patch panel, joint closures) - it is the layer-group label, not the -ing action of placing. Treat as a noun phrase.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2198"/>
+        <location filename="../main_plugin.py" line="2374"/>
         <source>Error activating: {details}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2265"/>
-        <location filename="../main_plugin.py" line="2260"/>
+        <location filename="../main_plugin.py" line="2441"/>
+        <location filename="../main_plugin.py" line="2436"/>
         <source>Smart selection</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2261"/>
+        <location filename="../main_plugin.py" line="2437"/>
         <source>Click on the elements to select/deselect them. Selections on other layers are not touched.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2276"/>
+        <location filename="../main_plugin.py" line="2452"/>
         <source>Click on cable to show number of cables/types/capacities at that point (right click or ESC to exit).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2309"/>
+        <location filename="../main_plugin.py" line="2485"/>
         <source>Optical schematic</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2319"/>
+        <location filename="../main_plugin.py" line="2495"/>
         <source>Error opening dialog: {details}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2923"/>
-        <location filename="../main_plugin.py" line="2918"/>
+        <location filename="../main_plugin.py" line="3099"/>
+        <location filename="../main_plugin.py" line="3094"/>
         <source>Delete</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2919"/>
+        <location filename="../main_plugin.py" line="3095"/>
         <source>No selected features to delete.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2924"/>
+        <location filename="../main_plugin.py" line="3100"/>
         <source>Deleted {count} selected features from all layers.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="2990"/>
+        <location filename="../main_plugin.py" line="3166"/>
         <source>Shortcuts</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3056"/>
+        <location filename="../main_plugin.py" line="3232"/>
         <source>Choose a file with points (KML/KMZ/DWG/Shape/GPX)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3058"/>
+        <location filename="../main_plugin.py" line="3234"/>
         <source>GIS files (*.kml *.kmz *.shp *.dwg *.gpx);;All files (*)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3066"/>
+        <location filename="../main_plugin.py" line="3242"/>
         <source>Unable to load or invalid file!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3071"/>
+        <location filename="../main_plugin.py" line="3247"/>
         <source>The selected file does not contain points!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3142"/>
-        <location filename="../main_plugin.py" line="3138"/>
+        <location filename="../main_plugin.py" line="3318"/>
+        <location filename="../main_plugin.py" line="3314"/>
         <source>Unable to create or find the Poles layer!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3177"/>
+        <location filename="../main_plugin.py" line="3353"/>
         <source>Unable to find the target layer!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3239"/>
+        <location filename="../main_plugin.py" line="3415"/>
         <source>Imported {count} points into layer &apos;{layer}&apos;!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3251"/>
+        <location filename="../main_plugin.py" line="3427"/>
         <source>Please select an active vector layer before exporting.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3262"/>
+        <location filename="../main_plugin.py" line="3438"/>
         <source>There are no selected features on the active layer.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3275"/>
+        <location filename="../main_plugin.py" line="3451"/>
         <source>Export format</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3276"/>
+        <location filename="../main_plugin.py" line="3452"/>
         <source>Select output format:</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3304"/>
+        <location filename="../main_plugin.py" line="3480"/>
         <source>Export layer</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3346"/>
+        <location filename="../main_plugin.py" line="3522"/>
         <source>Unknown driver for extension &apos;{ext}&apos;.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3395"/>
+        <location filename="../main_plugin.py" line="3571"/>
         <source>Error while exporting:
 {details}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3415"/>
+        <location filename="../main_plugin.py" line="3591"/>
         <source>Export failed: {details}</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3428"/>
+        <location filename="../main_plugin.py" line="3604"/>
         <source>Successfully exported the selected features of layer &apos;{layer}&apos;
 to:
 {path}</source>
@@ -987,7 +1063,7 @@ to:
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3434"/>
+        <location filename="../main_plugin.py" line="3610"/>
         <source>Successfully exported all features of layer &apos;{layer}&apos;
 to:
 {path}</source>
@@ -995,33 +1071,33 @@ to:
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3515"/>
+        <location filename="../main_plugin.py" line="3691"/>
         <source>Route correction</source>
         <extracomment>Dialog title for the results of the route-consistency check (e.g. route lines whose ends do not meet a pole). &quot;Route&quot; = the physical cable route/trench on the map, not a road and not a network route. &quot;Correction&quot; is a NOUN: the fixing-up of those defects.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3516"/>
+        <location filename="../main_plugin.py" line="3692"/>
         <source>No errors found!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3530"/>
+        <location filename="../main_plugin.py" line="3706"/>
         <source>Layer &apos;Poles&apos; not found!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3570"/>
+        <location filename="../main_plugin.py" line="3746"/>
         <source>Route layer &apos;Route&apos; not found!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3580"/>
+        <location filename="../main_plugin.py" line="3756"/>
         <source>Route has been automatically attached to a pole.</source>
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <location filename="../main_plugin.py" line="3740"/>
+        <location filename="../main_plugin.py" line="3916"/>
         <source>Drawing link removed for %n element(s).</source>
         <extracomment>Confirmation after detaching a drawing (a CAD/PDF document attached to an element) from the selected map elements. Only the link is cleared - the drawing file is not deleted. %n is how many elements were actually unlinked; keep %n.</extracomment>
         <translation type="unfinished">
@@ -1031,17 +1107,17 @@ to:
         </translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3801"/>
+        <location filename="../main_plugin.py" line="3977"/>
         <source>Placing manhole</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3802"/>
+        <location filename="../main_plugin.py" line="3978"/>
         <source>Click on the map to place the manhole (ESC to exit).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3805"/>
+        <location filename="../main_plugin.py" line="3981"/>
         <source>Manhole</source>
         <translation type="unfinished"></translation>
     </message>
