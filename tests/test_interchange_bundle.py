@@ -465,6 +465,48 @@ def test_the_projects_own_field_names_are_left_alone(project, bundle_path):
     assert cables.fields().names() == before
 
 
+def test_the_project_is_byte_for_byte_unchanged_by_an_export(project, bundle_path):
+    """An export must read the project and write somewhere else. Nothing more.
+
+    The field-name test above covers the schema; this covers the *values*, which
+    is the half a user would not notice until much later. Both spellings the
+    plugin stores are present here on purpose -- the canonical vocabulary is
+    something a bundle carries, never something an export imposes on the
+    project it was run on.
+    """
+    cables = _layer("Underground cables", "LineString",
+                    fields=("fiberq_uuid:string(64)", "naziv:string",
+                            "duzina_m:double", "tip:string", "stanje_kabla:string"))
+    _add(cables, _line(), fiberq_uuid="u-a", naziv="C1", duzina_m=8.613,
+         tip="opticki", stanje_kabla="Projektovano")
+    _add(cables, _line(50), fiberq_uuid="u-b", naziv="C2", duzina_m=4.0,
+         tip="Optical", stanje_kabla="Planned")
+    routes = _layer("Route", "LineString",
+                    fields=("fiberq_uuid:string(64)", "tip_trase:string"))
+    _add(routes, _line(), fiberq_uuid="u-r", tip_trase="vazdusna")
+
+    def snapshot(layer):
+        return [
+            (f.attributes(), f.geometry().asWkt())
+            for f in sorted(layer.getFeatures(), key=lambda x: x.id())
+        ]
+
+    before = {lyr.name(): snapshot(lyr) for lyr in (cables, routes)}
+
+    result = InterchangeBundleWriter(project).write(
+        bundle_path, layers=[cables, routes])
+
+    assert result.ok, result.errors
+    for lyr in (cables, routes):
+        assert snapshot(lyr) == before[lyr.name()], (
+            f"{lyr.name()}: the export changed the project's own data")
+    # And the bundle did get the canonical form, from both spellings.
+    assert dict(_rows(
+        bundle_path, 'SELECT fiberq_uuid, cable_type FROM "Underground cables"')
+    ) == {"u-a": "optical", "u-b": "optical"}
+    assert _rows(bundle_path, 'SELECT route_type FROM "Route"') == [("aerial",)]
+
+
 def test_stored_values_are_translated_to_the_canonical_vocabulary(project, bundle_path):
     """`vazdusna` means aerial. A reader should not have to know that."""
     routes = _layer("Route", "LineString",
