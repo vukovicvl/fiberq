@@ -676,6 +676,29 @@ def test_a_geojson_bundle_with_nothing_to_drop_is_not_marked_lossy(project, tmp_
     assert "profile" not in meta
 
 
+def test_the_geojson_profile_publishes_no_row_ids(project, tmp_path):
+    """Spec section 4: identity is the uuid, never a row number.
+
+    The profile is produced by staging a GeoPackage and converting it, and OGR
+    turns that file's primary key into an ordinary GeoJSON property. A reader
+    outside FiberQ would then find two identifier-shaped fields with nothing to
+    say that only one of them survives a re-export -- and joining on the wrong
+    one breaks silently, which is the failure this format exists to prevent.
+    """
+    poles = _layer("Poles")
+    _add(poles, _point(), fiberq_uuid="u-pole-1")
+    _add(poles, _point(10), fiberq_uuid="u-pole-2")
+    out = str(tmp_path / "bundle")
+
+    InterchangeBundleWriter(project).write_geojson(out, layers=[poles])
+
+    with open(os.path.join(out, "pole.geojson"), encoding="utf-8") as fh:
+        payload = json.load(fh)
+    for feature in payload["features"]:
+        assert "fid" not in feature["properties"]
+        assert feature["properties"]["fiberq_uuid"]
+
+
 def test_the_geojson_profile_leaves_no_staging_file_behind(project, tmp_path):
     """It is produced by staging a GeoPackage; that must not survive."""
     poles = _layer("Poles")

@@ -831,6 +831,19 @@ class InterchangeBundleWriter:
         opts.fileEncoding = "UTF-8"
         # RFC 7946 is WGS84, which is already the bundle's storage CRS.
         opts.destCRS = QgsCoordinateReferenceSystem.fromEpsgId(ic.STORAGE_EPSG)
+        # Leave the GeoPackage's row id behind. It is the staged file's primary
+        # key, invisible in the GeoPackage profile and meaningless outside it --
+        # but OGR turns it into an ordinary property here, so a reader of the
+        # GeoJSON profile would find two identifier-shaped fields and no way to
+        # tell that only fiberq_uuid is stable. Spec section 4 says identity is
+        # the uuid; publishing a row number beside it invites exactly the join
+        # the format exists to prevent.
+        fid_index = layer.fields().indexFromName("fid")
+        if fid_index >= 0:
+            opts.attributes = [
+                index for index in range(layer.fields().count())
+                if index != fid_index
+            ]
         result = QgsVectorFileWriter.writeAsVectorFormatV3(
             layer, out_path, QgsCoordinateTransformContext(), opts)
         if isinstance(result, tuple):

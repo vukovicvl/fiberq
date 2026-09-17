@@ -91,6 +91,12 @@ Each file is named for the element type it holds — `pole.geojson`,
 `otb.indoor.geojson`. Every feature still carries `fq_type` and `placement`, so nothing
 depends on the filename.
 
+Feature properties carry the canonical fields and nothing else. In particular a writer
+must **not** publish the container's row id (a GeoPackage `fid`, a shapefile record
+number) as a property: identity is `fiberq_uuid` and only `fiberq_uuid` (§4), and a
+second identifier-shaped field beside it invites a receiver to join on the one that does
+not survive a re-export.
+
 ```
 bundle/
 ├── _fiberq_metadata.json
@@ -313,7 +319,8 @@ A **conformant writer** must:
 2. emit all required metadata keys (§7);
 3. merge, never replace, metadata keys written by other tools;
 4. emit the passthrough store contents unchanged;
-5. never regenerate an identity it did not create.
+5. never regenerate an identity it did not create;
+6. never publish a container row id as a feature attribute (§3).
 
 A **conformant round trip** is the real test: import a bundle, change nothing, export it,
 and every object, attribute and relation is still present — *including everything the
