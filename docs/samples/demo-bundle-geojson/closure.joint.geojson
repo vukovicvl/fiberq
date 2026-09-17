@@ -1,0 +1,9 @@
+{
+"type": "FeatureCollection",
+"name": "closure",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "name": "JC-1", "fiberq_uuid": "fe1b0000-0000-4000-8000-000000000016", "fq_type": "closure.joint", "placement": null, "fq_extra_json": null }, "geometry": { "type": "Point", "coordinates": [ 17.069068376611852, 43.575609822145559 ] } },
+{ "type": "Feature", "properties": { "name": "JC-2", "fiberq_uuid": "fe1b0000-0000-4000-8000-000000000017", "fq_type": "closure.joint", "placement": null, "fq_extra_json": null }, "geometry": { "type": "Point", "coordinates": [ 17.07056856313633, 43.575219341896542 ] } }
+]
+}

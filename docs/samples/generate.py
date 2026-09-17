@@ -5,11 +5,13 @@ Run inside a QGIS environment (the CI containers work):
 
     python docs/samples/generate.py
 
-Writes the demo GeoPackage, the QGIS project, and the three report formats of a
-validation run over them. Everything here is committed, so the published sample
-matches what the plugin actually produces -- but that only stays true if this is
-re-run whenever the rules change. ``tests/test_sample_report.py`` fails if the
-committed HTML drifts from a fresh run.
+Writes the demo GeoPackage, the QGIS project, the three report formats of a
+validation run over them, and the example interchange bundle in both profiles.
+Everything here is committed, so the published sample matches what the plugin
+actually produces -- but that only stays true if this is re-run whenever the
+rules or the format change. ``tests/test_sample_report.py`` fails if the
+committed HTML drifts from a fresh run, and ``tests/test_sample_bundle.py``
+fails if the committed bundle stops round-tripping.
 
 The timestamp is fixed rather than taken from the clock: a regenerated report
 should differ only where the rules differ, so the diff is reviewable.
@@ -30,6 +32,8 @@ TIMESTAMP = "2026-07-30T22:00:00"
 GPKG = os.path.join(HERE, "demo_project.gpkg")
 QGZ = os.path.join(HERE, "demo_project.qgz")
 REPORT_STEM = os.path.join(HERE, "demo-validation")
+BUNDLE = os.path.join(HERE, "demo-bundle.gpkg")
+BUNDLE_GEOJSON = os.path.join(HERE, "demo-bundle-geojson")
 
 
 def build(timestamp: str = TIMESTAMP):
@@ -39,6 +43,7 @@ def build(timestamp: str = TIMESTAMP):
     from make_demo_project import build_demo_gpkg, build_demo_project
 
     from fiberq import __version__ as plugin_version
+    from fiberq.core.interchange_bundle import InterchangeBundleWriter
     from fiberq.core.validation_manager import run_validation
     from fiberq.core.validation_report import write_report
 
@@ -54,7 +59,22 @@ def build(timestamp: str = TIMESTAMP):
 
     for fmt in ("html", "json", "csv"):
         write_report(result, f"{REPORT_STEM}.{fmt}", fmt)
-    return result
+
+    # The published example bundle (WP3). Written from the same demo project as
+    # the reports, on purpose: a reader can open the project and the bundle side
+    # by side and see what the format did with each layer, rather than taking a
+    # separate synthetic file on trust.
+    for stale in (BUNDLE,):
+        if os.path.exists(stale):
+            os.remove(stale)
+    writer = InterchangeBundleWriter(project)
+    bundle = writer.write(BUNDLE)
+    if not bundle.ok:
+        raise SystemExit(f"bundle export failed: {bundle.errors}")
+    geojson = writer.write_geojson(BUNDLE_GEOJSON)
+    if not geojson.ok:
+        raise SystemExit(f"GeoJSON bundle export failed: {geojson.errors}")
+    return result, bundle, geojson
 
 
 def main():
@@ -64,13 +84,15 @@ def main():
     app = QgsApplication([], False)
     app.initQgis()
     try:
-        result = build()
+        result, bundle, geojson = build()
         counts = result.counts_by_severity()
         print(f"Demo project: {GPKG}")
         print(f"QGIS project: {QGZ}")
         print(f"Reports:      {REPORT_STEM}.{{html,json,csv}}")
         print(f"Result:       {counts['error']} error(s), "
               f"{counts['warning']} warning(s), {counts['info']} info")
+        print(f"Bundle:       {BUNDLE} -- {bundle.summary()}")
+        print(f"GeoJSON:      {BUNDLE_GEOJSON} -- {geojson.summary()}")
     finally:
         app.exitQgis()
     return 0
