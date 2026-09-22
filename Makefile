@@ -37,7 +37,7 @@ ZIP := $(DIST_DIR)/$(PLUGIN_NAME)-$(VERSION).zip
 # ---- i18n -------------------------------------------------------------------
 # Locales we ship catalogs for. Add one here, run `make i18n-update`, and a new
 # fiberq/i18n/fiberq_<locale>.ts appears (seeded with the right language tag).
-LOCALES ?= sr fr
+LOCALES ?= sr fr ka
 I18N_DIR := $(PKG)/i18n
 
 # pylupdate6 (Debian/Ubuntu: pyqt6-dev-tools) is a pure-Python rewrite: it does

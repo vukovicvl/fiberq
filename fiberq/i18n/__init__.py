@@ -47,6 +47,7 @@ _LANGUAGE_NAMES = {
     'pl': 'Polski',
     'pt': 'Português',
     'ru': 'Русский',
+    'ka': 'ქართული',
 }
 
 
