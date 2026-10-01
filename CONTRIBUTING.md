@@ -144,6 +144,7 @@ The `Makefile` is POSIX shell. Run it from **Git Bash**, not PowerShell or
 make help        # list everything
 make lint        # flake8 + bandit — the publication gate
 make test        # pytest
+make qt6-check   # the Qt6 source check plugins.qgis.org runs (needs docker)
 make test-cov    # pytest with coverage
 make package     # build dist/fiberq-<version>.zip from committed state
 make i18n-stats  # translation progress per locale
@@ -198,6 +199,25 @@ docker run --rm -v "$PWD:/src" -w /src \
 
 CI runs this against **two** images — `qgis/qgis:3.44-trixie` (QGIS 3, Qt5) and
 `qgis/qgis:4.0-trixie` (QGIS 4, Qt6). Both must be green.
+
+### Qt6 source check
+
+```bash
+make qt6-check
+```
+
+FiberQ targets QGIS 3.22 through QGIS 4 / Qt6, and plugins.qgis.org runs QGIS's
+own `pyqt5_to_pyqt6.py` over every upload — the result is the **Qt6 Check** tab on
+the plugin page. This target runs the same checker, in the same image, so a Qt5-only
+call is caught before the upload rather than after it. Passing tests on the QGIS 4
+image are not the same guarantee: `fiberq/utils/compat.py` maps old enum names at
+runtime, so the plugin can work on Qt6 while the source still carries spellings a
+future PyQt6 will reject.
+
+The target also scans `tests/qt6_seed/`, which is **deliberately** Qt5-style code,
+and fails if that scan comes back clean — the checker exits 0 whether or not it
+found anything, so the gate has to prove it can still see a problem. Never "fix"
+those files; see `tests/qt6_seed/README.md`.
 
 New behaviour should come with a test. Bug fixes should come with a test that
 fails before the fix.

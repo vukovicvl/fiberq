@@ -21,8 +21,12 @@ When to bump which part:
 
 ## Pre-release checklist
 
-- [ ] `make lint` is clean (flake8 + Bandit medium/high = 0 findings).
+- [ ] `make lint` is clean (flake8 + Bandit at **all** severities = 0 findings —
+      the upstream scanner flags LOW too).
 - [ ] `make test` passes (and CI is green on both QGIS images).
+- [ ] `make qt6-check` is clean — the same `pyqt5_to_pyqt6.py --dry_run` check
+      plugins.qgis.org runs, so the plugin page's **Qt6 Check** tab is green on
+      upload rather than after it.
 - [ ] `version=` bumped in `fiberq/metadata.txt`, and `__version__` in
       `fiberq/__init__.py` matches.
 - [ ] `changelog=` block in `fiberq/metadata.txt` updated for this version.
@@ -60,8 +64,10 @@ PowerShell/cmd):
 - **Lint only, native and fast** (no Docker needed):
   ```bash
   python -m flake8 --isolated --max-line-length=120 --ignore=E501 fiberq tests conftest.py
-  python -m bandit -r fiberq -ll -q -c pyproject.toml
+  python -m bandit -r fiberq -q -c pyproject.toml
   ```
+  (No `-ll`: the upstream scanner reports LOW findings as well, so the local gate
+  has to look at every severity. `pyproject.toml` holds the config.)
 - **Full gate (lint + tests) in the QGIS image** — from Git Bash, with Docker Desktop running:
   ```bash
   docker run --rm -v "$PWD:/src" -w /src -e QT_QPA_PLATFORM=offscreen \
@@ -70,6 +76,15 @@ PowerShell/cmd):
   ```
   Repeat with `qgis/qgis:3.44-trixie`. For a local non-Debian/venv run, set
   `PIP_FLAGS=` (empty).
+- **Qt6 check** — with Docker Desktop running:
+  ```bash
+  make qt6-check
+  ```
+  It pulls `ghcr.io/qgis/pyqgis4-checker:main-ubuntu` (the image the website
+  uses) and scans `fiberq/` for Qt5-only API. It also scans `tests/qt6_seed/`,
+  which is deliberately broken code, and fails if that scan comes back clean —
+  the checker exits 0 whether or not it found anything, so the gate has to prove
+  it can still see a problem. CI runs the same target on every push.
 - `make install` targets a Linux profile by default; on Windows override it, e.g.
   `make install QGIS_PROFILE="$APPDATA/QGIS/QGIS3/profiles/default"` (run from Git Bash).
 
@@ -107,3 +122,11 @@ Note: CI does **not** run a 3.22 image (old images are pruned upstream, and
 (`fiberq/utils/compat.py`), **not** by CI — verify it manually before any release
 that touches Qt/QGIS APIs. Re-pin the CI tags in `.github/workflows/ci.yml` as the
 LTR/stable lines move.
+
+The Qt6 side has one more gate: `make qt6-check` reads the source the way
+plugins.qgis.org does. The QGIS 4 test leg cannot catch everything, because
+`compat.py` maps old enum names at runtime — the plugin can pass its tests on Qt6
+while the source still carries spellings a future PyQt6 will reject. The checker
+image (`ghcr.io/qgis/pyqgis4-checker:main-ubuntu`) deliberately tracks `main`,
+because the website's copy does too; override it with
+`make qt6-check QT6_IMAGE=...` to test against a different build.

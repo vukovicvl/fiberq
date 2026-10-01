@@ -59,13 +59,15 @@ I18N_SOURCES = $(shell find $(PKG) -name '*.py' \
 .DEFAULT_GOAL := help
 
 .PHONY: help deps lint flake8 bandit test test-cov package install uninstall clean tag release version mapping-doc docs-pdf \
-        i18n-update i18n-compile i18n-stats i18n-check
+        i18n-update i18n-compile i18n-stats i18n-check \
+        qt6-check qt6-check-local qt6-check-docker
 
 help:
 	@echo "FiberQ - make targets (current version: $(VERSION))"
 	@echo "  deps      install lint/test tooling (flake8, bandit, pytest, pytest-qgis)"
 	@echo "  lint      flake8 + bandit  (mirrors the plugins.qgis.org scan gate)"
 	@echo "  test      run the pytest suite (needs QGIS bindings - see header)"
+	@echo "  qt6-check mirrors the plugins.qgis.org Qt6 Check tab (needs docker)"
 	@echo "  package   build $(ZIP) for upload to the QGIS plugin repository"
 	@echo "  install   copy the plugin into your local QGIS profile (manual testing)"
 	@echo "  clean     remove dist/ and caches"
@@ -106,6 +108,99 @@ test:
 
 test-cov:
 	QT_QPA_PLATFORM=offscreen $(PYTHON) -m pytest --cov=$(PKG) --cov-report=term-missing --cov-report=xml
+
+# ---- Qt6 compatibility gate -------------------------------------------------
+# plugins.qgis.org runs QGIS's own pyqt5_to_pyqt6.py over every upload and shows
+# the result on the plugin page's "Qt6 Check" tab. It judges by the LOG: the
+# script writes its findings to the logfile and exits 0 whether it found
+# anything or not, so a gate reading the exit code would always pass. CI's QGIS
+# 4 leg cannot replace it either -- FiberQ routes old enum names through
+# utils/compat.py, so the plugin runs on Qt6 while the source still carries
+# spellings the checker (and a future PyQt6) rejects.
+#
+# Two runs, every time:
+#   fiberq/          must report ZERO findings
+#   tests/qt6_seed/  must report at least $(QT6_MIN_SEED) -- the self-test that
+#                    proves the checker still works and is still being read
+# A checker that silently stops reporting is the failure mode this guards.
+QT6_IMAGE ?= ghcr.io/qgis/pyqgis4-checker:main-ubuntu
+QT6_CHECKER ?= pyqt5_to_pyqt6.py
+QT6_MIN_SEED ?= 4
+
+# One script, run either against a local checker or inside the image above, so
+# the laptop and CI cannot drift apart. Findings look like:
+#   /path/file.py:12:17 - This member should be renamed to 'exec'
+define QT6_CHECK_SH
+set -eu
+root="$${QT6_ROOT:-.}"
+checker="$${QT6_CHECKER:-pyqt5_to_pyqt6.py}"
+min_seed="$${QT6_MIN_SEED:-4}"
+bin="$$(command -v "$$checker" 2>/dev/null || echo "$$checker")"
+[ -f "$$bin" ] || { echo "ERROR: Qt6 checker not found: $$checker"; exit 3; }
+work="$$(mktemp -d)"
+trap 'rm -rf "$$work"' EXIT INT TERM
+cp -r "$$root/fiberq" "$$work/fiberq"
+cp -r "$$root/tests/qt6_seed" "$$work/qt6_seed"
+scan() {
+	python3 "$$bin" --dry_run --logfile "$$work/$$1.log" "$$work/$$1" >"$$work/$$1.out" 2>&1 \
+		|| echo "checker exited $$?" >>"$$work/$$1.out"
+	grep -E ':[0-9]+:[0-9]+ - ' "$$work/$$1.log" 2>/dev/null \
+		| sed -e "s#^$$work/fiberq/#fiberq/#" -e "s#^$$work/qt6_seed/#tests/qt6_seed/#" \
+		| sort || true
+}
+pkg="$$(scan fiberq)"
+seed="$$(scan qt6_seed)"
+count() { printf '%s' "$$1" | grep -c . || true; }
+seed_n="$$(count "$$seed")"
+pkg_n="$$(count "$$pkg")"
+if [ "$$seed_n" -lt "$$min_seed" ]; then
+	echo "ERROR: self-test failed - the checker found $$seed_n findings in tests/qt6_seed/, expected >= $$min_seed."
+	echo "       Either the checker could not run, or its output changed, or the seeds were"
+	echo "       'cleaned up' (see tests/qt6_seed/README.md). Do NOT trust a green run."
+	if [ -s "$$work/qt6_seed.out" ]; then
+		echo "       The checker said:"
+		sed -e 's/^/       | /' "$$work/qt6_seed.out" | tail -n 15
+	fi
+	exit 2
+fi
+if [ "$$pkg_n" -gt 0 ]; then
+	echo "$$pkg"
+	echo ""
+	echo "Qt6 check FAILED: $$pkg_n finding(s) in fiberq/."
+	echo "plugins.qgis.org shows these on the plugin page's Qt6 Check tab."
+	exit 1
+fi
+echo "Qt6 check: 0 findings in fiberq/ (self-test saw $$seed_n findings in the seeds)."
+endef
+export QT6_CHECK_SH
+
+# Prefer a local checker (instant); fall back to the image the website uses.
+# Note: make itself exits 2 when any recipe fails, so read the message, not the
+# code, to tell "findings in fiberq/" (1) from "self-test failed" (2). Run
+# qt6-check-local / qt6-check-docker directly if you need the exact code.
+qt6-check:
+	@if command -v $(QT6_CHECKER) >/dev/null 2>&1; then \
+		$(MAKE) --no-print-directory qt6-check-local; \
+	elif command -v docker >/dev/null 2>&1; then \
+		$(MAKE) --no-print-directory qt6-check-docker; \
+	else \
+		echo "Neither $(QT6_CHECKER) nor docker found."; \
+		echo "Install docker (then: make qt6-check-docker), or put QGIS's"; \
+		echo "scripts/pyqt5_to_pyqt6.py on PATH (then: make qt6-check-local)."; \
+		exit 1; \
+	fi
+
+qt6-check-local:
+	@QT6_ROOT=. QT6_CHECKER=$(QT6_CHECKER) QT6_MIN_SEED=$(QT6_MIN_SEED) sh -c "$$QT6_CHECK_SH"
+
+# --network none: the checker only reads files. The repo is mounted read-only
+# and the script works on a copy, so a non-dry-run flag could never rewrite the
+# working tree from in here.
+qt6-check-docker:
+	@docker run --rm --network none -v "$(CURDIR)":/src:ro \
+		-e QT6_ROOT=/src -e QT6_CHECKER=/usr/local/bin/$(QT6_CHECKER) \
+		-e QT6_MIN_SEED=$(QT6_MIN_SEED) \
+		--entrypoint sh $(QT6_IMAGE) -c "$$QT6_CHECK_SH"
 
 # ---- generated docs ---------------------------------------------------------
 # docs/interchange-mapping.md is generated from models/schema.py and
