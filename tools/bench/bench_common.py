@@ -391,6 +391,47 @@ def _blank(payload, wheres, prefix=""):
     return payload
 
 
+def load_average():
+    """The machine's 1/5/15 minute load, or None where it is unavailable."""
+    try:
+        one, five, fifteen = os.getloadavg()
+    except (AttributeError, OSError):          # not Linux, or /proc unavailable
+        return None
+    return {"1m": round(one, 2), "5m": round(five, 2), "15m": round(fifteen, 2)}
+
+
+def acquire_lock(path):
+    """Hold an exclusive lock for the whole run, or refuse to start.
+
+    Learned the hard way: a second benchmark sequence was started while the
+    first was still going, both pinned to the same five cores. Every row of the
+    first sequence then measured a machine running two QGIS processes. The
+    numbers looked plausible -- the giveaway was the performance governor coming
+    out *slower* than powersave -- and nothing in the harness objected, because
+    every fairness rule here watches one process and contention is a property of
+    the machine.
+
+    The lock is advisory between benchmark runs only (flock on a file both runs
+    can see; inside the images that means a path on the shared scratch mount).
+    It is not security: it stops an accident, which is what happened.
+    """
+    import fcntl
+    handle = open(path, "w")                   # noqa: SIM115 - held for the run
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        raise SystemExit(
+            "another benchmark run holds %s. Two runs on one machine measure "
+            "each other's contention, so this one refuses to start. Wait for it, "
+            "or pass --lock with a different path if you are certain the machines "
+            "are separate." % path)
+    handle.write("%d\n" % os.getpid())
+    handle.flush()
+    before_exit(handle.close)
+    return handle
+
+
 #: Callbacks to run just before the process goes away. ``atexit`` is useless
 #: here: every exit goes through ``os._exit``, which skips it by design (see the
 #: README). A dataset copy is ~1 MB at XS and ~20 MB at L, and the last

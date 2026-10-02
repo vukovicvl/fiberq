@@ -323,6 +323,10 @@ def main(argv):
         result["fixed_layer_ids"] = session.fixed_ids
 
         # --- the cold call doubles as the sanity pass ---------------------
+        # The machine's load is recorded around the measurement because no
+        # per-process check can see contention: a second benchmark run, or a
+        # build, inflates every row here while this process looks healthy.
+        load_before = common.load_average()
         cold_state = support.state_fingerprint()
         probe, restore = support.sanity_on(args.keep_samples)
         disarm = budget(args.budget_s)
@@ -408,6 +412,8 @@ def main(argv):
                                     % (len(times), common.canonical(repeat_value)[:200]))
                 break
         result["timing"].update(common.summarise(times))
+        result["timing"]["load"] = {"before": load_before,
+                                    "after": common.load_average()}
         result["timing"].update({"warmup_s": round(warm_s, 6), "policy": policy,
                                  "runs": [round(t, 6) for t in times],
                                  "prepares": session.prepares})

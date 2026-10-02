@@ -236,6 +236,22 @@ comparison is between two different measurements, not two versions of the code.
     back `status: ok`, median 0.0012 s against the real 0.4438 s, `errors: 0`.
     All three entry points now refuse to start.
 
+13. **One run per machine.** `bench.py` holds an exclusive lock
+    (`<scratch>/bench.lock`, override with `--lock`) and refuses to start when
+    another run holds it, and it refuses to start when the 1-minute load average
+    is above `--max-load` (default 2.0). Each row also records the load before
+    and after its measurement.
+
+    This rule exists because the first baseline sequence was ruined by its own
+    follow-up: a second sequence for size L was launched while sizes S and M
+    were still running, both containers pinned to the same five cores, so every
+    row of the first sequence measured a machine running two QGIS processes. The
+    results looked ordinary. The only visible symptom was the `performance`
+    governor coming out *slower* than `powersave` on the same scenario (27.7 s
+    against 23.8 s on `schematic_open` at S), which is physically backwards.
+    Every other rule here watches one process, and contention is a property of
+    the machine, so nothing fired. Both runs were discarded.
+
 ### Three deliberate exceptions, so they are not mistaken for mistakes
 
 - **`edit_after_schematic` calls `_do_rebuild_if_needed()` inside the timed

@@ -480,3 +480,58 @@ class _BrokenRedactor(common.Redactor):
 
     def scrub_text(self, value):
         return value
+
+
+def test_a_second_run_on_the_same_machine_is_refused(tmp_path):
+    """Two benchmark runs at once measure each other, so the lock refuses.
+
+    This is a regression test for a real incident, not a hypothetical: a second
+    sequence (size L) was launched while the first (sizes S and M) was still
+    going, both pinned to the same five cores. Every row of the first sequence
+    then timed a machine running two QGIS processes. The numbers looked
+    plausible and nothing objected -- the only hint was the performance governor
+    coming out slower than powersave. Contention is a property of the machine,
+    so no amount of per-process checking can see it.
+    """
+    lock = tmp_path / "bench.lock"
+    holder = subprocess.Popen(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, %r); import bench_common; "
+         "bench_common.acquire_lock(%r); print('held', flush=True); "
+         "sys.stdin.readline()" % (str(BENCH), str(lock))],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    try:
+        assert holder.stdout.readline().strip() == b"held"
+        second = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0, %r); import bench_common; "
+             "bench_common.acquire_lock(%r)" % (str(BENCH), str(lock))],
+            timeout=60, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        assert second.returncode != 0
+        assert b"another benchmark run holds" in second.stdout
+    finally:
+        holder.stdin.close()
+        holder.wait(timeout=60)
+
+    # ... and the lock is released with the process, so the next run may start.
+    after = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, %r); import bench_common; "
+         "bench_common.acquire_lock(%r); print('ok')" % (str(BENCH), str(lock))],
+        timeout=60, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    assert after.returncode == 0, after.stdout
+    assert b"ok" in after.stdout
+
+
+def test_a_busy_machine_is_refused(city_xs_dataset, tmp_path):
+    """``--max-load`` stops a run that would measure someone else's work."""
+    if common.load_average() is None:
+        pytest.skip("no load average on this platform")
+    code, output = _bench("bench.py", [
+        "--code", str(REPO_ROOT), "--data", "XS=" + str(pathlib.Path(
+            city_xs_dataset["manifest"]).parent),
+        "--out", str(tmp_path / "out"), "--scratch", str(tmp_path),
+        "--scenario", "record_add", "--max-load", "0.0001",
+    ], tmp_path)
+    assert code != 0
+    assert "the machine is busy" in output

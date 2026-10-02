@@ -23,6 +23,7 @@ import argparse
 import os
 import subprocess
 import sys
+import tempfile
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -69,6 +70,12 @@ def parse_args(argv):
                         help="writable directory for dataset copies (default $TMPDIR)")
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--run-id", default=None)
+    parser.add_argument("--lock", default=None,
+                        help="lock file proving no other run is active "
+                             "(default <scratch>/bench.lock)")
+    parser.add_argument("--max-load", type=float, default=2.0,
+                        help="refuse to start when the 1-minute load average is "
+                             "above this (default 2.0; 0 disables the check)")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args(argv)
@@ -197,8 +204,24 @@ def main(argv=None):
             print(" ".join(worker_command(args, name, size, data, out_dir, digest)))
         return 0
 
+    # Two guards against measuring a busy machine, which no per-process rule can
+    # see. The lock stops a second run of this harness; the load check stops
+    # everything else (a build, a backup, a browser).
+    scratch = args.scratch or os.environ.get("TMPDIR") or tempfile.gettempdir()
+    os.makedirs(scratch, exist_ok=True)
+    common.acquire_lock(args.lock or os.path.join(scratch, "bench.lock"))
+    load = common.load_average()
+    if args.max_load and load and load["1m"] > args.max_load:
+        raise SystemExit(
+            "the machine is busy: 1-minute load %.2f is above --max-load %.2f. "
+            "Timings taken now measure the other work too. Wait, or raise the "
+            "limit deliberately." % (load["1m"], args.max_load))
+
     print("run %s: %d rows (%d scenarios x %d sizes) -> %s"
           % (run_id, len(plan), len(wanted), len(datasets), os.path.basename(out_dir)))
+    if load:
+        print("         load %.2f before the first row (limit %.2f)"
+              % (load["1m"], args.max_load))
     results = []
     environment = None
     for index, (name, size, data, digest) in enumerate(plan, start=1):
