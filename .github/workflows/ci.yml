@@ -42,6 +42,19 @@ jobs:
             "qgis/qgis:${{ matrix.qgis }}" \
             bash -c "apt-get update -qq && apt-get install -y --no-install-recommends make >/dev/null && make deps && make lint && make test"
 
+  # The same check plugins.qgis.org runs on every upload (its "Qt6 Check" tab).
+  # The QGIS 4 leg above cannot replace it: FiberQ routes old enum names through
+  # utils/compat.py, so the plugin runs on Qt6 while the source may still carry
+  # spellings the checker rejects. `make qt6-check` does its own docker run, so
+  # this job stays on the host runner, like `package` below.
+  qt6-check:
+    name: Qt6 check (pyqt5_to_pyqt6)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the package for Qt5-only API
+        run: make qt6-check
+
   # Build the plugin zip on every push so packaging breakage is caught early.
   # Does not publish - publishing is a manual, tag-driven step (see RELEASE.md).
   package:

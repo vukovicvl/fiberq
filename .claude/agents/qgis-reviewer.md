@@ -20,7 +20,7 @@ You review changes to the FiberQ QGIS plugin — an open-source GPL-3.0 plugin t
 
 3. **Repository scan cleanliness** — the plugin must pass the plugins.qgis.org Security & Quality scan with zero findings. Run:
    - `python -m flake8 --isolated --max-line-length=120 --ignore=E501 fiberq` (must be 0)
-   - `python -m bandit -r fiberq -ll -q` (medium/high must be 0)
+   - `python -m bandit -r fiberq -q -c pyproject.toml` (0 findings at ALL severities — the upstream scanner flags LOW too)
    Report any new finding the change introduces. Note when a finding is silenced with an inline `# noqa: <code>` and whether that is justified.
 
 4. **Licence & provenance hygiene** — GPL-3.0 headers/notice intact; no code copied from proprietary or licence-incompatible sources; all new code original or GPL-compatible.
