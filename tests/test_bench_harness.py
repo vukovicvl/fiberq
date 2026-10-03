@@ -535,3 +535,36 @@ def test_a_busy_machine_is_refused(city_xs_dataset, tmp_path):
     ], tmp_path)
     assert code != 0
     assert "the machine is busy" in output
+
+
+def test_the_budget_survives_a_swallowing_handler(tmp_path):
+    """The did-not-finish timer must beat `except Exception: logger.debug(...)`.
+
+    Found during the size-L baseline: SIGALRM fired at 1800 s inside the
+    latent-elements dialog, whose per-row loop catches Exception and logs at
+    debug, so the timeout was swallowed and the row ran on. 817 handlers in the
+    package are shaped like that, which is what WP4.2 is funded to change -- so
+    anything the harness raises inside measured code has to be invisible to
+    them. BudgetExceeded derives from BaseException for exactly this test.
+    """
+    assert not issubclass(common.BudgetExceeded, Exception), (
+        "BudgetExceeded must not be catchable by `except Exception` -- see the "
+        "class docstring")
+
+    swallowed = []
+
+    def plugin_shaped_loop():
+        """A loop written the way fiberq writes them."""
+        for _ in range(10_000_000):
+            try:
+                _ = sum(i * i for i in range(50))
+            except Exception as exc:               # noqa: BLE001 - the point
+                swallowed.append(exc)
+
+    disarm = common.budget(0.25)
+    try:
+        with pytest.raises(common.BudgetExceeded):
+            plugin_shaped_loop()
+    finally:
+        disarm()
+    assert not swallowed, "the handler caught the budget signal"

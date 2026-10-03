@@ -18,7 +18,6 @@ import argparse
 import io
 import os
 import shutil
-import signal
 import sys
 import time
 import traceback
@@ -36,16 +35,13 @@ os.environ["FIBERQ_LOG_LEVEL"] = "DEBUG"
 os.environ["FIBERQ_LOG_FILE"] = "false"
 
 import bench_common as common                                        # noqa: E402
+from bench_common import BudgetExceeded, budget                      # noqa: E402,F401
 import bench_support as support                                      # noqa: E402
 
 #: Seconds a single cold call may take before the scenario is recorded DNF
 #: instead of measured. The L dataset has quadratic paths that would otherwise
 #: run for hours; the plan's section 1.1 table calls for a DNF budget.
 DEFAULT_BUDGET_S = 1800.0
-
-
-class BudgetExceeded(Exception):
-    """The cold call ran past --budget-s."""
 
 
 def parse_args(argv):
@@ -75,24 +71,6 @@ def parse_args(argv):
                         help="write a cProfile report here instead of timing")
     parser.add_argument("--keep-samples", type=int, default=5)
     return parser.parse_args(argv)
-
-
-def budget(seconds):
-    """Arm a wall-clock budget for the next call. Returns a disarm callable.
-
-    SIGALRM only lands between Python bytecodes, so a scenario stuck inside one
-    long C++ call runs past the budget. That is a limitation, not a bug: every
-    hot path WP4 measures loops in Python.
-    """
-    def fired(signum, frame):
-        raise BudgetExceeded("over the %.0f s budget" % seconds)
-    previous = signal.signal(signal.SIGALRM, fired)
-    signal.setitimer(signal.ITIMER_REAL, seconds)
-
-    def disarm():
-        signal.setitimer(signal.ITIMER_REAL, 0.0)
-        signal.signal(signal.SIGALRM, previous)
-    return disarm
 
 
 def timed(call):

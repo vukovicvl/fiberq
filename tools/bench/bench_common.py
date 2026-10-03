@@ -15,6 +15,7 @@ import os
 import platform
 import re
 import socket
+import signal
 import statistics
 import sys
 
@@ -32,6 +33,38 @@ DEFAULT_K = 50
 #: tree that is otherwise byte-identical to the tag).
 _CODE_SKIP_DIRS = ("__pycache__", ".git")
 _CODE_SKIP_SUFFIX = (".pyc", ".pyo")
+
+
+class BudgetExceeded(BaseException):
+    """The cold call ran past --budget-s.
+
+    Derived from BaseException, not Exception, and that is the whole point. The
+    first size-L run proved why: SIGALRM fired inside the latent-elements dialog
+    at 1800 s, and ``latent_dialog.py:76`` -- ``except Exception as e:`` followed
+    by a debug log -- caught the timeout, said nothing, and carried on to the
+    next row. The budget was swallowed by exactly the error-swallowing WP4.2 is
+    funded to replace. There are 817 such handlers in the package, so any
+    exception the harness raises inside measured code must be one that
+    ``except Exception`` cannot catch.
+    """
+
+
+def budget(seconds):
+    """Arm a wall-clock budget for the next call. Returns a disarm callable.
+
+    SIGALRM only lands between Python bytecodes, so a scenario stuck inside one
+    long C++ call runs past the budget. That is a limitation, not a bug: every
+    hot path WP4 measures loops in Python.
+    """
+    def fired(signum, frame):
+        raise BudgetExceeded("over the %g s budget" % seconds)
+    previous = signal.signal(signal.SIGALRM, fired)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+
+    def disarm():
+        signal.setitimer(signal.ITIMER_REAL, 0.0)
+        signal.signal(signal.SIGALRM, previous)
+    return disarm
 
 
 def require_assertions(who):
