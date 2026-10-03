@@ -11,7 +11,8 @@ from .base import (
     Qt,
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
     QgsPointXY, QgsWkbTypes,
-    QgsMapToolEmitPoint
+    QgsMapToolEmitPoint,
+    PlacementSnapper, SNAP_ROUTE_LAYERS
 )
 
 # Phase 5.2: Logging
@@ -97,6 +98,11 @@ class ManholePlaceTool(QgsMapToolEmitPoint):
         super().__init__(iface.mapCanvas())
         self.iface = iface
         self.plugin = plugin
+        self.snapper = PlacementSnapper(
+            iface.mapCanvas(),
+            line_layers=SNAP_ROUTE_LAYERS,
+            pixels=20,
+        )
 
         # Auto-increment state
         self._auto_increment = False
@@ -192,73 +198,23 @@ class ManholePlaceTool(QgsMapToolEmitPoint):
                 logger.debug(f"Error in ManholePlaceTool._find_manhole_layer: {e}")
         return None
 
-    def _find_route_layer(self):
-        """Find the Route layer in the project."""
-        for lyr in QgsProject.instance().mapLayers().values():
-            try:
-                if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
-                    lyr.name() in ('Route', 'Trasa') and  # noqa: W504
-                        lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry):
-                    return lyr
-            except Exception as e:
-                logger.debug(f"Error in ManholePlaceTool._find_route_layer: {e}")
-        return None
+    def canvasMoveEvent(self, event):
+        """Show where the manhole will land.
 
-    def _snap_to_route(self, point):
+        The tool had no move handler at all, so there was nothing to see before
+        the click: the manhole simply appeared, snapped or not.
         """
-        Snap a point to route vertices or segment midpoints.
-
-        Returns:
-            Tuple of (snapped_point, min_distance) or (None, None)
-        """
-        route_layer = self._find_route_layer()
-        if route_layer is None or route_layer.featureCount() == 0:
-            return None, None
-
-        snap_point = None
-        min_dist = None
-
-        for feat in route_layer.getFeatures():
-            geom = feat.geometry()
-            if geom.isMultipart():
-                lines = geom.asMultiPolyline()
-            else:
-                lines = [geom.asPolyline()]
-
-            for line in lines:
-                if not line:
-                    continue
-
-                # Check all vertices
-                for p in line:
-                    d = QgsPointXY(point).distance(QgsPointXY(p))
-                    if min_dist is None or d < min_dist:
-                        min_dist = d
-                        snap_point = QgsPointXY(p)
-
-                # Check segment midpoints
-                for i in range(len(line) - 1):
-                    mid = QgsPointXY(
-                        (line[i].x() + line[i + 1].x()) / 2,
-                        (line[i].y() + line[i + 1].y()) / 2
-                    )
-                    d = QgsPointXY(point).distance(mid)
-                    if min_dist is None or d < min_dist:
-                        min_dist = d
-                        snap_point = mid
-
-        return snap_point, min_dist
+        self.snapper.snap(event)
 
     def canvasReleaseEvent(self, event):
         """Handle mouse release - place manhole."""
-        point = self.toMapCoordinates(event.pos())
-
-        # Snap to route
-        snap_point, min_dist = self._snap_to_route(point)
-        tolerance = self.iface.mapCanvas().mapUnitsPerPixel() * 20
-
-        if snap_point is not None and min_dist is not None and min_dist < tolerance:
-            point = snap_point
+        if event.button() != Qt.MouseButton.LeftButton:
+            # The other four placement tools all guard this; this one did not,
+            # so the release after a right-click cancel snapped again and put
+            # the indicator the cancel had just cleared straight back up (and
+            # wrote a manhole on the way).
+            return
+        point, _match = self.snapper.snap(event)
 
         # Get or create manhole layer
         layer = self.plugin._ensure_okna_layer()
@@ -338,6 +294,7 @@ class ManholePlaceTool(QgsMapToolEmitPoint):
     def keyPressEvent(self, event):
         """Handle ESC key to cancel tool."""
         if event.key() == Qt.Key.Key_Escape:
+            self.snapper.clear()
             try:
                 if self._auto_increment and self._placement_count > 0:
                     self.iface.messageBar().pushInfo(
@@ -351,6 +308,7 @@ class ManholePlaceTool(QgsMapToolEmitPoint):
     def canvasPressEvent(self, event):
         """Handle right-click to cancel tool."""
         if event.button() == Qt.MouseButton.RightButton:
+            self.snapper.clear()
             try:
                 if self._auto_increment and self._placement_count > 0:
                     self.iface.messageBar().pushInfo(
@@ -360,6 +318,11 @@ class ManholePlaceTool(QgsMapToolEmitPoint):
                 self.iface.mapCanvas().unsetMapTool(self)
             except Exception as e:
                 logger.debug(f"Error in ManholePlaceTool.canvasPressEvent: {e}")
+
+    def deactivate(self):
+        """Clear the indicator, so it does not outlive the tool."""
+        self.snapper.clear()
+        super().deactivate()
 
 
 __all__ = ['ManholePlaceTool']

@@ -5,10 +5,11 @@ Tool for placing optical slack (reserve) points on cables.
 """
 
 from .base import (
-    Qt, QColor, QMessageBox,
+    Qt, QMessageBox,
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
     QgsPointXY, QgsWkbTypes,
-    QgsMapTool, QgsVertexMarker
+    QgsMapTool,
+    PlacementSnapper, snap_match
 )
 
 # Phase 5.2: Logging
@@ -31,27 +32,15 @@ class SlackPlaceTool(QgsMapTool):
         self.canvas = iface.mapCanvas()
         self.params = dict(params or {})
 
-        # Snap marker
-        self.snap_marker = QgsVertexMarker(self.canvas)
-        self.snap_marker.setIconType(QgsVertexMarker.IconType.ICON_CROSS)
-        self.snap_marker.setPenWidth(3)
-        self.snap_marker.setIconSize(14)
-        self.snap_marker.setColor(QColor(0, 200, 0))
-        self.snap_marker.hide()
-
-    def activate(self):
-        """Show snap marker when tool is activated."""
-        try:
-            self.snap_marker.show()
-        except Exception as e:
-            logger.debug(f"Error in SlackPlaceTool.activate: {e}")
+        # The slack tool resolves its own target -- which cable, and which end
+        # of it -- so it uses the shared snapper only for the indicator. Showing
+        # QGIS's generic nearest vertex here would promise a lock the click
+        # would not honour, which is exactly what the old preview did.
+        self.snapper = PlacementSnapper(self.canvas)
 
     def deactivate(self):
-        """Hide snap marker when tool is deactivated."""
-        try:
-            self.snap_marker.hide()
-        except Exception as e:
-            logger.debug(f"Error in SlackPlaceTool.deactivate: {e}")
+        """Clear the indicator, so it does not outlive the tool."""
+        self.snapper.clear()
         super().deactivate()
 
     def _iter_cable_layers(self):
@@ -148,38 +137,56 @@ class SlackPlaceTool(QgsMapTool):
 
         return best
 
+    def _resolve(self, point):
+        """Where a slack clicked at ``point`` would actually go.
+
+        One resolution for both the preview and the click, so what the
+        indicator promises is what gets written.
+
+        Returns:
+            Tuple of (layer, feature, side, place_point). ``side`` is 'od' or
+            'do' for a cable end, 'sredina' for mid-span. All four are None when
+            no cable is in reach.
+        """
+        tolerance = self.canvas.mapUnitsPerPixel() * 20
+
+        (layer, feat, side, endpoint, _d) = self._nearest_cable_endpoint(point, tolerance)
+        if layer and feat:
+            return layer, feat, side, QgsPointXY(endpoint)
+
+        (layer, feat, _d) = self._nearest_cable_on_line(point, tolerance)
+        if layer and feat:
+            # The slack belongs on the cable. The click itself was written
+            # before, which put a mid-span slack wherever the cursor happened
+            # to be -- up to the whole tolerance away from its own cable.
+            squared, projected, _after, _which = feat.geometry().closestSegmentWithContext(point)
+            place = QgsPointXY(projected) if squared >= 0 else QgsPointXY(point)
+            return layer, feat, "sredina", place
+
+        return None, None, None, None
+
     def canvasMoveEvent(self, event):
-        """Update snap marker position."""
-        p = self.toMapCoordinates(event.pos())
-        self.snap_marker.setCenter(p)
-        self.snap_marker.show()
+        """Preview the position the click will use."""
+        point = self.toMapCoordinates(event.pos())
+        layer, feat, side, place = self._resolve(point)
+        if place is None:
+            self.snapper.clear()
+            return
+        # A cable end is a vertex; mid-span is a point on a segment. The two get
+        # different QGIS indicator icons, and showing the vertex icon mid-span
+        # would promise a vertex lock that is not what the click does.
+        self.snapper.show(snap_match(place, layer=layer, fid=int(feat.id()),
+                                     distance=point.distance(place),
+                                     on_edge=(side == "sredina")))
 
     def canvasReleaseEvent(self, event):
         """Handle mouse release - place slack point."""
         p = self.toMapCoordinates(event.pos())
-        tolerance = self.canvas.mapUnitsPerPixel() * 20
 
-        # Try to find nearest cable endpoint first
-        (kl, kf, strana, ep, dd) = self._nearest_cable_endpoint(p, tolerance)
+        kl, kf, strana_val, place_pt = self._resolve(p)
 
-        cable_layer_id = None
-        cable_fid = None
-        strana_val = None
-        place_pt = p
-
-        if kl and kf:
-            cable_layer_id = kl.id()
-            cable_fid = int(kf.id())
-            strana_val = strana
-            place_pt = ep
-        else:
-            # Try mid-span
-            (kl2, kf2, d2) = self._nearest_cable_on_line(p, tolerance)
-            if kl2 and kf2:
-                cable_layer_id = kl2.id()
-                cable_fid = int(kf2.id())
-                strana_val = "sredina"  # MID SPAN in Serbian
-                place_pt = p
+        cable_layer_id = kl.id() if kl else None
+        cable_fid = int(kf.id()) if kf else None
 
         if cable_layer_id is None:
             QMessageBox.information(
@@ -273,10 +280,7 @@ class SlackPlaceTool(QgsMapTool):
     def keyPressEvent(self, event):
         """Handle ESC key to cancel tool."""
         if event.key() == Qt.Key.Key_Escape:
-            try:
-                self.snap_marker.hide()
-            except Exception as e:
-                logger.debug(f"Error in SlackPlaceTool.keyPressEvent: {e}")
+            self.snapper.clear()
             try:
                 self.canvas.unsetMapTool(self)
             except Exception as e:
@@ -285,10 +289,7 @@ class SlackPlaceTool(QgsMapTool):
     def canvasPressEvent(self, event):
         """Handle right-click to cancel tool."""
         if event.button() == Qt.MouseButton.RightButton:
-            try:
-                self.snap_marker.hide()
-            except Exception as e:
-                logger.debug(f"Error in SlackPlaceTool.canvasPressEvent: {e}")
+            self.snapper.clear()
             try:
                 self.canvas.unsetMapTool(self)
             except Exception as e:

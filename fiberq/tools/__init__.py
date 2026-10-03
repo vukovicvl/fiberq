@@ -51,14 +51,9 @@ from .move_tool import MoveFeatureTool
 from .base import (
     FiberQMapTool,
     FiberQMapToolEmitPoint,
-    find_route_layer,
-    find_cable_layers,
-    find_node_layers,
-    find_element_layers,
-    get_snap_layers,
-    snap_to_point_layers,
-    snap_to_line_layer,
-    snap_to_line_vertices,
+    PlacementSnapper,
+    snap_match,
+    no_match,
 )
 
 __all__ = [
@@ -91,13 +86,8 @@ __all__ = [
     'FiberQMapTool',
     'FiberQMapToolEmitPoint',
 
-    # Utility functions
-    'find_route_layer',
-    'find_cable_layers',
-    'find_node_layers',
-    'find_element_layers',
-    'get_snap_layers',
-    'snap_to_point_layers',
-    'snap_to_line_layer',
-    'snap_to_line_vertices',
+    # Snapping
+    'PlacementSnapper',
+    'snap_match',
+    'no_match',
 ]

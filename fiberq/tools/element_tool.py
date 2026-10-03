@@ -11,11 +11,15 @@ from qgis.PyQt.QtWidgets import QMessageBox, QInputDialog, QDialog
 
 from qgis.core import (
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
-    QgsPointXY, QgsField, QgsWkbTypes, QgsMarkerSymbol,
+    QgsField, QgsWkbTypes, QgsMarkerSymbol,
     QgsSvgMarkerSymbolLayer, QgsUnitTypes, QgsSimpleMarkerSymbolLayer,
     QgsPalLayerSettings, QgsVectorLayerSimpleLabeling
 )
 from qgis.gui import QgsMapToolEmitPoint, QgsVertexMarker, QgsMapToolIdentify
+
+from .base import (
+    PlacementSnapper, SNAP_CABLE_LAYERS, SNAP_NODE_LAYERS, SNAP_ROUTE_LAYERS,
+)
 
 # Import from legacy bridge for compatibility
 from ..utils.legacy_bridge import (
@@ -47,12 +51,15 @@ class PlaceElementTool(QgsMapToolEmitPoint):
         self.canvas = canvas
         self.target_layer_name = target_layer_name
         self.symbol_spec = symbol_spec or {'name': 'diamond', 'color': 'red', 'size': '5', 'size_unit': 'MapUnit'}
-        self.snap_marker = QgsVertexMarker(self.canvas)
-        self.snap_marker.setColor(QColor(255, 0, 0))
-        self.snap_marker.setIconType(QgsVertexMarker.IconType.ICON_CIRCLE)
-        self.snap_marker.setIconSize(14)
-        self.snap_marker.setPenWidth(3)
-        self.snap_marker.hide()
+        self.snapper = PlacementSnapper(
+            canvas,
+            point_layers=SNAP_NODE_LAYERS,
+            line_layers=SNAP_ROUTE_LAYERS + SNAP_CABLE_LAYERS,
+            pixels=10,
+        )
+        # The click reads the snapper, not this: it is the last move's result,
+        # kept because the benchmark harness reads it as the proof a move
+        # snapped. ``snapper.indicator.match()`` is the same answer.
         self._last_snap_point = None
 
     def _apply_prekid_style(self, layer):
@@ -82,71 +89,14 @@ class PlaceElementTool(QgsMapToolEmitPoint):
             logger.debug(f"Error in PlaceElementTool._apply_prekid_style: {e}")
 
     def canvasMoveEvent(self, event):
-        """Snap to lines (Cables/Route) OR to nodes (Poles/Manholes)."""
-        point = self.toMapCoordinates(event.pos())
-
-        line_layers = []
-        node_layers = []
-        for lyr in QgsProject.instance().mapLayers().values():
-            try:
-                if lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry and lyr.name() in (
-                    "Kablovi_podzemni", "Kablovi_vazdusni", "Underground cables",
-                    "Aerial cables", "Route", "Route"
-                ):
-                    line_layers.append(lyr)
-                if lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and lyr.name() in (
-                    "Poles", "Poles", "OKNA", "Manholes"
-                ):
-                    node_layers.append(lyr)
-            except Exception as e:
-                logger.debug(f"Error in PlaceElementTool.canvasMoveEvent: {e}")
-
-        min_dist = None
-        snapped_point = None
-        tolerance = self.canvas.mapUnitsPerPixel() * 10
-
-        # Lines
-        for layer in line_layers:
-            for feat in layer.getFeatures():
-                geom = feat.geometry()
-                if not geom:
-                    continue
-                dist, snap, vAfter, seg_idx = geom.closestSegmentWithContext(point)
-                if min_dist is None or dist < min_dist:
-                    min_dist = dist
-                    snapped_point = snap
-
-        # Nodes
-        for lyr in node_layers:
-            for f in lyr.getFeatures():
-                geom = f.geometry()
-                if not geom or geom.isEmpty():
-                    continue
-                try:
-                    pt = geom.asPoint()
-                except Exception as e:
-                    logger.debug(f"skipping node without point geometry: {e}")
-                    continue
-                d = QgsPointXY(point).distance(QgsPointXY(pt))
-                if min_dist is None or d < min_dist:
-                    min_dist = d
-                    snapped_point = QgsPointXY(pt)
-
-        if snapped_point and min_dist is not None and min_dist < tolerance:
-            self.snap_marker.setCenter(snapped_point)
-            self.snap_marker.show()
-            self._last_snap_point = snapped_point
-        else:
-            self.snap_marker.hide()
-            self._last_snap_point = None
+        """Show where the element will land: a node, or a point on a line."""
+        point, match = self.snapper.snap(event)
+        self._last_snap_point = point if match.isValid() else None
 
     def canvasPressEvent(self, event):
         # Right click – cancel command
         if event.button() == Qt.MouseButton.RightButton:
-            try:
-                self.snap_marker.hide()
-            except Exception as e:
-                logger.debug(f"Error in PlaceElementTool.canvasPressEvent: {e}")
+            self.snapper.clear()
             try:
                 self.canvas.unsetMapTool(self)
             except Exception as e:
@@ -156,10 +106,9 @@ class PlaceElementTool(QgsMapToolEmitPoint):
         if event.button() != Qt.MouseButton.LeftButton:
             return
 
-        final_point = getattr(self, '_last_snap_point', None)
-        if final_point is None:
-            # Allow without snap (click where user clicked)
-            final_point = self.toMapCoordinates(event.pos())
+        # Snap the click itself. Reusing the last move's result let a click with
+        # no mouse move before it place on whatever was hovered over last.
+        final_point, _match = self.snapper.snap(event)
 
         # Pre-placement dialog (dynamic attributes)
         existing_layer = None
@@ -186,7 +135,7 @@ class PlaceElementTool(QgsMapToolEmitPoint):
 
         if not ok or not _attrs.get('naziv'):
             QMessageBox.warning(None, "Element", "Name not entered!")
-            self.snap_marker.hide()
+            self.snapper.clear()
             return
 
         # Find or create layer
@@ -321,7 +270,8 @@ class PlaceElementTool(QgsMapToolEmitPoint):
         elem_layer.commitChanges()
 
         elem_layer.triggerRepaint()
-        self.snap_marker.hide()
+        self.snapper.clear()
+        self._last_snap_point = None
 
         # Record for undo (v1.2 — Feature 2)
         try:
@@ -335,14 +285,17 @@ class PlaceElementTool(QgsMapToolEmitPoint):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
-            try:
-                self.snap_marker.hide()
-            except Exception as e:
-                logger.debug(f"Error in PlaceElementTool.keyPressEvent: {e}")
+            self.snapper.clear()
             try:
                 self.canvas.unsetMapTool(self)
             except Exception as e:
                 logger.debug(f"Error in PlaceElementTool.keyPressEvent: {e}")
+
+    def deactivate(self):
+        """Clear the indicator, so it does not outlive the tool."""
+        self.snapper.clear()
+        self._last_snap_point = None
+        super().deactivate()
 
 
 class ChangeElementTypeTool(QgsMapToolIdentify):
