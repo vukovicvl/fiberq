@@ -4,6 +4,8 @@ FiberQ v2 - Breakpoint Tool
 Tool for splitting routes at a click point.
 """
 
+import math
+
 from .base import (
     Qt, QColor, QMessageBox,
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
@@ -86,7 +88,14 @@ class BreakpointTool(QgsMapToolEmitPoint):
         # Find closest point on any route feature
         for feat in route_layer.getFeatures():
             geom = feat.geometry()
-            dist, snap, vertex_after, seg_idx = geom.closestSegmentWithContext(point)
+            squared, snap, vertex_after, seg_idx = geom.closestSegmentWithContext(point)
+            if squared < 0:
+                # No segment: an empty or point geometry on the route layer.
+                continue
+            # closestSegmentWithContext returns a SQUARED distance. Comparing it
+            # against a linear tolerance below made the real snap radius
+            # sqrt(10 / mapUnitsPerPixel) pixels instead of the 10 it reads as.
+            dist = math.sqrt(squared)
             if min_dist is None or dist < min_dist:
                 min_dist = dist
                 snapped_point = snap

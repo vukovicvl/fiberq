@@ -7,16 +7,19 @@ Phase 5.2: Added logging infrastructure
 """
 
 from qgis.PyQt.QtCore import Qt, QVariant
-from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QMessageBox, QInputDialog
 
 from qgis.core import (
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
-    QgsPointXY, QgsField, QgsWkbTypes, QgsMarkerSymbol,
-    QgsSvgMarkerSymbolLayer, QgsUnitTypes, QgsRectangle,
-    QgsFeatureRequest, QgsPalLayerSettings, QgsVectorLayerSimpleLabeling
+    QgsField, QgsWkbTypes, QgsMarkerSymbol,
+    QgsSvgMarkerSymbolLayer, QgsUnitTypes,
+    QgsPalLayerSettings, QgsVectorLayerSimpleLabeling
 )
-from qgis.gui import QgsMapToolEmitPoint, QgsVertexMarker
+from qgis.gui import QgsMapToolEmitPoint
+
+from .base import (
+    PlacementSnapper, SNAP_CABLE_LAYERS, SNAP_NODE_LAYERS, SNAP_ROUTE_LAYERS,
+)
 
 # Import from legacy bridge for compatibility
 from ..utils.legacy_bridge import (
@@ -44,20 +47,27 @@ class ExtensionTool(QgsMapToolEmitPoint):
         """
         super().__init__(canvas)
         self.canvas = canvas
-        self.snap_marker = QgsVertexMarker(self.canvas)
-        self.snap_marker.setColor(QColor(255, 0, 0))
-        self.snap_marker.setIconType(QgsVertexMarker.IconType.ICON_CIRCLE)
-        self.snap_marker.setIconSize(14)
-        self.snap_marker.setPenWidth(3)
-        self.snap_marker.hide()
+        self.snapper = PlacementSnapper(
+            canvas,
+            point_layers=SNAP_NODE_LAYERS,
+            line_layers=SNAP_ROUTE_LAYERS + SNAP_CABLE_LAYERS,
+            pixels=20,
+            # Vertices only, which is what this tool always did: a closure
+            # marks a splice, so it belongs on a node or on the cut vertex of a
+            # cable, never at an arbitrary point along one. Letting it land
+            # mid-span would be a new behaviour, not one of the three fixes the
+            # fallback is here to make.
+            segments=False,
+            # A joint closure also belongs on a user's infrastructure-cut
+            # marker layer, which is not part of the FiberQ schema and so has
+            # no canonical name to resolve.
+            extra_point_layers=("infrastructure cut", "cuts"),
+        )
 
     def keyPressEvent(self, event):
         # ESC -> cancel tool
         if event.key() == Qt.Key.Key_Escape:
-            try:
-                self.snap_marker.hide()
-            except Exception as e:
-                logger.debug(f"Error in ExtensionTool.keyPressEvent: {e}")
+            self.snapper.clear()
             try:
                 self.canvas.unsetMapTool(self)
             except Exception as e:
@@ -66,92 +76,20 @@ class ExtensionTool(QgsMapToolEmitPoint):
     def canvasPressEvent(self, event):
         # Right click -> cancel tool (without placing joint closure)
         if event.button() == Qt.MouseButton.RightButton:
-            try:
-                self.snap_marker.hide()
-            except Exception as e:
-                logger.debug(f"Error in ExtensionTool.canvasPressEvent: {e}")
+            self.snapper.clear()
             try:
                 self.canvas.unsetMapTool(self)
             except Exception as e:
                 logger.debug(f"Error in ExtensionTool.canvasPressEvent: {e}")
 
-    def _snap_candidate(self, point):
-        """Snap to:
-        - point layers (Poles/Manholes + optionally Infrastructure cuts)
-        - vertices of cable line layers (so Joint Closure can be placed exactly at cut location)
-        """
-        tol = self.canvas.mapUnitsPerPixel() * 20
-        rect = QgsRectangle(point.x() - tol, point.y() - tol, point.x() + tol, point.y() + tol)
-
-        snap_point = None
-        min_dist = None
-
-        def consider(pt):
-            nonlocal snap_point, min_dist
-            d = QgsPointXY(point).distance(QgsPointXY(pt))
-            if min_dist is None or d < min_dist:
-                min_dist = d
-                snap_point = QgsPointXY(pt)
-
-        for lyr in QgsProject.instance().mapLayers().values():
-            try:
-                if not isinstance(lyr, QgsVectorLayer) or not lyr.isValid():
-                    continue
-
-                gtype = lyr.geometryType()
-                lname = (lyr.name() or "").lower()
-
-                # --- POINT layers (poles/manholes + optionally cut marker layer) ---
-                is_node_layer = (
-                    lyr.name() in ("Poles", "Poles", "OKNA", "Okna", "Manholes")
-                    or "infrastructure cut" in lname  # noqa: W503
-                    or "infrastructure cuts" in lname  # noqa: W503
-                    or lname.strip() in ("cuts", "cut")  # noqa: W503
-                )
-
-                if gtype == QgsWkbTypes.GeometryType.PointGeometry and is_node_layer:
-                    req = QgsFeatureRequest().setFilterRect(rect)
-                    for feat in lyr.getFeatures(req):
-                        geom = feat.geometry()
-                        if not geom or geom.isEmpty():
-                            continue
-                        # safest: vertices() works for point/multipoint
-                        for v in geom.vertices():
-                            consider(v)
-                    continue
-
-                # --- LINE layers of cables (vertex at cut location) ---
-                is_cable_layer = (
-                    "cable" in lname
-                    or "kabl" in lname  # noqa: W503
-                    or lyr.name() in ("Route", "Route")  # noqa: W503
-                )
-
-                if gtype == QgsWkbTypes.GeometryType.LineGeometry and is_cable_layer:
-                    req = QgsFeatureRequest().setFilterRect(rect)
-                    for feat in lyr.getFeatures(req):
-                        geom = feat.geometry()
-                        if not geom or geom.isEmpty():
-                            continue
-                        for v in geom.vertices():
-                            consider(v)
-
-            except Exception as e:
-                # if any layer fails, skip it
-                logger.debug(f"Skipping layer during snap candidate search: {e}")
-
-        if snap_point is not None and min_dist is not None and min_dist < tol:
-            return snap_point
-        return None
+    def deactivate(self):
+        """Clear the indicator, so it does not outlive the tool."""
+        self.snapper.clear()
+        super().deactivate()
 
     def canvasMoveEvent(self, event):
-        point = self.toMapCoordinates(event.pos())
-        snap_point = self._snap_candidate(point)
-        if snap_point:
-            self.snap_marker.setCenter(snap_point)
-            self.snap_marker.show()
-        else:
-            self.snap_marker.hide()
+        """Show where the joint closure will land."""
+        self.snapper.snap(event)
 
     def _apply_joint_closure_aliases(self, layer):
         """Apply English field aliases and layer name to a joint closure layer.
@@ -172,9 +110,7 @@ class ExtensionTool(QgsMapToolEmitPoint):
         if event.button() != Qt.MouseButton.LeftButton:
             return
 
-        click_point = self.toMapCoordinates(event.pos())
-        snap_point = self._snap_candidate(click_point)
-        final_point = snap_point if snap_point else click_point
+        final_point, _match = self.snapper.snap(event)
 
         naziv, ok = QInputDialog.getText(
             None,
@@ -183,7 +119,7 @@ class ExtensionTool(QgsMapToolEmitPoint):
         )
         if not ok or not naziv:
             QMessageBox.warning(None, "FiberQ", "No joint closure name entered!")
-            self.snap_marker.hide()
+            self.snapper.clear()
             return
 
         # Find existing Joint Closures layer (supports old name "Nastavci")
@@ -292,7 +228,7 @@ class ExtensionTool(QgsMapToolEmitPoint):
         nastavak_layer.addFeature(nastavak_feat)
         nastavak_layer.commitChanges()
         nastavak_layer.triggerRepaint()
-        self.snap_marker.hide()
+        self.snapper.clear()
 
         # Record for undo (v1.2 — Feature 2)
         try:
