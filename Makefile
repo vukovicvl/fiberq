@@ -60,7 +60,8 @@ I18N_SOURCES = $(shell find $(PKG) -name '*.py' \
 
 .PHONY: help deps lint flake8 bandit test test-cov package install uninstall clean tag release version mapping-doc docs-pdf \
         i18n-update i18n-compile i18n-stats i18n-check \
-        qt6-check qt6-check-local qt6-check-docker
+        qt6-check qt6-check-local qt6-check-docker \
+        bench bench-list bench-smoke
 
 help:
 	@echo "FiberQ - make targets (current version: $(VERSION))"
@@ -76,6 +77,11 @@ help:
 	@echo "  documentation"
 	@echo "    mapping-doc    regenerate docs/interchange-mapping.md from the code"
 	@echo "    docs-pdf       render the published guides to dist/docs/*.pdf (website downloads)"
+	@echo ""
+	@echo "  benchmark (dev-only; see tools/bench/README.md)"
+	@echo "    bench-list     the measurable scenarios, and which rows are controls"
+	@echo "    bench          run them: make bench BENCH_DATA=<dataset dir>"
+	@echo "    bench-smoke    run every scenario once, no timing (what CI checks)"
 	@echo ""
 	@echo "  translations (locales: $(LOCALES))"
 	@echo "    i18n-update    refresh $(I18N_DIR)/*.ts from source (merges; keeps translations)"
@@ -93,7 +99,7 @@ deps:
 lint: flake8 bandit
 
 flake8:
-	$(PYTHON) -m flake8 --isolated --max-line-length=120 --ignore=E501 $(PKG) tests conftest.py
+	$(PYTHON) -m flake8 --isolated --max-line-length=120 --ignore=E501 $(PKG) tests conftest.py tools/bench
 
 bandit:
 	# ALL severities — the plugins.qgis.org scanner flags LOW too (e.g. B110/B112
@@ -216,6 +222,44 @@ mapping-doc:
 # One-time setup:  .venv/bin/pip install weasyprint markdown
 docs-pdf:
 	$(DOCS_PYTHON) tools/make_docs_pdf.py
+
+# ---- benchmark (WP4 Task 4.1) -----------------------------------------------
+# Measures a fixed list of user actions on a seeded city-sized project and writes
+# one JSON file per row. Dev-only and never shipped: `package` archives
+# HEAD:$(PKG), so nothing under tools/ reaches the zip. Deliberately NOT wired
+# into lint, test or release -- it needs a generated dataset and takes minutes.
+#
+# Uses plain $(PYTHON), not $(DOCS_PYTHON): the benchmark has to run inside the
+# QGIS container, not the root virtualenv.
+#
+#   make bench-list
+#   make bench BENCH_DATA=/work/data/fiberq-city/city_S BENCH_OUT=/work/out/run1
+#
+# The dataset comes from tests/fixtures/make_city_project.py; the "before" side
+# comes from `git archive v1.5.0:fiberq`. The full procedure and the fairness
+# rules are in tools/bench/README.md.
+BENCH_CODE ?= .
+BENCH_DATA ?=
+BENCH_OUT ?= $(DIST_DIR)/bench
+BENCH_ARGS ?=
+
+bench-list:
+	$(PYTHON) tools/bench/bench.py --list
+
+bench:
+	@[ -n "$(BENCH_DATA)" ] || { echo "set BENCH_DATA=<dataset directory> - see tools/bench/README.md"; exit 2; }
+	QT_QPA_PLATFORM=offscreen $(PYTHON) tools/bench/bench.py \
+		--code $(BENCH_CODE) --data $(BENCH_DATA) --out $(BENCH_OUT) $(BENCH_ARGS)
+
+# One cold call per scenario in one process: does every row still resolve its
+# layers, hold its post-condition and run without logging an error on this
+# dataset? Not a measurement -- run it on a freshly generated dataset before
+# spending a night on a real benchmark. tests/test_bench_harness.py runs the
+# same script, which is how CI covers the harness without timing anything.
+bench-smoke:
+	@[ -n "$(BENCH_DATA)" ] || { echo "set BENCH_DATA=<dataset directory> - see tools/bench/README.md"; exit 2; }
+	QT_QPA_PLATFORM=offscreen $(PYTHON) tools/bench/bench_smoke.py \
+		--code $(BENCH_CODE) --data $(BENCH_DATA) --out $(BENCH_OUT)/smoke.json $(BENCH_ARGS)
 
 # ---- i18n -------------------------------------------------------------------
 # Workflow:  make i18n-update  ->  translate the .ts in Qt Linguist  ->

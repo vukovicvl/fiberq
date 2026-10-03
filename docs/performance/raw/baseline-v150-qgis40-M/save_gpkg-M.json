@@ -1,0 +1,199 @@
+{
+ "canvas": {
+  "metres_per_pixel": 0.5,
+  "size_px": [
+   998,
+   776
+  ]
+ },
+ "code": {
+  "bytes": 2675932,
+  "files": 221,
+  "module": "fiberq/__init__.py",
+  "precompiled": true,
+  "pyc_after": 0,
+  "pyc_before": 0,
+  "pycache_prefix": "<tmp>/bench_pycache",
+  "sha256": "c208d1a607bf74998fca62cbcf7bd7dc7d1d1cddb0db59700def56b379749fac",
+  "version": "1.5.0"
+ },
+ "control": true,
+ "dataset": {
+  "counts": {
+   "Aerial cables": 1451,
+   "Fiber break": 13,
+   "Indoor OTB": 30,
+   "Indoor TO": 29,
+   "Joint Closure TO": 29,
+   "Joint Closures": 169,
+   "Manholes": 2632,
+   "ODF": 26,
+   "OTB": 30,
+   "Objects": 4472,
+   "Optical slack": 2840,
+   "Outdoor OTB": 577,
+   "Outdoor TO": 2633,
+   "PE pipes": 2632,
+   "Patch panel": 30,
+   "Pole OTB": 29,
+   "Pole TO": 1841,
+   "Poles": 3930,
+   "Route": 4472,
+   "Service Area": 576,
+   "TB": 30,
+   "TO": 29,
+   "Transition pipes": 1981,
+   "Underground cables": 3597
+  },
+  "digest": "ff084aa367b5b010fa2ae0c0451226c1550c1cadf6a09b6ab065edd2c2ae01a9",
+  "features": 34078,
+  "files": {
+   "gpkg": "city_M.gpkg",
+   "qgz": "city_M.qgz"
+  },
+  "generator": "make_city_project.py",
+  "gpkg_bytes": 9138176,
+  "layers": 24,
+  "legacy_names": false,
+  "n": 50,
+  "seed": 20260921,
+  "size": "M"
+ },
+ "env": {
+  "cpu_count": 8,
+  "cpu_governor": "performance",
+  "cpu_model": "Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz",
+  "cpuset_effective": "2-6",
+  "gdal": "3.10.3",
+  "image": "qgis/qgis:4.0-trixie",
+  "image_digest": null,
+  "in_container": true,
+  "kernel": "7.0.0-31-generic",
+  "machine": "x86_64",
+  "mem_total": "31438256 kB",
+  "pyqt": "6.9.0",
+  "python": "3.13.5",
+  "qgis": "4.0.3-Norrk\u00f6ping",
+  "qgis_int": 40003,
+  "qt": "6.8.2"
+ },
+ "fixed_layer_ids": 24,
+ "label": "v1.5.0",
+ "mutating": true,
+ "needs": [
+  "route"
+ ],
+ "patches": [
+  "CablePickerDialog.exec",
+  "CorrectionDialog.exec",
+  "QFileDialog.getExistingDirectory",
+  "QFileDialog.getOpenFileName",
+  "QFileDialog.getOpenFileNames",
+  "QFileDialog.getSaveFileName",
+  "QMessageBox.about",
+  "QMessageBox.critical",
+  "QMessageBox.exec",
+  "QMessageBox.information",
+  "QMessageBox.question",
+  "QMessageBox.warning"
+ ],
+ "pf": null,
+ "post_condition": "a non-empty GeoPackage is written",
+ "result": {
+  "_bytes": 7020544,
+  "layers": 24
+ },
+ "result_digest": "5002e158a2c2b30c9f6bc752fb0d622cf841a5ac28c3224e341dc48e3a96428b",
+ "sanity": {
+  "error_sample": [],
+  "errors": 0,
+  "levels": {
+   "DEBUG": 2
+  },
+  "message_bar": [
+   [
+    "pushSuccess",
+    [
+     "GPKG export",
+     "All layers saved to:\n<tmp>/bench_save/saved.gpkg"
+    ]
+   ]
+  ],
+  "qgis_log": {
+   "counts": {},
+   "hooked": true,
+   "samples": []
+  },
+  "records": 2,
+  "swallowed_debug": 0,
+  "swallowed_sample": [],
+  "warning_sample": [],
+  "warnings": 0
+ },
+ "scenario": "save_gpkg",
+ "schema": "fiberq-bench/1",
+ "size": "M",
+ "started_utc": "2026-10-03T04:26:30Z",
+ "state": {
+  "cold": {
+   "Aerial cables": 1451,
+   "Fiber break": 13,
+   "Indoor OTB": 30,
+   "Indoor TO": 29,
+   "Joint Closure TO": 29,
+   "Joint Closures": 169,
+   "Manholes": 2632,
+   "ODF": 26,
+   "OTB": 30,
+   "Objects": 4472,
+   "Optical slacks": 2840,
+   "Outdoor OTB": 577,
+   "Outdoor TO": 2633,
+   "PE pipes": 2632,
+   "Patch panel": 30,
+   "Pole OTB": 29,
+   "Pole TO": 1841,
+   "Poles": 3930,
+   "Route": 4472,
+   "Service Area": 576,
+   "TB": 30,
+   "TO": 29,
+   "Transition pipes": 1981,
+   "Underground cables": 3597
+  },
+  "digest": "358f18a8027c3f44eca78f240e51041ee23b0e0f8fcb75a1f78e1847b87a49c5",
+  "layers": 24
+ },
+ "status": "ok",
+ "timing": {
+  "cold_log_records": 2,
+  "cold_s": 2.53712,
+  "cold_with_sanity_probe": true,
+  "load": {
+   "after": {
+    "15m": 1.23,
+    "1m": 1.26,
+    "5m": 1.27
+   },
+   "before": {
+    "15m": 1.23,
+    "1m": 1.26,
+    "5m": 1.28
+   }
+  },
+  "load_s": 0.4374609660007991,
+  "mad_s": 0.007736,
+  "max_s": 2.577576,
+  "median_s": 2.56984,
+  "min_s": 2.537263,
+  "n": 3,
+  "policy": "N=3 (warm-up 2-60 s)",
+  "prepares": 5,
+  "runs": [
+   2.577576,
+   2.56984,
+   2.537263
+  ],
+  "warmup_s": 2.599589
+ }
+}

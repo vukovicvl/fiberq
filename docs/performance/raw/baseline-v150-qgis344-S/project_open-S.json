@@ -1,0 +1,201 @@
+{
+ "canvas": {
+  "metres_per_pixel": 0.5,
+  "size_px": [
+   998,
+   772
+  ]
+ },
+ "code": {
+  "bytes": 2675932,
+  "files": 221,
+  "module": "fiberq/__init__.py",
+  "precompiled": true,
+  "pyc_after": 0,
+  "pyc_before": 0,
+  "pycache_prefix": "<tmp>/bench_pycache",
+  "sha256": "c208d1a607bf74998fca62cbcf7bd7dc7d1d1cddb0db59700def56b379749fac",
+  "version": "1.5.0"
+ },
+ "control": true,
+ "dataset": {
+  "counts": {
+   "Aerial cables": 561,
+   "Fiber break": 6,
+   "Indoor OTB": 13,
+   "Indoor TO": 12,
+   "Joint Closure TO": 12,
+   "Joint Closures": 64,
+   "Manholes": 1082,
+   "ODF": 10,
+   "OTB": 13,
+   "Objects": 1816,
+   "Optical slack": 1150,
+   "Outdoor OTB": 226,
+   "Outdoor TO": 1083,
+   "PE pipes": 1082,
+   "Patch panel": 13,
+   "Pole OTB": 13,
+   "Pole TO": 735,
+   "Poles": 1578,
+   "Route": 1816,
+   "Service Area": 225,
+   "TB": 13,
+   "TO": 13,
+   "Transition pipes": 796,
+   "Underground cables": 1480
+  },
+  "digest": "ae4011b9fe9cf3a50b9c611936c2a38ae1f19735a05e3e74ce941cd55ca7df52",
+  "features": 13812,
+  "files": {
+   "gpkg": "city_S.gpkg",
+   "qgz": "city_S.qgz"
+  },
+  "generator": "make_city_project.py",
+  "gpkg_bytes": 4038656,
+  "layers": 24,
+  "legacy_names": false,
+  "n": 32,
+  "seed": 20260921,
+  "size": "S"
+ },
+ "env": {
+  "cpu_count": 8,
+  "cpu_governor": "performance",
+  "cpu_model": "Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz",
+  "cpuset_effective": "2-6",
+  "gdal": "3.10.3",
+  "image": "qgis/qgis:3.44-trixie",
+  "image_digest": null,
+  "in_container": true,
+  "kernel": "7.0.0-31-generic",
+  "machine": "x86_64",
+  "mem_total": "31438256 kB",
+  "pyqt": "5.15.11",
+  "python": "3.13.5",
+  "qgis": "3.44.15-Solothurn",
+  "qgis_int": 34415,
+  "qt": "5.15.15"
+ },
+ "fixed_layer_ids": 24,
+ "label": "v1.5.0",
+ "mutating": true,
+ "needs": [],
+ "patches": [
+  "CablePickerDialog.exec",
+  "CorrectionDialog.exec",
+  "QFileDialog.getExistingDirectory",
+  "QFileDialog.getOpenFileName",
+  "QFileDialog.getOpenFileNames",
+  "QFileDialog.getSaveFileName",
+  "QMessageBox.about",
+  "QMessageBox.critical",
+  "QMessageBox.exec",
+  "QMessageBox.exec_",
+  "QMessageBox.information",
+  "QMessageBox.question",
+  "QMessageBox.warning"
+ ],
+ "pf": null,
+ "post_condition": "every layer in the dataset comes back",
+ "result": {
+  "layers": 24
+ },
+ "result_digest": "5002e158a2c2b30c9f6bc752fb0d622cf841a5ac28c3224e341dc48e3a96428b",
+ "sanity": {
+  "error_sample": [],
+  "errors": 0,
+  "levels": {
+   "DEBUG": 42
+  },
+  "message_bar": [],
+  "qgis_log": {
+   "counts": {
+    "FiberQ UUID/0": 25
+   },
+   "hooked": true,
+   "samples": []
+  },
+  "records": 42,
+  "swallowed_debug": 17,
+  "swallowed_sample": [
+   "fiberq.main_plugin: Error in FiberQPlugin._set_custom_name: 'QgsLayerTreeLayer' object has no attribute 'setCustomLayerName'",
+   "fiberq.main_plugin: Error in FiberQPlugin._set_custom_name: 'QgsLayerTreeLayer' object has no attribute 'setCustomLayerName'",
+   "fiberq.main_plugin: Error in FiberQPlugin._set_custom_name: 'QgsLayerTreeLayer' object has no attribute 'setCustomLayerName'",
+   "fiberq.main_plugin: Error in FiberQPlugin._set_custom_name: 'QgsLayerTreeLayer' object has no attribute 'setCustomLayerName'",
+   "fiberq.main_plugin: Error in FiberQPlugin._set_custom_name: 'QgsLayerTreeLayer' object has no attribute 'setCustomLayerName'"
+  ],
+  "warning_sample": [],
+  "warnings": 0
+ },
+ "scenario": "project_open",
+ "schema": "fiberq-bench/1",
+ "size": "S",
+ "started_utc": "2026-10-02T22:31:25Z",
+ "state": {
+  "cold": {
+   "Aerial cables": 561,
+   "Fiber break": 6,
+   "Indoor OTB": 13,
+   "Indoor TO": 12,
+   "Joint Closure TO": 12,
+   "Joint Closures": 64,
+   "Manholes": 1082,
+   "ODF": 10,
+   "OTB": 13,
+   "Objects": 1816,
+   "Optical slacks": 1150,
+   "Outdoor OTB": 226,
+   "Outdoor TO": 1083,
+   "PE pipes": 1082,
+   "Patch panel": 13,
+   "Pole OTB": 13,
+   "Pole TO": 735,
+   "Poles": 1578,
+   "Route": 1816,
+   "Service Area": 225,
+   "TB": 13,
+   "TO": 13,
+   "Transition pipes": 796,
+   "Underground cables": 1480
+  },
+  "digest": "3a0364ec47afc9913c5e2be6d83026fc6624e9d93872270f8cfb011e5b0cee1f",
+  "layers": 24
+ },
+ "status": "ok",
+ "timing": {
+  "cold_log_records": 42,
+  "cold_s": 0.92924,
+  "cold_with_sanity_probe": true,
+  "load": {
+   "after": {
+    "15m": 1.51,
+    "1m": 1.31,
+    "5m": 1.22
+   },
+   "before": {
+    "15m": 1.51,
+    "1m": 1.22,
+    "5m": 1.2
+   }
+  },
+  "load_s": 0.4721438460110221,
+  "mad_s": 0.028982,
+  "max_s": 0.929897,
+  "median_s": 0.898546,
+  "min_s": 0.857164,
+  "n": 7,
+  "policy": "N=7 (warm-up under 2 s)",
+  "prepares": 9,
+  "runs": [
+   0.857164,
+   0.8757,
+   0.929897,
+   0.927528,
+   0.892404,
+   0.928864,
+   0.898546
+  ],
+  "warmup_s": 0.895968
+ }
+}
