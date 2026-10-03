@@ -13,7 +13,6 @@ from .base import (
 
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
-from ..utils.measure import ground_length
 logger = get_logger(__name__)
 
 
@@ -39,6 +38,25 @@ class BreakpointTool(QgsMapToolEmitPoint):
 
         # Snap info for the current position
         self.snap_info = None
+
+    @staticmethod
+    def _store_lengths(route_layer, feat) -> float:
+        """Fill a new segment's length fields from its geometry, before it is added.
+
+        Computed here rather than left to the live length sync on purpose: the
+        new half of a split arrives through ``featureAdded``, and a hook that
+        writes from there segfaults QGIS on redo (see ``core/length_sync.py``).
+        The arithmetic itself belongs to ``core.length_manager.length_values``,
+        so a split and a recalculation cannot disagree about ``duzina_km``.
+
+        Returns the metre value it stored, which the confirmation dialog shows.
+        """
+        from ..core.length_manager import length_field_for, length_values
+        values = length_values(feat, route_layer)
+        for name, value in values.items():
+            feat.setAttribute(name, value)
+        field = length_field_for(route_layer)
+        return float(values.get(field, 0.0)) if field else 0.0
 
     def _find_route_layer(self):
         """Find the Route layer in the project."""
@@ -195,18 +213,14 @@ class BreakpointTool(QgsMapToolEmitPoint):
         feat1.setGeometry(geom1)
         feat1.setAttribute('naziv', naziv + "_a")
         feat1.setAttribute('tip_trase', tip_trase)
-        duzina_m1 = ground_length(geom1, route_layer)
-        feat1.setAttribute('duzina', duzina_m1)
-        feat1.setAttribute('duzina_km', round(duzina_m1 / 1000.0, 2))
+        duzina_m1 = self._store_lengths(route_layer, feat1)
 
         # Create second segment
         feat2 = QgsFeature(route_layer.fields())
         feat2.setGeometry(geom2)
         feat2.setAttribute('naziv', naziv + "_b")
         feat2.setAttribute('tip_trase', tip_trase)
-        duzina_m2 = ground_length(geom2, route_layer)
-        feat2.setAttribute('duzina', duzina_m2)
-        feat2.setAttribute('duzina_km', round(duzina_m2 / 1000.0, 2))
+        duzina_m2 = self._store_lengths(route_layer, feat2)
 
         # Phase 0.1: Set UUID for FiberQ Designer (new segments get new UUIDs)
         try:

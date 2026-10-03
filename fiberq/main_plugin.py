@@ -2185,6 +2185,21 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.initGui: {e}")
 
+        # --- Stored lengths follow geometry edits (core/length_sync.py) ---
+        # Idempotent re-init: an initGui() that ran without a clean unload must
+        # not leave a second LengthSync connected, or one vertex move would be
+        # written twice. Read that module before changing its guards -- the
+        # naive version of this hook segfaults QGIS on redo.
+        try:
+            previous = getattr(self, "_length_sync", None)
+            if previous is not None:
+                previous.detach()
+            from .core.length_sync import install as install_length_sync
+            self._length_sync = install_length_sync(QgsProject.instance())
+        except Exception as e:
+            logger.warning(f"Stored lengths will not follow edits this session: {e}")
+            self._length_sync = None
+
         # --- FiberQ Settings button (toolbar + menu) ---
         try:
             import os
@@ -2741,6 +2756,17 @@ class FiberQPlugin:
                 QgsProject.instance().readProject.disconnect(slot)
         except Exception as e:
             logger.debug(f"Could not disconnect schema migration slot: {e}")
+
+        # Stop following geometry edits, and disconnect every per-layer slot it
+        # holds -- a live connection surviving a plugin reload would write the
+        # length twice per gesture, and point at a dead Python object.
+        try:
+            sync = getattr(self, "_length_sync", None)
+            if sync is not None:
+                sync.detach()
+            self._length_sync = None
+        except Exception as e:
+            logger.warning(f"Could not stop the length sync: {e}")
 
         # Clear undo stacks (v1.2 — Feature 2)
         try:
