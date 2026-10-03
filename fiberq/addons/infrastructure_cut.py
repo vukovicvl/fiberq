@@ -15,13 +15,13 @@ import unicodedata
 import re
 from qgis.core import (
     QgsProject, QgsWkbTypes, QgsVectorLayer, QgsFeature, QgsGeometry, QgsPointXY,
-    QgsRectangle, QgsFeatureRequest, QgsDistanceArea,
-    QgsUnitTypes,
+    QgsRectangle, QgsFeatureRequest,
 )
 from qgis.gui import QgsMapTool, QgsVertexMarker
 
 # Phase 5.3: Logging
 from ..utils.logger import get_logger
+from ..utils.measure import ground_length
 logger = get_logger(__name__)
 
 
@@ -329,9 +329,58 @@ class InfrastructureCutTool(QgsMapTool):
             return False
 
     def _update_length_fields(self, layer: QgsVectorLayer, feat: QgsFeature):
-        """Update all length-like attributes on the feature to meters.
-        Matches common Serbian/English field names: duzina, dužina, duzina_m,
-        length, length_m, len_m, duzina_cevi, etc. Case/diacritics/spacing-insensitive.
+        """Set the length fields of a cut part, before it is added to the layer.
+
+        Computing here rather than reacting to the add afterwards is deliberate:
+        a hook that writes from ``featureAdded`` segfaults QGIS on redo, so the
+        creator is the only safe place (``core/length_sync.py`` explains why).
+
+        On a FiberQ layer the per-field rules come from
+        ``core.length_manager.length_values``, because this method used to get
+        them wrong in two ways at once:
+
+        * it built its own ``QgsDistanceArea`` and fed it ``QgsProject.ellipsoid()``
+          raw. A new project leaves that on the literal string ``'NONE'``, so the
+          measurement silently fell back to map units -- 37% long in Web Mercator
+          at Serbian latitudes (measured: a 400 m line came back as 400.0 where
+          the ground length is 291.3);
+        * it then wrote that metre value into *every* field whose name contained
+          ``duzina``, ``length`` or ``len``. ``duzina_km`` therefore got metres
+          (291.34 instead of 0.29), and a cut cable's ``total_len_m`` was reset
+          to the bare length, throwing away its slack.
+        """
+        try:
+            from ..core.length_manager import length_field_for, length_values
+            values = length_values(feat, layer)
+            if not values and length_field_for(layer) is None:
+                # Not a FiberQ layer at all: the tool cuts any line layer, so
+                # fall back to reading the field names. A FiberQ layer that
+                # returned nothing is left alone instead -- its geometry or its
+                # schema is the problem, and a guessed zero would hide it.
+                values = self._guessed_length_fields(layer, feat)
+        except Exception as e:
+            logger.warning(f"Could not measure a cut part: {e}")
+            return
+
+        fields = layer.fields()
+        for name, value in values.items():
+            idx = fields.indexOf(name)
+            if idx < 0:
+                continue
+            try:
+                feat.setAttribute(idx, self._fitted(fields[idx], value))
+            except Exception as e:
+                logger.warning(f"Could not store {name} on a cut part: {e}")
+
+    def _guessed_length_fields(self, layer: QgsVectorLayer, feat: QgsFeature):
+        """Length fields of a layer FiberQ does not own, guessed from the names.
+
+        Matches the Serbian/English names this tool has always matched (duzina,
+        dužina, duzina_m, length, len_m, duzina_cevi), diacritics and separators
+        ignored. Two rules keep the old bug from coming back on these layers
+        too: a name ending in ``km`` gets kilometres, and a name containing
+        ``total`` is left alone, because on a foreign layer there is no way to
+        know what it is a total *of*.
         """
         def _norm(s: str) -> str:
             s = (s or '').lower()
@@ -339,39 +388,29 @@ class InfrastructureCutTool(QgsMapTool):
             s = s.replace('đ', 'dj')
             s = re.sub(r'[^a-z]+', '', s)
             return s
-        names = {f.name(): i for i, f in enumerate(layer.fields())}
-        norm_names = {_norm(n): (n, idx) for n, idx in names.items()}
-        targets = []
-        for norm, (orig, idx) in norm_names.items():
-            if any(tok in norm for tok in ('duzina', 'duzina', 'duzina', 'length', 'len')):
-                targets.append((orig, idx))
-        if not targets:
-            return
-        da = QgsDistanceArea()
-        da.setSourceCrs(layer.crs(), QgsProject.instance().transformContext())
-        try:
-            da.setEllipsoid(QgsProject.instance().ellipsoid())
-        except Exception as e:
-            logger.debug(f"Error in InfrastructureCutTool._norm: {e}")
-        L = da.measureLength(feat.geometry())
-        try:
-            L = da.convertLengthMeasurement(L, QgsUnitTypes.DistanceUnit.DistanceMeters)
-        except Exception as e:
-            logger.debug(f"Error in InfrastructureCutTool._norm: {e}")
-        val_m = round(float(L or 0.0), 3)
-        for orig, idx in targets:
-            try:
-                fdef = layer.fields()[idx]
-                tname = (fdef.typeName() or '').lower()
-                if any(k in tname for k in ('int', 'integer', 'whole', 'int4', 'int8')):
-                    feat.setAttribute(idx, int(round(val_m)))
-                else:
-                    feat.setAttribute(idx, val_m)
-            except Exception:
-                try:
-                    feat.setAttribute(idx, val_m)
-                except Exception as e:
-                    logger.debug(f"Error in InfrastructureCutTool._norm: {e}")
+
+        candidates = {}
+        for fdef in layer.fields():
+            norm = _norm(fdef.name())
+            if 'total' in norm:
+                continue
+            if not any(tok in norm for tok in ('duzina', 'length', 'len')):
+                continue
+            candidates[fdef.name()] = norm
+        if not candidates:
+            return {}
+
+        metres = ground_length(feat.geometry(), layer)
+        return {name: (round(metres / 1000.0, 2) if norm.endswith('km') else round(metres, 3))
+                for name, norm in candidates.items()}
+
+    @staticmethod
+    def _fitted(field, value):
+        """``value`` as the column can hold it: whole numbers for an int field."""
+        tname = (field.typeName() or '').lower()
+        if any(k in tname for k in ('int', 'integer', 'whole', 'int4', 'int8')):
+            return int(round(value))
+        return value
 
     # ------------- Misc UI helpers -------------
     def _flash(self, msg: str):

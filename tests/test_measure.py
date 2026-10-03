@@ -179,11 +179,23 @@ LENGTH_WRITERS = [
     ("fiberq/core/cable_manager.py", 1),
     ("fiberq/core/slack_manager.py", 1),
     ("fiberq/tools/route_tool.py", 1),
-    ("fiberq/tools/breakpoint_tool.py", 2),
     ("fiberq/tools/branch_tool.py", 1),
     ("fiberq/dialogs/schematic_dialog.py", 1),
     ("fiberq/addons/reserve_hook.py", 1),
     ("fiberq/tools/pipe_tool.py", 1),
+    # The cut tool's fallback for a line layer FiberQ has no schema for; it used
+    # to build its own QgsDistanceArea and feed it the raw project ellipsoid.
+    ("fiberq/addons/infrastructure_cut.py", 1),
+]
+
+#: Modules that do not do the arithmetic at all: they ask
+#: ``core.length_manager.length_values`` what a feature's length fields should
+#: hold. These two are creators -- they fill a new feature *before* adding it,
+#: because writing a length from a ``featureAdded`` hook segfaults QGIS on redo
+#: -- so they are the places a second copy of the km rule would reappear.
+HELPER_WRITERS = [
+    ("fiberq/tools/breakpoint_tool.py", 1),
+    ("fiberq/addons/infrastructure_cut.py", 1),
 ]
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
@@ -200,6 +212,17 @@ def test_length_writers_use_ground_length(rel, count):
     ]
     assert len(calls) == count, f"{rel} should call ground_length {count}x"
     assert "from ..utils.measure import ground_length" in src
+
+
+@pytest.mark.parametrize("rel,count", HELPER_WRITERS)
+def test_creators_store_lengths_through_the_shared_helper(rel, count):
+    """One source for metres, duzina_km and total_len_m, or they drift apart."""
+    src = (REPO / rel).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    calls = [n for n in ast.walk(tree)
+             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "length_values"]
+    assert len(calls) == count, f"{rel} should call length_values {count}x"
+    assert "from ..core.length_manager import" in src
 
 
 def test_stored_length_fields_are_never_assigned_a_planar_length():
