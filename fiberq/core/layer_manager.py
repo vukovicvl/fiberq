@@ -21,7 +21,6 @@ from qgis.core import (
     QgsSingleSymbolRenderer, QgsSvgMarkerSymbolLayer,
     QgsPalLayerSettings, QgsVectorLayerSimpleLabeling,
     QgsFeature, QgsGeometry, QgsDistanceArea,
-    QgsVectorFileWriter, QgsCoordinateTransformContext,
     QgsFillSymbol, QgsLinePatternFillSymbolLayer, QgsSimpleFillSymbolLayer,
 )
 from qgis.PyQt.QtCore import QVariant
@@ -727,94 +726,6 @@ def _stylize_objects_layer(layer):
         layer.triggerRepaint()
     except Exception as e:
         logger.debug(f"Error in _stylize_objects_layer: {e}")
-
-
-# =============================================================================
-# GEOPACKAGE EXPORT FUNCTIONS (Phase 1.3)
-# =============================================================================
-
-def _telecom_export_one_layer_to_gpkg(lyr, gpkg_path, iface):
-    """
-    Export a single vector layer to the GeoPackage and repoint it in the project.
-
-    Args:
-        lyr: QgsVectorLayer to export
-        gpkg_path: Path to GeoPackage file
-        iface: QGIS interface
-
-    Returns:
-        bool: True if successful
-    """
-    # Try to delegate to ExportManager
-    try:
-        from .export_manager import export_one_layer_to_gpkg
-        return export_one_layer_to_gpkg(lyr, gpkg_path, iface)
-    except Exception as e:
-        logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")
-
-    # Fallback: inline implementation
-    base = re.sub(r"[^A-Za-z0-9_]+", "_", lyr.name()).strip("_") or "layer"
-    name = base
-
-    opts = QgsVectorFileWriter.SaveVectorOptions()
-    opts.driverName = "GPKG"
-    opts.layerName = name
-    opts.actionOnExistingFile = (
-        QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
-        if os.path.exists(gpkg_path)
-        else QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteFile
-    )
-
-    try:
-        if lyr.isEditable():
-            lyr.commitChanges()
-    except Exception as e:
-        logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")
-
-    result = QgsVectorFileWriter.writeAsVectorFormatV3(
-        lyr, gpkg_path, QgsCoordinateTransformContext(), opts
-    )
-    if isinstance(result, tuple):
-        err_code = result[0]
-        err_msg = result[1] if len(result) > 1 else ""
-    else:
-        err_code = result
-        err_msg = ""
-
-    if err_code != QgsVectorFileWriter.WriterError.NoError:
-        try:
-            iface.messageBar().pushWarning("GPKG export", f"{lyr.name()}: {err_msg}")
-        except Exception as e:
-            logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")
-        return False
-
-    uri = f"{gpkg_path}|layername={name}"
-    try:
-        lyr.setDataSource(uri, lyr.name(), "ogr")
-        try:
-            lyr.saveStyleToDatabase("default", "auto-saved by Telecom plugin", True, "")
-        except Exception as e:
-            logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")
-        return True
-    except Exception:
-        new_lyr = QgsVectorLayer(uri, lyr.name(), "ogr")
-        if new_lyr and new_lyr.isValid():
-            prj = QgsProject.instance()
-            parent = prj.layerTreeRoot().findLayer(lyr.id()).parent()
-            prj.removeMapLayer(lyr.id())
-            prj.addMapLayer(new_lyr, False)
-            parent.insertLayer(0, new_lyr)
-            try:
-                new_lyr.saveStyleToDatabase("default", "auto-saved by Telecom plugin", True, "")
-            except Exception as e:
-                logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")
-            return True
-        else:
-            try:
-                iface.messageBar().pushWarning("GPKG export", f"{lyr.name()}: cannot load new layer from GPKG ({uri})")
-            except Exception as e:
-                logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")
-            return False
 
 
 # =============================================================================
@@ -1717,6 +1628,4 @@ __all__ = [
     '_ensure_objects_layer',
     '_stylize_objects_layer',
 
-    # GeoPackage export functions (Phase 1.3)
-    '_telecom_export_one_layer_to_gpkg',
 ]

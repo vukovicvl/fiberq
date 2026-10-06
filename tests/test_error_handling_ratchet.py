@@ -101,7 +101,6 @@ WRITE_CALLS = frozenset({
 #: the GeoPackage auto-save hides, and a rule keyed on QGIS method names alone
 #: would never see them: the value thrown away is FiberQ's, not QGIS's.
 FIBERQ_WRITE_CALLS = frozenset({
-    "_telecom_export_one_layer_to_gpkg",
     "export_one_layer_to_gpkg",
     "save_all_layers_to_gpkg",
 })
@@ -128,9 +127,11 @@ CRITICAL = {
     # R1, R2
     "fiberq/core/export_manager.py": frozenset({
         "ExportManager._ask_where_to_save",
+        "ExportManager._export_one_layer",
         "ExportManager._replace_with_fresh_layer",
         "ExportManager._repoint",
         "ExportManager._save_style",
+        "ExportManager._table_name",
         "ExportManager._unique_table_name",
         "ExportManager._write_layer",
         "ExportManager._write_metadata",
@@ -142,7 +143,6 @@ CRITICAL = {
     # R1, R2, R7
     "fiberq/core/layer_manager.py": frozenset({
         "_copy_attributes_between_layers",
-        "_telecom_export_one_layer_to_gpkg",
     }),
     # R5
     "fiberq/core/relations_manager.py": frozenset({
@@ -189,8 +189,11 @@ CRITICAL = {
     }),
     # R2
     "fiberq/ui/routing_ui.py": frozenset({
+        "RoutingUI._ask_for_auto_gpkg",
         "RoutingUI._on_layer_added_auto_gpkg",
+        "RoutingUI._stop_watching_for_new_layers",
         "RoutingUI._toggle_auto_gpkg",
+        "RoutingUI._untick",
     }),
     # R8
     "fiberq/utils/routing.py": frozenset({
@@ -207,14 +210,6 @@ CRITICAL = {
 #: an error path is cosmetic, and reporting a reporting failure helps nobody --
 #: but then its reason must say so instead of naming a branch.
 ALLOWED_SILENT = {
-    ("fiberq/core/export_manager.py",
-     "ExportManager.export_one_layer_to_gpkg"): (3, "R2 Auto-save to GeoPackage -- fix/wp4-gpkg-export"),
-    ("fiberq/core/layer_manager.py",
-     "_telecom_export_one_layer_to_gpkg"): (6, "R2 Auto-save to GeoPackage -- fix/wp4-gpkg-export"),
-    ("fiberq/ui/routing_ui.py",
-     "RoutingUI._on_layer_added_auto_gpkg"): (1, "R2 Auto-save to GeoPackage -- fix/wp4-gpkg-export"),
-    ("fiberq/ui/routing_ui.py",
-     "RoutingUI._toggle_auto_gpkg"): (5, "R2 Auto-save to GeoPackage -- fix/wp4-gpkg-export"),
     ("fiberq/main_plugin.py",
      "FiberQPlugin.export_all_features"): (1, "R3 Export active layer -- fix/wp4-write-paths"),
     ("fiberq/main_plugin.py",
@@ -264,14 +259,6 @@ ALLOWED_SILENT = {
 #: one hides an exception, the other ignores an answer. Sharing one counter
 #: would let a branch "fix" a swallowed exception by checking a return value.
 ALLOWED_WRITES = {
-    ("fiberq/core/export_manager.py",
-     "ExportManager.export_one_layer_to_gpkg"): (1, "R2 Auto-save to GeoPackage -- fix/wp4-gpkg-export"),
-    ("fiberq/core/layer_manager.py",
-     "_telecom_export_one_layer_to_gpkg"): (1, "R2 Auto-save to GeoPackage -- fix/wp4-gpkg-export"),
-    ("fiberq/ui/routing_ui.py",
-     "RoutingUI._on_layer_added_auto_gpkg"): (1, "R2 Auto-save to GeoPackage -- fix/wp4-gpkg-export"),
-    ("fiberq/ui/routing_ui.py",
-     "RoutingUI._toggle_auto_gpkg"): (1, "R2 Auto-save to GeoPackage -- fix/wp4-gpkg-export"),
     ("fiberq/core/route_manager.py",
      "RouteManager.import_route_from_file"): (3, "R6 Import points / Import route -- fix/wp4-crashes-imports"),
     ("fiberq/main_plugin.py",
@@ -319,12 +306,13 @@ ALLOWED_WRITES = {
 #: it is the plan's rule and the number is right. This gate counts every handler
 #: type instead, because ``except ValueError: pass`` is every bit as silent and
 #: a narrow rule would leave a free lane open. On the same two trees the wider
-#: rule gives 830 and 816, and R1 on this branch took it to 802:
-#: eight handlers hardened and six deleted with the duplicate export. The fall of 14
+#: rule gives 830 and 816, and this branch took it to 787:
+#: R1 and R2 between them hardened seventeen and deleted twelve along with the
+#: two duplicate GeoPackage exports. The fall of 14
 #: from v1.5.0 is what branches 3 and 4 left behind
 #: when they rewrote the placement tools: handlers deleted with the code around
 #: them, less the few that ``length_sync.py`` brought in.
-SILENCE_CEILING = 802
+SILENCE_CEILING = 787
 
 
 # ---------------------------------------------------------------------------
@@ -585,7 +573,7 @@ def test_d_package_wide_silence_does_not_grow():
 #: deleting a line from CRITICAL removes a whole operation from this gate with
 #: nothing in fiberq/ changing -- and that diff looks exactly like the one
 #: section 2.2 sanctions, where a branch deletes its own allowance rows.
-HARDENED_FUNCTIONS = 45
+HARDENED_FUNCTIONS = 49
 HARDENED_FILES = 14
 
 

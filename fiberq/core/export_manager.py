@@ -341,9 +341,14 @@ class ExportManager:
         return gpkg_path
 
     @staticmethod
-    def _unique_table_name(layer, index, used):
+    def _table_name(layer, fallback="layer"):
+        """``layer``'s name reduced to what a GeoPackage table may be called."""
+        return re.sub(r"[^A-Za-z0-9_]+", "_", layer.name()).strip("_") or fallback
+
+    @classmethod
+    def _unique_table_name(cls, layer, index, used):
         """A GeoPackage table name for ``layer``, unique within this run."""
-        base = re.sub(r"[^A-Za-z0-9_]+", "_", layer.name()).strip("_") or f"layer_{index + 1}"
+        base = cls._table_name(layer, f"layer_{index + 1}")
         name = base
         counter = 1
         while name in used:
@@ -428,67 +433,43 @@ class ExportManager:
         if not written:
             errors.add("_fiberq_metadata", reason)
 
-    def export_one_layer_to_gpkg(self, layer, gpkg_path):
-        """
-        Export a single layer to GeoPackage and redirect its source.
+    def export_one_layer_to_gpkg(self, layer, gpkg_path, errors=None):
+        """Write one layer into the GeoPackage and point it at its new home.
+
+        This is the auto-save path: it runs once per layer when the user ticks
+        the box, and again for every layer added afterwards. Each of those is a
+        separate chance to fail, and each used to fail without a word.
 
         Args:
-            layer: Layer to export
-            gpkg_path: GeoPackage file path
+            layer: The layer to move into the GeoPackage.
+            gpkg_path: The GeoPackage to move it into.
+            errors: The :class:`~fiberq.utils.errors.OperationErrors` collecting
+                this operation. Auto-save converts a whole project's worth of
+                layers in one go and wants one message for all of them, so it
+                passes its own collector; a lone caller gets one made here and
+                reported on the way out.
 
         Returns:
-            bool: True if successful
+            True when the data reached the GeoPackage **and** the layer now
+            reads from it. A layer that returns False is still readable from
+            wherever it was before.
         """
-        base = re.sub(r"[^A-Za-z0-9_]+", "_", layer.name()).strip("_") or "layer"
-        name = base
+        if errors is not None:
+            return self._export_one_layer(layer, gpkg_path, errors)
+        with OperationErrors(GPKG_EXPORT, self.iface) as own:
+            return self._export_one_layer(layer, gpkg_path, own)
 
-        opts = QgsVectorFileWriter.SaveVectorOptions()
-        opts.driverName = "GPKG"
-        opts.layerName = name
-        opts.actionOnExistingFile = (
-            QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
-            if os.path.exists(gpkg_path)
-            else QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteFile
-        )
-
-        try:
-            if layer.isEditable():
-                layer.commitChanges()
-        except Exception as e:
-            logger.debug(f"Error in ExportManager.export_one_layer_to_gpkg: {e}")
-
-        result = QgsVectorFileWriter.writeAsVectorFormatV3(
-            layer, gpkg_path, QgsCoordinateTransformContext(), opts
-        )
-
-        if isinstance(result, tuple):
-            err_code = result[0]
-            err_msg = result[1] if len(result) > 1 else ""
-        else:
-            err_code = result
-            err_msg = ""
-
-        if err_code != QgsVectorFileWriter.WriterError.NoError:
-            try:
-                self.iface.messageBar().pushWarning(
-                    "GPKG export",
-                    f"Error exporting {layer.name()}: {err_msg}"
-                )
-            except Exception as e:
-                logger.debug(f"Error in ExportManager.export_one_layer_to_gpkg: {e}")
+    def _export_one_layer(self, layer, gpkg_path, errors):
+        """The body of :meth:`export_one_layer_to_gpkg`, given a collector."""
+        if layer.isEditable() and not check_commit(layer, errors):
+            # Uncommitted edits plus a repoint is how work disappears. R1's
+            # docstring has the long version.
             return False
 
-        # Redirect source
-        uri = f"{gpkg_path}|layername={name}"
-        try:
-            layer.setDataSource(uri, layer.name(), "ogr")
-            try:
-                layer.saveStyleToDatabase("default", "auto-saved by FiberQ", True, "")
-            except Exception as e:
-                logger.debug(f"Error in ExportManager.export_one_layer_to_gpkg: {e}")
-            return True
-        except Exception:
+        name = self._table_name(layer)
+        if not self._write_layer(layer, gpkg_path, name, errors):
             return False
+        return self._repoint(layer, QgsProject.instance(), f"{gpkg_path}|layername={name}", errors)
 
     # =========================================================================
     # PHASE 0.2: FIBERQ METADATA TABLE
@@ -690,10 +671,10 @@ def save_all_layers_to_gpkg(iface):
     em.save_all_layers_to_gpkg()
 
 
-def export_one_layer_to_gpkg(layer, gpkg_path, iface):
+def export_one_layer_to_gpkg(layer, gpkg_path, iface, errors=None):
     """Export one layer to GeoPackage (standalone function)."""
     em = ExportManager(iface)
-    return em.export_one_layer_to_gpkg(layer, gpkg_path)
+    return em.export_one_layer_to_gpkg(layer, gpkg_path, errors)
 
 
 __all__ = [

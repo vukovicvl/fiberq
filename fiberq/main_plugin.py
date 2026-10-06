@@ -80,7 +80,6 @@ from .core.export_manager import save_all_layers_to_gpkg  # noqa: E402
 from .core.layer_manager import (  # noqa: E402, F401
     _ensure_objects_layer,
     _stylize_objects_layer,
-    _telecom_export_one_layer_to_gpkg,
 )
 
 # =============================================================================
@@ -4290,7 +4289,6 @@ def _open_fiberq_web(iface):
 
 # =============================================================================
 # Phase 1.3: The following GPKG export functions were moved to core/layer_manager.py:
-# - _telecom_export_one_layer_to_gpkg
 # =============================================================================
 
 
@@ -4316,7 +4314,6 @@ from .dialogs.slack_dialog import SlackDialog  # noqa: E402
 # - _element_def_by_name, _ensure_element_layer_with_style, _copy_attributes_between_layers
 # - _ensure_region_layer, _collect_selected_geometries, _create_region_from_selection
 # - _set_objects_layer_alias, _apply_objects_field_aliases, _ensure_objects_layer, _stylize_objects_layer
-# - _telecom_export_one_layer_to_gpkg
 # =============================================================================
 
 

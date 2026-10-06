@@ -14,6 +14,7 @@ from .base import (
 )
 
 # Phase 5.2: Logging
+from ..utils.errors import OperationErrors
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
@@ -43,6 +44,10 @@ class RoutingUI:
         self.core = core
         self.menu = QMenu(core.iface.mainWindow())
         self.menu.setToolTipsVisible(True)
+        #: Whether this session connected the auto-save layer hook. Qt raises
+        #: from disconnect() when nothing is connected, and that is the ordinary
+        #: state, not an error worth catching.
+        self._auto_gpkg_connected = False
 
         # Add pole
         icon_add = load_icon('ic_add_pole.svg')
@@ -192,81 +197,118 @@ class RoutingUI:
             return False
 
     def _toggle_auto_gpkg(self, enabled):
-        """Toggle auto-save to GeoPackage."""
-        from ..main_plugin import _telecom_export_one_layer_to_gpkg
+        """Turn auto-save to GeoPackage on or off.
 
-        prj = QgsProject.instance()
-        if enabled:
+        A Qt slot, so it must not raise -- QGIS answers an exception here with
+        its "unhandled Python error" dialog. It used to not raise by swallowing
+        five separate failures at debug level, which in a default install is the
+        same as not noticing them. Now the collector absorbs what escapes and
+        says so in one line.
+        """
+        from ..core.export_manager import export_one_layer_to_gpkg
+
+        with OperationErrors(self.tr("Auto GPKG"), self.core.iface, absorb=True) as errors:
+            prj = QgsProject.instance()
+            if not enabled:
+                self._stop_watching_for_new_layers(prj)
+                #: Message-bar heading, reused for both the on and the off message.
+                #: "Auto GPKG" = automatic saving to a GeoPackage; GPKG is that
+                #: format's file extension. Keep "GPKG" as-is. The message beside it
+                #: ("Autosave off.") means autosaving is now DISABLED.
+                self.core.iface.messageBar().pushInfo(self.tr("Auto GPKG"), self.tr("Autosave off."))
+                return
+
             gpkg = self._project_gpkg_path()
             if not gpkg:
-                default_dir = os.path.dirname(prj.fileName()) if prj.fileName() else os.path.expanduser("~")
-                gpkg, _ = QFileDialog.getSaveFileName(
-                    self.core.iface.mainWindow(),
-                    #: Title of the file-save dialog. "GeoPackage" is the OGC file
-                    #: format (.gpkg) - keep the format name untranslated.
-                    self.tr("Choose GeoPackage file for auto-save"),
-                    os.path.join(default_dir, "Telecom.gpkg"),
-                    "GeoPackage (*.gpkg)"
-                )
+                gpkg = self._ask_for_auto_gpkg(prj)
                 if not gpkg:
-                    try:
-                        self.core.action_auto_gpkg.blockSignals(True)
-                        self.core.action_auto_gpkg.setChecked(False)
-                        self.core.action_auto_gpkg.blockSignals(False)
-                    except Exception as e:
-                        logger.debug(f"Error in RoutingUI._toggle_auto_gpkg: {e}")
+                    self._untick()
                     return
-                if not gpkg.lower().endswith(".gpkg"):
-                    gpkg += ".gpkg"
                 self._set_project_gpkg_path(gpkg)
 
-            # Convert existing memory layers
-            layers = [l for l in prj.mapLayers().values() if isinstance(l, QgsVectorLayer)]  # noqa: E741
-            for lyr in layers:
-                if self._is_memory_vector(lyr):
-                    _telecom_export_one_layer_to_gpkg(lyr, self._project_gpkg_path(), self.core.iface)
+            # Memory layers hold their features in RAM and lose them when the
+            # project closes, so they are what auto-save exists to rescue.
+            in_memory = [layer for layer in prj.mapLayers().values()
+                         if isinstance(layer, QgsVectorLayer) and self._is_memory_vector(layer)]
+            converted = sum(
+                1 for layer in in_memory
+                if export_one_layer_to_gpkg(layer, gpkg, self.core.iface, errors))
+            if converted < len(in_memory):
+                logger.warning(f"Auto-save converted {converted} of {len(in_memory)} layers into {gpkg}")
 
-            # Connect signal
-            try:
-                prj.layerWasAdded.connect(self._on_layer_added_auto_gpkg)
-            except Exception as e:
-                logger.debug(f"Error in RoutingUI._toggle_auto_gpkg: {e}")
-            try:
+            prj.layerWasAdded.connect(self._on_layer_added_auto_gpkg)
+            self._auto_gpkg_connected = True
+
+            if not errors.failed:
                 #: Message-bar heading, reused for both the on and the off message.
                 #: "Auto GPKG" = automatic saving to a GeoPackage; GPKG is that
                 #: format's file extension. Keep "GPKG" as-is. The message beside it
                 #: ("Autosave on GeoPackage.") means autosaving is now ENABLED.
-                self.core.iface.messageBar().pushSuccess(self.tr("Auto GPKG"), self.tr("Autosave on GeoPackage."))
-            except Exception as e:
-                logger.debug(f"Error in RoutingUI._toggle_auto_gpkg: {e}")
-        else:
-            try:
-                prj.layerWasAdded.disconnect(self._on_layer_added_auto_gpkg)
-            except Exception as e:
-                logger.debug(f"Error in RoutingUI._toggle_auto_gpkg: {e}")
-            try:
-                #: Message-bar heading, reused for both the on and the off message.
-                #: "Auto GPKG" = automatic saving to a GeoPackage; GPKG is that
-                #: format's file extension. Keep "GPKG" as-is. The message beside it
-                #: ("Autosave on GeoPackage.") means autosaving is now ENABLED.
-                self.core.iface.messageBar().pushInfo(self.tr("Auto GPKG"), self.tr("Autosave off."))
-            except Exception as e:
-                logger.debug(f"Error in RoutingUI._toggle_auto_gpkg: {e}")
+                self.core.iface.messageBar().pushSuccess(
+                    self.tr("Auto GPKG"), self.tr("Autosave on GeoPackage."))
+
+    def _ask_for_auto_gpkg(self, project):
+        """Ask where to keep the auto-saved copy. Empty when the user cancels."""
+        default_dir = os.path.dirname(project.fileName()) if project.fileName() else os.path.expanduser("~")
+        gpkg, _ = QFileDialog.getSaveFileName(
+            self.core.iface.mainWindow(),
+            #: Title of the file-save dialog. "GeoPackage" is the OGC file
+            #: format (.gpkg) - keep the format name untranslated.
+            self.tr("Choose GeoPackage file for auto-save"),
+            os.path.join(default_dir, "Telecom.gpkg"),
+            "GeoPackage (*.gpkg)"
+        )
+        if not gpkg:
+            return ""
+        if not gpkg.lower().endswith(".gpkg"):
+            gpkg += ".gpkg"
+        return gpkg
+
+    def _untick(self):
+        """Put the checkbox back without re-entering this slot."""
+        action = self.core.action_auto_gpkg
+        action.blockSignals(True)
+        action.setChecked(False)
+        action.blockSignals(False)
+
+    def _stop_watching_for_new_layers(self, project):
+        """Disconnect the layer hook, if this session ever connected it.
+
+        Qt raises ``TypeError`` from ``disconnect()`` when the slot was never
+        connected, which is the ordinary state when auto-save has not been
+        switched on. Tracking the connection says so without an exception, and
+        the narrow guard below is for the case the flag and Qt disagree --
+        a project replaced underneath us -- which is worth a log line.
+        """
+        if not self._auto_gpkg_connected:
+            return
+        try:
+            project.layerWasAdded.disconnect(self._on_layer_added_auto_gpkg)
+        except TypeError as exc:
+            logger.warning(f"Auto-save was already disconnected: {exc}")
+        self._auto_gpkg_connected = False
 
     def _on_layer_added_auto_gpkg(self, lyr):
-        """Handle layer added event for auto-gpkg."""
-        from ..main_plugin import _telecom_export_one_layer_to_gpkg
+        """Copy a newly added memory layer into the auto-save GeoPackage.
 
-        try:
-            if not isinstance(lyr, QgsVectorLayer):
-                return
-            if self._is_memory_vector(lyr):
-                gpkg = self._project_gpkg_path()
-                if not gpkg:
-                    return
-                _telecom_export_one_layer_to_gpkg(lyr, gpkg, self.core.iface)
-        except Exception as e:
-            logger.debug(f"Error in RoutingUI._on_layer_added_auto_gpkg: {e}")
+        A Qt slot on ``QgsProject.layerWasAdded``: it must not raise, and until
+        now it did not by wrapping its whole body in a debug-level swallow. A
+        layer that failed to save simply stayed in memory, and the user found
+        out when the project was reopened without it.
+        """
+        from ..core.export_manager import export_one_layer_to_gpkg
+
+        if not isinstance(lyr, QgsVectorLayer) or not self._is_memory_vector(lyr):
+            return
+        gpkg = self._project_gpkg_path()
+        if not gpkg:
+            return
+
+        with OperationErrors(self.tr("Auto GPKG"), self.core.iface, absorb=True) as errors:
+            # Returned so the result is answered for rather than dropped; Qt
+            # ignores a slot's return value, the collector is what reaches the
+            # user, and a caller that wants to know can still ask.
+            return export_one_layer_to_gpkg(lyr, gpkg, self.core.iface, errors)
 
 
 __all__ = ['RoutingUI']
