@@ -616,45 +616,63 @@ class ExportManager:
             # worth saying but not worth failing the export over.
             logger.warning(f"Could not stamp the project schema version: {exc}")
 
+        kept = 0
         try:
-            with closing(sqlite3.connect(gpkg_path)) as conn:
-                cur = conn.cursor()
+            # isolation_level=None puts the transaction in our hands. The
+            # sqlite3 module's legacy mode runs DDL outside any transaction,
+            # which is what made the old DROP durable the instant it ran.
+            with closing(sqlite3.connect(gpkg_path, isolation_level=None)) as conn:
+                # IMMEDIATE takes the write lock now rather than at COMMIT, so a
+                # GeoPackage another program is holding open fails here, before
+                # anything in the file has been touched.
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    conn.execute(
+                        "CREATE TABLE IF NOT EXISTS _fiberq_metadata "
+                        "(key TEXT PRIMARY KEY, value TEXT)")
+                    present = {str(row[0]) for row in
+                               conn.execute("SELECT key FROM _fiberq_metadata")}
 
-                # Drop existing metadata table if present
-                cur.execute("DROP TABLE IF EXISTS _fiberq_metadata")
+                    # Register in gpkg_contents so QGIS/GDAL recognizes it as an
+                    # attributes table.
+                    conn.execute("""
+                        INSERT OR REPLACE INTO gpkg_contents (
+                            table_name, data_type, identifier, description,
+                            last_change, srs_id
+                        ) VALUES (
+                            '_fiberq_metadata', 'attributes', '_fiberq_metadata',
+                            'FiberQ Designer metadata (relations, latent elements, color catalogs, project settings)',
+                            ?, 0
+                        )
+                    """, (metadata.get("export_timestamp", datetime.now(timezone.utc).isoformat()),))
 
-                # Create the metadata table
-                cur.execute("""
-                    CREATE TABLE _fiberq_metadata (
-                        key   TEXT PRIMARY KEY,
-                        value TEXT
-                    )
-                """)
+                    # Delete-then-insert rather than INSERT OR REPLACE: a table
+                    # some other tool created may have no primary key on `key`,
+                    # and INSERT OR REPLACE would then quietly add a second row
+                    # for the same key instead of replacing the first. This
+                    # shape repairs such a table as it writes.
+                    for key, value in metadata.items():
+                        conn.execute("DELETE FROM _fiberq_metadata WHERE key = ?", (key,))
+                        conn.execute(
+                            "INSERT INTO _fiberq_metadata (key, value) VALUES (?, ?)",
+                            (key, value))
 
-                # Register in gpkg_contents so QGIS/GDAL recognizes it as an attributes table
-                cur.execute("""
-                    INSERT OR REPLACE INTO gpkg_contents (
-                        table_name, data_type, identifier, description,
-                        last_change, srs_id
-                    ) VALUES (
-                        '_fiberq_metadata', 'attributes', '_fiberq_metadata',
-                        'FiberQ Designer metadata (relations, latent elements, color catalogs, project settings)',
-                        ?, 0
-                    )
-                """, (metadata.get("export_timestamp", datetime.now(timezone.utc).isoformat()),))
-
-                # Insert all metadata key-value pairs
-                for key, value in metadata.items():
-                    cur.execute(
-                        "INSERT INTO _fiberq_metadata (key, value) VALUES (?, ?)",
-                        (key, value)
-                    )
-
-                conn.commit()
+                    conn.execute("COMMIT")
+                except sqlite3.Error:
+                    try:
+                        conn.execute("ROLLBACK")
+                    except sqlite3.Error as rollback_exc:
+                        logger.warning(
+                            f"Could not roll back the metadata write: {rollback_exc}")
+                    raise
+                kept = len(present - set(metadata))
         except sqlite3.Error as exc:
             return False, describe(exc)
 
-        logger.debug(f"Wrote {len(metadata)} metadata entries to _fiberq_metadata in {gpkg_path}")
+        also_kept = f", keeping {kept} written by another tool" if kept else ""
+        logger.debug(
+            f"Wrote {len(metadata)} metadata entries to _fiberq_metadata "
+            f"in {gpkg_path}{also_kept}")
         return True, ""
 
 
