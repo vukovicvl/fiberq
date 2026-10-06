@@ -69,10 +69,15 @@ def project():
     while it still owns layers is a reliable segfault on QGIS 4 (the same
     reason conftest.py's city fixture returns paths rather than a project).
     """
+    def wipe(instance):
+        instance.removeAllMapLayers()
+        for scope in ("FiberQPlugin", "TelecomPlugin"):
+            instance.removeEntry(scope, "gpkg_path")
+
     instance = QgsProject.instance()
-    instance.removeAllMapLayers()
+    wipe(instance)
     yield instance
-    instance.removeAllMapLayers()
+    wipe(instance)
 
 
 def _memory_layer(name="Poles", count=1):
@@ -299,10 +304,18 @@ def test_saving_twice_to_the_same_file_is_not_an_error(iface, project, save_to, 
         layer.addFeature(extra)
         assert layer.commitChanges()
 
+    before = _tables(target)
+    sources = {layer.name(): layer.source() for layer in project.mapLayers().values()}
+
     save_to(manager, target)
 
     assert iface.bar.warnings == [], iface.bar.warnings
     assert len(iface.bar.successes) == 2
+    # No shadow tables: without the reuse rule the second save would add
+    # Poles_2 and Routes_2 beside the originals and leave the layers pointing
+    # at the new, half-empty ones.
+    assert _tables(target) == before
+    assert {layer.name(): layer.source() for layer in project.mapLayers().values()} == sources
     with sqlite3.connect(str(target)) as conn:
         assert conn.execute("SELECT COUNT(*) FROM Poles").fetchone()[0] == 2
         assert conn.execute("SELECT COUNT(*) FROM Routes").fetchone()[0] == 2

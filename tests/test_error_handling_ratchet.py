@@ -137,6 +137,8 @@ CRITICAL = {
     "fiberq/core/export_manager.py": frozenset({
         "ExportManager._ask_where_to_save",
         "ExportManager._export_one_layer",
+        "ExportManager._project_entry",
+        "ExportManager._project_is_unreadable",
         "ExportManager._replace_with_fresh_layer",
         "ExportManager._repoint",
         "ExportManager._save_style",
@@ -205,6 +207,7 @@ CRITICAL = {
         "RoutingUI._toggle_auto_gpkg",
         "RoutingUI._untick",
         "RoutingUI.on_project_target_changed",
+        "RoutingUI.settle_auto_gpkg",
     }),
     # R8
     "fiberq/utils/routing.py": frozenset({
@@ -584,7 +587,7 @@ def test_d_package_wide_silence_does_not_grow():
 #: deleting a line from CRITICAL removes a whole operation from this gate with
 #: nothing in fiberq/ changing -- and that diff looks exactly like the one
 #: section 2.2 sanctions, where a branch deletes its own allowance rows.
-HARDENED_FUNCTIONS = 57
+HARDENED_FUNCTIONS = 60
 HARDENED_FILES = 15
 
 

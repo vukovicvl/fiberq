@@ -148,8 +148,14 @@ def test_the_table_is_registered_so_gdal_can_see_it(gpkg):
 
 
 def test_a_locked_geopackage_fails_before_touching_anything(gpkg):
-    """BEGIN IMMEDIATE takes the lock up front, so a held file fails clean."""
-    _put(gpkg, {"designer_project_id": "abc-123"})
+    """BEGIN IMMEDIATE takes the lock up front, so a held file fails clean.
+
+    ``schema_version`` is seeded deliberately: it is a key the writer DELETEs
+    before re-inserting, so without the transaction the delete would stick and
+    the row would be gone. A test seeded only with keys the writer never
+    touches would pass with no transaction at all.
+    """
+    _put(gpkg, {"designer_project_id": "abc-123", "schema_version": "0.1"})
     before = _rows(gpkg)
 
     holder = sqlite3.connect(str(gpkg), isolation_level=None)
@@ -166,8 +172,15 @@ def test_a_locked_geopackage_fails_before_touching_anything(gpkg):
 
 
 def test_a_write_that_fails_part_way_rolls_back(gpkg):
-    """A trigger that rejects one key must not cost the others."""
-    _put(gpkg, {"designer_project_id": "abc-123"})
+    """A trigger that rejects one key must not cost the others.
+
+    The seeded ``project_version`` is the point: the writer deletes and
+    re-inserts it *before* reaching the key the trigger rejects, so only a real
+    rollback brings it back. Without the transaction this test fails with that
+    row missing -- which is what makes it a test of the transaction rather than
+    of the trigger.
+    """
+    _put(gpkg, {"designer_project_id": "abc-123", "project_version": "0.1"})
     before = _rows(gpkg)
     with sqlite3.connect(str(gpkg)) as conn:
         conn.execute(
@@ -181,6 +194,13 @@ def test_a_write_that_fails_part_way_rolls_back(gpkg):
     assert written is False
     assert "disk full" in reason
     assert _rows(gpkg) == before, "a partial write reached disk"
+    assert before["project_version"] == "0.1", "the rolled-back row did not come back"
+
+    with sqlite3.connect(str(gpkg)) as conn:
+        registered = conn.execute(
+            "SELECT COUNT(*) FROM gpkg_contents WHERE table_name='_fiberq_metadata'"
+        ).fetchone()[0]
+    assert registered == 0, "the failed write still registered the table"
 
 
 def test_an_interrupted_write_leaves_the_old_table_intact(gpkg):
@@ -196,29 +216,38 @@ def test_an_interrupted_write_leaves_the_old_table_intact(gpkg):
     before = _rows(gpkg)
 
     repo = str(pathlib.Path(__file__).resolve().parent.parent)
-    script = textwrap.dedent(f"""
+    # A plain string, not an f-string: the child needs braces of its own and
+    # takes its two paths on argv instead of by interpolation.
+    script = textwrap.dedent("""
         import os, sys, sqlite3
-        sys.path.insert(0, {repo!r})
+        repo, target = sys.argv[1], sys.argv[2]
+        sys.path.insert(0, repo)
         from qgis.core import QgsApplication
         app = QgsApplication([], False); app.initQgis()
 
         real_connect = sqlite3.connect
 
-        counter = [0]
+        # Kills the process one statement after the first row reaches
+        # _fiberq_metadata. Anchored on the writer's own statements rather than
+        # a process-global ordinal, which would quietly drift to somewhere
+        # harmless the next time the surrounding code changed and leave this
+        # test passing while measuring nothing. conn.execute() and
+        # cursor().execute() are both watched, so it bites the old DROP-based
+        # sequence and the new one alike.
+        state = {"inserted": 0}
 
-        # Stops the world on the sixth statement, whichever way it is run.
-        # Both conn.execute() and cursor().execute() are counted, so this bites
-        # the same on the old DROP-based sequence as on the new one -- otherwise
-        # the comparison between them would be meaningless.
         class Bomb:
             def __init__(self, inner):
                 self._inner = inner
 
             def execute(self, *args, **kwargs):
-                counter[0] += 1
-                if counter[0] == 6:
+                if state["inserted"] >= 1:
                     os._exit(9)
-                return self._inner.execute(*args, **kwargs)
+                sql = " ".join(str(args[0] if args else "").split()).upper()
+                result = self._inner.execute(*args, **kwargs)
+                if sql.startswith("INSERT") and "_FIBERQ_METADATA" in sql:
+                    state["inserted"] += 1
+                return result
 
             def cursor(self, *args, **kwargs):
                 return Bomb(self._inner.cursor(*args, **kwargs))
@@ -229,10 +258,10 @@ def test_an_interrupted_write_leaves_the_old_table_intact(gpkg):
         sqlite3.connect = lambda *a, **k: Bomb(real_connect(*a, **k))
 
         from fiberq.core.export_manager import ExportManager
-        ExportManager(None)._write_metadata_table({str(gpkg)!r})
+        ExportManager(None)._write_metadata_table(target)
         os._exit(0)
     """)
-    killed = subprocess.run([sys.executable, "-c", script],
+    killed = subprocess.run([sys.executable, "-c", script, repo, str(gpkg)],
                             capture_output=True, text=True)
 
     assert killed.returncode == 9, (
@@ -248,10 +277,33 @@ def test_a_missing_file_is_named(tmp_path):
 
 
 def test_the_metadata_round_trips_as_json(gpkg):
-    """Designer reads these values back, so they must stay parseable."""
-    assert ExportManager(FakeIface())._write_metadata_table(str(gpkg))[0] is True
-    rows = _rows(gpkg)
-    for key, value in rows.items():
-        if key.endswith("_json"):
-            json.loads(value)
+    """Designer reads these values back, so they must stay parseable.
+
+    The project entries are seeded first. Without them every ``_json`` key is
+    something json.dumps produced moments earlier, and the loop proves only
+    that json can read its own output.
+    """
+    from qgis.core import QgsProject
+
+    project = QgsProject.instance()
+    seeded = {
+        "Relacije/relations_v1": '{"relations":[{"id":1,"from":"A","to":"B"}]}',
+        "LatentElements/latent_v1": '{"cables":{"c1":["x"]}}',
+        "ColorCatalogs/catalogs_v1": '{"catalogs":[{"name":"TIA-598-C"}]}',
+    }
+    for key, value in seeded.items():
+        project.writeEntry("StuboviPlugin", key, value)
+    try:
+        assert ExportManager(FakeIface())._write_metadata_table(str(gpkg))[0] is True
+        rows = _rows(gpkg)
+
+        expected = {"relations_json", "latent_elements_json", "color_catalog_json"}
+        assert expected <= set(rows), f"missing {expected - set(rows)}"
+        for key in sorted(k for k in rows if k.endswith("_json")):
+            json.loads(rows[key])
+        assert json.loads(rows["relations_json"])["relations"][0]["from"] == "A"
+        assert rows["color_standard"] == "TIA-598-C"
+    finally:
+        for key in seeded:
+            project.removeEntry("StuboviPlugin", key)
     assert os.path.isfile(gpkg)

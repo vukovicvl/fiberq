@@ -115,45 +115,58 @@ def test_qgis3_cannot_read_a_qgis4_projects_entries(qgis4_project):
             "QGIS 3 read a QGIS 4 project entry; the warning may no longer be needed")
 
 
-def test_an_absent_entry_does_not_overwrite_the_stored_copy(tmp_path):
+def test_an_unreadable_project_does_not_overwrite_the_stored_copy(clean_project, monkeypatch):
     """The guard that stops a display problem becoming data loss.
 
-    _collect_metadata used to default an unreadable entry to ``{"relations": []}``
-    and the writer put that over the GeoPackage's good copy. One "Save all
-    layers" in QGIS 3, and the last intact copy was gone too.
-    """
-    from qgis.core import QgsProject
+    _collect_metadata defaults an absent entry to ``{"relations": []}``, and the
+    writer puts that over the GeoPackage's copy. For a project QGIS cannot read
+    at all -- QGIS 3 opening a QGIS 4 project, where EVERY entry reads absent --
+    that would destroy the last intact copy on the first "Save all layers". So
+    there, and only there, the key is omitted and the file keeps what it has.
 
+    The "only there" is the point. Keeping the stored copy for any absent entry
+    let a project that had never opened the relations dialog inherit the
+    relations of the last project exported to the same GeoPackage.
+    """
     from fiberq.core.export_manager import ExportManager
 
-    project = QgsProject.instance()
-    project.removeEntry("StuboviPlugin", "Relacije/relations_v1")
     manager = ExportManager(None)
+    clean_project.removeEntry("StuboviPlugin", "Relacije/relations_v1")
 
+    # An ordinary, readable project: absent means the user has none, and the
+    # empty default is written so the file matches the project.
+    monkeypatch.setattr(ExportManager, "_project_is_unreadable", lambda self: False)
+    assert manager._project_entry("StuboviPlugin", "Relacije/relations_v1") == ""
+    assert manager._collect_metadata()["relations_json"] == '{"relations": []}'
+
+    # A project this QGIS cannot read: say nothing, keep the stored copy.
+    monkeypatch.setattr(ExportManager, "_project_is_unreadable", lambda self: True)
     assert manager._project_entry("StuboviPlugin", "Relacije/relations_v1") is None
     assert "relations_json" not in manager._collect_metadata()
 
-    project.writeEntry("StuboviPlugin", "Relacije/relations_v1", '{"relations":[{"id":1}]}')
-    try:
-        assert manager._collect_metadata()["relations_json"] == '{"relations":[{"id":1}]}'
-    finally:
-        project.removeEntry("StuboviPlugin", "Relacije/relations_v1")
 
-
-def test_an_entry_set_to_empty_is_still_an_answer():
-    """Absent and empty are different: only absent means "say nothing"."""
-    from qgis.core import QgsProject
-
+def test_a_readable_project_is_the_default_judgement(clean_project):
+    """A project nobody has saved yet is readable: major 0 is not >= 4."""
     from fiberq.core.export_manager import ExportManager
 
-    project = QgsProject.instance()
-    project.writeEntry("StuboviPlugin", "Relacije/relations_v1", "")
-    try:
-        manager = ExportManager(None)
-        assert manager._project_entry("StuboviPlugin", "Relacije/relations_v1") == ""
-        assert manager._collect_metadata()["relations_json"] == '{"relations": []}'
-    finally:
-        project.removeEntry("StuboviPlugin", "Relacije/relations_v1")
+    assert ExportManager(None)._project_is_unreadable() is False
+
+
+def test_a_project_entry_that_exists_is_used_as_is(clean_project):
+    from fiberq.core.export_manager import ExportManager
+
+    clean_project.writeEntry("StuboviPlugin", "Relacije/relations_v1", '{"relations":[{"id":1}]}')
+    assert ExportManager(None)._collect_metadata()["relations_json"] == '{"relations":[{"id":1}]}'
+
+
+def test_an_entry_set_to_empty_is_still_an_answer(clean_project):
+    """Deliberately empty and absent both mean "the user has none" here."""
+    from fiberq.core.export_manager import ExportManager
+
+    clean_project.writeEntry("StuboviPlugin", "Relacije/relations_v1", "")
+    manager = ExportManager(None)
+    assert manager._project_entry("StuboviPlugin", "Relacije/relations_v1") == ""
+    assert manager._collect_metadata()["relations_json"] == '{"relations": []}'
 
 
 # ---------------------------------------------------------------------------
@@ -221,8 +234,19 @@ def _running_major():
     return int(Qgis.QGIS_VERSION.split(".")[0])
 
 
-def test_the_warning_names_what_cannot_be_read(plugin, clean_project, qgis4_project):
+def test_the_warning_names_what_cannot_be_read(plugin, clean_project, qgis4_project, monkeypatch):
+    """Driven as though QGIS 3 were running, so it is checked on BOTH legs.
+
+    Keyed to the real running version this was a no-op on the QGIS 4 leg: the
+    assertion there was that nothing happens, which holds whether the message
+    exists or not. Patching the version the slot reads means the text, the
+    uuid-field detection and the pushWarning call are all exercised wherever
+    the suite runs.
+    """
     from qgis.core import QgsProject
+    from fiberq.utils import compat
+
+    monkeypatch.setattr(compat, "QGIS_VERSION_INT", 34400)   # pretend 3.44
 
     clean_project.addMapLayer(_fiberq_layer())
     QgsProject.instance().read(qgis4_project)
@@ -230,13 +254,27 @@ def test_the_warning_names_what_cannot_be_read(plugin, clean_project, qgis4_proj
 
     plugin._warn_if_project_is_from_a_newer_qgis()
 
-    if _running_major() >= 4:
-        assert plugin.iface.bar.warnings == [], "QGIS 4 reads its own projects"
-    else:
-        assert len(plugin.iface.bar.warnings) == 1
-        said = plugin.iface.bar.warnings[0]
-        assert "QGIS 4" in said
-        assert "Do not save" in said
+    assert len(plugin.iface.bar.warnings) == 1, plugin.iface.bar.warnings
+    said = plugin.iface.bar.warnings[0]
+    assert "QGIS 4" in said
+    assert "Do not save" in said
+    for lost in ("relations", "catalogues", "auto-save path"):
+        assert lost in said, f"the warning does not mention {lost}"
+
+
+def test_qgis4_running_its_own_project_says_nothing(plugin, clean_project, qgis4_project, monkeypatch):
+    from qgis.core import QgsProject
+    from fiberq.utils import compat
+
+    monkeypatch.setattr(compat, "QGIS_VERSION_INT", 40000)   # pretend 4.0
+
+    clean_project.addMapLayer(_fiberq_layer())
+    QgsProject.instance().read(qgis4_project)
+    clean_project.addMapLayer(_fiberq_layer())
+
+    plugin._warn_if_project_is_from_a_newer_qgis()
+
+    assert plugin.iface.bar.warnings == []
 
 
 def test_no_warning_without_a_fiberq_layer(plugin, clean_project, qgis4_project):

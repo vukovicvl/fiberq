@@ -91,7 +91,14 @@ def ui(core):
     instance = RoutingUI.__new__(RoutingUI)
     instance.core = core
     instance._auto_gpkg_connected = False
-    return instance
+    yield instance
+    # In teardown, not at the end of each test: a failing assertion above the
+    # disconnect would otherwise leak the connection into the next test and
+    # turn one real failure into three.
+    try:
+        QgsProject.instance().layerWasAdded.disconnect(instance._on_layer_added_auto_gpkg)
+    except TypeError:
+        pass
 
 
 @pytest.fixture
@@ -222,8 +229,6 @@ def test_ticking_the_box_converts_and_reports_success(ui, core, project, tmp_pat
     assert core.bar.warnings == []
     assert ui._auto_gpkg_connected is True
 
-    project.layerWasAdded.disconnect(ui._on_layer_added_auto_gpkg)
-
 
 def test_ticking_the_box_does_not_claim_success_when_a_layer_failed(ui, core, project, tmp_path, monkeypatch):
     """The regression: green regardless of what happened to the layers.
@@ -249,8 +254,6 @@ def test_ticking_the_box_does_not_claim_success_when_a_layer_failed(ui, core, pr
     assert core.bar.successes == [], "a failed conversion must not end in green"
     assert len(core.bar.warnings) == 1
     assert "Poles" in core.bar.warnings[0]
-
-    project.layerWasAdded.disconnect(ui._on_layer_added_auto_gpkg)
 
 
 def test_cancelling_the_file_dialog_unticks_the_box(ui, core, project, monkeypatch):
@@ -358,8 +361,6 @@ def test_a_stale_target_warns_once_and_then_asks(ui, core, project, tmp_path, mo
     assert core.bar.successes == ["Autosave on GeoPackage."]
     assert ui._project_gpkg_path() == str(chosen)
 
-    project.layerWasAdded.disconnect(ui._on_layer_added_auto_gpkg)
-
 
 def test_a_target_that_is_not_a_geopackage_warns(ui, core, project, tmp_path, monkeypatch):
     decoy = tmp_path / "notes.gpkg"
@@ -384,22 +385,72 @@ def test_no_target_at_all_asks_without_a_warning(ui, core, project, monkeypatch)
     assert core.action_auto_gpkg.checked is False
 
 
-def test_a_new_project_with_no_target_unticks(ui, core, project):
+def test_a_project_with_no_target_unticks_and_says_so(ui, core, project):
     core.action_auto_gpkg.checked = True
     core.action_auto_gpkg.blocked = []
 
-    ui.on_project_target_changed()
+    ui.settle_auto_gpkg()
 
     assert core.action_auto_gpkg.checked is False
+    assert core.bar.infos == ["Autosave off: this project has no GeoPackage chosen yet."]
 
 
 def test_a_project_that_has_a_target_leaves_the_tick_alone(ui, core, project, tmp_path):
     ui._set_project_gpkg_path(str(tmp_path / "auto.gpkg"))
     core.action_auto_gpkg.checked = True
 
-    ui.on_project_target_changed()
+    ui.settle_auto_gpkg()
 
     assert core.action_auto_gpkg.checked is True
+    assert core.bar.infos == []
+
+
+def test_opening_a_project_that_carries_a_target_keeps_auto_save_on(ui, core, project, tmp_path):
+    """The bug this deferral exists for.
+
+    QgsProject.cleared fires first on every open, with the old project's
+    entries already gone and the new project's not yet read -- so a slot that
+    decided there unticked auto-save on EVERY open, including one whose project
+    carries a perfectly good target. New memory layers were then lost silently.
+    Driven through the real signals, not by calling the slot.
+    """
+    from qgis.core import QgsApplication
+
+    target = tmp_path / "auto.gpkg"
+    ui._set_project_gpkg_path(str(target))
+    saved = tmp_path / "carries-a-target.qgs"
+    assert project.write(str(saved))
+
+    core.action_auto_gpkg.checked = True
+    ui._auto_gpkg_connected = True
+    project.cleared.connect(ui.on_project_target_changed)
+    project.readProject.connect(ui.on_project_target_changed)
+    try:
+        assert project.read(str(saved))
+        QgsApplication.processEvents()
+    finally:
+        project.cleared.disconnect(ui.on_project_target_changed)
+        project.readProject.disconnect(ui.on_project_target_changed)
+
+    assert ui._project_gpkg_path() == str(target)
+    assert core.action_auto_gpkg.checked is True, "auto-save was turned off on open"
+    assert core.bar.infos == []
+
+
+def test_file_new_still_unticks(ui, core, project):
+    """File > New emits cleared and no readProject, so the deferral must still fire."""
+    from qgis.core import QgsApplication
+
+    core.action_auto_gpkg.checked = True
+    project.cleared.connect(ui.on_project_target_changed)
+    try:
+        project.clear()
+        QgsApplication.processEvents()
+    finally:
+        project.cleared.disconnect(ui.on_project_target_changed)
+
+    assert core.action_auto_gpkg.checked is False
+    assert core.bar.infos == ["Autosave off: this project has no GeoPackage chosen yet."]
 
 
 def test_a_second_layer_of_the_same_name_does_not_overwrite_the_first(core, project, tmp_path):

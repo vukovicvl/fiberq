@@ -318,7 +318,12 @@ class ExportManager:
                     # ("Cannot overwrite an OGR layer in place"), which is why
                     # every second Save all used to warn once per layer while
                     # the data on disk was perfectly correct.
-                    self._save_style(layer, errors)
+                    #
+                    # The style is not re-saved here. It is already in the
+                    # file's layer_styles table and nothing about it changed,
+                    # and on QGIS 3.22 saveStyleToDatabase over an existing
+                    # entry opens a MODAL prompt -- which in a headless or
+                    # scripted run never gets an answer.
                     saved += 1
                     continue
 
@@ -511,23 +516,48 @@ class ExportManager:
     # PHASE 0.2: FIBERQ METADATA TABLE
     # =========================================================================
 
-    @staticmethod
-    def _project_entry(scope, key):
-        """A project entry's value, or None when the project does not have it.
+    def _project_entry(self, scope, key):
+        """A project entry's value, "" when it has none, or None to say nothing.
 
-        None and "" are different answers and the difference matters here.
-        ``readEntry`` returns ``(value, found)``; a key that is absent gives
-        ``("", False)`` and a key deliberately set to empty gives ``("", True)``.
+        ``readEntry`` returns ``(value, found)``: a key that is absent gives
+        ``("", False)`` and one deliberately set to empty gives ``("", True)``.
         Measured on 3.44 and 4.0.
 
-        A QGIS 4 project opened in QGIS 3 reports every entry absent, because
-        QGIS 3 cannot read the newer properties format at all. Writing the empty
-        default over the GeoPackage's good copy in that situation is how a
-        display problem becomes data loss -- so an absent entry is omitted and
-        whatever the GeoPackage already holds is left alone.
+        An absent entry normally means the user has none, and "" is written so
+        the GeoPackage matches the project. The exception is a project this QGIS
+        cannot read at all -- QGIS 3 opening a QGIS 4 project reports *every*
+        entry absent -- where writing the empty default over the stored copy is
+        how a display problem becomes data loss. There, and only there, None
+        says "leave what is in the file alone".
+
+        The distinction matters because two projects can share one GeoPackage.
+        Keeping the stored copy whenever an entry was merely absent let a
+        project that had never opened the relations dialog inherit the relations
+        of the last project exported to the same file.
         """
         value, found = QgsProject.instance().readEntry(scope, key, "")
-        return value if found else None
+        if found:
+            return value
+        return None if self._project_is_unreadable() else ""
+
+    def _project_is_unreadable(self):
+        """True when this QGIS cannot read the current project's entries.
+
+        Exactly one case today: a project written by QGIS 4 and opened in
+        QGIS 3, which stores custom properties in a form QGIS 3 cannot parse.
+        See :mod:`fiberq.core.project_compat`.
+        """
+        from ..utils.compat import QGIS_VERSION_INT
+        from .project_compat import opened_a_newer_project
+
+        try:
+            saved_major = QgsProject.instance().lastSaveVersion().majorVersion()
+        except (AttributeError, RuntimeError) as exc:
+            # Unknown provenance: assume readable, which is what every version
+            # before this one assumed.
+            logger.warning(f"Could not read the version this project was saved with: {exc}")
+            return False
+        return opened_a_newer_project(saved_major, QGIS_VERSION_INT // 10000, True)
 
     def _collect_metadata(self):
         """

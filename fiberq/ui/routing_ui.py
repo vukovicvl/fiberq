@@ -6,7 +6,7 @@ Toolbar group for route creation and management.
 
 import os
 
-from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, QTimer
 
 from .base import (
     QAction, QMenu, QToolButton, QFileDialog, QgsProject,
@@ -304,22 +304,37 @@ class RoutingUI:
             QCoreApplication.translate('RoutingUI', source), source, path=path)
 
     def on_project_target_changed(self):
-        """Untick auto-save when the project in front of us has no target.
+        """Note that the project changed; decide once it has finished changing.
 
-        Connected to **both** ``QgsProject.cleared`` and ``readProject``, which
-        is the minimum that covers what a user can do. ``cleared`` fires first
-        on every open -- with the entries of the old project already gone and
-        the new one's not yet read, so the path always reads empty there -- and
-        again on File > New, which never emits ``readProject`` at all.
-        ``readProject`` is the only moment at which "does this project have a
-        target?" has a true answer. Reading the path in one slot wired to both
-        needs no guessing about which fired.
+        Connected to **both** ``QgsProject.cleared`` and ``readProject``, and
+        deliberately deciding nothing itself. Measured signal order: opening a
+        project emits ``cleared`` first -- with the old project's entries gone
+        and the new project's not yet read, so the path reads empty there no
+        matter what the project carries -- and then ``readProject``. File > New
+        emits ``cleared`` alone.
+
+        Deciding inside ``cleared`` therefore unticked auto-save on *every*
+        open, including a project that carries a perfectly good target, and new
+        memory layers were then lost without a word. Deferring to the event loop
+        lets both signals land first and asks the question once, of the project
+        that is actually in front of the user.
         """
+        QTimer.singleShot(0, self.settle_auto_gpkg)
+
+    def settle_auto_gpkg(self):
+        """Turn auto-save off when the project now open has nowhere to save to."""
         if self._project_gpkg_path():
             return
         self._stop_watching_for_new_layers(QgsProject.instance())
-        if self.core.action_auto_gpkg.isChecked():
-            self._untick()
+        if not self.core.action_auto_gpkg.isChecked():
+            return
+        self._untick()
+        #: Shown when a project is opened or created that has no auto-save
+        #: GeoPackage, so the setting could not be carried over. "Auto GPKG"
+        #: is the heading; GPKG is the GeoPackage file extension, keep it as-is.
+        self.core.iface.messageBar().pushInfo(
+            self.tr("Auto GPKG"),
+            self.tr("Autosave off: this project has no GeoPackage chosen yet."))
 
     def _ask_for_auto_gpkg(self, project):
         """Ask where to keep the auto-saved copy. Empty when the user cancels."""

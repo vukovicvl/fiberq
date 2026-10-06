@@ -36,6 +36,7 @@ already using, and anything else gets a name nothing else has claimed.
 """
 import os
 import sqlite3
+from urllib.parse import quote
 
 #: The first 16 bytes of any SQLite database.
 SQLITE_MAGIC = b"SQLite format 3\x00"
@@ -120,8 +121,14 @@ def existing_tables(path):
     """
     if not path or not os.path.isfile(path):
         return set()
+    # Percent-encoded, because this is a URI: an unescaped "#" ends the path and
+    # a "?" starts the query, so a GeoPackage called "pro#ject.gpkg" silently
+    # read as having no tables at all -- and a name already in the file was
+    # handed out again, which is the overwrite this module exists to prevent.
+    # quote() leaves "/" alone, so the path still resolves.
+    uri = "file:" + quote(os.path.abspath(str(path))) + "?mode=ro"
     try:
-        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
+        with sqlite3.connect(uri, uri=True) as conn:
             rows = conn.execute("SELECT table_name FROM gpkg_contents").fetchall()
     except sqlite3.Error:
         return set()

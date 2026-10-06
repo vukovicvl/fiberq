@@ -90,8 +90,26 @@ def test_a_qgis_project_named_gpkg_is_not_a_geopackage(tmp_path):
     assert gt.gpkg_target_problem(decoy) == "not_a_geopackage"
 
 
+def test_a_file_that_cannot_be_written(tmp_path, monkeypatch):
+    """Patched rather than chmod-ed, because CI runs as root and root ignores
+    the write bit -- a skipif here would mean this branch is never tested."""
+    target = _make_gpkg(tmp_path / "auto.gpkg")
+    monkeypatch.setattr(gt.os, "access", lambda path, mode: False)
+
+    assert gt.gpkg_target_problem(target) == "not_writable"
+
+
+def test_a_folder_that_cannot_be_written(tmp_path, monkeypatch):
+    folder = tmp_path / "locked"
+    folder.mkdir()
+    monkeypatch.setattr(gt.os, "access", lambda path, mode: False)
+
+    assert gt.gpkg_target_problem(folder / "auto.gpkg") == "directory_not_writable"
+
+
 @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores the write bit")
-def test_a_read_only_file(tmp_path):
+def test_a_read_only_file_for_real(tmp_path):
+    """The same thing without the patch, for anyone running as themselves."""
     target = _make_gpkg(tmp_path / "auto.gpkg")
     target.chmod(0o444)
     try:
@@ -100,15 +118,23 @@ def test_a_read_only_file(tmp_path):
         target.chmod(0o644)
 
 
-@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores the write bit")
-def test_a_read_only_folder(tmp_path):
-    folder = tmp_path / "locked"
-    folder.mkdir()
-    folder.chmod(0o555)
-    try:
-        assert gt.gpkg_target_problem(folder / "auto.gpkg") == "directory_not_writable"
-    finally:
-        folder.chmod(0o755)
+@pytest.mark.parametrize("name", [
+    "pro#ject.gpkg",      # '#' ends the path in a sqlite URI
+    "pro?ject.gpkg",      # '?' starts the query
+    "pro%20ject.gpkg",    # a literal %XX the URI parser would decode
+    "pro ject.gpkg",      # a space, for contrast: this one always worked
+])
+def test_a_path_a_uri_would_mangle_still_reads_its_tables(tmp_path, name):
+    """The read is done through a sqlite URI, so the path has to be escaped.
+
+    Unescaped, a GeoPackage called "pro#ject.gpkg" read as having no tables,
+    so a name already in the file was handed out again -- the exact overwrite
+    this module exists to prevent, defeated by a character in a filename.
+    """
+    target = _make_gpkg(tmp_path / name, ["Poles"])
+
+    assert gt.existing_tables(target) == {"Poles"}
+    assert gt.table_name_for("Poles", "Point?crs=EPSG:3857", str(target)) == "Poles_2"
 
 
 def test_every_code_it_returns_is_declared():
