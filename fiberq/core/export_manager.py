@@ -474,9 +474,31 @@ class ExportManager:
     # PHASE 0.2: FIBERQ METADATA TABLE
     # =========================================================================
 
+    @staticmethod
+    def _project_entry(scope, key):
+        """A project entry's value, or None when the project does not have it.
+
+        None and "" are different answers and the difference matters here.
+        ``readEntry`` returns ``(value, found)``; a key that is absent gives
+        ``("", False)`` and a key deliberately set to empty gives ``("", True)``.
+        Measured on 3.44 and 4.0.
+
+        A QGIS 4 project opened in QGIS 3 reports every entry absent, because
+        QGIS 3 cannot read the newer properties format at all. Writing the empty
+        default over the GeoPackage's good copy in that situation is how a
+        display problem becomes data loss -- so an absent entry is omitted and
+        whatever the GeoPackage already holds is left alone.
+        """
+        value, found = QgsProject.instance().readEntry(scope, key, "")
+        return value if found else None
+
     def _collect_metadata(self):
         """
         Collect all FiberQ metadata from the current project.
+
+        Entries the project does not have are **omitted**, not defaulted: see
+        :meth:`_project_entry`. The writer deletes and re-inserts only the keys
+        it is given, so an omitted key keeps whatever the GeoPackage holds.
 
         Returns:
             dict: Key-value pairs to store in _fiberq_metadata table
@@ -490,51 +512,35 @@ class ExportManager:
         metadata["project_version"] = SCHEMA_VERSION
 
         # 2. Relations data
-        try:
-            relations_raw = prj.readEntry("StuboviPlugin", "Relacije/relations_v1", "")[0]
-            if relations_raw:
-                # Validate it's valid JSON
-                json.loads(relations_raw)
-                metadata["relations_json"] = relations_raw
-            else:
-                metadata["relations_json"] = json.dumps({"relations": []})
-        except Exception as e:
-            logger.debug(f"Error reading relations for metadata: {e}")
-            metadata["relations_json"] = json.dumps({"relations": []})
+        relations_raw = self._project_entry("StuboviPlugin", "Relacije/relations_v1")
+        if relations_raw is not None:
+            try:
+                json.loads(relations_raw or "{}")
+                metadata["relations_json"] = relations_raw or json.dumps({"relations": []})
+            except ValueError as exc:
+                # Stored but unreadable. Reporting it and keeping the
+                # GeoPackage's copy beats replacing it with an empty one.
+                logger.warning(f"The project's relations are not valid JSON, keeping the stored copy: {exc}")
 
         # 3. Latent elements data
-        try:
-            latent_raw = prj.readEntry("StuboviPlugin", "LatentElements/latent_v1", "")[0]
-            if latent_raw:
-                json.loads(latent_raw)
-                metadata["latent_elements_json"] = latent_raw
-            else:
-                metadata["latent_elements_json"] = json.dumps({"cables": {}})
-        except Exception as e:
-            logger.debug(f"Error reading latent elements for metadata: {e}")
-            metadata["latent_elements_json"] = json.dumps({"cables": {}})
+        latent_raw = self._project_entry("StuboviPlugin", "LatentElements/latent_v1")
+        if latent_raw is not None:
+            try:
+                json.loads(latent_raw or "{}")
+                metadata["latent_elements_json"] = latent_raw or json.dumps({"cables": {}})
+            except ValueError as exc:
+                logger.warning(f"The project's latent elements are not valid JSON, keeping the stored copy: {exc}")
 
         # 4. Color standard (active color code standard name)
-        try:
-            color_raw = prj.readEntry("StuboviPlugin", "ColorCatalogs/catalogs_v1", "")[0]
-            if color_raw:
-                color_obj = json.loads(color_raw)
-                catalogs = color_obj.get("catalogs", [])
-                # Store the full catalog data
-                metadata["color_catalog_json"] = color_raw
-                # Extract first catalog name as "active" standard
-                if catalogs:
-                    names = [c.get("name", "") for c in catalogs if c.get("name")]
-                    metadata["color_standard"] = names[0] if names else "TIA-598-C"
-                else:
-                    metadata["color_standard"] = "TIA-598-C"
-            else:
-                metadata["color_standard"] = "TIA-598-C"
-                metadata["color_catalog_json"] = json.dumps({"catalogs": []})
-        except Exception as e:
-            logger.debug(f"Error reading color catalogs for metadata: {e}")
-            metadata["color_standard"] = "TIA-598-C"
-            metadata["color_catalog_json"] = json.dumps({"catalogs": []})
+        color_raw = self._project_entry("StuboviPlugin", "ColorCatalogs/catalogs_v1")
+        if color_raw is not None:
+            try:
+                catalogs = json.loads(color_raw or "{}").get("catalogs", []) if color_raw else []
+                metadata["color_catalog_json"] = color_raw or json.dumps({"catalogs": []})
+                names = [entry.get("name", "") for entry in catalogs if entry.get("name")]
+                metadata["color_standard"] = names[0] if names else "TIA-598-C"
+            except (ValueError, AttributeError) as exc:
+                logger.warning(f"The project's colour catalogues are not readable, keeping the stored copy: {exc}")
 
         # 5. CRS EPSG code
         try:

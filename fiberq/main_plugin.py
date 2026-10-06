@@ -1885,6 +1885,7 @@ class FiberQPlugin:
         # built on this line's predecessor, not before the UI group.
         QgsProject.instance().cleared.connect(self.ui_routing.on_project_target_changed)
         QgsProject.instance().readProject.connect(self.ui_routing.on_project_target_changed)
+        QgsProject.instance().readProject.connect(self._warn_if_project_is_from_a_newer_qgis)
         try:
             self.toolbar.addAction(self.action_auto_gpkg)
         except Exception as e:
@@ -2723,6 +2724,51 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Error in UUID migration: {e}")
 
+    def _warn_if_project_is_from_a_newer_qgis(self):
+        """Say once, on open, when QGIS 4 wrote settings this QGIS cannot read.
+
+        QGIS 4 serialises project properties in a form QGIS 3 does not
+        understand, so opening a QGIS 4 project here loses **every** FiberQ
+        project entry -- relations, colour catalogues, latent elements, picture
+        and drawing links, the auto-save path, and WP3's interchange
+        passthrough store. Two of those fail quietly: the colour catalogues
+        fall back to built-in defaults, so the user sees plausible colours
+        rather than an absence, and the passthrough store holds another tool's
+        data carried through an import.
+
+        QGIS logs its own generic "saved with a newer version" line to the log
+        panel, which says nothing about FiberQ and is not where anyone is
+        looking.
+        """
+        from .core.project_compat import opened_a_newer_project
+        from .utils.compat import QGIS_VERSION_INT
+        from .utils.uuid_utils import FIBERQ_UUID_FIELD
+
+        project = QgsProject.instance()
+        try:
+            saved_major = project.lastSaveVersion().majorVersion()
+        except (AttributeError, RuntimeError) as exc:
+            logger.warning(f"Could not read the version this project was saved with: {exc}")
+            return
+
+        ours = any(
+            isinstance(layer, QgsVectorLayer) and FIBERQ_UUID_FIELD in layer.fields().names()
+            for layer in project.mapLayers().values())
+        if not opened_a_newer_project(saved_major, QGIS_VERSION_INT // 10000, ours):
+            return
+
+        #: Shown once when a project saved in QGIS 4 is opened in QGIS 3. The
+        #: settings cannot be read here, and saving would remove them for good.
+        src = QT_TRANSLATE_NOOP(
+            'FiberQPlugin',
+            "This project was saved in QGIS 4. Its FiberQ settings -- relations, colour "
+            "catalogues, latent elements, picture and drawing links, the auto-save path -- "
+            "cannot be read in QGIS 3. Do not save it here: that removes them permanently.")
+        # No placeholders, so no safe_format: there is nothing for a renamed
+        # one to break.
+        self.iface.messageBar().pushWarning(
+            'FiberQ', QCoreApplication.translate('FiberQPlugin', src))
+
     def _run_schema_migrations(self):
         """Run the versioned schema-migration runner (WP1b) on the current project.
 
@@ -2833,6 +2879,11 @@ class FiberQPlugin:
 
         # The two project hooks that untick auto-save. A live connection
         # surviving a plugin reload would point at a dead Python object.
+        try:
+            QgsProject.instance().readProject.disconnect(self._warn_if_project_is_from_a_newer_qgis)
+        except TypeError as e:
+            logger.warning(f"newer-project warning hook was not connected: {e}")
+
         for signal in ("cleared", "readProject"):
             try:
                 getattr(QgsProject.instance(), signal).disconnect(
