@@ -61,7 +61,6 @@ from .layer_manager import (
     _apply_objects_field_aliases,
     _ensure_objects_layer,
     _stylize_objects_layer,
-    _telecom_save_all_layers_to_gpkg,
     _telecom_export_one_layer_to_gpkg,
 )
 
@@ -158,7 +157,6 @@ __all__ = [
     '_apply_objects_field_aliases',
     '_ensure_objects_layer',
     '_stylize_objects_layer',
-    '_telecom_save_all_layers_to_gpkg',
     '_telecom_export_one_layer_to_gpkg',
 
     # Style Manager (Phase 7)

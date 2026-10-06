@@ -26,8 +26,25 @@ from ..models.schema import SCHEMA_VERSION
 from .schema_version import mark_project_current
 
 # Phase 5.2: Logging
+from ..utils.errors import OperationErrors, check_commit, describe
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
+
+#: Title on every message-bar entry this module pushes. Kept as it has always
+#: read, so a user who has seen it before still recognises it.
+GPKG_EXPORT = "GPKG export"
+
+
+def _writer_result(result):
+    """``(code, reason)`` from whichever shape ``writeAsVectorFormatV3`` returned.
+
+    It answers with a bare error code on some QGIS builds and a tuple carrying
+    the message on others. The message is the only part worth showing a user, so
+    it is worth the two lines not to drop it.
+    """
+    if isinstance(result, tuple):
+        return result[0], (result[1] if len(result) > 1 else "")
+    return result, ""
 
 
 class ExportManager:
@@ -245,134 +262,171 @@ class ExportManager:
     # =========================================================================
 
     def save_all_layers_to_gpkg(self):
+        """Export every vector layer to one GeoPackage and repoint the project at it.
+
+        Each layer is committed, written, and only then repointed, and each of
+        those three can fail on its own. They are collected rather than raised:
+        one unreadable layer out of twelve should not stop the other eleven
+        being saved, and the user needs to know which one it was.
+
+        **A layer whose commit fails is left alone entirely** -- not written and
+        not repointed. Repointing it would swap the data source out from under
+        edits that are still only in the buffer, which turns a failed save into
+        lost work. Its old source keeps the last good copy.
         """
-        Export all vector layers to a single GeoPackage and redirect sources.
-        """
-        try:
+        with OperationErrors(GPKG_EXPORT, self.iface, absorb=True) as errors:
             prj = QgsProject.instance()
 
-            # Get save path
-            default_dir = os.path.dirname(prj.fileName()) if prj.fileName() else os.path.expanduser("~")
-            gpkg_path, _ = QFileDialog.getSaveFileName(
-                self.iface.mainWindow(),
-                "Select GeoPackage file",
-                os.path.join(default_dir, "FiberQ_Project.gpkg"),
-                "GeoPackage (*.gpkg)"
-            )
+            gpkg_path = self._ask_where_to_save(prj)
             if not gpkg_path:
                 return
-            if not gpkg_path.lower().endswith(".gpkg"):
-                gpkg_path += ".gpkg"
 
-            # Store path in project
-            try:
-                prj.writeEntry("FiberQPlugin", "gpkg_path", gpkg_path)
-            except Exception as e:
-                logger.debug(f"Error in ExportManager.save_all_layers_to_gpkg: {e}")
+            # Both keys on purpose. The auto-save checkbox reads the older
+            # "TelecomPlugin" one (ui/routing_ui.py), and the inline duplicate
+            # deleted with this change was the only other thing writing it --
+            # so dropping it here would quietly stop Save all from seeding the
+            # path that auto-save then offers. U6 teaches the reader to try the
+            # FiberQ key first; until then both are written, and a project saved
+            # by this version still opens correctly in an older one.
+            for scope in ("FiberQPlugin", "TelecomPlugin"):
+                try:
+                    prj.writeEntry(scope, "gpkg_path", gpkg_path)
+                except (AttributeError, RuntimeError) as exc:
+                    # Only the remembered path for next time; the export runs on.
+                    logger.warning(f"Could not store the GeoPackage path under {scope}: {exc}")
 
-            # Get all vector layers
             layers = [l for l in prj.mapLayers().values() if isinstance(l, QgsVectorLayer)]  # noqa: E741
             if not layers:
-                self.iface.messageBar().pushWarning("GPKG export", "No vector layers to save.")
+                self.iface.messageBar().pushWarning(GPKG_EXPORT, "No vector layers to save.")
                 return
 
-            # Commit any pending edits
-            for lyr in layers:
-                try:
-                    if lyr.isEditable():
-                        lyr.commitChanges()
-                except Exception as e:
-                    logger.debug(f"Error in ExportManager.save_all_layers_to_gpkg: {e}")
-
             used = set()
-            errors = []
-
-            for idx, lyr in enumerate(layers):
-                # Generate unique layer name
-                base = re.sub(r"[^A-Za-z0-9_]+", "_", lyr.name()).strip("_") or f"layer_{idx + 1}"
-                name = base
-                c = 1
-                while name in used:
-                    c += 1
-                    name = f"{base}_{c}"
-                used.add(name)
-
-                # Export layer
-                opts = QgsVectorFileWriter.SaveVectorOptions()
-                opts.driverName = "GPKG"
-                opts.layerName = name
-                opts.actionOnExistingFile = (
-                    QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
-                    if os.path.exists(gpkg_path)
-                    else QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteFile
-                )
-
-                result = QgsVectorFileWriter.writeAsVectorFormatV3(
-                    lyr, gpkg_path, QgsCoordinateTransformContext(), opts
-                )
-
-                if isinstance(result, tuple):
-                    err_code = result[0]
-                    err_msg = result[1] if len(result) > 1 else ""
-                else:
-                    err_code = result
-                    err_msg = ""
-
-                if err_code != QgsVectorFileWriter.WriterError.NoError:
-                    errors.append(f"{lyr.name()}: {err_msg}")
+            saved = 0
+            for index, layer in enumerate(layers):
+                if layer.isEditable() and not check_commit(layer, errors):
+                    # Not written and not repointed: see the docstring.
                     continue
 
-                # Redirect layer source to GPKG
-                uri = f"{gpkg_path}|layername={name}"
-                try:
-                    lyr.setDataSource(uri, lyr.name(), "ogr")
-                    try:
-                        lyr.saveStyleToDatabase("default", "auto-saved by FiberQ", True, "")
-                    except Exception as e:
-                        logger.debug(f"Error in ExportManager.save_all_layers_to_gpkg: {e}")
-                except Exception:
-                    # Fallback: add new layer
-                    new_lyr = QgsVectorLayer(uri, lyr.name(), "ogr")
-                    if new_lyr and new_lyr.isValid():
-                        parent = prj.layerTreeRoot().findLayer(lyr.id()).parent()
-                        prj.removeMapLayer(lyr.id())
-                        prj.addMapLayer(new_lyr, False)
-                        parent.insertLayer(0, new_lyr)
-                        try:
-                            new_lyr.saveStyleToDatabase("default", "auto-saved by FiberQ", True, "")
-                        except Exception as e:
-                            logger.debug(f"Error in ExportManager.save_all_layers_to_gpkg: {e}")
-                    else:
-                        errors.append(f"{lyr.name()}: Failed to reload from GPKG")
+                name = self._unique_table_name(layer, index, used)
+                if not self._write_layer(layer, gpkg_path, name, errors):
+                    continue
+                if not self._repoint(layer, prj, f"{gpkg_path}|layername={name}", errors):
+                    continue
+                saved += 1
 
             prj.setDirty(True)
 
-            # Phase 0.2: Write metadata table for Designer compatibility
-            try:
-                meta_ok = self._write_metadata_table(gpkg_path)
-                if meta_ok:
-                    logger.debug("FiberQ metadata table written to GPKG")
-                else:
-                    errors.append("_fiberq_metadata: Failed to write metadata table")
-            except Exception as e:
-                errors.append(f"_fiberq_metadata: {e}")
-                logger.debug(f"Error writing metadata table: {e}")
+            # Phase 0.2: metadata table for Designer compatibility
+            self._write_metadata(gpkg_path, errors)
 
-            if errors:
-                self.iface.messageBar().pushWarning(
-                    "GPKG export",
-                    "Completed with errors:\n" + "\n".join(errors)
-                )
-            else:
+            if not errors.failed:
                 self.iface.messageBar().pushSuccess(
-                    "GPKG export",
-                    f"All layers saved to:\n{gpkg_path}"
-                )
-        except Exception as e:
-            try:
-                self.iface.messageBar().pushCritical("GPKG export", f"Unexpected error: {e}")
-            except Exception as e:
-                logger.debug(f"Error in ExportManager.save_all_layers_to_gpkg: {e}")
+                    GPKG_EXPORT, f"All layers saved to:\n{gpkg_path}")
+            elif saved:
+                logger.warning(f"{saved} of {len(layers)} layers reached {gpkg_path}")
+
+    def _ask_where_to_save(self, project):
+        """The GeoPackage to write, from the user. Empty when they cancel."""
+        default_dir = os.path.dirname(project.fileName()) if project.fileName() else os.path.expanduser("~")
+        gpkg_path, _ = QFileDialog.getSaveFileName(
+            self.iface.mainWindow(),
+            "Select GeoPackage file",
+            os.path.join(default_dir, "FiberQ_Project.gpkg"),
+            "GeoPackage (*.gpkg)"
+        )
+        if not gpkg_path:
+            return ""
+        if not gpkg_path.lower().endswith(".gpkg"):
+            gpkg_path += ".gpkg"
+        return gpkg_path
+
+    @staticmethod
+    def _unique_table_name(layer, index, used):
+        """A GeoPackage table name for ``layer``, unique within this run."""
+        base = re.sub(r"[^A-Za-z0-9_]+", "_", layer.name()).strip("_") or f"layer_{index + 1}"
+        name = base
+        counter = 1
+        while name in used:
+            counter += 1
+            name = f"{base}_{counter}"
+        used.add(name)
+        return name
+
+    def _write_layer(self, layer, gpkg_path, name, errors):
+        """Write one layer into the GeoPackage. True when it got there."""
+        opts = QgsVectorFileWriter.SaveVectorOptions()
+        opts.driverName = "GPKG"
+        opts.layerName = name
+        opts.actionOnExistingFile = (
+            QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
+            if os.path.exists(gpkg_path)
+            else QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteFile
+        )
+
+        result = QgsVectorFileWriter.writeAsVectorFormatV3(
+            layer, gpkg_path, QgsCoordinateTransformContext(), opts
+        )
+        code, reason = _writer_result(result)
+        if code != QgsVectorFileWriter.WriterError.NoError:
+            errors.add(layer.name(), reason or f"the writer returned {code}")
+            return False
+        return True
+
+    def _repoint(self, layer, project, uri, errors):
+        """Point ``layer`` at its new home in the GeoPackage. True when it took.
+
+        ``setDataSource`` does not raise and does not return anything: a URI it
+        cannot open leaves the layer **invalid and silent**, which is why the
+        validity check below is the whole point of this method rather than an
+        afterthought.
+        """
+        try:
+            layer.setDataSource(uri, layer.name(), "ogr")
+        except (AttributeError, RuntimeError) as exc:
+            logger.warning(f"setDataSource raised on {layer.name()}: {exc}")
+
+        if not layer.isValid():
+            if not self._replace_with_fresh_layer(layer, project, uri, errors):
+                return False
+        else:
+            self._save_style(layer, errors)
+        return True
+
+    def _replace_with_fresh_layer(self, layer, project, uri, errors):
+        """Last resort: build the layer again from the GeoPackage and swap it in."""
+        fresh = QgsVectorLayer(uri, layer.name(), "ogr")
+        if not fresh.isValid():
+            errors.add(layer.name(), "the layer could not be reopened from the GeoPackage")
+            return False
+
+        node = project.layerTreeRoot().findLayer(layer.id())
+        parent = node.parent() if node is not None else project.layerTreeRoot()
+        project.removeMapLayer(layer.id())
+        project.addMapLayer(fresh, False)
+        parent.insertLayer(0, fresh)
+        self._save_style(fresh, errors)
+        return True
+
+    def _save_style(self, layer, errors):
+        """Store the layer's style in the GeoPackage, and say so if it will not."""
+        try:
+            problem = layer.saveStyleToDatabase("default", "auto-saved by FiberQ", True, "")
+        except (AttributeError, RuntimeError) as exc:
+            errors.add(layer.name(), exc)
+            return
+        if problem:
+            # The style is cosmetic, the data is not: reported, never fatal.
+            errors.add(layer.name(), f"the style was not saved ({problem})")
+
+    def _write_metadata(self, gpkg_path, errors):
+        """Write the Designer metadata table, and report it when it will not go."""
+        try:
+            written, reason = self._write_metadata_table(gpkg_path)
+        except (OSError, RuntimeError, ValueError) as exc:
+            errors.add("_fiberq_metadata", exc)
+            return
+        if not written:
+            errors.add("_fiberq_metadata", reason)
 
     def export_one_layer_to_gpkg(self, layer, gpkg_path):
         """
@@ -553,13 +607,22 @@ class ExportManager:
             gpkg_path: Path to the GeoPackage file
 
         Returns:
-            bool: True if successful
+            ``(written, reason)``. ``reason`` is empty on success and carries
+            sqlite's own words otherwise -- those words are usually the only
+            account of why ("database is locked", "attempt to write a readonly
+            database"), and they used to go to the debug log, which in a default
+            install means nowhere.
+
+        A failure to register the table in ``gpkg_contents`` counts as a
+        failure. GDAL lists only what is registered there, so an unregistered
+        table is one FiberQ Designer cannot see -- which is the entire purpose
+        of writing it.
         """
         import sqlite3
+        from contextlib import closing
 
         if not os.path.isfile(gpkg_path):
-            logger.debug(f"_write_metadata_table: GPKG not found at {gpkg_path}")
-            return False
+            return False, f"the GeoPackage is not there: {gpkg_path}"
 
         metadata = self._collect_metadata()
 
@@ -567,26 +630,27 @@ class ExportManager:
         # the .qgs project too (the metadata table below carries it in the GPKG).
         try:
             mark_project_current()
-        except Exception as e:
-            logger.debug(f"Could not stamp project schema version: {e}")
+        except (AttributeError, RuntimeError) as exc:
+            # The GeoPackage copy below is the one Designer reads, so this is
+            # worth saying but not worth failing the export over.
+            logger.warning(f"Could not stamp the project schema version: {exc}")
 
         try:
-            conn = sqlite3.connect(gpkg_path)
-            cur = conn.cursor()
+            with closing(sqlite3.connect(gpkg_path)) as conn:
+                cur = conn.cursor()
 
-            # Drop existing metadata table if present
-            cur.execute("DROP TABLE IF EXISTS _fiberq_metadata")
+                # Drop existing metadata table if present
+                cur.execute("DROP TABLE IF EXISTS _fiberq_metadata")
 
-            # Create the metadata table
-            cur.execute("""
-                CREATE TABLE _fiberq_metadata (
-                    key   TEXT PRIMARY KEY,
-                    value TEXT
-                )
-            """)
+                # Create the metadata table
+                cur.execute("""
+                    CREATE TABLE _fiberq_metadata (
+                        key   TEXT PRIMARY KEY,
+                        value TEXT
+                    )
+                """)
 
-            # Register in gpkg_contents so QGIS/GDAL recognizes it as an attributes table
-            try:
+                # Register in gpkg_contents so QGIS/GDAL recognizes it as an attributes table
                 cur.execute("""
                     INSERT OR REPLACE INTO gpkg_contents (
                         table_name, data_type, identifier, description,
@@ -597,29 +661,20 @@ class ExportManager:
                         ?, 0
                     )
                 """, (metadata.get("export_timestamp", datetime.now(timezone.utc).isoformat()),))
-            except Exception as e:
-                # gpkg_contents might not exist for some GPKG files — not fatal
-                logger.debug(f"Could not register in gpkg_contents: {e}")
 
-            # Insert all metadata key-value pairs
-            for key, value in metadata.items():
-                cur.execute(
-                    "INSERT INTO _fiberq_metadata (key, value) VALUES (?, ?)",
-                    (key, value)
-                )
+                # Insert all metadata key-value pairs
+                for key, value in metadata.items():
+                    cur.execute(
+                        "INSERT INTO _fiberq_metadata (key, value) VALUES (?, ?)",
+                        (key, value)
+                    )
 
-            conn.commit()
-            conn.close()
+                conn.commit()
+        except sqlite3.Error as exc:
+            return False, describe(exc)
 
-            logger.debug(f"Wrote {len(metadata)} metadata entries to _fiberq_metadata in {gpkg_path}")
-            return True
-        except Exception as e:
-            logger.debug(f"Error writing metadata table: {e}")
-            try:
-                conn.close()
-            except Exception as e:
-                logger.debug(f"Could not close GPKG connection after error: {e}")
-            return False
+        logger.debug(f"Wrote {len(metadata)} metadata entries to _fiberq_metadata in {gpkg_path}")
+        return True, ""
 
 
 # Module-level convenience function

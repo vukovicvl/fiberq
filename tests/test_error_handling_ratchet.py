@@ -27,7 +27,7 @@ the data reached the provider; discarding it turns a failed save into a success
 message.
 
 **D.** Package-wide, the number of silent handlers tracks a pinned count exactly
-and no bare ``except:`` ever appears. The 743 handlers outside the hardened
+and no bare ``except:`` ever appears. The handlers outside the hardened
 functions are out of scope for 4.2, but out of scope is not a licence to add
 more -- nor to bank the ones a branch removes as headroom for the next.
 
@@ -102,7 +102,6 @@ WRITE_CALLS = frozenset({
 #: would never see them: the value thrown away is FiberQ's, not QGIS's.
 FIBERQ_WRITE_CALLS = frozenset({
     "_telecom_export_one_layer_to_gpkg",
-    "_telecom_save_all_layers_to_gpkg",
     "export_one_layer_to_gpkg",
     "save_all_layers_to_gpkg",
 })
@@ -128,15 +127,22 @@ CRITICAL = {
     }),
     # R1, R2
     "fiberq/core/export_manager.py": frozenset({
+        "ExportManager._ask_where_to_save",
+        "ExportManager._replace_with_fresh_layer",
+        "ExportManager._repoint",
+        "ExportManager._save_style",
+        "ExportManager._unique_table_name",
+        "ExportManager._write_layer",
+        "ExportManager._write_metadata",
         "ExportManager._write_metadata_table",
         "ExportManager.export_one_layer_to_gpkg",
         "ExportManager.save_all_layers_to_gpkg",
+        "_writer_result",
     }),
     # R1, R2, R7
     "fiberq/core/layer_manager.py": frozenset({
         "_copy_attributes_between_layers",
         "_telecom_export_one_layer_to_gpkg",
-        "_telecom_save_all_layers_to_gpkg",
     }),
     # R5
     "fiberq/core/relations_manager.py": frozenset({
@@ -202,12 +208,6 @@ CRITICAL = {
 #: but then its reason must say so instead of naming a branch.
 ALLOWED_SILENT = {
     ("fiberq/core/export_manager.py",
-     "ExportManager._write_metadata_table"): (3, "R1 Save all layers to GeoPackage -- fix/wp4-gpkg-export"),
-    ("fiberq/core/export_manager.py",
-     "ExportManager.save_all_layers_to_gpkg"): (5, "R1 Save all layers to GeoPackage -- fix/wp4-gpkg-export"),
-    ("fiberq/core/layer_manager.py",
-     "_telecom_save_all_layers_to_gpkg"): (6, "R1 Save all layers to GeoPackage -- fix/wp4-gpkg-export"),
-    ("fiberq/core/export_manager.py",
      "ExportManager.export_one_layer_to_gpkg"): (3, "R2 Auto-save to GeoPackage -- fix/wp4-gpkg-export"),
     ("fiberq/core/layer_manager.py",
      "_telecom_export_one_layer_to_gpkg"): (6, "R2 Auto-save to GeoPackage -- fix/wp4-gpkg-export"),
@@ -265,10 +265,6 @@ ALLOWED_SILENT = {
 #: would let a branch "fix" a swallowed exception by checking a return value.
 ALLOWED_WRITES = {
     ("fiberq/core/export_manager.py",
-     "ExportManager.save_all_layers_to_gpkg"): (1, "R1 Save all layers to GeoPackage -- fix/wp4-gpkg-export"),
-    ("fiberq/core/layer_manager.py",
-     "_telecom_save_all_layers_to_gpkg"): (2, "R1 Save all layers to GeoPackage -- fix/wp4-gpkg-export"),
-    ("fiberq/core/export_manager.py",
      "ExportManager.export_one_layer_to_gpkg"): (1, "R2 Auto-save to GeoPackage -- fix/wp4-gpkg-export"),
     ("fiberq/core/layer_manager.py",
      "_telecom_export_one_layer_to_gpkg"): (1, "R2 Auto-save to GeoPackage -- fix/wp4-gpkg-export"),
@@ -323,10 +319,12 @@ ALLOWED_WRITES = {
 #: it is the plan's rule and the number is right. This gate counts every handler
 #: type instead, because ``except ValueError: pass`` is every bit as silent and
 #: a narrow rule would leave a free lane open. On the same two trees the wider
-#: rule gives 830 and 816. The fall of 14 is what branches 3 and 4 left behind
+#: rule gives 830 and 816, and R1 on this branch took it to 802:
+#: eight handlers hardened and six deleted with the duplicate export. The fall of 14
+#: from v1.5.0 is what branches 3 and 4 left behind
 #: when they rewrote the placement tools: handlers deleted with the code around
 #: them, less the few that ``length_sync.py`` brought in.
-SILENCE_CEILING = 816
+SILENCE_CEILING = 802
 
 
 # ---------------------------------------------------------------------------
@@ -587,7 +585,7 @@ def test_d_package_wide_silence_does_not_grow():
 #: deleting a line from CRITICAL removes a whole operation from this gate with
 #: nothing in fiberq/ changing -- and that diff looks exactly like the one
 #: section 2.2 sanctions, where a branch deletes its own allowance rows.
-HARDENED_FUNCTIONS = 38
+HARDENED_FUNCTIONS = 45
 HARDENED_FILES = 14
 
 

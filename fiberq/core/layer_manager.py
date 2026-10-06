@@ -26,7 +26,7 @@ from qgis.core import (
 )
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QColor
-from qgis.PyQt.QtWidgets import QMessageBox, QFileDialog
+from qgis.PyQt.QtWidgets import QMessageBox
 
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
@@ -732,123 +732,6 @@ def _stylize_objects_layer(layer):
 # =============================================================================
 # GEOPACKAGE EXPORT FUNCTIONS (Phase 1.3)
 # =============================================================================
-
-def _telecom_save_all_layers_to_gpkg(iface):
-    """
-    Export all vector layers to a single GeoPackage and repoint layers in the project.
-
-    Args:
-        iface: QGIS interface
-    """
-    # Try to delegate to ExportManager
-    try:
-        from .export_manager import save_all_layers_to_gpkg
-        save_all_layers_to_gpkg(iface)
-        return
-    except Exception as e:
-        logger.debug(f"Error in _telecom_save_all_layers_to_gpkg: {e}")
-
-    # Fallback: inline implementation
-    try:
-        prj = QgsProject.instance()
-
-        default_dir = os.path.dirname(prj.fileName()) if prj.fileName() else os.path.expanduser("~")
-        gpkg_path, _ = QFileDialog.getSaveFileName(
-            iface.mainWindow(),
-            "Choose GeoPackage file",
-            os.path.join(default_dir, "Telecom.gpkg"),
-            "GeoPackage (*.gpkg)"
-        )
-        if not gpkg_path:
-            return
-        if not gpkg_path.lower().endswith(".gpkg"):
-            gpkg_path += ".gpkg"
-
-        try:
-            prj.writeEntry("TelecomPlugin", "gpkg_path", gpkg_path)
-        except Exception as e:
-            logger.debug(f"Error in _telecom_save_all_layers_to_gpkg: {e}")
-
-        layers = [l for l in prj.mapLayers().values() if isinstance(l, QgsVectorLayer)]  # noqa: E741
-        if not layers:
-            iface.messageBar().pushWarning("GPKG export", "No vector layers to save.")
-            return
-
-        # Commit edits
-        for lyr in layers:
-            try:
-                if lyr.isEditable():
-                    lyr.commitChanges()
-            except Exception as e:
-                logger.debug(f"Error in _telecom_save_all_layers_to_gpkg: {e}")
-
-        used = set()
-        errors = []
-
-        for idx, lyr in enumerate(layers):
-            base = re.sub(r"[^A-Za-z0-9_]+", "_", lyr.name()).strip("_") or f"layer_{idx + 1}"
-            name = base
-            c = 1
-            while name in used:
-                c += 1
-                name = f"{base}_{c}"
-            used.add(name)
-
-            opts = QgsVectorFileWriter.SaveVectorOptions()
-            opts.driverName = "GPKG"
-            opts.layerName = name
-            opts.actionOnExistingFile = (
-                QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteLayer
-                if os.path.exists(gpkg_path)
-                else QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteFile
-            )
-
-            result = QgsVectorFileWriter.writeAsVectorFormatV3(
-                lyr, gpkg_path, QgsCoordinateTransformContext(), opts
-            )
-            if isinstance(result, tuple):
-                err_code = result[0]
-                err_msg = result[1] if len(result) > 1 else ""
-            else:
-                err_code = result
-                err_msg = ""
-
-            if err_code != QgsVectorFileWriter.WriterError.NoError:
-                errors.append(f"{lyr.name()}: {err_msg}")
-                continue
-
-            uri = f"{gpkg_path}|layername={name}"
-            try:
-                lyr.setDataSource(uri, lyr.name(), "ogr")
-                try:
-                    lyr.saveStyleToDatabase("default", "auto-saved by Telecom plugin", True, "")
-                except Exception as e:
-                    logger.debug(f"Error in _telecom_save_all_layers_to_gpkg: {e}")
-            except Exception:
-                new_lyr = QgsVectorLayer(uri, lyr.name(), "ogr")
-                if new_lyr and new_lyr.isValid():
-                    parent = prj.layerTreeRoot().findLayer(lyr.id()).parent()
-                    prj.removeMapLayer(lyr.id())
-                    prj.addMapLayer(new_lyr, False)
-                    parent.insertLayer(0, new_lyr)
-                    try:
-                        new_lyr.saveStyleToDatabase("default", "auto-saved by Telecom plugin", True, "")
-                    except Exception as e:
-                        logger.debug(f"Error in _telecom_save_all_layers_to_gpkg: {e}")
-                else:
-                    errors.append(f"{lyr.name()}: cannot load new layer from GPKG ({uri})")
-
-        prj.setDirty(True)
-        if errors:
-            iface.messageBar().pushWarning("GPKG export", "Completed with errors:\n" + "\n".join(errors))
-        else:
-            iface.messageBar().pushSuccess("GPKG export", f"All layers saved to:\n{gpkg_path}")
-    except Exception as e:
-        try:
-            iface.messageBar().pushCritical("GPKG export", f"Unexpected error: {e}")
-        except Exception as e:
-            logger.debug(f"Error in _telecom_save_all_layers_to_gpkg: {e}")
-
 
 def _telecom_export_one_layer_to_gpkg(lyr, gpkg_path, iface):
     """
@@ -1835,6 +1718,5 @@ __all__ = [
     '_stylize_objects_layer',
 
     # GeoPackage export functions (Phase 1.3)
-    '_telecom_save_all_layers_to_gpkg',
     '_telecom_export_one_layer_to_gpkg',
 ]

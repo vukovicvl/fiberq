@@ -66,9 +66,15 @@ from .core.layer_manager import (  # noqa: E402
     _copy_attributes_between_layers,
     # Service area functions
     _create_region_from_selection,
-    # GeoPackage export functions
-    _telecom_save_all_layers_to_gpkg,
 )
+
+# GeoPackage export (WP4 R1). The inline copy that used to live in
+# layer_manager is gone: it ran silently whenever delegation to this function
+# raised, opened a SECOND save dialog with no explanation, and -- if the user
+# cancelled that one -- reported nothing at all. What it wrote carried no
+# _fiberq_metadata table, which is the table FiberQ Designer reads, and it said
+# "All layers saved to..." in green regardless.
+from .core.export_manager import save_all_layers_to_gpkg  # noqa: E402
 
 # Re-exported for ui/ (objects_ui, routing_ui); pending WP2 extraction
 from .core.layer_manager import (  # noqa: E402, F401
@@ -1143,7 +1149,7 @@ class FiberQPlugin:
 
     def save_all_layers_to_gpkg(self):
         # Save all layers to GeoPackage
-        return _telecom_save_all_layers_to_gpkg(self.iface)
+        return save_all_layers_to_gpkg(self.iface)
 
     def run_create_service_area(self):
         try:
@@ -4284,7 +4290,7 @@ def _open_fiberq_web(iface):
 
 # =============================================================================
 # Phase 1.3: The following GPKG export functions were moved to core/layer_manager.py:
-# - _telecom_save_all_layers_to_gpkg, _telecom_export_one_layer_to_gpkg
+# - _telecom_export_one_layer_to_gpkg
 # =============================================================================
 
 
@@ -4310,7 +4316,7 @@ from .dialogs.slack_dialog import SlackDialog  # noqa: E402
 # - _element_def_by_name, _ensure_element_layer_with_style, _copy_attributes_between_layers
 # - _ensure_region_layer, _collect_selected_geometries, _create_region_from_selection
 # - _set_objects_layer_alias, _apply_objects_field_aliases, _ensure_objects_layer, _stylize_objects_layer
-# - _telecom_save_all_layers_to_gpkg, _telecom_export_one_layer_to_gpkg
+# - _telecom_export_one_layer_to_gpkg
 # =============================================================================
 
 
