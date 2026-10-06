@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from qgis.core import (
     QgsProject, QgsVectorLayer, QgsVectorFileWriter,
     QgsCoordinateTransformContext, QgsCoordinateReferenceSystem,
+    QgsMapLayerStyle,
 )
 from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox, QInputDialog
 
@@ -394,18 +395,54 @@ class ExportManager:
         return True
 
     def _replace_with_fresh_layer(self, layer, project, uri, errors):
-        """Last resort: build the layer again from the GeoPackage and swap it in."""
+        """Last resort: build the layer again from the GeoPackage and swap it in.
+
+        Reached only when ``setDataSource`` left the layer invalid. The data is
+        in the GeoPackage by this point -- ``_write_layer`` said so -- so a
+        fresh layer reading the same URI gives the user working data back
+        instead of a broken entry in the legend.
+
+        Two things have to be carried across, and the reason is that other parts
+        of FiberQ key on them:
+
+        * **The appearance**, captured before the swap. A fresh layer loads the
+          GeoPackage's *default* style, and saving that back would overwrite the
+          one the user set.
+        * **The layer id.** Picture links (``image_map/<layer id>/<fid>``),
+          drawing links and the relation and latent-element stores are all keyed
+          by it, so a new id silently orphans every one of them.
+          :meth:`QgsMapLayer.setId` arrived in QGIS 3.36; below that the id
+          cannot be kept, and the message says so rather than letting the user
+          discover it.
+        """
         fresh = QgsVectorLayer(uri, layer.name(), "ogr")
         if not fresh.isValid():
             errors.add(layer.name(), "the layer could not be reopened from the GeoPackage")
             return False
 
-        node = project.layerTreeRoot().findLayer(layer.id())
+        name = layer.name()
+        old_id = layer.id()
+        appearance = QgsMapLayerStyle()
+        appearance.readFromLayer(layer)
+
+        node = project.layerTreeRoot().findLayer(old_id)
         parent = node.parent() if node is not None else project.layerTreeRoot()
-        project.removeMapLayer(layer.id())
+
+        project.removeMapLayer(old_id)
+        kept_id = bool(getattr(fresh, "setId", None)) and fresh.setId(old_id)
+        if appearance.isValid():
+            appearance.writeToLayer(fresh)
         project.addMapLayer(fresh, False)
         parent.insertLayer(0, fresh)
         self._save_style(fresh, errors)
+
+        if kept_id:
+            # Reported even though it worked: the layer the user is looking at
+            # is not the object it was, and a green-only message would hide that.
+            logger.warning(f"{name} was rebuilt from the GeoPackage, keeping its id")
+        else:
+            errors.add(name, "the layer had to be rebuilt and could not keep its id, so any "
+                             "pictures, drawings or relations attached to it need re-linking")
         return True
 
     def _save_style(self, layer, errors):

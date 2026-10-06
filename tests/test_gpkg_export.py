@@ -318,3 +318,45 @@ def test_two_layers_that_flatten_to_one_name_get_two_tables(iface, project, save
 
     assert iface.bar.warnings == []
     assert {"Poles", "Poles_2"} <= _tables(target)
+
+
+def test_a_style_that_cannot_be_saved_is_reported(iface, project, save_to, tmp_path):
+    """R2's "style-save error string used": that string was being discarded.
+
+    ``saveStyleToDatabase`` does not raise and does not answer with a bool -- it
+    returns the error message, empty on success. Nobody read it, so a
+    GeoPackage whose ``layer_styles`` table rejects writes took the user's
+    styling nowhere and said the export had gone fine. Measured on both stacks:
+    the string is "Error looking for style. The query was logged".
+
+    The data still reaches the file, so this is a warning and not a failure.
+    """
+    target = tmp_path / "out.gpkg"
+    project.addMapLayer(_memory_layer("Poles"))
+    save_to(ExportManager(iface), target)
+    assert iface.bar.warnings == []
+
+    with sqlite3.connect(str(target)) as conn:
+        conn.execute("DROP TABLE IF EXISTS layer_styles")
+        conn.execute("""CREATE TABLE layer_styles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, f_table_catalog TEXT,
+            f_table_schema TEXT, f_table_name TEXT, f_geometry_column TEXT,
+            styleName TEXT, styleQML TEXT, styleSLD TEXT, useAsDefault BOOLEAN,
+            description TEXT, owner TEXT, ui TEXT, update_time DATETIME)""")
+        conn.execute("CREATE TRIGGER no_style BEFORE INSERT ON layer_styles "
+                     "BEGIN SELECT RAISE(ABORT, 'style rejected'); END;")
+        conn.commit()
+
+    iface.bar.warnings.clear()
+    iface.bar.successes.clear()
+    project.removeAllMapLayers()
+    project.addMapLayer(_memory_layer("Routes"))
+
+    save_to(ExportManager(iface), target)
+
+    assert len(iface.bar.warnings) == 1, iface.bar.warnings
+    assert "style was not saved" in iface.bar.warnings[0]
+    assert "Routes" in iface.bar.warnings[0]
+    with sqlite3.connect(str(target)) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM Routes").fetchone()[0] == 1, (
+            "a style failure must not cost the data")
