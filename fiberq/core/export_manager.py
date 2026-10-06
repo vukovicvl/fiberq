@@ -12,7 +12,6 @@ Phase 8 of the modular refactoring.
 
 import json
 import os
-import re
 from datetime import datetime, timezone
 
 from qgis.core import (
@@ -28,6 +27,7 @@ from .schema_version import mark_project_current
 # Phase 5.2: Logging
 from ..utils.errors import OperationErrors, check_commit, describe
 from ..utils.logger import get_logger
+from .gpkg_target import table_in_use, table_name_for
 logger = get_logger(__name__)
 
 #: Title on every message-bar entry this module pushes. Kept as it has always
@@ -307,7 +307,20 @@ class ExportManager:
                     # Not written and not repointed: see the docstring.
                     continue
 
-                name = self._unique_table_name(layer, index, used)
+                name = table_name_for(layer.name(), layer.source(), gpkg_path,
+                                      f"layer_{index + 1}", used)
+                used.add(name)
+
+                if table_in_use(layer.source(), gpkg_path) == name:
+                    # Already living in this file, so the commit above IS the
+                    # save. OGR refuses to overwrite a layer it has open
+                    # ("Cannot overwrite an OGR layer in place"), which is why
+                    # every second Save all used to warn once per layer while
+                    # the data on disk was perfectly correct.
+                    self._save_style(layer, errors)
+                    saved += 1
+                    continue
+
                 if not self._write_layer(layer, gpkg_path, name, errors):
                     continue
                 if not self._repoint(layer, prj, f"{gpkg_path}|layername={name}", errors):
@@ -339,23 +352,6 @@ class ExportManager:
         if not gpkg_path.lower().endswith(".gpkg"):
             gpkg_path += ".gpkg"
         return gpkg_path
-
-    @staticmethod
-    def _table_name(layer, fallback="layer"):
-        """``layer``'s name reduced to what a GeoPackage table may be called."""
-        return re.sub(r"[^A-Za-z0-9_]+", "_", layer.name()).strip("_") or fallback
-
-    @classmethod
-    def _unique_table_name(cls, layer, index, used):
-        """A GeoPackage table name for ``layer``, unique within this run."""
-        base = cls._table_name(layer, f"layer_{index + 1}")
-        name = base
-        counter = 1
-        while name in used:
-            counter += 1
-            name = f"{base}_{counter}"
-        used.add(name)
-        return name
 
     def _write_layer(self, layer, gpkg_path, name, errors):
         """Write one layer into the GeoPackage. True when it got there."""
@@ -466,7 +462,10 @@ class ExportManager:
             # docstring has the long version.
             return False
 
-        name = self._table_name(layer)
+        # Not simply the flattened layer name: that is what used to aim a new
+        # "Poles" at the table an older, since-renamed "Poles" still owned, and
+        # overwrite it. The writer reported NoError while the features went.
+        name = table_name_for(layer.name(), layer.source(), gpkg_path)
         if not self._write_layer(layer, gpkg_path, name, errors):
             return False
         return self._repoint(layer, QgsProject.instance(), f"{gpkg_path}|layername={name}", errors)

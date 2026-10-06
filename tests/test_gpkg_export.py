@@ -272,3 +272,49 @@ def test_one_message_however_many_layers_failed(iface, project, save_to, tmp_pat
 
     assert len(iface.bar.warnings) == 1
     assert "more" in iface.bar.warnings[0], "the others must still be counted"
+
+
+def test_saving_twice_to_the_same_file_is_not_an_error(iface, project, save_to, tmp_path):
+    """The second Save all used to warn once per layer while the data was fine.
+
+    Once a layer reads from the GeoPackage, committing its edits IS the save --
+    and OGR refuses to overwrite a layer it has open ("Cannot overwrite an OGR
+    layer in place"), so rewriting the table could never have worked anyway.
+    Measured on v1.5.0 and on 3.44 and 4.0 alike: every layer warned, every
+    time, on every project already living in a GeoPackage.
+    """
+    project.addMapLayer(_memory_layer("Poles"))
+    project.addMapLayer(_memory_layer("Routes"))
+    target = tmp_path / "out.gpkg"
+    manager = ExportManager(iface)
+
+    save_to(manager, target)
+    assert len(iface.bar.successes) == 1 and iface.bar.warnings == []
+
+    for layer in list(project.mapLayers().values()):
+        layer.startEditing()
+        extra = QgsFeature(layer.fields())
+        extra.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(7, 7)))
+        extra.setAttribute("id", 7)
+        layer.addFeature(extra)
+        assert layer.commitChanges()
+
+    save_to(manager, target)
+
+    assert iface.bar.warnings == [], iface.bar.warnings
+    assert len(iface.bar.successes) == 2
+    with sqlite3.connect(str(target)) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM Poles").fetchone()[0] == 2
+        assert conn.execute("SELECT COUNT(*) FROM Routes").fetchone()[0] == 2
+
+
+def test_two_layers_that_flatten_to_one_name_get_two_tables(iface, project, save_to, tmp_path):
+    """"Poles" and "Poles!" are one GeoPackage table name; they must not share one."""
+    project.addMapLayer(_memory_layer("Poles"))
+    project.addMapLayer(_memory_layer("Poles!"))
+    target = tmp_path / "out.gpkg"
+
+    save_to(ExportManager(iface), target)
+
+    assert iface.bar.warnings == []
+    assert {"Poles", "Poles_2"} <= _tables(target)

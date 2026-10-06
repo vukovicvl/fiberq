@@ -6,12 +6,15 @@ Toolbar group for route creation and management.
 
 import os
 
-from qgis.PyQt.QtCore import QCoreApplication
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
 
 from .base import (
     QAction, QMenu, QToolButton, QFileDialog, QgsProject,
     QgsVectorLayer, load_icon
 )
+
+from ..core.gpkg_target import gpkg_target_problem
+from ..i18n import safe_format
 
 # Phase 5.2: Logging
 from ..utils.errors import OperationErrors
@@ -163,19 +166,30 @@ class RoutingUI:
     # === Auto-save to GeoPackage methods ===
 
     def _project_gpkg_path(self):
-        """Get the GeoPackage path from project settings."""
-        try:
-            val = QgsProject.instance().readEntry("TelecomPlugin", "gpkg_path", "")[0]
-            return val or ""
-        except Exception:
-            return ""
+        """The GeoPackage this project auto-saves to, or "" when it has none.
+
+        Two keys, new one first, the way ``core/drawing_manager.py`` reads the
+        picture links. "Save all layers to GeoPackage" writes the path under
+        ``FiberQPlugin``; projects saved by older versions -- and this feature
+        itself, until now -- carry it under ``TelecomPlugin``. Reading only the
+        older key is why picking a file in Save all never reached the auto-save
+        checkbox.
+        """
+        project = QgsProject.instance()
+        path = project.readEntry("FiberQPlugin", "gpkg_path", "")[0]
+        if not path:
+            path = project.readEntry("TelecomPlugin", "gpkg_path", "")[0]
+        return path or ""
 
     def _set_project_gpkg_path(self, path):
-        """Set the GeoPackage path in project settings."""
-        try:
-            QgsProject.instance().writeEntry("TelecomPlugin", "gpkg_path", path or "")
-        except Exception as e:
-            logger.debug(f"Error in RoutingUI._set_project_gpkg_path: {e}")
+        """Remember the auto-save GeoPackage, under both keys.
+
+        The older key is still written so a project saved here keeps working in
+        an older FiberQ, which reads only that one.
+        """
+        project = QgsProject.instance()
+        for scope in ("FiberQPlugin", "TelecomPlugin"):
+            project.writeEntry(scope, "gpkg_path", path or "")
 
     def _is_memory_vector(self, lyr):
         """Check if a layer is a memory vector layer."""
@@ -219,7 +233,14 @@ class RoutingUI:
                 return
 
             gpkg = self._project_gpkg_path()
-            if not gpkg:
+            problem = gpkg_target_problem(gpkg)
+            if problem is not None:
+                # One sentence naming the path, before the user is asked
+                # anything. Without it, a project carried to another machine
+                # fails once per layer with a raw OGR error apiece.
+                if problem != "empty":
+                    self.core.iface.messageBar().pushWarning(
+                        self.tr("Auto GPKG"), self._target_problem_text(problem, gpkg))
                 gpkg = self._ask_for_auto_gpkg(prj)
                 if not gpkg:
                     self._untick()
@@ -246,6 +267,59 @@ class RoutingUI:
                 #: ("Autosave on GeoPackage.") means autosaving is now ENABLED.
                 self.core.iface.messageBar().pushSuccess(
                     self.tr("Auto GPKG"), self.tr("Autosave on GeoPackage."))
+
+    def _target_problem_text(self, problem, path):
+        """One sentence for a :mod:`fiberq.core.gpkg_target` problem code.
+
+        The codes live in a module with no Qt import, so the words are made
+        here where ``tr()`` can reach them.
+        """
+        if problem == "no_directory":
+            #: Shown when the project's auto-save GeoPackage is on a folder that
+            #: is not there -- typically a project opened on another machine, or
+            #: an unplugged drive. {path} is a file path, not translated.
+            source = QT_TRANSLATE_NOOP(
+                'RoutingUI',
+                "The auto-save folder is not there any more: {path}. Choose another file.")
+        elif problem in ("not_writable", "directory_not_writable"):
+            #: Shown when the auto-save GeoPackage, or the folder holding it,
+            #: cannot be written to. {path} is a file path, not translated.
+            source = QT_TRANSLATE_NOOP(
+                'RoutingUI',
+                "The auto-save file cannot be written to: {path}. Choose another file.")
+        elif problem == "is_directory":
+            #: Shown when the stored auto-save target names a folder rather than
+            #: a file. {path} is a file path, not translated.
+            source = QT_TRANSLATE_NOOP(
+                'RoutingUI',
+                "The auto-save target is a folder, not a GeoPackage: {path}. Choose a file.")
+        else:
+            #: Shown when the stored auto-save target is not a GeoPackage at all
+            #: -- the file dialog does not stop the user picking something else.
+            #: {path} is a file path, not translated.
+            source = QT_TRANSLATE_NOOP(
+                'RoutingUI',
+                "That file is not a GeoPackage: {path}. Choose another file.")
+        return safe_format(
+            QCoreApplication.translate('RoutingUI', source), source, path=path)
+
+    def on_project_target_changed(self):
+        """Untick auto-save when the project in front of us has no target.
+
+        Connected to **both** ``QgsProject.cleared`` and ``readProject``, which
+        is the minimum that covers what a user can do. ``cleared`` fires first
+        on every open -- with the entries of the old project already gone and
+        the new one's not yet read, so the path always reads empty there -- and
+        again on File > New, which never emits ``readProject`` at all.
+        ``readProject`` is the only moment at which "does this project have a
+        target?" has a true answer. Reading the path in one slot wired to both
+        needs no guessing about which fired.
+        """
+        if self._project_gpkg_path():
+            return
+        self._stop_watching_for_new_layers(QgsProject.instance())
+        if self.core.action_auto_gpkg.isChecked():
+            self._untick()
 
     def _ask_for_auto_gpkg(self, project):
         """Ask where to keep the auto-saved copy. Empty when the user cancels."""

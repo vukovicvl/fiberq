@@ -1876,6 +1876,15 @@ class FiberQPlugin:
         self.action_auto_gpkg.setCheckable(True)
         self.action_auto_gpkg.setToolTip(self.tr("When enabled: every new or memory layer is automatically written to the selected .gpkg and redirected to it"))
         self.action_auto_gpkg.toggled.connect(self.ui_routing._toggle_auto_gpkg)
+        # Untick auto-save when the project in front of us has no target. Both
+        # signals, because neither alone covers what a user can do: `cleared`
+        # fires first on every open -- and on File > New, which never emits
+        # `readProject` at all -- while `readProject` is the only moment the new
+        # project's entries can actually be read. Connected here rather than in
+        # RoutingUI.__init__ because the slot reads action_auto_gpkg, which is
+        # built on this line's predecessor, not before the UI group.
+        QgsProject.instance().cleared.connect(self.ui_routing.on_project_target_changed)
+        QgsProject.instance().readProject.connect(self.ui_routing.on_project_target_changed)
         try:
             self.toolbar.addAction(self.action_auto_gpkg)
         except Exception as e:
@@ -2821,6 +2830,17 @@ class FiberQPlugin:
             QgsProject.instance().layerWasAdded.disconnect(self.ui_routing._on_layer_added_auto_gpkg)
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.unload: {e}")
+
+        # The two project hooks that untick auto-save. A live connection
+        # surviving a plugin reload would point at a dead Python object.
+        for signal in ("cleared", "readProject"):
+            try:
+                getattr(QgsProject.instance(), signal).disconnect(
+                    self.ui_routing.on_project_target_changed)
+            except TypeError as e:
+                # Connected unconditionally in initGui, so this only fires on a
+                # second unload -- worth a line rather than a shrug.
+                logger.warning(f"auto-save {signal} hook was not connected: {e}")
 
         try:
             QgsProject.instance().layersAdded.disconnect(self._on_layers_added)

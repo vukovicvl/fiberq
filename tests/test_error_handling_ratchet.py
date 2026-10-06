@@ -124,6 +124,15 @@ CRITICAL = {
         "DataManager.load_relations",
         "DataManager.save_relations",
     }),
+    # U6: the pure pre-flight and naming rules both export paths depend on
+    "fiberq/core/gpkg_target.py": frozenset({
+        "existing_tables",
+        "flatten_name",
+        "gpkg_target_problem",
+        "is_geopackage",
+        "table_in_use",
+        "table_name_for",
+    }),
     # R1, R2
     "fiberq/core/export_manager.py": frozenset({
         "ExportManager._ask_where_to_save",
@@ -131,8 +140,6 @@ CRITICAL = {
         "ExportManager._replace_with_fresh_layer",
         "ExportManager._repoint",
         "ExportManager._save_style",
-        "ExportManager._table_name",
-        "ExportManager._unique_table_name",
         "ExportManager._write_layer",
         "ExportManager._write_metadata",
         "ExportManager._write_metadata_table",
@@ -190,10 +197,14 @@ CRITICAL = {
     # R2
     "fiberq/ui/routing_ui.py": frozenset({
         "RoutingUI._ask_for_auto_gpkg",
+        "RoutingUI._project_gpkg_path",
+        "RoutingUI._set_project_gpkg_path",
+        "RoutingUI._target_problem_text",
         "RoutingUI._on_layer_added_auto_gpkg",
         "RoutingUI._stop_watching_for_new_layers",
         "RoutingUI._toggle_auto_gpkg",
         "RoutingUI._untick",
+        "RoutingUI.on_project_target_changed",
     }),
     # R8
     "fiberq/utils/routing.py": frozenset({
@@ -306,13 +317,13 @@ ALLOWED_WRITES = {
 #: it is the plan's rule and the number is right. This gate counts every handler
 #: type instead, because ``except ValueError: pass`` is every bit as silent and
 #: a narrow rule would leave a free lane open. On the same two trees the wider
-#: rule gives 830 and 816, and this branch took it to 787:
-#: R1 and R2 between them hardened seventeen and deleted twelve along with the
-#: two duplicate GeoPackage exports. The fall of 14
+#: rule gives 830 and 816, and this branch took it to 786:
+#: R1, R2 and U6 between them hardened nineteen and deleted twelve along with
+#: the two duplicate GeoPackage exports. The fall of 14
 #: from v1.5.0 is what branches 3 and 4 left behind
 #: when they rewrote the placement tools: handlers deleted with the code around
 #: them, less the few that ``length_sync.py`` brought in.
-SILENCE_CEILING = 787
+SILENCE_CEILING = 786
 
 
 # ---------------------------------------------------------------------------
@@ -573,8 +584,8 @@ def test_d_package_wide_silence_does_not_grow():
 #: deleting a line from CRITICAL removes a whole operation from this gate with
 #: nothing in fiberq/ changing -- and that diff looks exactly like the one
 #: section 2.2 sanctions, where a branch deletes its own allowance rows.
-HARDENED_FUNCTIONS = 49
-HARDENED_FILES = 14
+HARDENED_FUNCTIONS = 57
+HARDENED_FILES = 15
 
 
 def test_the_hardened_set_is_not_quietly_narrowed():
