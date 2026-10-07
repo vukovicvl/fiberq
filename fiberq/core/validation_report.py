@@ -295,7 +295,15 @@ def to_html(result: ValidationResult, title: Optional[str] = None) -> str:
     ]
     if run["rules_skipped"]:
         meta_rows.append((_tr(QT_TRANSLATE_NOOP('ValidationReport', "Rules skipped")), ", ".join(run["rules_skipped"])))
-    parts.append(f'<h2>{_esc(_tr(QT_TRANSLATE_NOOP('ValidationReport', "Run")))}</h2><div class="meta"><dl>')
+    # Hoisted out of the f-string on purpose: nesting single quotes inside a
+    # single-quoted f-string is PEP 701, which is Python 3.12 and later. QGIS
+    # 3.22 ships Python 3.8, where this file was a hard SyntaxError -- so the
+    # whole module failed to import and "Export validation report" threw an
+    # unhandled Python error out of its Qt slot. 3.40 ships 3.12 and was fine,
+    # which is why it went unnoticed. tests/test_floor_imports.py now parses
+    # and imports every module on the declared floor.
+    run_label = _tr(QT_TRANSLATE_NOOP('ValidationReport', "Run"))
+    parts.append(f'<h2>{_esc(run_label)}</h2><div class="meta"><dl>')
     for key, value in meta_rows:
         if value in (None, "", []):
             continue
@@ -305,15 +313,18 @@ def to_html(result: ValidationResult, title: Optional[str] = None) -> str:
     # A rule that crashed is a gap in coverage, not a clean result. Say so loudly
     # rather than letting the summary imply the project was fully checked.
     if run["rule_errors"]:
-        parts.append(f'<h2>{_esc(_tr(QT_TRANSLATE_NOOP('ValidationReport', "Rules that failed to run")))}</h2><ul>')
+        failed_label = _tr(QT_TRANSLATE_NOOP('ValidationReport', "Rules that failed to run"))
+        parts.append(f'<h2>{_esc(failed_label)}</h2><ul>')
         for err in run["rule_errors"]:
             parts.append(f"<li>{_esc(err)}</li>")
         parts.append("</ul>")
 
     # --- issues -------------------------------------------------------------
-    parts.append(f'<h2>{_esc(_tr(QT_TRANSLATE_NOOP('ValidationReport', "Issues")))}</h2>')
+    issues_label = _tr(QT_TRANSLATE_NOOP('ValidationReport', "Issues"))
+    parts.append(f'<h2>{_esc(issues_label)}</h2>')
     if not data["issues"]:
-        parts.append(f'<p class="empty">{_esc(_tr(QT_TRANSLATE_NOOP('ValidationReport', "No issues found.")))}</p>')
+        none_label = _tr(QT_TRANSLATE_NOOP('ValidationReport', "No issues found."))
+        parts.append(f'<p class="empty">{_esc(none_label)}</p>')
     else:
         parts.append('<div class="scroll"><table><thead><tr>')
         for column in (_tr(QT_TRANSLATE_NOOP('ValidationReport', "Severity")), _tr(QT_TRANSLATE_NOOP('ValidationReport', "Rule")), _tr(QT_TRANSLATE_NOOP('ValidationReport', "Layer")),
@@ -342,10 +353,13 @@ def to_html(result: ValidationResult, title: Optional[str] = None) -> str:
 
     # --- breakdown ----------------------------------------------------------
     if summary["by_layer"]:
-        parts.append(f'<h2>{_esc(_tr(QT_TRANSLATE_NOOP('ValidationReport', "Issues by layer")))}</h2>'
+        by_layer_label = _tr(QT_TRANSLATE_NOOP('ValidationReport', "Issues by layer"))
+        layer_label = _tr(QT_TRANSLATE_NOOP('ValidationReport', "Layer"))
+        count_label = _tr(QT_TRANSLATE_NOOP('ValidationReport', "Issues"))
+        parts.append(f'<h2>{_esc(by_layer_label)}</h2>'
                      '<div class="scroll"><table><thead><tr>'
-                     f'<th>{_esc(_tr(QT_TRANSLATE_NOOP('ValidationReport', "Layer")))}</th>'
-                     f'<th>{_esc(_tr(QT_TRANSLATE_NOOP('ValidationReport', "Issues")))}</th>'
+                     f'<th>{_esc(layer_label)}</th>'
+                     f'<th>{_esc(count_label)}</th>'
                      "</tr></thead><tbody>")
         for layer, count in sorted(summary["by_layer"].items(),
                                    key=lambda kv: (-kv[1], kv[0])):

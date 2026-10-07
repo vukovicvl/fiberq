@@ -1,7 +1,7 @@
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QKeySequence
 from qgis.PyQt.QtWidgets import QDialog, QVBoxLayout, QLabel, QDialogButtonBox
-from qgis.PyQt.QtGui import QShortcut
+from qgis.PyQt.QtWidgets import QShortcut  # QtGui is the Qt6 home; QtWidgets works on both
 
 # Phase 5.3: Logging
 from ..utils.logger import get_logger
