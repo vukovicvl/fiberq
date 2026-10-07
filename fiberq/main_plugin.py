@@ -66,15 +66,20 @@ from .core.layer_manager import (  # noqa: E402
     _copy_attributes_between_layers,
     # Service area functions
     _create_region_from_selection,
-    # GeoPackage export functions
-    _telecom_save_all_layers_to_gpkg,
 )
+
+# GeoPackage export (WP4 R1). The inline copy that used to live in
+# layer_manager is gone: it ran silently whenever delegation to this function
+# raised, opened a SECOND save dialog with no explanation, and -- if the user
+# cancelled that one -- reported nothing at all. What it wrote carried no
+# _fiberq_metadata table, which is the table FiberQ Designer reads, and it said
+# "All layers saved to..." in green regardless.
+from .core.export_manager import save_all_layers_to_gpkg  # noqa: E402
 
 # Re-exported for ui/ (objects_ui, routing_ui); pending WP2 extraction
 from .core.layer_manager import (  # noqa: E402, F401
     _ensure_objects_layer,
     _stylize_objects_layer,
-    _telecom_export_one_layer_to_gpkg,
 )
 
 # =============================================================================
@@ -1143,7 +1148,7 @@ class FiberQPlugin:
 
     def save_all_layers_to_gpkg(self):
         # Save all layers to GeoPackage
-        return _telecom_save_all_layers_to_gpkg(self.iface)
+        return save_all_layers_to_gpkg(self.iface)
 
     def run_create_service_area(self):
         try:
@@ -1871,6 +1876,16 @@ class FiberQPlugin:
         self.action_auto_gpkg.setCheckable(True)
         self.action_auto_gpkg.setToolTip(self.tr("When enabled: every new or memory layer is automatically written to the selected .gpkg and redirected to it"))
         self.action_auto_gpkg.toggled.connect(self.ui_routing._toggle_auto_gpkg)
+        # Untick auto-save when the project in front of us has no target. Both
+        # signals, because neither alone covers what a user can do: `cleared`
+        # fires first on every open -- and on File > New, which never emits
+        # `readProject` at all -- while `readProject` is the only moment the new
+        # project's entries can actually be read. Connected here rather than in
+        # RoutingUI.__init__ because the slot reads action_auto_gpkg, which is
+        # built on this line's predecessor, not before the UI group.
+        QgsProject.instance().cleared.connect(self.ui_routing.on_project_target_changed)
+        QgsProject.instance().readProject.connect(self.ui_routing.on_project_target_changed)
+        QgsProject.instance().readProject.connect(self._warn_if_project_is_from_a_newer_qgis)
         try:
             self.toolbar.addAction(self.action_auto_gpkg)
         except Exception as e:
@@ -2709,6 +2724,51 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Error in UUID migration: {e}")
 
+    def _warn_if_project_is_from_a_newer_qgis(self):
+        """Say once, on open, when QGIS 4 wrote settings this QGIS cannot read.
+
+        QGIS 4 serialises project properties in a form QGIS 3 does not
+        understand, so opening a QGIS 4 project here loses **every** FiberQ
+        project entry -- relations, colour catalogues, latent elements, picture
+        and drawing links, the auto-save path, and WP3's interchange
+        passthrough store. Two of those fail quietly: the colour catalogues
+        fall back to built-in defaults, so the user sees plausible colours
+        rather than an absence, and the passthrough store holds another tool's
+        data carried through an import.
+
+        QGIS logs its own generic "saved with a newer version" line to the log
+        panel, which says nothing about FiberQ and is not where anyone is
+        looking.
+        """
+        from .core.project_compat import opened_a_newer_project
+        from .utils.compat import QGIS_VERSION_INT
+        from .utils.uuid_utils import FIBERQ_UUID_FIELD
+
+        project = QgsProject.instance()
+        try:
+            saved_major = project.lastSaveVersion().majorVersion()
+        except (AttributeError, RuntimeError) as exc:
+            logger.warning(f"Could not read the version this project was saved with: {exc}")
+            return
+
+        ours = any(
+            isinstance(layer, QgsVectorLayer) and FIBERQ_UUID_FIELD in layer.fields().names()
+            for layer in project.mapLayers().values())
+        if not opened_a_newer_project(saved_major, QGIS_VERSION_INT // 10000, ours):
+            return
+
+        #: Shown once when a project saved in QGIS 4 is opened in QGIS 3. The
+        #: settings cannot be read here, and saving would remove them for good.
+        src = QT_TRANSLATE_NOOP(
+            'FiberQPlugin',
+            "This project was saved in QGIS 4. Its FiberQ settings -- relations, colour "
+            "catalogues, latent elements, picture and drawing links, the auto-save path -- "
+            "cannot be read in QGIS 3. Do not save it here: that removes them permanently.")
+        # No placeholders, so no safe_format: there is nothing for a renamed
+        # one to break.
+        self.iface.messageBar().pushWarning(
+            'FiberQ', QCoreApplication.translate('FiberQPlugin', src))
+
     def _run_schema_migrations(self):
         """Run the versioned schema-migration runner (WP1b) on the current project.
 
@@ -2816,6 +2876,22 @@ class FiberQPlugin:
             QgsProject.instance().layerWasAdded.disconnect(self.ui_routing._on_layer_added_auto_gpkg)
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.unload: {e}")
+
+        # The two project hooks that untick auto-save. A live connection
+        # surviving a plugin reload would point at a dead Python object.
+        try:
+            QgsProject.instance().readProject.disconnect(self._warn_if_project_is_from_a_newer_qgis)
+        except TypeError as e:
+            logger.warning(f"newer-project warning hook was not connected: {e}")
+
+        for signal in ("cleared", "readProject"):
+            try:
+                getattr(QgsProject.instance(), signal).disconnect(
+                    self.ui_routing.on_project_target_changed)
+            except TypeError as e:
+                # Connected unconditionally in initGui, so this only fires on a
+                # second unload -- worth a line rather than a shrug.
+                logger.warning(f"auto-save {signal} hook was not connected: {e}")
 
         try:
             QgsProject.instance().layersAdded.disconnect(self._on_layers_added)
@@ -4284,7 +4360,6 @@ def _open_fiberq_web(iface):
 
 # =============================================================================
 # Phase 1.3: The following GPKG export functions were moved to core/layer_manager.py:
-# - _telecom_save_all_layers_to_gpkg, _telecom_export_one_layer_to_gpkg
 # =============================================================================
 
 
@@ -4310,7 +4385,6 @@ from .dialogs.slack_dialog import SlackDialog  # noqa: E402
 # - _element_def_by_name, _ensure_element_layer_with_style, _copy_attributes_between_layers
 # - _ensure_region_layer, _collect_selected_geometries, _create_region_from_selection
 # - _set_objects_layer_alias, _apply_objects_field_aliases, _ensure_objects_layer, _stylize_objects_layer
-# - _telecom_save_all_layers_to_gpkg, _telecom_export_one_layer_to_gpkg
 # =============================================================================
 
 
