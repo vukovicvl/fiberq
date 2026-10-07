@@ -4136,6 +4136,45 @@ class FiberQPlugin:
                         'FiberQPlugin', "the end of this route could not be moved"))
                 return
 
+            # f011: and refuse to flatten the route onto itself. There is no
+            # maximum snap distance here, so the "nearest pole" can be the pole
+            # this route's OTHER end already sits on -- which is the ordinary
+            # shape of an FTTH drop, one pole and one house. Measured on
+            # 3.22.16, 3.44.15 and 4.0.3: a 1 km route with poles at (0 0) and
+            # (5000 0) came back as LineString (0 0, 0 0), length 0, announced
+            # as "Route has been automatically attached to a pole."
+            #
+            # The test is the moved end's own NEIGHBOUR vertex, because that is
+            # what the defect actually is: a segment becomes zero-length when
+            # its two ends meet. The tempting version -- "refuse the pole the
+            # route's OTHER end is already on" -- was measured against this and
+            # misses two real cases:
+            #
+            #   route (0 0, 50 0, 100 0), pole on the bend at (50 0): the far
+            #       end is 50 m away, so it allows the last segment to collapse
+            #   a 2-part route with the pole where part 2 starts: the far end is
+            #       in part 1 and cannot see part 2 collapsing. 20 m became
+            #       10 m, reported as a success.
+            #
+            # Both are covered by tests that fail against that version. A closed
+            # loop is unaffected either way -- its ends share a position, but a
+            # pole close enough to matter is also within the min_dist guard
+            # above -- so rings are not the reason, though it is pinned too.
+            #
+            # adjacentVertices() answers -1 on the outer side of an end AND
+            # across a part boundary, and indexes the stored coordinates, the
+            # same basis as line_endpoint -- so curves and multiparts both
+            # work. Moving a vertex does not change adjacency, so reading it
+            # from the already-moved copy is the same answer.
+            before_idx, after_idx = new_geom.adjacentVertices(idx)
+            neighbour_idx = after_idx if must_start else before_idx
+            if neighbour_idx >= 0 and QgsPointXY(new_geom.vertexAt(neighbour_idx)).distance(nearest_stub) < 1e-2:
+                src = QT_TRANSLATE_NOOP('FiberQPlugin', "The nearest pole is {distance} map units away and already sits where this route's next vertex is, so attaching the route to it would collapse the route to nothing. The route was left alone.")
+                self.iface.messageBar().pushWarning(
+                    self.tr("Route correction"),
+                    safe_format(self.tr(src), src, distance=f"{min_dist:.1f}"))
+                return
+
             # R10: both results used to be discarded, so a Correct that the
             # provider refused still announced "Route has been automatically
             # attached to a pole." -- and the user went looking for a route
