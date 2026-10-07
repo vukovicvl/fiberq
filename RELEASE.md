@@ -116,12 +116,33 @@ CI builds against `qgis/qgis:3.44-trixie` (QGIS 3, Qt5) and `qgis/qgis:4.0-trixi
 (QGIS 4, Qt6). `metadata.txt` declares `qgisMinimumVersion=3.22` and
 `qgisMaximumVersion=4.99`.
 
-Note: CI does **not** run a 3.22 image (old images are pruned upstream, and
-`pytest-qgis` itself requires QGIS ≥ 3.34, so 3.34 is the realistic CI floor). The
-3.22 LTR floor is held by careful API usage and the Qt5/Qt6 compatibility layer
-(`fiberq/utils/compat.py`), **not** by CI — verify it manually before any release
-that touches Qt/QGIS APIs. Re-pin the CI tags in `.github/workflows/ci.yml` as the
-LTR/stable lines move.
+CI **does** cover the 3.22 floor, in two legs, and the reason it takes two is worth
+knowing before you change either:
+
+| Leg | Image | Python | Runs | Catches |
+|---|---|---|---|---|
+| `Declared floor (parse + import)` | `qgis/qgis:3.22` | 3.8 | `make floor-check` | syntax and imports the oldest supported Python rejects |
+| `Declared floor (test suite)` | `qgis/qgis:release-3_22` | 3.10 | `make test` | behaviour — 775 pass, 12 skip, ~80 s |
+
+Both are QGIS 3.22.16. The split exists because `pytest-qgis` declares
+`Requires-Python >= 3.10`, so it cannot even be imported on the `3.22` image's Python
+3.8 — and 3.8 is the only stack that can catch a construct newer Pythons accept. A
+release shipped with `core/validation_report.py` a hard `SyntaxError` on 3.8 and all
+six addons unimportable there, past a green CI, because this note previously claimed
+3.22 could not be tested at all.
+
+Two caveats, both deliberate:
+
+- The test leg runs `make test` but **not** `make lint`. `tests/floor_seed/` holds
+  files that are invalid before Python 3.12 on purpose, so flake8 reports E999 on them
+  under 3.10. Lint belongs on a developer-grade Python.
+- `pytest-qgis` 4.x says it wants QGIS ≥ 3.34. It is being used outside that range
+  here and the suite passes, but if that leg alone goes red, first ask whether it is
+  the plugin or the harness.
+
+Re-pin the CI tags in `.github/workflows/ci.yml` as the LTR/stable lines move, and keep
+`FLOOR_IMAGE` in the `Makefile` and `qgisMinimumVersion` in `metadata.txt` in step with
+each other.
 
 The Qt6 side has one more gate: `make qt6-check` reads the source the way
 plugins.qgis.org does. The QGIS 4 test leg cannot catch everything, because

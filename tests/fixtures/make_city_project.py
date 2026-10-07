@@ -1458,7 +1458,8 @@ def _set_view_extent(project, layers):
     from qgis.core import (QgsCoordinateReferenceSystem, QgsRectangle,
                            QgsReferencedRectangle)
 
-    # Not setNull(): that only arrived in QGIS 3.36, and this fixture is also
+    # Not setNull(): that only arrived in QGIS 3.34 (measured: absent on
+    # 3.22.16, present on 3.34.15), and this fixture is also
     # read on 3.22 LTR. A default-constructed QgsRectangle already reports
     # isNull(), and combineExtentWith() special-cases a null rectangle, so the
     # union is identical -- verified equal on 3.22.16, 3.44.15 and 4.0.3.

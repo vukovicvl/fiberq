@@ -12,7 +12,7 @@ View → Toolbars → FiberQ Quick.
 from qgis.PyQt.QtCore import Qt, QCoreApplication, QT_TRANSLATE_NOOP
 from qgis.PyQt.QtGui import QKeySequence
 pass
-from qgis.PyQt.QtGui import QAction, QShortcut  # noqa: E402
+from qgis.PyQt.QtWidgets import QAction, QShortcut  # noqa: E402  # QtGui is the Qt6 home; QtWidgets works on both
 
 from qgis.core import QgsSettings  # noqa: E402
 

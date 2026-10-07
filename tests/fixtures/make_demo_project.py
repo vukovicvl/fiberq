@@ -458,8 +458,11 @@ def _set_view_extent(project, layers):
     from qgis.core import (QgsCoordinateReferenceSystem, QgsRectangle,
                            QgsReferencedRectangle)
 
+    # Not setNull(): it only arrived in QGIS 3.34 (measured absent on 3.22.16,
+    # present on 3.34.15) and the declared floor is 3.22, where this was an
+    # AttributeError that failed 16 tests. A default-constructed QgsRectangle
+    # already reports isNull(), so the call was a no-op everywhere it worked.
     extent = QgsRectangle()
-    extent.setNull()
     for layer in layers:
         rect = layer.extent()
         if not rect.isNull():

@@ -307,10 +307,14 @@ Other cross-version rules:
 - Use **`exec()`**, not `exec_()` (removed in PyQt6).
 - Where a genuine API difference exists, put the shim in
   `fiberq/utils/compat.py` rather than sprinkling version checks.
-- CI does not run a 3.22 image (upstream prunes old images, and `pytest-qgis`
-  needs QGIS ≥ 3.34). The 3.22 floor is held by careful API usage and
-  `compat.py`, **not** by CI. If you touch Qt or QGIS APIs, say so in the pull
-  request so it can be checked manually.
+- CI **does** cover the 3.22 floor, in two legs: `make floor-check` parses and
+  imports every module on `qgis/qgis:3.22` (Python 3.8), and the full suite runs
+  on `qgis/qgis:release-3_22` (Python 3.10, same QGIS 3.22.16). Two legs because
+  `pytest-qgis` needs Python ≥ 3.10 and so cannot run on the 3.8 image, while 3.8
+  is the only stack that catches syntax a newer Python accepts. See `RELEASE.md`.
+- Two things that look like mistakes and are not: `tests/floor_seed/` is invalid
+  before Python 3.12 **on purpose** (it is the gate's self-test — see its README),
+  and the floor test leg runs `make test` without `make lint` for that reason.
 
 ---
 

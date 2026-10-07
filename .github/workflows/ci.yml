@@ -42,6 +42,62 @@ jobs:
             "qgis/qgis:${{ matrix.qgis }}" \
             bash -c "apt-get update -qq && apt-get install -y --no-install-recommends make >/dev/null && make deps && make lint && make test"
 
+  # The floor that fiberq/metadata.txt promises. Nothing was checking it: both
+  # legs above run a Python new enough to accept syntax the floor rejects (3.44
+  # ships 3.13, the 3.22 floor ships 3.8), and neither imports a module the floor
+  # cannot load. A release shipped with fiberq/core/validation_report.py a hard
+  # SyntaxError on 3.22 and the whole fiberq/addons package unimportable there,
+  # through a green CI, a clean flake8, a clean Bandit and a clean Qt6 check.
+  #
+  # Not part of the matrix above, because that matrix runs `make test` and
+  # pytest-qgis will not load on the 3.22 image at all (Python 3.8 against its
+  # `list[...]` annotations) -- which is why the floor had no coverage. This leg
+  # runs the one thing that CAN run there: parse and import every module.
+  floor-check:
+    name: Declared floor (QGIS 3.22)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse and import every module on the declared floor
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/src:ro" -w /src \
+            -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+            -e QT_QPA_PLATFORM=offscreen \
+            "qgis/qgis:3.22" \
+            python3 tests/floor_check.py
+
+  # The real suite on the declared floor. Separate from the matrix above, and
+  # from floor-check, for three reasons that are all specific to this image:
+  #
+  #   * It is a DIFFERENT 3.22 image. qgis/qgis:3.22 ships Python 3.8, where
+  #     pytest-qgis cannot be imported at all (it declares
+  #     Requires-Python >= 3.10). qgis/qgis:release-3_22 ships Python 3.10.6
+  #     with the same QGIS 3.22.16, and the whole suite runs: 775 passed,
+  #     12 skipped, about 80 seconds. So the floor needs both legs -- 3.8 for
+  #     syntax a newer Python would accept, 3.10 for behaviour.
+  #   * No apt. `apt-get update` fails on this image (a stale nodesource repo
+  #     in its sources list), and it does not need to run: make is already
+  #     installed, unlike on the trixie images.
+  #   * PIP_FLAGS= . Its pip is 22.0.2, which predates
+  #     --break-system-packages; the Makefile's default would fail outright.
+  #
+  # `make test` only, NOT `make lint`: tests/floor_seed/ is deliberately invalid
+  # before Python 3.12, so flake8 reports E999 on it under 3.10. Lint belongs on
+  # a developer-grade Python, and the matrix above runs it.
+  floor-tests:
+    name: Declared floor (test suite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the suite on the oldest supported QGIS
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/src" -w /src \
+            -e QT_QPA_PLATFORM=offscreen \
+            "qgis/qgis:release-3_22" \
+            bash -c "make deps PIP_FLAGS= && make test"
+
   # The same check plugins.qgis.org runs on every upload (its "Qt6 Check" tab).
   # The QGIS 4 leg above cannot replace it: FiberQ routes old enum names through
   # utils/compat.py, so the plugin runs on Qt6 while the source may still carry
