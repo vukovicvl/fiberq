@@ -175,7 +175,12 @@ def test_cache_is_keyed_on_crs_and_ellipsoid(project):
 
 #: (module, function) pairs that write a metre value into a field or show one.
 LENGTH_WRITERS = [
-    ("fiberq/core/route_manager.py", 4),
+    # Was 4 until R6 (branch 7... 8): import_route_from_file had the whole
+    # feature-building block written twice, once for the multipart branch and
+    # once for the single-part one, so two of these four were the same call
+    # duplicated. Collapsing them into _add_one_route leaves three distinct
+    # length writers in this module.
+    ("fiberq/core/route_manager.py", 3),
     ("fiberq/core/cable_manager.py", 1),
     ("fiberq/core/slack_manager.py", 1),
     ("fiberq/tools/route_tool.py", 1),

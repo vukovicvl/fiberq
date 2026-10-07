@@ -37,9 +37,9 @@ from .i18n import (
 # name, and reading the modern one raises KeyError instead of missing quietly.
 from .core import feature_links
 from .core import interchange_fields as fm
-from .utils.geometry import geometry_point, line_vertices
+from .utils.geometry import geometry_point, line_vertices, transformed
 from .models.schema import canonical_layer_name
-from .utils.errors import OperationErrors, check_commit, describe
+from .utils.errors import OperationErrors, check_commit, describe, report_error
 
 # =============================================================================
 # Phase 5.1: Logging infrastructure
@@ -3429,8 +3429,11 @@ class FiberQPlugin:
                 nm = d.get("name")
                 if nm and nm not in node_layer_names:
                     node_layer_names.append(nm)
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin.import_points: {e}")
+        except (AttributeError, ImportError, KeyError, TypeError, ValueError) as exc:
+            # The roster of layers the user may import into. A failure here
+            # silently shortens the list offered, which reads as "that layer
+            # does not exist" -- so it is said out loud.
+            report_error(self.tr("Import points"), None, exc, self.iface)
 
         existing_layers = [
             lyr for lyr in QgsProject.instance().mapLayers().values()
@@ -3488,15 +3491,18 @@ class FiberQPlugin:
                 # Create new point layer for other types (Joint Closures, etc.)
                 crs = self.iface.mapCanvas().mapSettings().destinationCrs().authid()
                 layer = QgsVectorLayer(f"Point?crs={crs}", new_layer_name, "memory")
-                pr = layer.dataProvider()
-                # Add fields depending on layer type
-                if new_layer_name == "Nastavci":
-                    pr.addAttributes([QgsField("naziv", QVariant.String)])
-                elif new_layer_name == "ZOK":
-                    pr.addAttributes([QgsField("naziv", QVariant.String)])
-                else:
-                    # generic layer with single 'naziv' field
-                    pr.addAttributes([QgsField("naziv", QVariant.String)])
+                # R6: all three branches added the same single 'naziv'
+                # field, and all three discarded the result -- so a provider
+                # that refused it left a layer with no attributes at all, and
+                # the import then wrote points into it and reported success.
+                if not layer.dataProvider().addAttributes(
+                        [QgsField("naziv", QVariant.String)]):
+                    report_error(self.tr("Import points"), new_layer_name,
+                                 QCoreApplication.translate(
+                                     'FiberQPlugin',
+                                     "the new layer would not take its 'naziv' field"),
+                                 self.iface)
+                    return
 
                 layer.updateFields()
                 QgsProject.instance().addMapLayer(layer, True)
@@ -3519,66 +3525,118 @@ class FiberQPlugin:
                                     self.tr("Unable to find the target layer!"))
                 return
 
-        # Extra protection: if target is Poles, ensure 'tip' field exists
-        try:
-            if layer.name() in ("Poles", "Poles") and "tip" not in layer.fields().names():
+        # Extra protection: if target is Poles, ensure 'tip' field exists.
+        # R6: this swallowed its failure at debug level and discarded both
+        # write results, so a Poles layer that could not take the field was
+        # imported into anyway -- every new pole silently without a type.
+        if (canonical_layer_name(layer.name()) == "Poles"
+                and "tip" not in layer.fields().names()):  # noqa: W503
+            with OperationErrors(self.tr("Import points"), self.iface) as field_errors:
                 layer.startEditing()
-                layer.dataProvider().addAttributes([QgsField("tip", QVariant.String)])
-                layer.updateFields()
-                layer.commitChanges()
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin.import_points: {e}")
+                if not layer.dataProvider().addAttributes([QgsField("tip", QVariant.String)]):
+                    field_errors.add(layer.name(), QCoreApplication.translate(
+                        'FiberQPlugin', "the layer would not take its 'tip' field"))
+                    layer.rollBack()
+                else:
+                    layer.updateFields()
+                    check_commit(layer, field_errors)
 
         # Transformacija koordinata ako je potrebno
         src_crs = imported_layer.crs()
         dst_crs = layer.crs()
         transform = QgsCoordinateTransform(src_crs, dst_crs, QgsProject.instance())
 
-        layer.startEditing()
-        broj_dodatih = 0
-        for feat in imported_layer.getFeatures():
-            geom = feat.geometry()
-            if not geom or geom.isEmpty():
-                continue
-
-            # Transformacija ako je potrebno
-            if src_crs != dst_crs:
-                geom.transform(transform)
-
-            # Add each individual Point (even from MultiPoint)
-            if geom.type() == QgsWkbTypes.GeometryType.PointGeometry:
-                if geom.isMultipart():
-                    for pt in geom.asMultiPoint():
-                        if pt:
-                            new_feat = QgsFeature(layer.fields())
-                            new_feat.setGeometry(QgsGeometry.fromPointXY(pt))
-                            # For Poles layer set default tip = "POLE"
-                            try:
-                                if layer.name() in ("Poles", "Poles") and "tip" in layer.fields().names():
-                                    new_feat["tip"] = "POLE"
-                            except Exception as e:
-                                logger.debug(f"Error in FiberQPlugin.import_points: {e}")
-                            layer.addFeature(new_feat)
-                            broj_dodatih += 1
-                else:
-                    pt = geom.asPoint()
-                    if pt:
-                        new_feat = QgsFeature(layer.fields())
-                        new_feat.setGeometry(QgsGeometry.fromPointXY(pt))
-                        try:
-                            if layer.name() in ("Poles", "Poles") and "tip" in layer.fields().names():
-                                new_feat["tip"] = "POLE"
-                        except Exception as e:
-                            logger.debug(f"Error in FiberQPlugin.import_points: {e}")
-                        layer.addFeature(new_feat)
-                        broj_dodatih += 1
-            # If Line or Polygon, skip!
-
-        layer.commitChanges()
+        with OperationErrors(self.tr("Import points"), self.iface) as errors:
+            broj_dodatih, skipped = self._add_imported_points(
+                imported_layer, layer, src_crs, dst_crs, transform, errors)
         layer.triggerRepaint()
 
-        QMessageBox.information(self.iface.mainWindow(), "FiberQ",
-                                self.tr("Imported {count} points into layer '{layer}'!").format(count=broj_dodatih, layer=layer.name()))
+        if skipped:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                "{count} point(s) in the file could not be placed and were skipped.")
+            self.iface.messageBar().pushInfo(
+                self.tr("Import points"),
+                safe_format(self.tr(src), src, count=skipped))
+
+        if not errors.failed:
+            QMessageBox.information(self.iface.mainWindow(), "FiberQ",
+                                    self.tr("Imported {count} points into layer '{layer}'!").format(count=broj_dodatih, layer=layer.name()))
+
+    def _add_imported_points(self, imported_layer, layer, src_crs, dst_crs,
+                             transform, errors):
+        """Copy every point in ``imported_layer`` into ``layer``.
+
+        Returns ``(added, skipped)``.
+
+        R6. The loop this replaces reprojected in place with
+        ``geom.transform(transform)`` and ignored the answer. A reprojection
+        that cannot work does NOT raise -- measured on 3.44.15 and 4.0.3, it
+        returns ``Success`` and leaves ``inf inf`` behind -- so an
+        out-of-domain coordinate was written into the layer as an infinite
+        point, and ``addFeature`` and ``commitChanges`` both discarded their
+        result on top of that. The import announced how many points it had
+        added without knowing whether any of them had arrived.
+
+        Scoped in an **edit command**, and committed only if this call opened
+        the editing session: a user who already had unsaved edits keeps them,
+        and the import joins their undo stack rather than committing their
+        buffer for them.
+        """
+        was_editing = layer.isEditable()
+        if not was_editing:
+            layer.startEditing()
+        layer.beginEditCommand(self.tr("Import points"))
+
+        added = 0
+        skipped = 0
+        set_tip = (canonical_layer_name(layer.name()) == "Poles"
+                   and "tip" in layer.fields().names())  # noqa: W503
+        try:
+            for feat in imported_layer.getFeatures():
+                geom = feat.geometry()
+                if geom is None or geom.isNull() or geom.isEmpty():
+                    skipped += 1
+                    continue
+                if src_crs != dst_crs:
+                    geom = transformed(geom, transform)
+                    if geom is None:
+                        skipped += 1
+                        continue
+                if geom.type() != QgsWkbTypes.GeometryType.PointGeometry:
+                    skipped += 1  # a line or polygon in a point import
+                    continue
+                for point in (geom.asMultiPoint() if geom.isMultipart() else [geom.asPoint()]):
+                    if point is None:
+                        skipped += 1
+                        continue
+                    if self._add_one_point(layer, point, set_tip, errors):
+                        added += 1
+                    else:
+                        skipped += 1
+        except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+            errors.add(None, exc)
+            layer.destroyEditCommand()
+            if not was_editing:
+                layer.rollBack()
+            return 0, skipped
+
+        layer.endEditCommand()
+        if not was_editing and not check_commit(layer, errors):
+            return 0, skipped
+        return added, skipped
+
+    def _add_one_point(self, layer, point, set_tip, errors) -> bool:
+        """One imported point. True when it reached the layer."""
+        new_feat = QgsFeature(layer.fields())
+        new_feat.setGeometry(QgsGeometry.fromPointXY(point))
+        if set_tip:
+            new_feat["tip"] = "POLE"
+        if not layer.addFeature(new_feat):
+            errors.add(layer.name(), QCoreApplication.translate(
+                'FiberQPlugin', "a point was rejected by the layer"))
+            return False
+        return True
 
     # Automatska korekcija
 

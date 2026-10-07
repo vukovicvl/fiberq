@@ -5,6 +5,7 @@ This module contains geometry utility functions for point manipulation,
 snapping, distance calculations, and coordinate transformations.
 """
 
+import math
 from typing import Optional, Tuple, List, Dict
 from qgis.core import QgsPointXY, QgsGeometry, QgsVectorLayer, QgsWkbTypes
 
@@ -106,6 +107,11 @@ def line_vertices(geom: QgsGeometry, first_part_only: bool = False) -> List[QgsP
     """
     if geom is None or geom.isNull() or geom.isEmpty():
         return []
+    if geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
+        # A point or polygon answers asPolyline() with a TypeError, not an
+        # empty list (measured on both stacks), so the type is checked before
+        # the shape. A route importer handed a point GeoJSON used to die here.
+        return []
     if QgsWkbTypes.isMultiType(geom.wkbType()):
         parts = geom.asMultiPolyline()
         if not parts:
@@ -122,6 +128,43 @@ def line_vertices(geom: QgsGeometry, first_part_only: bool = False) -> List[QgsP
 def extract_line_vertices(geom: QgsGeometry) -> List[QgsPointXY]:
     """Every vertex of a line geometry. See :func:`line_vertices`."""
     return line_vertices(geom)
+
+
+def is_finite(geom: QgsGeometry) -> bool:
+    """True when every coordinate of ``geom`` is a real number.
+
+    A reprojection that cannot work does **not** raise: measured on 3.44.15 and
+    4.0.3, ``QgsGeometry.transform`` answers
+    ``GeometryOperationResult.Success`` and leaves ``LineString (inf inf, inf
+    inf)`` behind. So catching ``QgsCsException`` is not enough on its own --
+    an importer that only did that wrote infinite geometry into the project and
+    reported success. Checked on the bounding box, which is one call and covers
+    every vertex.
+    """
+    if geom is None or geom.isNull() or geom.isEmpty():
+        return False
+    box = geom.boundingBox()
+    return all(math.isfinite(value) for value in
+               (box.xMinimum(), box.yMinimum(), box.xMaximum(), box.yMaximum()))
+
+
+def transformed(geom: QgsGeometry, transform) -> Optional[QgsGeometry]:
+    """A copy of ``geom`` in the transform's target CRS, or ``None``.
+
+    ``None`` means "this feature cannot be reprojected" -- either the transform
+    raised, or it succeeded and produced coordinates that are not numbers (see
+    :func:`is_finite`). A caller importing many features skips and counts those
+    rather than letting one of them end the import.
+    """
+    if geom is None or geom.isNull():
+        return None
+    moved = QgsGeometry(geom)
+    try:
+        moved.transform(transform)
+    except Exception as exc:  # QgsCsException, and anything the proj stack adds
+        logger.warning(f"Could not reproject a geometry: {exc}")
+        return None
+    return moved if is_finite(moved) else None
 
 
 def geometry_point(geom: QgsGeometry) -> Optional[QgsPointXY]:
