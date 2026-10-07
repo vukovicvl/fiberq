@@ -271,7 +271,20 @@ class SlackManager:
         if fld_slack is None and not has_total:
             return False
 
-        cable_layer.startEditing()
+        # was_editing, because a recompute must not touch an edit session it did
+        # not open. This runs whenever a slack is placed, moved or deleted, and
+        # the cable layer is one the user digitises -- so all three of
+        # startEditing(), rollBack() and the commit have to be conditional.
+        #
+        # Measured on 3.44.15 and 4.0.3, with one unsaved cable in the buffer and
+        # a refused write: the unsaved cable was gone, the layer was out of edit
+        # mode, and the only thing said was "the cable would not take its new
+        # slack total". utils/errors.py states the policy this module imports
+        # from it -- a failed write is never tidied up by throwing the user's
+        # work away -- and route_manager._add_imported_routes is the pattern.
+        was_editing = cable_layer.isEditable()
+        if not was_editing:
+            cable_layer.startEditing()
         if fld_slack:
             cable_f[fld_slack] = float(slack)
         if has_total:
@@ -281,9 +294,12 @@ class SlackManager:
             # and still answer True. Said here, where the reason is still known.
             errors.add(cable_layer.name(), QCoreApplication.translate(
                 'FiberQSlack', "the cable would not take its new slack total"))
-            cable_layer.rollBack()
+            if not was_editing:
+                cable_layer.rollBack()
             return False
-        if not check_commit(cable_layer, errors):
+        # Left uncommitted on purpose when the user was already editing: the new
+        # total joins their session and they save it with the rest of their work.
+        if not was_editing and not check_commit(cable_layer, errors):
             return False
 
         # Workaround for a QGIS quirk: after programmatic editing of a memory
