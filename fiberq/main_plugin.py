@@ -3536,15 +3536,22 @@ class FiberQPlugin:
         # imported into anyway -- every new pole silently without a type.
         if (canonical_layer_name(layer.name()) == "Poles"
                 and "tip" not in layer.fields().names()):  # noqa: W503
+            # was_editing: see fix_route_to_pole. rollBack() here would throw
+            # away whatever the user had digitised into the Poles layer and not
+            # yet saved, to tidy up after a field that could not be added.
+            field_was_editing = layer.isEditable()
             with OperationErrors(self.tr("Import points"), self.iface) as field_errors:
-                layer.startEditing()
+                if not field_was_editing:
+                    layer.startEditing()
                 if not layer.dataProvider().addAttributes([QgsField("tip", QVariant.String)]):
                     field_errors.add(layer.name(), QCoreApplication.translate(
                         'FiberQPlugin', "the layer would not take its 'tip' field"))
-                    layer.rollBack()
+                    if not field_was_editing:
+                        layer.rollBack()
                 else:
                     layer.updateFields()
-                    check_commit(layer, field_errors)
+                    if not field_was_editing:
+                        check_commit(layer, field_errors)
 
         # Transformacija koordinata ako je potrebno
         src_crs = imported_layer.crs()
@@ -4133,13 +4140,31 @@ class FiberQPlugin:
             # provider refused still announced "Route has been automatically
             # attached to a pole." -- and the user went looking for a route
             # that had not moved.
+            #
+            # was_editing, because this must not touch an edit session it did
+            # not open. The first cut of the R10 fix called startEditing() and
+            # rollBack() unconditionally, and both ends of that were wrong:
+            # running Correct while the user had unsaved routes digitised
+            # SAVED them and closed the session on the way out, and a refused
+            # write rolled the whole buffer back and DESTROYED them, saying
+            # only "the route would not take its new shape" (both measured on
+            # 3.44.15 against a GeoPackage). utils/errors.py states the policy
+            # this file imports from it: a failed write is never tidied up by
+            # throwing the user's work away. Same guard as
+            # route_manager._add_imported_routes.
+            was_editing = route_layer.isEditable()
             with OperationErrors(self.tr("Route correction"), self.iface) as errors:
-                route_layer.startEditing()
+                if not was_editing:
+                    route_layer.startEditing()
                 if not route_layer.changeGeometry(int(feature_id), new_geom):
                     errors.add(route_layer.name(), QCoreApplication.translate(
                         'FiberQPlugin', "the route would not take its new shape"))
-                    route_layer.rollBack()
-                elif check_commit(route_layer, errors):
+                    if not was_editing:
+                        route_layer.rollBack()
+                elif was_editing or check_commit(route_layer, errors):
+                    # Left uncommitted on purpose when the user was already
+                    # editing: the correction joins their edit session and they
+                    # save it with the rest of their work.
                     route_layer.triggerRepaint()
                     QMessageBox.information(
                         self.iface.mainWindow(),

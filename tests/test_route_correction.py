@@ -812,6 +812,74 @@ def test_correcting_a_curved_route_on_disk_keeps_its_length(plugin, project, qui
     assert "1010 0" in wkt, f"and its END must be the vertex that moved: {wkt}"
 
 
+# ---------------------------------------------------------------------------
+# The edit session Correct opens -- nothing covered this, which is how a
+# rollBack() that destroys the user's unsaved work got in with the suite green
+# ---------------------------------------------------------------------------
+
+def _mid_edit(route):
+    """Put one unsaved route in the layer's buffer, as a digitising user would."""
+    route.startEditing()
+    feat = QgsFeature(route.fields())
+    feat.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(500, 500), QgsPointXY(600, 500)]))
+    assert route.addFeature(feat)
+    assert len(route.editBuffer().addedFeatures()) == 1
+    return feat
+
+
+def test_a_refused_correction_keeps_the_user_s_unsaved_routes(plugin, project, quiet_dialogs,
+                                                              monkeypatch):
+    """The regression that matters most here, because it is silent.
+
+    ``rollBack()`` on the refused branch discarded the WHOLE edit buffer -- the
+    correction and everything the user had digitised and not saved -- and said
+    only "the route would not take its new shape". Measured on 3.44.15 against
+    a GeoPackage: one unsaved route in, nothing out, no mention of it.
+    ``utils/errors.py``, which this function imports, states the policy: a
+    failed write is never tidied up by throwing the user's work away.
+    """
+    route = _route(project, [_straight(0, 0, 99, 0)])
+    _points(project, "Poles", [(100, 0)])
+    target = next(route.getFeatures()).id()
+    _mid_edit(route)
+    monkeypatch.setattr(route, "changeGeometry", lambda *a, **k: False)
+
+    plugin.fix_route_to_pole(target, must_start=False)
+
+    assert route.isEditable(), "the user's edit session must still be open"
+    assert len(route.editBuffer().addedFeatures()) == 1, "their unsaved route must survive"
+    assert any("would not take its new shape" in w for w in plugin.iface.bar.warnings)
+
+
+def test_a_correction_does_not_save_the_user_s_session_for_them(plugin, project, quiet_dialogs):
+    """And the success path must not commit work the user did not ask to save."""
+    route = _route(project, [_straight(0, 0, 99, 0)])
+    _points(project, "Poles", [(100, 0)])
+    target = next(route.getFeatures()).id()
+    _mid_edit(route)
+
+    plugin.fix_route_to_pole(target, must_start=False)
+
+    assert route.isEditable(), "Correct must not close a session it did not open"
+    assert len(route.editBuffer().addedFeatures()) == 1, "still unsaved, still theirs"
+    moved = next(f for f in route.getFeatures() if f.id() == target)
+    assert line_vertices(moved.geometry())[-1] == QgsPointXY(100, 0), "and it still corrected"
+
+
+def test_a_correction_still_commits_when_it_opened_the_session(plugin, project, quiet_dialogs):
+    """The ordinary case: nobody was editing, so Correct saves its own work."""
+    route = _route(project, [_straight(0, 0, 99, 0)])
+    _points(project, "Poles", [(100, 0)])
+    target = next(route.getFeatures()).id()
+    assert not route.isEditable()
+
+    plugin.fix_route_to_pole(target, must_start=False)
+
+    assert not route.isEditable(), "and leaves the layer as it found it"
+    moved = next(f for f in route.getFeatures() if f.id() == target)
+    assert line_vertices(moved.geometry())[-1] == QgsPointXY(100, 0)
+
+
 def _tiny_raster():
     """A 4x4 GeoTIFF, or None when GDAL's python bindings are unavailable."""
     try:
