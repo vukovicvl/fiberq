@@ -49,6 +49,7 @@ from qgis.core import (
     QgsPointXY,
     QgsProject,
     QgsRasterLayer,
+    QgsVectorFileWriter,
     QgsVectorLayer,
 )
 from qgis.PyQt.QtCore import QVariant
@@ -58,6 +59,8 @@ from fiberq.utils.geometry import (
     extract_line_vertices,
     geometry_point,
     get_first_last_points,
+    line_endpoint,
+    line_part_count,
     line_vertices,
 )
 
@@ -130,16 +133,28 @@ def plugin(project):
     return obj
 
 
-def _route(project, geometries, name="Route"):
-    layer = QgsVectorLayer("LineString?crs=EPSG:3857", name, "memory")
+def _route(project, geometries, name="Route", wkb="LineString"):
+    """A Route layer.
+
+    ``wkb`` matters more than it looks. A ``LineString`` memory layer CANNOT
+    store a multipart feature: the add is accepted into the edit buffer and
+    ``commitChanges()`` then answers False with "geometry type is not
+    compatible with the current layer" (measured on 3.44.15). Because
+    ``getFeatures()`` reads through the buffer, a test that never checks the
+    commit sees its multipart feature and looks like it is exercising a real
+    layer while the provider holds nothing. The multipart tests below ask for
+    ``MultiLineString``, which is also the type a Route layer really has once
+    it has been through a GeoPackage or an imported shapefile.
+    """
+    layer = QgsVectorLayer(f"{wkb}?crs=EPSG:3857", name, "memory")
     layer.dataProvider().addAttributes([QgsField("naziv", QVariant.String)])
     layer.updateFields()
     for geom in geometries:
         feat = QgsFeature(layer.fields())
         feat.setGeometry(geom)
         layer.startEditing()
-        layer.addFeature(feat)
-        layer.commitChanges()
+        assert layer.addFeature(feat)
+        assert layer.commitChanges(), layer.commitErrors()
     project.addMapLayer(layer)
     return layer
 
@@ -205,6 +220,127 @@ def test_extract_line_vertices_handles_a_multipart(qgis_app):
     assert len(extract_line_vertices(_multipart())) == 4
 
 
+# ---------------------------------------------------------------------------
+# line_endpoint, and the two QGIS behaviours it rests on
+# ---------------------------------------------------------------------------
+
+def test_line_endpoint_reads_a_multipart_s_real_ends(qgis_app):
+    assert line_endpoint(_multipart()) == (QgsPointXY(0, 0), 0)
+    assert line_endpoint(_multipart(), last=True) == (QgsPointXY(30, 0), 3)
+
+
+def test_line_endpoint_reads_a_simple_line(qgis_app):
+    line = _straight(0, 0, 5, 0)
+    assert line_endpoint(line) == (QgsPointXY(0, 0), 0)
+    assert line_endpoint(line, last=True) == (QgsPointXY(5, 0), 1)
+
+
+def test_line_endpoint_has_nothing_to_say_about_an_empty_geometry(qgis_app):
+    for geom in (QgsGeometry(), None, QgsGeometry.fromPointXY(QgsPointXY(1, 1))):
+        assert line_endpoint(geom) == (None, -1)
+        assert line_endpoint(geom, last=True) == (None, -1)
+
+
+def test_a_global_vertex_index_is_the_concatenation_order(qgis_app):
+    """What line_endpoint's index means, pinned.
+
+    ``line_endpoint`` counts vertices by walking the parts in order and handing
+    the position straight to ``moveVertex``, which numbers them globally. The
+    two orders agreeing is load-bearing and is not written down anywhere in the
+    QGIS API docs, so it is measured here.
+    """
+    geom = _multipart()
+    vertices = line_vertices(geom)
+    assert len(vertices) == geom.constGet().nCoordinates()
+    for index, vertex in enumerate(vertices):
+        assert QgsPointXY(geom.vertexAt(index)) == vertex, f"index {index}"
+
+
+def test_move_vertex_really_keeps_the_part_structure(qgis_app):
+    """Why Correct moves a vertex instead of rebuilding the line."""
+    geom = _multipart()
+    assert geom.moveVertex(31.0, 0.0, 3) is True
+    assert geom.isMultipart()
+    assert len(geom.asMultiPolyline()) == 2
+    assert geom.length() == pytest.approx(21.0)
+
+
+def test_line_endpoint_indexes_stored_coordinates_not_segmentized_ones(qgis_app):
+    """A curved route, which is where the first cut of this fix went wrong.
+
+    ``asPolyline()`` segmentizes a curve before returning, so a vertex list
+    taken from it cannot be used to index ``moveVertex``, which addresses the
+    coordinates the geometry really holds. The counts are not even in a fixed
+    relation: a gentle arc segmentizes to FEWER points than it stores, a tight
+    one to far more. Measured on 3.22.16, 3.40.15, 3.44.15, 4.0.3 and 4.2.3.
+
+    The 1 km arc with 1 m of sag is an ordinary road curve. Indexing the
+    segmentized list gave 1, which is the arc's middle CONTROL point, and
+    ``moveVertex`` answered True -- so Correct dragged the control point onto
+    the pole, left the end where it was, and reported success. 1000 m of route
+    became a 6.28 m circle.
+    """
+    gentle = QgsGeometry.fromWkt("CircularString (0 0, 500 1, 1000 0)")
+    assert gentle.constGet().nCoordinates() == 3
+    assert len(line_vertices(gentle)) == 2, "asPolyline() segmentized it to fewer"
+    assert line_endpoint(gentle, last=True) == (QgsPointXY(1000, 0), 2), \
+        "the index must be 2, the stored end; 1 is the arc's control point"
+
+    tight = QgsGeometry.fromWkt("CircularString (0 0, 5 5, 10 0)")
+    assert tight.constGet().nCoordinates() == 3
+    assert len(line_vertices(tight)) > 100, "and this one to far more"
+    assert line_endpoint(tight, last=True) == (QgsPointXY(10, 0), 2)
+
+    compound = QgsGeometry.fromWkt(
+        "CompoundCurve ((0 0, 500 0), CircularString (500 0, 750 1, 1000 0))")
+    assert line_endpoint(compound, last=True) == (QgsPointXY(1000, 0), 3)
+
+    multi = QgsGeometry.fromWkt(
+        "MultiCurve ((0 0, 1000 0), CircularString (2000 0, 2500 1, 3000 0))")
+    assert line_endpoint(multi, last=True) == (QgsPointXY(3000, 0), 4), \
+        "4, not 3 -- 3 is part 2's START"
+
+
+def test_moving_a_curve_s_end_by_its_stored_index_keeps_the_curve(qgis_app):
+    """What the corrected index does, against what the segmentized one did."""
+    for wkt, good, bad in (
+        ("CircularString (0 0, 500 1, 1000 0)", 2, 1),
+        ("CompoundCurve ((0 0, 500 0), CircularString (500 0, 750 1, 1000 0))", 3, 2),
+    ):
+        right = QgsGeometry.fromWkt(wkt)
+        assert right.moveVertex(1010.0, 0.0, good)
+        assert right.length() > 1000.0, f"{wkt} kept its shape: {right.asWkt(0)}"
+
+        wrong = QgsGeometry.fromWkt(wkt)
+        assert wrong.moveVertex(1010.0, 0.0, bad), "and it answered True, so nothing noticed"
+        assert wrong.length() < 600.0, f"{wkt} was wrecked: {wrong.asWkt(0)}"
+
+
+def test_line_part_count_counts_pieces_not_multipart_ness(qgis_app):
+    """isMultipart() is a different question, and the wrong one."""
+    one_part_multi = QgsGeometry.fromMultiPolylineXY([[QgsPointXY(0, 0), QgsPointXY(10, 0)]])
+    assert one_part_multi.isMultipart(), "a GeoPackage column gives every route this"
+    assert line_part_count(one_part_multi) == 1
+
+    assert line_part_count(_multipart()) == 2
+    assert line_part_count(_straight(0, 0, 5, 0)) == 1
+    assert line_part_count(QgsGeometry.fromWkt(
+        "CompoundCurve ((0 0, 500 0), CircularString (500 0, 750 1, 1000 0))")) == 1, \
+        "one line made of two segments is one piece"
+    assert line_part_count(QgsGeometry.fromWkt(
+        "MultiCurve ((0 0, 1000 0), CircularString (2000 0, 2500 1, 3000 0))")) == 2
+    for empty in (QgsGeometry(), None, QgsGeometry.fromPointXY(QgsPointXY(1, 1))):
+        assert line_part_count(empty) == 0
+
+
+def test_move_vertex_refuses_an_index_it_does_not_hold(qgis_app):
+    """It answers False rather than raising, so the result has to be checked."""
+    geom = _multipart()
+    assert geom.moveVertex(1.0, 1.0, 99) is False
+    assert geom.moveVertex(1.0, 1.0, -1) is False
+    assert geom.length() == pytest.approx(20.0), "and it changed nothing"
+
+
 def test_geometry_point_handles_a_null_geometry(qgis_app):
     assert geometry_point(QgsGeometry()) is None
     assert geometry_point(None) is None
@@ -237,14 +373,65 @@ def test_a_pole_with_no_position_does_not_stop_the_check(plugin, project, shown)
 
 def test_a_multipart_route_does_not_stop_the_check(plugin, project, shown):
     """v1.5.0: TypeError from asPolyline()."""
-    _route(project, [_multipart()])
+    _route(project, [_multipart()], wkb="MultiLineString")
     _points(project, "Poles", [(0, 0)])
 
     plugin.check_consistency()
 
     assert shown
-    # First part is (0,0)->(10,0): the start is on the pole, the end is not.
-    assert [e["msg"].startswith("End") for e in shown[0]] == [True]
+    # The route runs (0,0)..(10,0) then (20,0)..(30,0). Its ends are (0,0),
+    # which is on the pole, and (30,0), which is not. Being in two pieces is
+    # reported as well, and separately.
+    assert [e["msg"].startswith("End") for e in shown[0]] == [False, True]
+    assert "2 separate pieces" in shown[0][0]["msg"]
+
+
+def test_the_check_reads_a_multipart_route_s_real_ends(plugin, project, shown):
+    """Both ends on poles, so the only thing left to say is that it is in pieces.
+
+    Reading the ends off the first part alone called this route's real end
+    unattached: it looked at where part 1 stops, at (10,0), which is a gap.
+    """
+    _route(project, [_multipart()], wkb="MultiLineString")
+    _points(project, "Poles", [(0, 0), (30, 0)])
+
+    plugin.check_consistency()
+
+    assert len(shown[0]) == 1, [e["msg"] for e in shown[0]]
+    assert "2 separate pieces" in shown[0][0]["msg"]
+    assert "popravka" not in shown[0][0], "there is no safe automatic fix for a gap"
+
+
+def test_a_route_stored_back_to_front_is_never_called_clean(plugin, project, shown):
+    """The false negative that reading only the outer two ends creates.
+
+    Part order is storage order: whatever a merge, a shapefile or the provider
+    produced. The user cannot see it and cannot control it. Stored this way
+    round, the junction at (10,0) sits at BOTH outer positions, so both outer
+    ends are on the pole while the route's REAL ends, (0,0) and (20,0), are on
+    nothing. Measured: without the pieces check this answered "No errors
+    found!" -- the one answer a consistency check must never give.
+    """
+    _route(project, [QgsGeometry.fromMultiPolylineXY(
+        [[QgsPointXY(10, 0), QgsPointXY(20, 0)],
+         [QgsPointXY(0, 0), QgsPointXY(10, 0)]])], wkb="MultiLineString")
+    _points(project, "Poles", [(10, 0)])
+
+    plugin.check_consistency()
+
+    assert shown, "a route with two bare ends must not read as clean"
+    assert any("2 separate pieces" in e["msg"] for e in shown[0])
+
+
+def test_a_single_part_route_is_not_reported_as_being_in_pieces(plugin, project, shown):
+    """A GeoPackage column makes every ordinary route isMultipart() with 1 part."""
+    _route(project, [QgsGeometry.fromMultiPolylineXY(
+        [[QgsPointXY(0, 0), QgsPointXY(100, 0)]])], wkb="MultiLineString")
+    _points(project, "Poles", [(0, 0), (100, 0)])
+
+    plugin.check_consistency()
+
+    assert not shown, "one part is one route, however it is stored"
 
 
 def test_a_raster_basemap_does_not_stop_correct(plugin, project, quiet_dialogs):
@@ -269,15 +456,60 @@ def test_a_raster_basemap_does_not_stop_correct(plugin, project, quiet_dialogs):
 
 def test_a_multipart_route_does_not_stop_correct(plugin, project, quiet_dialogs):
     """v1.5.0: the same TypeError in the Correct path."""
-    route = _route(project, [_multipart()])
+    route = _route(project, [_multipart()], wkb="MultiLineString")
     _points(project, "Poles", [(31, 0)])
     feature = next(route.getFeatures())
 
     plugin.fix_route_to_pole(feature, must_start=False)
 
-    # The first part's end moved to the pole; nothing raised.
-    moved = next(route.getFeatures())
-    assert line_vertices(moved.geometry(), first_part_only=True)[-1] == QgsPointXY(31, 0)
+    moved = next(route.getFeatures()).geometry()
+    assert line_vertices(moved)[-1] == QgsPointXY(31, 0), "the end reached the pole"
+
+
+def test_correcting_a_multipart_route_keeps_every_part(plugin, project, quiet_dialogs):
+    """The regression this file's first version of the fix introduced.
+
+    Correct used to read the first part's vertices and write back
+    ``QgsGeometry.fromPolylineXY(poly)``, which is single-part. So attaching
+    one end of a 2-part route deleted the other part and still said "Route has
+    been automatically attached to a pole." Measured on 3.44.15 with this
+    test's own pole at (31,0): 2 parts and 20 m in, 1 part and 31 m out.
+
+    The old test asserted only that the first part's end had moved, so it
+    passed the whole time the data was being destroyed. This one asserts the
+    part count and the total length, which is what was actually lost.
+    """
+    route = _route(project, [_multipart()], wkb="MultiLineString")
+    _points(project, "Poles", [(31, 0)])
+    feature = next(route.getFeatures())
+
+    plugin.fix_route_to_pole(feature, must_start=False)
+
+    moved = next(route.getFeatures()).geometry()
+    assert moved.isMultipart(), "a multipart route must stay multipart"
+    parts = moved.asMultiPolyline()
+    assert len(parts) == 2, f"both parts must survive, got {moved.asWkt(0)}"
+    assert [QgsPointXY(p) for p in parts[0]] == [QgsPointXY(0, 0), QgsPointXY(10, 0)], \
+        "part 1 is untouched"
+    assert [QgsPointXY(p) for p in parts[1]] == [QgsPointXY(20, 0), QgsPointXY(31, 0)], \
+        "part 2 keeps its start and its end moved to the pole"
+    assert moved.length() == pytest.approx(21.0), "10 m + 11 m, not 31 m"
+
+
+def test_correcting_a_multipart_route_at_the_start_keeps_every_part(plugin, project, quiet_dialogs):
+    """The start is part 1's first vertex, and part 2 must not notice."""
+    route = _route(project, [_multipart()], wkb="MultiLineString")
+    _points(project, "Poles", [(-1, 0)])
+    feature = next(route.getFeatures())
+
+    plugin.fix_route_to_pole(feature, must_start=True)
+
+    moved = next(route.getFeatures()).geometry()
+    parts = moved.asMultiPolyline()
+    assert len(parts) == 2, f"both parts must survive, got {moved.asWkt(0)}"
+    assert QgsPointXY(parts[0][0]) == QgsPointXY(-1, 0)
+    assert [QgsPointXY(p) for p in parts[1]] == [QgsPointXY(20, 0), QgsPointXY(30, 0)]
+    assert moved.length() == pytest.approx(21.0)
 
 
 def test_a_pole_with_no_position_is_not_a_correction_target(plugin, project, quiet_dialogs):
@@ -467,6 +699,117 @@ def test_correcting_a_feature_that_has_gone_is_a_no_op(plugin, project, quiet_di
     plugin.fix_route_to_pole(fid, must_start=False)
 
     assert route.featureCount() == 0
+
+
+# ---------------------------------------------------------------------------
+# The same thing on a real file, because that is where the loss was permanent
+# ---------------------------------------------------------------------------
+
+def _gpkg_route(project, geom, wkb="MultiLineString"):
+    """A GeoPackage-backed Route layer holding one feature."""
+    path = os.path.join(tempfile.mkdtemp(), "routes.gpkg")
+    mem = QgsVectorLayer(f"{wkb}?crs=EPSG:3857", "Route", "memory")
+    mem.dataProvider().addAttributes([QgsField("naziv", QVariant.String)])
+    mem.updateFields()
+    feat = QgsFeature(mem.fields())
+    feat.setGeometry(geom)
+    mem.startEditing()
+    assert mem.addFeature(feat)
+    assert mem.commitChanges(), mem.commitErrors()
+
+    options = QgsVectorFileWriter.SaveVectorOptions()
+    options.driverName = "GPKG"
+    options.layerName = "Route"
+    # writeAsVectorFormatV3 is present on the 3.22 floor too (checked on 3.22.16),
+    # so there is no fallback to write here.
+    result = QgsVectorFileWriter.writeAsVectorFormatV3(
+        mem, path, QgsProject.instance().transformContext(), options)
+    assert result[0] == QgsVectorFileWriter.WriterError.NoError, result
+
+    layer = QgsVectorLayer(f"{path}|layername=Route", "Route", "ogr")
+    assert layer.isValid()
+    project.addMapLayer(layer)
+    return layer, path
+
+
+def _read_once(path):
+    """``(part count, length, wkt)`` of the Route layer at ``path``, as plain values.
+
+    It takes a PATH, not a layer, and that is not tidiness. A failing assertion
+    makes pytest hold the test's traceback, which holds its frame, which holds
+    every local -- so a ``QgsVectorLayer`` opened in the test body stays alive
+    until interpreter shutdown and is then destroyed after QGIS itself has gone
+    down. On 3.40 and 3.44 the whole file segfaulted at that point, BEFORE
+    pytest printed anything: ``.........FF...............F.....`` and exit 139,
+    no summary, no FAILED lines, no tracebacks. CI went red with no way to tell
+    why, and the one test that says WHAT was destroyed on disk said nothing.
+
+    Opening and dropping the layer inside this function keeps it out of the
+    caller's frame, so it is released here, while QGIS is still up, whatever the
+    assertions downstream do.
+    """
+    layer = QgsVectorLayer(f"{path}|layername=Route", "Route", "ogr")
+    assert layer.isValid(), path
+    geom = next(layer.getFeatures()).geometry()
+    parts = len(geom.asMultiPolyline()) if geom.isMultipart() else 1
+    length = geom.length()
+    wkt = geom.asWkt(0)
+    del geom, layer
+    return parts, length, wkt
+
+
+def test_a_corrected_multipart_route_keeps_both_parts_on_disk(plugin, project, quiet_dialogs):
+    """The blocker in the shape that actually loses a customer's data.
+
+    A GeoPackage Route column is MultiLineString, and OGR happily stores a
+    single-part LineString in one: ``changeGeometry`` answered True,
+    ``commitChanges`` answered "SUCCESS: 1 geometries were changed", and the
+    file came back holding ``MultiLineString ((0 0, 31 0))`` -- one part, 31 m,
+    where 2 parts and 20 m went in (measured on 3.44.15). Nothing anywhere
+    reported a problem. A memory layer hides this, so the check is done against
+    a file and after a reload.
+    """
+    route, path = _gpkg_route(project, _multipart())
+    _points(project, "Poles", [(31, 0)])
+
+    plugin.fix_route_to_pole(next(route.getFeatures()), must_start=False)
+
+    parts, length, wkt = _read_once(path)
+    assert parts == 2, f"both parts must be on disk, got {wkt}"
+    assert length == pytest.approx(21.0)
+    assert not plugin.iface.bar.warnings, plugin.iface.bar.warnings
+
+
+def test_a_single_part_route_on_disk_is_corrected_as_before(plugin, project, quiet_dialogs):
+    """The ordinary case, through a real provider: unchanged behaviour."""
+    route, path = _gpkg_route(
+        project, QgsGeometry.fromPolylineXY([QgsPointXY(0, 0), QgsPointXY(99, 0)]))
+    _points(project, "Poles", [(0, 0), (100, 0)])
+
+    plugin.fix_route_to_pole(next(route.getFeatures()), must_start=False)
+
+    parts, length, wkt = _read_once(path)
+    assert (parts, wkt) == (1, "MultiLineString ((0 0, 100 0))"), wkt
+
+
+def test_correcting_a_curved_route_on_disk_keeps_its_length(plugin, project, quiet_dialogs):
+    """End to end, through a real GeoPackage: the curve blocker.
+
+    Before the index was taken from the stored coordinates, this came back as
+    ``CircularString (0 0, 1010 0, 1000 0)`` -- 6.28 m, with the end still
+    unattached and "Route has been automatically attached to a pole." on
+    screen. 1 km of route, gone, reported as a success.
+    """
+    route, path = _gpkg_route(
+        project, QgsGeometry.fromWkt("CircularString (0 0, 500 1, 1000 0)"),
+        wkb="CircularString")
+    _points(project, "Poles", [(1010, 0)])
+
+    plugin.fix_route_to_pole(next(route.getFeatures()), must_start=False)
+
+    parts, length, wkt = _read_once(path)
+    assert length > 1000.0, f"the arc must still span the route, got {wkt}"
+    assert "1010 0" in wkt, f"and its END must be the vertex that moved: {wkt}"
 
 
 def _tiny_raster():

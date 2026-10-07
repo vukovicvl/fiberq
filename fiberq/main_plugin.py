@@ -38,7 +38,7 @@ from .i18n import (
 from .core import feature_links
 from .core import interchange_fields as fm
 from .utils import file_filters
-from .utils.geometry import geometry_point, line_vertices, transformed
+from .utils.geometry import geometry_point, line_endpoint, line_part_count, transformed
 from .models.schema import canonical_layer_name
 from .utils.errors import OperationErrors, check_commit, describe, report_error
 
@@ -3954,12 +3954,39 @@ class FiberQPlugin:
             for feat in route_layer.getFeatures():
                 # R10: and asPolyline() RAISES on a multipart route rather than
                 # answering an empty list, so `if not poly: continue` never
-                # saw one. line_vertices tests the multipart case first.
-                poly = line_vertices(feat.geometry(), first_part_only=True)
-                if len(poly) < 2:
+                # saw one. line_endpoint goes through line_vertices, which
+                # tests the multipart case first.
+                #
+                # A route's ends are its FIRST vertex and its LAST one, across
+                # every part. Reading them off the first part alone reported a
+                # 2-part route's real end as unattached (it looked at where
+                # part 1 stops, which is the near side of the gap) and then
+                # offered to drag that mid-route vertex onto a pole. It also
+                # has to agree with fix_route_to_pole below, or correcting an
+                # end would not clear the error that asked for it.
+                start, _ = line_endpoint(feat.geometry())
+                end, _ = line_endpoint(feat.geometry(), last=True)
+                if start is None:
                     continue
-                start = poly[0]
-                end = poly[-1]
+
+                # Being in pieces is a defect in its own right, and reading
+                # only the outer two ends cannot see it. Part order is storage
+                # order -- whatever a merge, a shapefile or the provider
+                # produced, invisible to the user and not the direction of
+                # travel. So a route stored as ((10 0, 20 0),(0 0, 10 0)) has
+                # the junction at BOTH outer positions: without this, two bare
+                # ends at (0 0) and (20 0) would be answered with "No errors
+                # found!" -- measured. There is deliberately no 'popravka':
+                # dragging the end of a gap onto a pole makes the geometry
+                # worse, and what such a route needs is merging, not moving.
+                pieces = line_part_count(feat.geometry())
+                if pieces > 1:
+                    self.popravljive_greske.append({
+                        'msg': (f"Route (ID {feat.id()}) is in {pieces} separate pieces. "
+                                f"Only its two outer ends were checked against poles."),
+                        'feat': feat,
+                        'layer': route_layer,
+                    })
                 # Start
                 if not any(QgsPointXY(sp).distance(start) < 1e-2 for sp in pole_points):
                     greska = {
@@ -4061,17 +4088,19 @@ class FiberQPlugin:
 
         # R10: multipart again -- asPolyline() raises rather than answering
         # empty, so this guard never ran on the geometry it was written for.
-        poly = line_vertices(fresh.geometry(), first_part_only=True)
-        if len(poly) < 2:
+        #
+        # The end being corrected is identified by its GLOBAL vertex index, and
+        # the geometry is edited through moveVertex below rather than rebuilt.
+        # The first cut of this fix read the first part's vertices and wrote
+        # back QgsGeometry.fromPolylineXY(poly), which is single-part: on a
+        # 2-part route that DESTROYED part 2 and still reported "Route has been
+        # automatically attached to a pole." Measured on 3.44.15 -- a 2-part,
+        # 20 m route came back as 1 part, 11 m, and on a GeoPackage layer the
+        # loss commits to disk, because OGR accepts a LineString into a
+        # MultiLineString column and answers SUCCESS.
+        route_point, idx = line_endpoint(fresh.geometry(), last=not must_start)
+        if route_point is None:
             return
-
-        # Find nearest pole for start/end
-        if must_start:
-            route_point = poly[0]
-            idx = 0
-        else:
-            route_point = poly[-1]
-            idx = -1
 
         min_dist = None
         nearest_stub = None
@@ -4087,8 +4116,18 @@ class FiberQPlugin:
 
         # If pole found, move start/end of route to pole
         if nearest_stub and min_dist > 1e-2:
-            poly[idx] = QgsPointXY(nearest_stub)
-            new_geom = QgsGeometry.fromPolylineXY(poly)
+            # On a copy, and in place: moveVertex keeps the part structure and
+            # the wkbType, so a multipart route keeps every part and a
+            # MultiLineString layer still gets a geometry it can store.
+            # It answers False for an index it does not hold rather than
+            # raising, and leaves the geometry alone (measured on both stacks),
+            # so the result is checked.
+            new_geom = QgsGeometry(fresh.geometry())
+            if not new_geom.moveVertex(nearest_stub.x(), nearest_stub.y(), idx):
+                with OperationErrors(self.tr("Route correction"), self.iface) as errors:
+                    errors.add(route_layer.name(), QCoreApplication.translate(
+                        'FiberQPlugin', "the end of this route could not be moved"))
+                return
 
             # R10: both results used to be discarded, so a Correct that the
             # provider refused still announced "Route has been automatically

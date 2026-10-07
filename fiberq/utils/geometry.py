@@ -130,6 +130,85 @@ def extract_line_vertices(geom: QgsGeometry) -> List[QgsPointXY]:
     return line_vertices(geom)
 
 
+def line_endpoint(geom: QgsGeometry, last: bool = False) -> Tuple[Optional[QgsPointXY], int]:
+    """A line's first or last vertex, with the index ``moveVertex`` wants.
+
+    Answers ``(None, -1)`` when ``geom`` holds fewer than two line vertices.
+
+    **The point and the index both come from the stored coordinates**, through
+    ``constGet().nCoordinates()`` and ``vertexAt()``, and that is deliberate.
+    ``line_vertices`` goes through ``asPolyline()``, which SEGMENTIZES a
+    CircularString, a CompoundCurve or a MultiCurve -- it runs ``curveToLine()``
+    first -- while ``moveVertex`` indexes the coordinates the geometry really
+    holds. Counting one and indexing the other moves the wrong coordinate, and
+    ``moveVertex`` still answers True, so nothing notices. Measured on 3.22.16,
+    3.44.15, 4.0.3 and 4.2.3::
+
+        CircularString (0 0, 500 1, 1000 0)   stored 3, segmentized 2
+        CircularString (0 0, 5 5, 10 0)       stored 3, segmentized 181
+
+    A 1 km road curve with 1 m of sag is the first of those: its segmentized
+    count of 2 makes index 1 look like the end, when index 1 is the arc's middle
+    control point. Dragging that onto a pole turns a 1000 m route into a 6.28 m
+    circle, with the end still unattached. The second segmentizes to MORE points
+    than it stores, so the index overshoots and ``vertexAt`` answers
+    ``(nan nan)``. For every linear geometry the two counts are equal, which is
+    why a MultiLineString test alone cannot see any of this.
+
+    The index runs flat across the parts of a multipart geometry: the last
+    vertex of a two-by-two MultiLineString is index 3, not part 1 vertex 1.
+    Handing it to :meth:`QgsGeometry.moveVertex` edits the geometry **in place
+    and keeps its part structure and its wkbType**, where rebuilding the line
+    from ``line_vertices`` and ``QgsGeometry.fromPolylineXY`` silently throws
+    every part but the first away -- and a GeoPackage Route layer accepts that
+    single-part geometry, commits "SUCCESS" and loses the rest of the route on
+    disk (measured on 3.44.15: a 2-part, 20 m route reloaded as 1 part, 31 m).
+
+    "Last" means the last vertex of the last part, not of the first part. For a
+    single-part line, which is nearly every route, that is the same vertex it
+    always was.
+
+    Args:
+        geom: The geometry to read.
+        last: Answer the last vertex rather than the first.
+    """
+    if geom is None or geom.isNull() or geom.isEmpty():
+        return None, -1
+    if geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
+        # A point or polygon has ends, but not ones this is about, and
+        # vertexAt() would answer a coordinate from a ring.
+        return None, -1
+    stored = geom.constGet()
+    if stored is None:
+        return None, -1
+    count = stored.nCoordinates()
+    if count < 2:
+        return None, -1
+    index = count - 1 if last else 0
+    return QgsPointXY(geom.vertexAt(index)), index
+
+
+def line_part_count(geom: QgsGeometry) -> int:
+    """How many separate pieces a line geometry is in. ``0`` when it is not a line.
+
+    ``partCount()`` answers 1 for a plain LineString, 1 for a CompoundCurve
+    (which is ONE line made of several segments, not several lines) and 1 for a
+    MultiLineString that happens to hold a single part; it answers the real
+    number for a MultiLineString or a MultiCurve with more. Measured on
+    3.22.16, 3.44.15 and 4.0.3. ``isMultipart()`` is not the same question --
+    it is true for a one-part MultiLineString, which is what a GeoPackage
+    column gives every ordinary route.
+    """
+    if geom is None or geom.isNull() or geom.isEmpty():
+        return 0
+    if geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
+        return 0
+    stored = geom.constGet()
+    if stored is None:
+        return 0
+    return stored.partCount()
+
+
 def is_finite(geom: QgsGeometry) -> bool:
     """True when every coordinate of ``geom`` is a real number.
 
