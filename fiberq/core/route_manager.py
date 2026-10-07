@@ -32,6 +32,7 @@ from qgis.core import (
 # Phase 5.2: Logging
 from ..i18n import safe_format
 from ..utils.errors import OperationErrors, check_commit, describe
+from ..utils import file_filters
 from ..utils.geometry import transformed
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
@@ -535,8 +536,11 @@ class RouteManager:
         """Import routes from external file (KML/KMZ/DWG/GPX/Shape)."""
         filename, _ = QFileDialog.getOpenFileName(
             self.iface.mainWindow(),
-            "Choose route file (KML/KMZ/DWG/GPX/Shape)", "",
-            "GIS files (*.kml *.kmz *.dwg *.gpx *.shp);;All files (*)"
+            QCoreApplication.translate('FiberQRoutes', "Choose a route file"), "",
+            file_filters.with_any(
+                QCoreApplication.translate('FiberQRoutes', "GIS files"),
+                file_filters.GIS,
+                QCoreApplication.translate('FiberQRoutes', "All files"))
         )
         if not filename:
             return

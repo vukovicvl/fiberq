@@ -13,7 +13,7 @@ import os
 import re
 from typing import List
 
-from qgis.PyQt.QtCore import QUrl
+from qgis.PyQt.QtCore import QCoreApplication, QUrl
 from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox, QInputDialog
 from qgis.PyQt.QtGui import QDesktopServices
 
@@ -24,6 +24,7 @@ from qgis.core import (
 
 # Phase 5.2: Logging
 from . import feature_links
+from ..utils import file_filters
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
@@ -312,7 +313,10 @@ class DrawingManager:
             self.iface.mainWindow(),
             "Select drawing",
             "",
-            "DWG/DXF (*.dwg *.dxf);;All files (*.*)"
+            file_filters.with_any(
+                QCoreApplication.translate('FiberQDrawings', "DWG/DXF drawings"),
+                file_filters.DRAWINGS,
+                QCoreApplication.translate('FiberQDrawings', "All files"))
         )
         if not path:
             return

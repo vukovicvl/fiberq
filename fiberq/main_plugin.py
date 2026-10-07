@@ -37,6 +37,7 @@ from .i18n import (
 # name, and reading the modern one raises KeyError instead of missing quietly.
 from .core import feature_links
 from .core import interchange_fields as fm
+from .utils import file_filters
 from .utils.geometry import geometry_point, line_vertices, transformed
 from .models.schema import canonical_layer_name
 from .utils.errors import OperationErrors, check_commit, describe, report_error
@@ -581,8 +582,10 @@ class FiberQPlugin:
         prj = QgsProject.instance()
         default_dir = os.path.dirname(prj.fileName()) if prj.fileName() else os.path.expanduser('~')
 
-        gpkg_filter = self.tr('GeoPackage bundle (*.gpkg)')
-        json_filter = self.tr('GeoJSON bundle — a folder, no relations (*)')
+        gpkg_filter = file_filters.named(
+            self.tr('GeoPackage bundle'), file_filters.BUNDLE)
+        json_filter = file_filters.named(
+            self.tr('GeoJSON bundle — a folder, no relations'), file_filters.ANY)
         #: The overwrite prompt is ours, not the file dialog's. A native "file
         #: exists, replace?" can *delete* the target before it hands the path
         #: back, and a deleted bundle has no metadata left to merge -- so
@@ -715,7 +718,7 @@ class FiberQPlugin:
             self.iface.mainWindow(),
             self.tr('Import FiberQ interchange bundle'),
             default_dir,
-            self.tr('GeoPackage bundle (*.gpkg)'))
+            file_filters.named(self.tr('GeoPackage bundle'), file_filters.BUNDLE))
         if not path:
             return
 
@@ -1197,7 +1200,8 @@ class FiberQPlugin:
             self.iface.mainWindow(),
             self.tr('Choose image'),
             '',
-            self.tr('Images (*.jpg *.jpeg *.png *.gif);;All files (*.*)')
+            file_filters.with_any(self.tr('Images'), file_filters.IMAGES,
+                                  self.tr('All files'))
         )
         if not path:
             return
@@ -3395,9 +3399,10 @@ class FiberQPlugin:
     def import_points(self):
         filename, _ = QFileDialog.getOpenFileName(
             self.iface.mainWindow(),
-            self.tr("Choose a file with points (KML/KMZ/DWG/Shape/GPX)"),
+            self.tr("Choose a file with points"),
             "",
-            self.tr("GIS files (*.kml *.kmz *.shp *.dwg *.gpx);;All files (*)")
+            file_filters.with_any(self.tr("GIS files"), file_filters.GIS,
+                                  self.tr("All files"))
         )
         if not filename:
             return
