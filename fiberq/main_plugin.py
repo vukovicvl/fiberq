@@ -3637,6 +3637,15 @@ class FiberQPlugin:
         new_feat.setGeometry(QgsGeometry.fromPointXY(point))
         if set_tip:
             new_feat["tip"] = "POLE"
+        # U16: imported points carried no fiberq_uuid, so WP2's B4 rule
+        # reported every one of them as missing its identity until the project
+        # was closed and reopened -- the uuid migration runs on project load,
+        # which is why it looked like it fixed itself.
+        try:
+            from .utils.uuid_utils import set_feature_uuid
+            set_feature_uuid(new_feat)
+        except (AttributeError, ImportError, KeyError, RuntimeError, TypeError, ValueError) as exc:
+            errors.add(None, f"could not give an imported point an identity: {describe(exc)}")
         if not layer.addFeature(new_feat):
             errors.add(layer.name(), QCoreApplication.translate(
                 'FiberQPlugin', "a point was rejected by the layer"))

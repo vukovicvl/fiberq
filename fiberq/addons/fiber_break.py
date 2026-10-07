@@ -309,9 +309,27 @@ class FiberBreakTool(QgsMapTool):
         lyr, feat = nearest
         geom = feat.geometry()
 
+        # U16: this unpacked the FOURTH value as the segment index. The call
+        # answers (sqrDist, closestPoint, indexOfClosestVertexAfter, leftOf),
+        # so seg_index was getting leftOf -- which is -1 or +1 depending on
+        # which SIDE of the cable the user clicked. Measured on 3.44.15 and
+        # 4.0.3 against a four-vertex line: a click near the third segment
+        # reported leftOf = -1 or +1 while the real index was 3.
+        #
+        # Downstream, -1 was clamped to 0 and +1 was used as-is, so the
+        # recorded break distance was measured from the wrong vertex for every
+        # click except one on the first segment -- and it CHANGED depending on
+        # which side of the line the user clicked, for the same break. The
+        # value is what a splicing crew drives to.
         try:
-            _, snapped_pt, _, seg_index = geom.closestSegmentWithContext(map_pt)
-        except Exception:
+            _, snapped_pt, index_after, _left_of = geom.closestSegmentWithContext(map_pt)
+            # The closest segment runs from pts[index_after - 1] to
+            # pts[index_after], so the segment's own index is one less.
+            seg_index = int(index_after) - 1
+        except (AttributeError, TypeError, ValueError) as exc:
+            # Measuring from the start is the safe fallback, and it is said out
+            # loud: a silently wrong break distance is the defect above.
+            errors.add(lyr.name(), f"could not locate the break along the cable: {describe(exc)}")
             snapped_pt = map_pt
             seg_index = 0
 
