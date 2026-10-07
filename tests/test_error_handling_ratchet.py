@@ -213,9 +213,16 @@ CRITICAL = {
         "_BOMDialog._export_csv",
         "_BOMDialog._export_xlsx",
     }),
-    # R3, R5, R6, R7, R8
+    # R10: the geometry primitives Route correction rests on
+    "fiberq/utils/geometry.py": frozenset({
+        "geometry_point",
+        "line_vertices",
+    }),
+    # R3, R5, R6, R7, R8, R10
     "fiberq/main_plugin.py": frozenset({
         "FiberQPlugin._cables_behind",
+        "FiberQPlugin.check_consistency",
+        "FiberQPlugin.fix_route_to_pole",
         "FiberQPlugin._change_element_type",
         "FiberQPlugin._save_color_catalogs",
         "FiberQPlugin.delete_selected",
@@ -605,8 +612,8 @@ def test_d_package_wide_silence_does_not_grow():
 #: deleting a line from CRITICAL removes a whole operation from this gate with
 #: nothing in fiberq/ changing -- and that diff looks exactly like the one
 #: section 2.2 sanctions, where a branch deletes its own allowance rows.
-HARDENED_FUNCTIONS = 85
-HARDENED_FILES = 18
+HARDENED_FUNCTIONS = 89
+HARDENED_FILES = 19
 
 
 def test_the_hardened_set_is_not_quietly_narrowed():

@@ -37,8 +37,9 @@ from .i18n import (
 # name, and reading the modern one raises KeyError instead of missing quietly.
 from .core import feature_links
 from .core import interchange_fields as fm
+from .utils.geometry import geometry_point, line_vertices
 from .models.schema import canonical_layer_name
-from .utils.errors import OperationErrors, describe
+from .utils.errors import OperationErrors, check_commit, describe
 
 # =============================================================================
 # Phase 5.1: Logging infrastructure
@@ -3815,17 +3816,35 @@ class FiberQPlugin:
         poles_layer = layers.get("Poles") or layers.get("Poles")
         manholes_layer = layers.get("Manholes") or layers.get("OKNA")
 
+        # Counted outside the block, because it is read outside it: a project
+        # whose Route or Poles layer is missing skips the whole body, and
+        # assigning this only inside was an UnboundLocalError on exactly those
+        # projects.
+        without_geometry = 0
+
         if route_layer and (poles_layer or manholes_layer):
+            # R10: a feature with no geometry answers asPoint() with
+            # "ValueError: Null geometry cannot be converted to a point."
+            # (measured on both stacks), and QGIS creates one whenever a row is
+            # added without digitising. One such pole used to end the whole
+            # check, so the user got a traceback instead of their route errors.
             pole_points = []
-            if poles_layer:
-                pole_points += [f.geometry().asPoint() for f in poles_layer.getFeatures()]
-            if manholes_layer:
-                pole_points += [f.geometry().asPoint() for f in manholes_layer.getFeatures()]
+            for source in (poles_layer, manholes_layer):
+                if source is None:
+                    continue
+                for pole in source.getFeatures():
+                    point = geometry_point(pole.geometry())
+                    if point is None:
+                        without_geometry += 1
+                        continue
+                    pole_points.append(point)
 
             for feat in route_layer.getFeatures():
-                geom = feat.geometry()
-                poly = geom.asPolyline()
-                if not poly:
+                # R10: and asPolyline() RAISES on a multipart route rather than
+                # answering an empty list, so `if not poly: continue` never
+                # saw one. line_vertices tests the multipart case first.
+                poly = line_vertices(feat.geometry(), first_part_only=True)
+                if len(poly) < 2:
                     continue
                 start = poly[0]
                 end = poly[-1]
@@ -3848,6 +3867,14 @@ class FiberQPlugin:
                     }
                     self.popravljive_greske.append(greska)
 
+        if without_geometry:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                "{count} pole or manhole(s) have no position yet and were not checked.")
+            self.iface.messageBar().pushWarning(
+                self.tr("Route correction"),
+                safe_format(self.tr(src), src, count=without_geometry))
+
         if not self.popravljive_greske:
             #: Dialog title for the results of the route-consistency check
             #: (e.g. route lines whose ends do not meet a pole). "Route" = the
@@ -3862,8 +3889,16 @@ class FiberQPlugin:
         # Automatska korekcija
 
     def fix_route_to_pole(self, route_feature, must_start=True):
+        # R10: isinstance FIRST. mapLayers() is keyed by layer id, which
+        # starts with the layer name, so iteration is roughly name order -- and
+        # a raster basemap called anything before "Poles" was reached first.
+        # QgsRasterLayer has no geometryType(), so Correct died with
+        # "AttributeError: 'QgsRasterLayer' object has no attribute
+        # 'geometryType'" (measured on both stacks) on any project with a
+        # basemap, which is most of them.
         poles_layer = next((lyr for lyr in QgsProject.instance().mapLayers().values()
-                            if lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry
+                            if isinstance(lyr, QgsVectorLayer)
+                            and lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry  # noqa: W503
                             and lyr.name() in ('Poles', 'Poles')), None)  # noqa: W503
 
         if not poles_layer:
@@ -3871,9 +3906,10 @@ class FiberQPlugin:
                                 self.tr("Layer 'Poles' not found!"))
             return
 
-        geom = route_feature.geometry()
-        poly = geom.asPolyline()
-        if not poly:
+        # R10: multipart again -- asPolyline() raises rather than answering
+        # empty, so this guard never ran on the geometry it was written for.
+        poly = line_vertices(route_feature.geometry(), first_part_only=True)
+        if len(poly) < 2:
             return
 
         # Find nearest pole for start/end
@@ -3887,8 +3923,10 @@ class FiberQPlugin:
         min_dist = None
         nearest_stub = None
         for pole_feat in poles_layer.getFeatures():
-            pole_pt = pole_feat.geometry().asPoint()
-            dist = QgsPointXY(pole_pt).distance(route_point)
+            pole_pt = geometry_point(pole_feat.geometry())
+            if pole_pt is None:
+                continue  # R10: a pole with no position is not a candidate
+            dist = pole_pt.distance(route_point)
             if min_dist is None or dist < min_dist:
                 min_dist = dist
                 nearest_stub = pole_pt
@@ -3911,15 +3949,23 @@ class FiberQPlugin:
                                     self.tr("Route layer 'Route' not found!"))
                 return
 
-            route_layer.startEditing()
-            route_layer.changeGeometry(route_feature.id(), new_geom)
-            route_layer.commitChanges()
-            route_layer.triggerRepaint()
-            QMessageBox.information(
-                self.iface.mainWindow(),
-                "FiberQ",
-                self.tr("Route has been automatically attached to a pole.")
-            )
+            # R10: both results used to be discarded, so a Correct that the
+            # provider refused still announced "Route has been automatically
+            # attached to a pole." -- and the user went looking for a route
+            # that had not moved.
+            with OperationErrors(self.tr("Route correction"), self.iface) as errors:
+                route_layer.startEditing()
+                if not route_layer.changeGeometry(route_feature.id(), new_geom):
+                    errors.add(route_layer.name(), QCoreApplication.translate(
+                        'FiberQPlugin', "the route would not take its new shape"))
+                    route_layer.rollBack()
+                elif check_commit(route_layer, errors):
+                    route_layer.triggerRepaint()
+                    QMessageBox.information(
+                        self.iface.mainWindow(),
+                        "FiberQ",
+                        self.tr("Route has been automatically attached to a pole.")
+                    )
 
     # === DRAWINGS / ATTACHMENTS (DWG/DXF) ===
     def _drawing_key(self, layer, fid):
