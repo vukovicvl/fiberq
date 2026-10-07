@@ -9,7 +9,7 @@ backward compatibility with existing Serbian database schemas.
 """
 
 from typing import Dict
-from qgis.core import QgsVectorLayer, QgsEditorWidgetSetup, QgsProject
+from qgis.core import QgsVectorLayer, QgsEditorWidgetSetup
 
 # Phase 5.2: Logging
 from .logger import get_logger
@@ -501,48 +501,23 @@ def apply_element_aliases(layer: QgsVectorLayer) -> None:
 # LAYER NAME ALIASES
 # =============================================================================
 
-def set_layer_display_name(layer: QgsVectorLayer, display_name: str) -> bool:
-    """
-    Set the display name for a layer in the Layers panel.
-
-    Args:
-        layer: Layer to rename
-        display_name: Display name to show
-
-    Returns:
-        True if successful
-    """
-    try:
-        root = QgsProject.instance().layerTreeRoot()
-        node = root.findLayer(layer.id())
-        if node:
-            node.setCustomLayerName(display_name)
-            return True
-    except Exception as e:
-        logger.debug(f"Error in set_layer_display_name: {e}")
-
-    return False
-
-
-def set_route_layer_alias(layer: QgsVectorLayer) -> None:
-    """Set the route layer display name to 'Route'."""
-    set_layer_display_name(layer, "Route")
-
-
-def set_manhole_layer_alias(layer: QgsVectorLayer) -> None:
-    """Set the manhole layer display name to 'Manholes'."""
-    set_layer_display_name(layer, "Manholes")
-
-
-def set_slack_layer_alias(layer: QgsVectorLayer) -> None:
-    """Set the slack layer display name to 'Optical slack'."""
-    set_layer_display_name(layer, "Optical slack")
-
-
-def set_joint_closure_layer_alias(layer: QgsVectorLayer) -> None:
-    """Set the joint closure layer display name to 'Joint Closures'."""
-    set_layer_display_name(layer, "Joint Closures")
-
+# ``set_layer_display_name`` and the five one-line wrappers that called it
+# (route, manhole, slack, joint closure, objects) lived here until v1.6.0. They
+# existed to show a Serbian-named layer under an English label in the Layers
+# panel, through ``QgsLayerTreeLayer.setCustomLayerName`` -- a QGIS 2.x method.
+# It exists on no QGIS this plugin supports: measured AttributeError on 3.22.16,
+# 3.40.15, 3.44.15, 4.0.3 and 4.2.3. Every call raised, every caller caught it
+# at debug level, and no label was ever set.
+#
+# They are NOT replaced by ``node.setName()``. That is the modern API, but with
+# ``useLayerName`` true it renames the LAYER as well as the node (measured on
+# all five), and this plugin identifies its layers by name in well over a
+# hundred places. Honouring the old intent would therefore break Delete
+# selected, Save all layers, validation and cable laying at once.
+#
+# The display name a user sees is now simply the layer name. ``set_pipe_layer_alias``
+# below stays, because it calls ``layer.setName()`` on purpose: it renames
+# 'PE cevi' to 'PE pipes' for real, and always has.
 
 def set_pipe_layer_alias(layer: QgsVectorLayer) -> None:
     """
@@ -561,8 +536,3 @@ def set_pipe_layer_alias(layer: QgsVectorLayer) -> None:
             layer.setName("Transition pipes")
     except Exception as e:
         logger.debug(f"Error in set_pipe_layer_alias: {e}")
-
-
-def set_objects_layer_alias(layer: QgsVectorLayer) -> None:
-    """Set the objects layer display name to 'Objects'."""
-    set_layer_display_name(layer, "Objects")

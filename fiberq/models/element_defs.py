@@ -250,8 +250,8 @@ ELEMENT_DEFS: List[Dict[str, Any]] = [
 # Joint closure (nastavak) definition
 #
 # i18n: "Joint Closures" is deliberately NOT marked for translation. Unlike the
-# ELEMENT_DEFS names it is only ever used as a LAYER NAME -- it is written onto
-# the layer by utils/field_aliases.set_layer_display_name() and matched back by
+# ELEMENT_DEFS names it is only ever used as a LAYER NAME -- it is the name the
+# layer is created with, and it is matched back by
 # core/data_manager.PLACING_ELEMENT_LAYERS, tools/select_tool and
 # tools/extension_tool. docs/i18n.md rule 4 ("do not translate layer names")
 # applies. The user-facing menu entry is the separate, translated literal

@@ -77,16 +77,6 @@ class SlackManager:
         """Set callback for styling cable layers after slack updates."""
         self._stylize_cable_layer_callback = callback
 
-    def set_slack_layer_alias(self, layer: QgsVectorLayer) -> None:
-        """Display layer 'Opticke_rezerve' as 'Optical slack' in Layers panel."""
-        try:
-            root = QgsProject.instance().layerTreeRoot()
-            node = root.findLayer(layer.id())
-            if node:
-                node.setCustomLayerName("Optical slack")
-        except Exception as e:
-            logger.debug(f"Error in SlackManager.set_slack_layer_alias: {e}")
-
     def apply_slack_field_aliases(self, layer: QgsVectorLayer) -> None:
         """Apply English field aliases and value maps to an optical slack layer."""
         try:
@@ -107,7 +97,6 @@ class SlackManager:
                 lyr = self.layer_manager.ensure_slack_layer()
                 if lyr:
                     self.apply_slack_field_aliases(lyr)
-                    self.set_slack_layer_alias(lyr)
                     return lyr
             except Exception as e:
                 logger.debug(f"Error in SlackManager.ensure_slack_layer: {e}")
@@ -122,7 +111,6 @@ class SlackManager:
                     and lyr.name() in ("Opticke_rezerve", "Optical slacks", "Optical slack")  # noqa: W503
                 ):
                     self.apply_slack_field_aliases(lyr)
-                    self.set_slack_layer_alias(lyr)
                     return lyr
             except Exception as e:
                 logger.debug(f"Error in SlackManager.ensure_slack_layer: {e}")
@@ -148,7 +136,6 @@ class SlackManager:
         except Exception as e:
             logger.debug(f"Error ensuring fiberq_uuid on slack layer: {e}")
         self.apply_slack_field_aliases(vl)
-        self.set_slack_layer_alias(vl)
         QgsProject.instance().addMapLayer(vl)
         try:
             self.stylize_slack_layer(vl)

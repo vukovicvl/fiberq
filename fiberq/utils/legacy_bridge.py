@@ -257,8 +257,10 @@ def _set_objects_layer_alias(layer):
 
     Delegates to utils.field_aliases module.
     """
-    from .field_aliases import set_objects_layer_alias
-    set_objects_layer_alias(layer)
+    # QGIS has no API for a layer-tree label that differs from the layer
+    # name; see utils/field_aliases. Kept as a no-op for the legacy bridge's
+    # callers, which are generated code paths.
+    return None
 
 
 def _apply_objects_field_aliases(layer):

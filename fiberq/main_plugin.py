@@ -36,6 +36,7 @@ from .i18n import (
 # R9: a pre-1.0 project stores the slack->cable reference under its Serbian
 # name, and reading the modern one raises KeyError instead of missing quietly.
 from .core import interchange_fields as fm
+from .models.schema import canonical_layer_name
 from .utils.errors import OperationErrors, describe
 
 # =============================================================================
@@ -1390,11 +1391,6 @@ class FiberQPlugin:
                 logger.debug(f"Error in FiberQPlugin.show_about_dialog: {e}")
 
     # === OPTICAL SLACK: layer and logic ===
-
-    def _set_slack_layer_alias(self, layer):
-        """Set layer alias for optical slack layer."""
-        if self.slack_manager:
-            self.slack_manager.set_slack_layer_alias(layer)
 
     def _apply_slack_field_aliases(self, layer):
         """Apply English field aliases to optical slack layer."""
@@ -2975,17 +2971,6 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.unload: {e}")
 
-    def _set_poles_alias(self):
-        """Prikaži sloj 'Poles' kao 'Poles' u Layers panelu."""
-        try:
-            root = QgsProject.instance().layerTreeRoot()
-            node = root.findLayer(self.layer.id())
-            if node:
-                node.setCustomLayerName("Poles")
-        except Exception as e:
-            # If something fails (e.g. layerTreeRoot not ready), just skip
-            logger.debug(f"Could not set poles layer alias: {e}")
-
     def _apply_poles_field_aliases(self, layer):
         """Apply English field aliases to the poles layer.
 
@@ -2994,14 +2979,6 @@ class FiberQPlugin:
         from .utils.field_aliases import apply_poles_field_aliases
         apply_poles_field_aliases(layer)
 
-    def _set_route_layer_alias(self, layer):
-        """Set the route layer display name to 'Route'.
-
-        Delegates to utils.field_aliases module.
-        """
-        from .utils.field_aliases import set_route_layer_alias
-        set_route_layer_alias(layer)
-
     def _apply_route_field_aliases(self, layer):
         """Apply English field aliases and value map to a route layer.
 
@@ -3009,14 +2986,6 @@ class FiberQPlugin:
         """
         from .utils.field_aliases import apply_route_field_aliases
         apply_route_field_aliases(layer)
-
-    def _set_okna_layer_alias(self, layer: QgsVectorLayer) -> None:
-        """Set the manhole layer display name to 'Manholes'.
-
-        Delegates to utils.field_aliases module.
-        """
-        from .utils.field_aliases import set_manhole_layer_alias
-        set_manhole_layer_alias(layer)
 
     def _apply_manhole_field_aliases(self, layer: QgsVectorLayer) -> None:
         """Apply English field aliases to a manhole layer.
@@ -3053,16 +3022,7 @@ class FiberQPlugin:
             logger.debug(f"Error in FiberQPlugin._set_cable_layer_alias: {e}")
 
     def _on_layers_added(self, layers):
-        from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes
-
-        def _set_custom_name(vlayer, new_name: str):
-            try:
-                root = QgsProject.instance().layerTreeRoot()
-                node = root.findLayer(vlayer.id())
-                if node and new_name:
-                    node.setCustomLayerName(new_name)
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._set_custom_name: {e}")
+        from qgis.core import QgsVectorLayer, QgsWkbTypes
 
         cable_names = {"Aerial cables", "Underground cables", "Kablovi_vazdusni", "Kablovi_podzemni"}
 
@@ -3100,7 +3060,6 @@ class FiberQPlugin:
                     idx = fields.indexFromName(fn)
                     if idx != -1:
                         layer.setFieldAlias(idx, al)
-                _set_custom_name(layer, "Fiber break")
                 layer.triggerRepaint()
                 continue
 
@@ -3123,7 +3082,6 @@ class FiberQPlugin:
                     idx = fields.indexFromName(fn)
                     if idx != -1:
                         layer.setFieldAlias(idx, al)
-                _set_custom_name(layer, "Joint Closures")
                 layer.triggerRepaint()
                 continue
 
@@ -3136,8 +3094,7 @@ class FiberQPlugin:
                 try:
                     self._apply_route_field_aliases(layer)   # EN user view (aliases + valuemap)
                 except Exception as e:
-                    logger.debug(f"Error in FiberQPlugin._set_custom_name: {e}")
-                _set_custom_name(layer, "Route")
+                    logger.debug(f"Error in FiberQPlugin._on_layers_added: {e}")
                 layer.triggerRepaint()
                 continue
 
@@ -3150,8 +3107,7 @@ class FiberQPlugin:
                 try:
                     self._apply_poles_field_aliases(layer)   # EN user view
                 except Exception as e:
-                    logger.debug(f"Error in FiberQPlugin._set_custom_name: {e}")
-                _set_custom_name(layer, "Poles")
+                    logger.debug(f"Error in FiberQPlugin._on_layers_added: {e}")
                 layer.triggerRepaint()
                 continue
 
@@ -3164,8 +3120,7 @@ class FiberQPlugin:
                 try:
                     self._apply_manhole_field_aliases(layer)    # EN user view
                 except Exception as e:
-                    logger.debug(f"Error in FiberQPlugin._set_custom_name: {e}")
-                _set_custom_name(layer, "Manholes")
+                    logger.debug(f"Error in FiberQPlugin._on_layers_added: {e}")
                 layer.triggerRepaint()
                 continue
 
@@ -3184,16 +3139,6 @@ class FiberQPlugin:
             ):
                 # SR->EN field aliases (user view)
                 _apply_element_aliases(layer)
-
-                # (optional) SR -> EN name in Layers panel (works even with suffix)
-                if lname_l.startswith("nastav"):
-                    _set_custom_name(layer, "Joint Closures")
-                elif lname_l.startswith("okna"):
-                    _set_custom_name(layer, "Manholes")
-                elif lname_l.startswith("stubovi"):
-                    _set_custom_name(layer, "Poles")
-                else:
-                    _set_custom_name(layer, lname)
 
                 layer.triggerRepaint()
                 continue
@@ -3280,7 +3225,14 @@ class FiberQPlugin:
 
                 # If deleting from the optical slack layer, remember which
                 # cables it affected so their totals can be re-computed.
-                if lyr.name() in ("Opticke_rezerve", "Optical slack"):
+                #
+                # U5: through canonical_layer_name, because this list left out
+                # "Optical slacks" -- the PLURAL, which is the name the plugin
+                # itself creates the layer with (layer_manager, slack_manager).
+                # So on every project FiberQ has made since that rename,
+                # deleting a slack loop updated no cable at all: the layer the
+                # user was deleting from was not one this line recognised.
+                if canonical_layer_name(lyr.name()) == "Optical slack":
                     affected_cables.update(self._cables_behind(lyr, selected_feats, errors))
 
                 selected_ids = [f.id() for f in selected_feats]
@@ -4203,7 +4155,6 @@ class FiberQPlugin:
                     try:
                         self._apply_manhole_style(lyr)
                         self._apply_manhole_field_aliases(lyr)
-                        self._set_okna_layer_alias(lyr)
                         self._move_layer_to_top(lyr)
                     except Exception as e:
                         logger.debug(f"Error in FiberQPlugin._ensure_okna_layer: {e}")

@@ -173,13 +173,7 @@ from .field_aliases import (
     apply_element_aliases,
 
     # Layer name aliases
-    set_layer_display_name,
-    set_route_layer_alias,
-    set_manhole_layer_alias,
-    set_slack_layer_alias,
-    set_joint_closure_layer_alias,
     set_pipe_layer_alias,
-    set_objects_layer_alias,
 )
 
 # Phase 5.1: Logging infrastructure
@@ -434,13 +428,7 @@ __all__ = [
     'apply_element_aliases',
 
     # Phase 2: Layer name aliases
-    'set_layer_display_name',
-    'set_route_layer_alias',
-    'set_manhole_layer_alias',
-    'set_slack_layer_alias',
-    'set_joint_closure_layer_alias',
     'set_pipe_layer_alias',
-    'set_objects_layer_alias',
 
     # Phase 5.1: Logging infrastructure
     'get_logger',

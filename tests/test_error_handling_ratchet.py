@@ -323,7 +323,7 @@ ALLOWED_WRITES = {
 #: from v1.5.0 is what branches 3 and 4 left behind
 #: when they rewrote the placement tools: handlers deleted with the code around
 #: them, less the few that ``length_sync.py`` brought in.
-SILENCE_CEILING = 768
+SILENCE_CEILING = 762
 
 
 # ---------------------------------------------------------------------------
