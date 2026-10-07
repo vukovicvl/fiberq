@@ -300,6 +300,30 @@ def test_every_imported_route_gets_a_length_and_a_type(project, tmp_path):
 # f010/f039: the importer must say which of the four things happened
 # ---------------------------------------------------------------------------
 
+def test_a_route_layer_missing_a_column_is_reported_not_raised(project, tmp_path):
+    """f009. QgsFeature.setAttribute RAISES KeyError for an absent field.
+
+    _add_one_route sets four attributes outside any try, and the enclosing except
+    tuple did not list KeyError -- so a Route layer without "naziv" sent
+    KeyError('naziv') out of the Qt slot as a QGIS crash dialog, with the edit
+    command still open and the layer still editable. Measured on main.
+    """
+    path = _geojson(tmp_path, "one.geojson",
+                    [_feature(_line([[0.0, 0.0], [0.001, 0.0]]))])
+    layer = QgsVectorLayer("LineString?crs=EPSG:3857", "Route", "memory")
+    layer.dataProvider().addAttributes([QgsField("duzina", QVariant.Double)])
+    layer.updateFields()
+    project.addMapLayer(layer)
+    manager = _route_manager(project, FakeIface())
+
+    added, _skipped, saved = _import_routes(project, manager, path, layer)
+
+    assert added == 0
+    assert saved is False
+    assert not layer.isEditable(), "the edit command must not be left open"
+    assert manager.iface.bar.warnings, "and the user has to be told"
+
+
 def test_a_route_the_layer_refuses_is_counted_as_skipped(project, tmp_path):
     """It used to be counted in neither total, so it vanished from the report.
 

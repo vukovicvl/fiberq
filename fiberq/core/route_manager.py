@@ -494,7 +494,14 @@ class RouteManager:
                         # skipped none, and the user was told the file held no
                         # lines (measured on 3.44.15).
                         skipped += 1
-        except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+        except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as exc:
+            # KeyError, because QgsFeature.setAttribute RAISES it for a field
+            # the layer does not have -- it does not answer False (measured on
+            # 3.44.15 and 4.0.3). _add_one_route sets naziv, duzina, duzina_km
+            # and tip_trase outside any try, so a Route layer missing one of
+            # them sent KeyError('naziv') straight out of this method and out of
+            # the Qt slot: a QGIS crash dialog, with the edit command still open
+            # and the layer still editable. Measured on main.
             errors.add(None, exc)
             route_layer.destroyEditCommand()
             if not was_editing:
