@@ -125,6 +125,11 @@ CRITICAL = {
         "link_get",
         "link_set",
     }),
+    # R11
+    "fiberq/dialogs/schematic_dialog.py": frozenset({
+        "OpticalSchematicDialog._center_on",
+        "OpticalSchematicDialog._drop_highlight",
+    }),
     # R12
     "fiberq/utils/image_watcher.py": frozenset({
         "CanvasImageClickWatcher._show_picture_under",
@@ -600,8 +605,8 @@ def test_d_package_wide_silence_does_not_grow():
 #: deleting a line from CRITICAL removes a whole operation from this gate with
 #: nothing in fiberq/ changing -- and that diff looks exactly like the one
 #: section 2.2 sanctions, where a branch deletes its own allowance rows.
-HARDENED_FUNCTIONS = 83
-HARDENED_FILES = 17
+HARDENED_FUNCTIONS = 85
+HARDENED_FILES = 18
 
 
 def test_the_hardened_set_is_not_quietly_narrowed():

@@ -6,7 +6,7 @@ fiber network topology with filtering, search, and export capabilities.
 """
 
 from qgis.PyQt.QtCore import Qt, QStringListModel, QTimer, QSize, QRect
-from qgis.PyQt.QtGui import QPen, QColor, QPainterPath, QFont
+from qgis.PyQt.QtGui import QBrush, QPen, QColor, QPainterPath, QFont
 from qgis.PyQt.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -131,6 +131,9 @@ class OpticalSchematicDialog(QDialog):
     def __init__(self, core):
         super().__init__(core.iface.mainWindow())
         self.core = core
+        #: The Center button's temporary ring, held here rather than captured
+        #: in a closure so rebuild() can drop it. See _drop_highlight.
+        self._highlight = None
         self.setWindowTitle("Optical Schematic View")
         self.resize(1200, 760)
 
@@ -276,18 +279,58 @@ class OpticalSchematicDialog(QDialog):
             self._center_on(name)
 
     def _center_on(self, name):
-        pos = getattr(self, "_last_positions", {})
-        if name in pos:
-            x, y = pos[name]
-            self.view.centerOn(x, y)
-            # highlight momentarily
-            r = 12.0
-            item = self.scene.addEllipse(x - r, y - r, 2 * r, 2 * r, QPen(QColor(255, 165, 0), 2.4), Qt.BrushStyle.NoBrush)
-            item.setZValue(10)
+        """Scroll to an element and ring it for a moment.
 
-            def _remove():
-                self.scene.removeItem(item)
-            QTimer.singleShot(1300, _remove)
+        Two defects lived in the four lines this replaces, and the second one
+        was hidden by the first.
+
+        The ring was added with ``Qt.BrushStyle.NoBrush`` where ``addEllipse``
+        wants a ``QBrush``, which is a ``TypeError: argument 6 has unexpected
+        type 'BrushStyle'`` -- on **3.44.15 as well as 4.0.3**, measured, so
+        this is not a Qt6 regression: the Center button has never once worked.
+        ``QBrush(Qt.BrushStyle.NoBrush)`` is the brush that means "no fill".
+
+        Underneath it, the removal was a closure over a local ``item`` fired by
+        a 1300 ms timer. ``rebuild()`` calls ``scene.clear()``, which destroys
+        the item's C++ object, and ``removeItem`` on it afterwards is a
+        **SIGSEGV** -- measured, child returncode -11 on both stacks, not an
+        exception anything could catch. The view rebuilds on ``layersAdded``
+        and ``layerWillBeRemoved``, so adding a layer within 1.3 s of pressing
+        Center would have taken QGIS down. Fixing only the brush would have
+        turned a dead button into a hard crash, which is why both are one fix.
+        """
+        pos = getattr(self, "_last_positions", {})
+        if name not in pos:
+            return
+        x, y = pos[name]
+        self.view.centerOn(x, y)
+        self._drop_highlight()
+        r = 12.0
+        self._highlight = self.scene.addEllipse(
+            x - r, y - r, 2 * r, 2 * r,
+            QPen(QColor(255, 165, 0), 2.4), QBrush(Qt.BrushStyle.NoBrush))
+        self._highlight.setZValue(10)
+        QTimer.singleShot(1300, self._drop_highlight)
+
+    def _drop_highlight(self):
+        """Remove the Center ring if it is still there.
+
+        Safe to call from the timer, from the next Center press and from
+        ``rebuild()``, in any order: whoever arrives first clears the
+        reference, so the others find nothing to remove. That is the whole
+        guard against the use-after-free above -- an item the scene has
+        already destroyed is never reachable from here.
+        """
+        item = getattr(self, "_highlight", None)
+        self._highlight = None
+        if item is None:
+            return
+        try:
+            self.scene.removeItem(item)
+        except RuntimeError as exc:
+            # The scene or the item went away between the two statements.
+            # Nothing is lost: the ring is cosmetic and already gone.
+            logger.warning(f"Could not clear the schematic highlight: {exc}")
 
     # ---------- DATA ----------
     def _collect_nodes(self):
@@ -746,6 +789,9 @@ class OpticalSchematicDialog(QDialog):
 
     # ---------- DRAWING ----------
     def rebuild(self):
+        # Before the clear, or the pending timer is left holding an item whose
+        # C++ object this call is about to destroy. See _drop_highlight.
+        self._drop_highlight()
         self.scene.clear()
         nodes = self._collect_nodes()
         edges = self._collect_edges()
