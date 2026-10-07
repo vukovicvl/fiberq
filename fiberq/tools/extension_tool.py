@@ -97,11 +97,10 @@ class ExtensionTool(QgsMapToolEmitPoint):
         Delegates to utils.field_aliases module.
         """
         try:
-            from ..utils.field_aliases import apply_joint_closure_aliases, set_joint_closure_layer_alias
+            from ..utils.field_aliases import apply_joint_closure_aliases
             if layer is None:
                 return
             apply_joint_closure_aliases(layer)
-            set_joint_closure_layer_alias(layer)
         except Exception as e:
             logger.debug(f"Error in ExtensionTool._apply_joint_closure_aliases: {e}")
 

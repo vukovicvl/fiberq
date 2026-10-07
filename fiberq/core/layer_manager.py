@@ -590,11 +590,10 @@ def _create_region_from_selection(core, name: str, buf_m: float):
 
 def _set_objects_layer_alias(layer):
     """Set the objects layer display name to 'Objects'."""
-    try:
-        from ..utils.field_aliases import set_objects_layer_alias
-        set_objects_layer_alias(layer)
-    except Exception as e:
-        logger.debug(f"Error in _set_objects_layer_alias: {e}")
+    # QGIS has no API for a layer-tree label that differs from the layer name
+    # (see utils/field_aliases). Nothing to do; kept as a no-op so the call
+    # sites around layer creation read the same as they always have.
+    return None
 
 
 def _apply_objects_field_aliases(layer):
@@ -967,9 +966,8 @@ class LayerManager:
     def _apply_manholes_aliases(self, layer):
         """Apply field aliases to manholes layer."""
         try:
-            from ..utils.field_aliases import apply_manhole_field_aliases, set_manhole_layer_alias
+            from ..utils.field_aliases import apply_manhole_field_aliases
             apply_manhole_field_aliases(layer)
-            set_manhole_layer_alias(layer)
         except Exception as e:
             logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")
 
@@ -1249,9 +1247,8 @@ class LayerManager:
     def _apply_objects_aliases(self, layer):
         """Apply field aliases to objects layer."""
         try:
-            from ..utils.field_aliases import apply_objects_field_aliases, set_objects_layer_alias
+            from ..utils.field_aliases import apply_objects_field_aliases
             apply_objects_field_aliases(layer)
-            set_objects_layer_alias(layer)
         except Exception as e:
             logger.debug(f"Error in _telecom_export_one_layer_to_gpkg: {e}")
 

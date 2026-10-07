@@ -65,14 +65,6 @@ class RouteManager:
     # Layer alias methods
     # -------------------------------------------------------------------------
 
-    def set_route_layer_alias(self, layer: QgsVectorLayer) -> None:
-        """Set the route layer display name to 'Route'."""
-        try:
-            from ..utils.field_aliases import set_route_layer_alias
-            set_route_layer_alias(layer)
-        except Exception as e:
-            logger.debug(f"Error in RouteManager.set_route_layer_alias: {e}")
-
     def apply_route_field_aliases(self, layer: QgsVectorLayer) -> None:
         """Apply English field aliases and value map to a route layer."""
         try:
@@ -90,7 +82,6 @@ class RouteManager:
         # Apply aliases
         try:
             self.apply_route_field_aliases(route_layer)
-            self.set_route_layer_alias(route_layer)
         except Exception as e:
             logger.debug(f"Error in RouteManager.stylize_route_layer: {e}")
 

@@ -227,11 +227,17 @@ class InterchangeBundleReader:
                 # every feature exists and has somewhere to point.
                 continue
             stored = fm.stored_field(roster, name) if roster else None
-            if stored is None or target_fields.indexFromName(stored) < 0:
+            # Through the pre-1.0 names: an old cable layer's installation type
+            # lives in polaganje_kabla, and asking only for cable_laying found
+            # nothing -- so the value took the "column the format does not
+            # model" path into fq_extra_json instead of reaching the column
+            # that was sitting right there holding the old value.
+            actual = fm.actual_field(target_fields.names(), stored) if stored else ""
+            if not actual:
                 if value is not None and str(value) != "":
                     extras[name] = value
                 continue
-            attributes[stored] = fm.stored_value(roster, name, value)
+            attributes[actual] = fm.stored_value(roster, name, value)
         return attributes, extras
 
     def _import_feature(self, bundle_feature, target, roster, transform):
@@ -477,10 +483,18 @@ class InterchangeBundleReader:
             layer = self._find_layer(canonical)
             if layer is None:
                 continue
-            layer_idx = layer.fields().indexFromName("cable_layer_id")
-            fid_idx = layer.fields().indexFromName("cable_fid")
+            names = layer.fields().names()
+            layer_id_field, fid_field = fm.cable_link_fields(names)
+            layer_idx = layer.fields().indexFromName(layer_id_field) if layer_id_field else -1
+            fid_idx = layer.fields().indexFromName(fid_field) if fid_field else -1
             uuid_idx = layer.fields().indexFromName(FIBERQ_UUID_FIELD)
             if min(layer_idx, fid_idx, uuid_idx) < 0:
+                # On a pre-1.0 project the pair is kabl_layer_id / kabl_fid, so
+                # this used to leave every imported loop detached -- with no
+                # warning, which is the part that made it hard to notice.
+                result.warnings.append(
+                    f"'{layer.name()}' has no cable reference columns, so the "
+                    f"imported {canonical} loops were left unattached to a cable.")
                 continue
             wanted = self._bundle_cable_uuids(gpkg_path, canonical)
             if not wanted:

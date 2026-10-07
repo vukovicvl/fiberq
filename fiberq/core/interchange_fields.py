@@ -353,6 +353,51 @@ def legacy_names(stored_name: str) -> Tuple[str, ...]:
     return LEGACY_FIELD_NAMES.get(stored_name, ())
 
 
+def actual_field(names, stored_name: str) -> str:
+    """The name ``stored_name`` goes by in *this* layer, or ``''`` if it is absent.
+
+    Args:
+        names: The layer's field names -- anything supporting ``in``, so
+            ``layer.fields().names()`` or a set built from it.
+        stored_name: The modern FiberQ field name being looked for.
+
+    Every lookup that starts from *our* field name and ends at a *project's*
+    column must come through here. Writing to the modern name directly is not a
+    near miss on an old project: ``QgsFeature.__setitem__`` and
+    ``setAttribute`` both raise ``KeyError`` for a name the layer does not have
+    (measured on 3.44 and 4.0 -- ``setAttribute`` does *not* answer False as the
+    C++ signature suggests), so the tool dies mid-operation. Reading is worse
+    than that, because a filter expression naming a missing column raises
+    nothing at all: it matches zero rows, so a sum over it comes out 0.0 and
+    looks like an answer.
+
+    WP2's validation engine had this as a private helper and WP3's exporter grew
+    its own; it lives here once so a third caller cannot learn it differently.
+    """
+    if stored_name in names:
+        return stored_name
+    for legacy in LEGACY_FIELD_NAMES.get(stored_name, ()):
+        if legacy in names:
+            return legacy
+    return ""
+
+
+def cable_link_fields(names) -> Tuple[str, str]:
+    """The two columns holding this layer's cable reference, or ``('', '')``.
+
+    The pair is structural: a layer id without a feature id points at a layer
+    and no feature in it, which is not a weaker link but a wrong one. So either
+    both names resolve or neither is offered, and a caller that gets ``''``
+    knows the layer cannot record a cable reference at all -- as opposed to
+    having one that happens to be empty, which is an ordinary unlinked slack.
+    """
+    layer_id = actual_field(names, "cable_layer_id")
+    fid = actual_field(names, "cable_fid")
+    if layer_id and fid:
+        return layer_id, fid
+    return "", ""
+
+
 def stored_field(roster: str, canonical_name: str) -> Optional[str]:
     """The stored FiberQ field name for a canonical bundle name, or ``None``."""
     if canonical_name == IDENTITY_FIELD:
@@ -394,6 +439,7 @@ def stored_value(roster: str, canonical_name: str, value):
 __all__ = [
     "CABLE_REFERENCE_FIELD", "ENGLISH_ALIASES", "IDENTITY_FIELD", "ROSTERS",
     "LEGACY_FIELD_NAMES", "STRUCTURAL_FIELDS", "TYPE_ROSTER", "VALUE_DOMAINS",
-    "canonical_field", "legacy_names", "modern_field",
+    "actual_field", "cable_link_fields", "canonical_field", "legacy_names",
+    "modern_field",
     "canonical_value", "roster_for_type", "stored_field", "stored_value",
 ]

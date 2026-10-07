@@ -111,27 +111,20 @@ _REQUIRED_BY_LAYER = {
 # Small helpers (QGIS-aware, called only from checks)
 # ---------------------------------------------------------------------------
 
-#: The pre-1.0 Serbian field names a real project may still carry. A rule that
-#: looks only for the canonical name silently skips the whole layer, which for
-#: the B-rules means an ERROR-severity check quietly never runs and the project
-#: is reported clean.
+#: Which column a pre-1.0 Serbian field name maps to. A rule that looks only
+#: for the canonical name silently skips the whole layer, which for the B-rules
+#: means an ERROR-severity check quietly never runs and the project is reported
+#: clean.
 #:
-#: Defined in :mod:`interchange_fields` and used from there rather than kept as
-#: a second copy: WP3's exporter needs the same knowledge, and two modules
-#: learning the same legacy map separately is how one of them ends up not
-#: knowing. (It already happened: the exporter shipped without it and dropped
-#: the cable reference of every slack loop in a pre-1.0 project.)
-_LEGACY_FIELD_NAMES = fm.LEGACY_FIELD_NAMES
-
-
-def _actual_field(names, canonical):
-    """The name ``canonical`` actually goes by in this layer, or ``''``."""
-    if canonical in names:
-        return canonical
-    for legacy in _LEGACY_FIELD_NAMES.get(canonical, ()):
-        if legacy in names:
-            return legacy
-    return ""
+#: Both the map and this resolver live in :mod:`interchange_fields` rather than
+#: here: WP3's exporter needs the same knowledge, and the slack, fibre-break and
+#: cable-laying *write* paths need exactly the same answer. Two modules learning
+#: it separately is how one of them ends up not knowing -- it already happened
+#: once, when the exporter shipped without the map and dropped the cable
+#: reference of every slack loop in a pre-1.0 project -- and a reader and a
+#: writer disagreeing about which column holds the reference is how a project
+#: validates clean and links nothing. R9 promoted the resolver out of here.
+_actual_field = fm.actual_field
 
 
 def _is_blank(value, null) -> bool:
