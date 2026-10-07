@@ -322,6 +322,153 @@ def test_a_project_with_no_pole_or_manhole_layer_does_not_raise(plugin, project,
     assert not shown
 
 
+# ---------------------------------------------------------------------------
+# U15: the logic
+# ---------------------------------------------------------------------------
+
+def test_correcting_one_end_does_not_revert_the_other(plugin, project, quiet_dialogs, shown):
+    """Measured on v1.5.0: ends (1, 99) -> (0, 99) -> (1, 100).
+
+    The error dicts captured the feature OBJECT, which holds the geometry as it
+    was when the check ran. Correcting the start wrote a new shape; correcting
+    the end then wrote the stale shape back with only the end moved, undoing
+    the first correction. The user saw one end snap and the other let go.
+    """
+    route = _route(project, [_straight(1, 0, 99, 0)])
+    _points(project, "Poles", [(0, 0), (100, 0)])
+
+    plugin.check_consistency()
+    assert len(shown[0]) == 2, "both ends are off a pole"
+    for error in shown[0]:
+        error["popravka"]()
+
+    moved = line_vertices(next(route.getFeatures()).geometry())
+    assert (moved[0], moved[-1]) == (QgsPointXY(0, 0), QgsPointXY(100, 0))
+
+
+def test_a_renamed_trasa_project_is_checked(plugin, project, quiet_dialogs, shown):
+    """``layers.get("Route") or layers.get("Route")`` -- the same key twice.
+
+    Under a comment promising "support both Serbian and English names", so the
+    Serbian fallback it was written for had been English-ified away. A Trasa /
+    Stubovi project was reported as having no errors because nothing was
+    looked at.
+    """
+    _route(project, [_straight(1, 0, 99, 0)], name="Trasa")
+    _points(project, "Stubovi", [(0, 0), (100, 0)])
+
+    plugin.check_consistency()
+
+    assert shown, "a renamed project has to be checked at all"
+    assert len(shown[0]) == 2
+
+
+def test_a_renamed_trasa_project_can_be_corrected(plugin, project, quiet_dialogs, shown):
+    route = _route(project, [_straight(1, 0, 99, 0)], name="Trasa")
+    _points(project, "Stubovi", [(0, 0), (100, 0)])
+
+    plugin.check_consistency()
+    for error in shown[0]:
+        error["popravka"]()
+
+    moved = line_vertices(next(route.getFeatures()).geometry())
+    assert (moved[0], moved[-1]) == (QgsPointXY(0, 0), QgsPointXY(100, 0))
+
+
+def test_an_end_is_corrected_onto_a_manhole(plugin, project, quiet_dialogs, shown):
+    """The check counts manholes; the corrector only looked at Poles.
+
+    So an end near a manhole was reported as an error and then either dragged
+    to a distant pole or not corrected at all.
+    """
+    route = _route(project, [_straight(1, 0, 99, 0)])
+    _points(project, "Manholes", [(0, 0), (100, 0)])
+
+    plugin.check_consistency()
+    for error in shown[0]:
+        error["popravka"]()
+
+    moved = line_vertices(next(route.getFeatures()).geometry())
+    assert (moved[0], moved[-1]) == (QgsPointXY(0, 0), QgsPointXY(100, 0))
+
+
+def test_an_end_already_on_a_manhole_is_not_an_error(plugin, project, quiet_dialogs, shown):
+    _route(project, [_straight(0, 0, 100, 0)])
+    _points(project, "Poles", [(0, 0)])
+    _points(project, "OKNA", [(100, 0)])
+
+    plugin.check_consistency()
+
+    assert not shown, "an end on a manhole is a correct end"
+
+
+def test_the_nearest_candidate_wins_across_both_layers(plugin, project, quiet_dialogs, shown):
+    route = _route(project, [_straight(0, 0, 99, 0)])
+    _points(project, "Poles", [(0, 0), (150, 0)])
+    _points(project, "Manholes", [(100, 0)])
+
+    plugin.check_consistency()
+    for error in shown[0]:
+        error["popravka"]()
+
+    moved = line_vertices(next(route.getFeatures()).geometry())
+    assert moved[-1] == QgsPointXY(100, 0), "the manhole is nearer than the far pole"
+
+
+def test_no_route_layer_says_so_instead_of_no_errors(plugin, project, quiet_dialogs, shown):
+    """"No errors found!" is the one answer a check must never give blind."""
+    _points(project, "Poles", [(0, 0)])
+
+    plugin.check_consistency()
+
+    assert not shown
+    assert any("no Route layer" in str(m) for m in quiet_dialogs), quiet_dialogs
+    assert not any("No errors found" in str(m) for m in quiet_dialogs)
+
+
+def test_no_poles_or_manholes_says_so_instead_of_no_errors(plugin, project, quiet_dialogs, shown):
+    _route(project, [_straight(1, 0, 99, 0)])
+
+    plugin.check_consistency()
+
+    assert not shown
+    assert any("no Poles or Manholes" in str(m) for m in quiet_dialogs), quiet_dialogs
+
+
+def test_correcting_by_feature_id_works(plugin, project, quiet_dialogs):
+    """What the check now passes. A feature is still accepted."""
+    route = _route(project, [_straight(0, 0, 99, 0)])
+    _points(project, "Poles", [(0, 0), (100, 0)])
+    fid = next(route.getFeatures()).id()
+
+    plugin.fix_route_to_pole(fid, must_start=False)
+
+    assert line_vertices(next(route.getFeatures()).geometry())[-1] == QgsPointXY(100, 0)
+
+
+def test_correcting_by_feature_object_still_works(plugin, project, quiet_dialogs):
+    route = _route(project, [_straight(0, 0, 99, 0)])
+    _points(project, "Poles", [(0, 0), (100, 0)])
+
+    plugin.fix_route_to_pole(next(route.getFeatures()), must_start=False)
+
+    assert line_vertices(next(route.getFeatures()).geometry())[-1] == QgsPointXY(100, 0)
+
+
+def test_correcting_a_feature_that_has_gone_is_a_no_op(plugin, project, quiet_dialogs):
+    """Re-reading by id means the feature may no longer be there."""
+    route = _route(project, [_straight(0, 0, 99, 0)])
+    _points(project, "Poles", [(0, 0), (100, 0)])
+    fid = next(route.getFeatures()).id()
+    route.startEditing()
+    route.deleteFeature(fid)
+    route.commitChanges()
+
+    plugin.fix_route_to_pole(fid, must_start=False)
+
+    assert route.featureCount() == 0
+
+
 def _tiny_raster():
     """A 4x4 GeoTIFF, or None when GDAL's python bindings are unavailable."""
     try:

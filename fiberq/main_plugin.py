@@ -6,7 +6,7 @@ from qgis.PyQt.QtWidgets import (
     QFileDialog)
 from qgis.core import (
     QgsVectorFileWriter, QgsVectorLayer,
-    QgsProject, QgsField, QgsFeature,
+    QgsProject, QgsField, QgsFeature, QgsFeatureRequest,
     QgsGeometry, QgsPointXY, QgsWkbTypes,
     QgsSymbol, QgsUnitTypes, QgsCoordinateTransform
 )
@@ -3803,18 +3803,58 @@ class FiberQPlugin:
                 logger.debug(f"Error in FiberQPlugin.export_all_features: {e}")
         self._export_active_layer(only_selected=False)
 
+    def _route_layer(self):
+        """The project's Route layer, under any of its names, or None.
+
+        U15: the lookup this replaces was `lyr.name() in ('Route', 'Route')`,
+        so a project whose layer is called Trasa had no Route layer as far as
+        Correct was concerned, and the correction stopped with "Route layer
+        'Route' not found!".
+        """
+        for lyr in QgsProject.instance().mapLayers().values():
+            if not isinstance(lyr, QgsVectorLayer) or not lyr.isValid():
+                continue
+            if lyr.geometryType() != QgsWkbTypes.GeometryType.LineGeometry:
+                continue
+            if canonical_layer_name(lyr.name()) == "Route":
+                return lyr
+        return None
+
     def check_consistency(self):
         self.popravljive_greske = []
-        layers = {
-            lyr.name(): lyr
-            for lyr in QgsProject.instance().mapLayers().values()
-            if isinstance(lyr, QgsVectorLayer)
-        }
+        # U15: this read
+        #     route_layer = layers.get("Route") or layers.get("Route")
+        #     poles_layer = layers.get("Poles") or layers.get("Poles")
+        # -- the SAME key twice, under a comment promising "support both
+        # Serbian and English names". Someone English-ified both halves of each
+        # pair, so the Serbian fallback it was written for was gone: on a
+        # project whose layers are called Trasa and Stubovi, route_layer came
+        # back None, the whole check was skipped, and Route correction
+        # announced "No errors found!". canonical_layer_name knows every
+        # spelling, and is the same resolver Delete selected uses.
+        layers = {}
+        for lyr in QgsProject.instance().mapLayers().values():
+            if not isinstance(lyr, QgsVectorLayer) or not lyr.isValid():
+                continue
+            layers.setdefault(canonical_layer_name(lyr.name()) or lyr.name(), lyr)
 
-        # support both Serbian and English names
-        route_layer = layers.get("Route") or layers.get("Route")
-        poles_layer = layers.get("Poles") or layers.get("Poles")
-        manholes_layer = layers.get("Manholes") or layers.get("OKNA")
+        route_layer = layers.get("Route")
+        poles_layer = layers.get("Poles")
+        manholes_layer = layers.get("Manholes")
+
+        # U15: and it said "No errors found!" when it had checked nothing at
+        # all, which is the one answer a consistency check must never give.
+        if route_layer is None:
+            QMessageBox.information(
+                self.iface.mainWindow(), self.tr("Route correction"),
+                self.tr("This project has no Route layer, so nothing was checked."))
+            return
+        if poles_layer is None and manholes_layer is None:
+            QMessageBox.information(
+                self.iface.mainWindow(), self.tr("Route correction"),
+                self.tr("This project has no Poles or Manholes layer, so route "
+                        "ends could not be checked."))
+            return
 
         # Counted outside the block, because it is read outside it: a project
         # whose Route or Poles layer is missing skips the whole body, and
@@ -3854,7 +3894,12 @@ class FiberQPlugin:
                         'msg': f"Start of route (ID {feat.id()}) is NOT on a pole.",
                         'feat': feat,
                         'layer': route_layer,
-                        'popravka': lambda f=feat: self.fix_route_to_pole(f, must_start=True)
+                        # U15: by ID, not by this feature object. The
+                        # object holds the geometry as it was when the check
+                        # ran, so correcting the start and then the end wrote
+                        # the stale geometry back and REVERTED the start --
+                        # measured: ends (1, 99) -> (0, 99) -> (1, 100).
+                        'popravka': lambda fid=feat.id(): self.fix_route_to_pole(fid, must_start=True)
                     }
                     self.popravljive_greske.append(greska)
                 # Kraj
@@ -3863,7 +3908,7 @@ class FiberQPlugin:
                         'msg': f"End of route (ID {feat.id()}) is NOT on a pole.",
                         'feat': feat,
                         'layer': route_layer,
-                        'popravka': lambda f=feat: self.fix_route_to_pole(f, must_start=False)
+                        'popravka': lambda fid=feat.id(): self.fix_route_to_pole(fid, must_start=False)
                     }
                     self.popravljive_greske.append(greska)
 
@@ -3889,6 +3934,18 @@ class FiberQPlugin:
         # Automatska korekcija
 
     def fix_route_to_pole(self, route_feature, must_start=True):
+        """Drag one end of a route onto the nearest pole or manhole.
+
+        Args:
+            route_feature: The route's feature **id**, or the feature itself.
+                An id is what the check now passes: a captured feature carries
+                the geometry as it was when the check ran, so correcting the
+                start and then the end wrote the stale shape back and undid the
+                first correction. Measured: ends at x = (1, 99) became (0, 99)
+                and then (1, 100). A feature is still accepted, because that is
+                what the tests and any external caller hand over.
+            must_start: Correct the first vertex rather than the last.
+        """
         # R10: isinstance FIRST. mapLayers() is keyed by layer id, which
         # starts with the layer name, so iteration is roughly name order -- and
         # a raster basemap called anything before "Poles" was reached first.
@@ -3896,19 +3953,43 @@ class FiberQPlugin:
         # "AttributeError: 'QgsRasterLayer' object has no attribute
         # 'geometryType'" (measured on both stacks) on any project with a
         # basemap, which is most of them.
-        poles_layer = next((lyr for lyr in QgsProject.instance().mapLayers().values()
-                            if isinstance(lyr, QgsVectorLayer)
-                            and lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry  # noqa: W503
-                            and lyr.name() in ('Poles', 'Poles')), None)  # noqa: W503
+        #
+        # U15: and it looked only at a layer literally named 'Poles'
+        # (`lyr.name() in ('Poles', 'Poles')` -- the same name twice again),
+        # while the CHECK counts manholes as a valid route end. So an end
+        # sitting correctly on a manhole was reported as an error and then
+        # "corrected" by dragging it to a distant pole, or not corrected at all
+        # when the project has no Poles layer. Both layers are candidates here
+        # now, resolved the same canonical way as the check.
+        candidates = []
+        for lyr in QgsProject.instance().mapLayers().values():
+            if not isinstance(lyr, QgsVectorLayer) or not lyr.isValid():
+                continue
+            if lyr.geometryType() != QgsWkbTypes.GeometryType.PointGeometry:
+                continue
+            if canonical_layer_name(lyr.name()) in ("Poles", "Manholes"):
+                candidates.append(lyr)
 
-        if not poles_layer:
+        if not candidates:
             QMessageBox.warning(self.iface.mainWindow(), "FiberQ",
                                 self.tr("Layer 'Poles' not found!"))
             return
 
+        route_layer = self._route_layer()
+        if route_layer is None:
+            QMessageBox.warning(self.iface.mainWindow(), "FiberQ",
+                                self.tr("Route layer 'Route' not found!"))
+            return
+
+        # U15: re-read the feature, so the geometry is whatever it is NOW.
+        feature_id = route_feature if isinstance(route_feature, int) else route_feature.id()
+        fresh = next(iter(route_layer.getFeatures(QgsFeatureRequest(int(feature_id)))), None)
+        if fresh is None:
+            return
+
         # R10: multipart again -- asPolyline() raises rather than answering
         # empty, so this guard never ran on the geometry it was written for.
-        poly = line_vertices(route_feature.geometry(), first_part_only=True)
+        poly = line_vertices(fresh.geometry(), first_part_only=True)
         if len(poly) < 2:
             return
 
@@ -3922,32 +4003,20 @@ class FiberQPlugin:
 
         min_dist = None
         nearest_stub = None
-        for pole_feat in poles_layer.getFeatures():
-            pole_pt = geometry_point(pole_feat.geometry())
-            if pole_pt is None:
-                continue  # R10: a pole with no position is not a candidate
-            dist = pole_pt.distance(route_point)
-            if min_dist is None or dist < min_dist:
-                min_dist = dist
-                nearest_stub = pole_pt
+        for source in candidates:
+            for pole_feat in source.getFeatures():
+                pole_pt = geometry_point(pole_feat.geometry())
+                if pole_pt is None:
+                    continue  # R10: a pole with no position is not a candidate
+                dist = pole_pt.distance(route_point)
+                if min_dist is None or dist < min_dist:
+                    min_dist = dist
+                    nearest_stub = pole_pt
 
         # If pole found, move start/end of route to pole
         if nearest_stub and min_dist > 1e-2:
             poly[idx] = QgsPointXY(nearest_stub)
             new_geom = QgsGeometry.fromPolylineXY(poly)
-
-            # Find 'Route' layer in project (QgsFeature doesn't have .layer())
-            route_layer = next(
-                (lyr for lyr in QgsProject.instance().mapLayers().values()
-                 if isinstance(lyr, QgsVectorLayer)
-                 and lyr.name() in ('Route', 'Route')  # noqa: W503
-                 and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry),  # noqa: W503
-                None
-            )
-            if not route_layer:
-                QMessageBox.warning(self.iface.mainWindow(), "FiberQ",
-                                    self.tr("Route layer 'Route' not found!"))
-                return
 
             # R10: both results used to be discarded, so a Correct that the
             # provider refused still announced "Route has been automatically
@@ -3955,7 +4024,7 @@ class FiberQPlugin:
             # that had not moved.
             with OperationErrors(self.tr("Route correction"), self.iface) as errors:
                 route_layer.startEditing()
-                if not route_layer.changeGeometry(route_feature.id(), new_geom):
+                if not route_layer.changeGeometry(int(feature_id), new_geom):
                     errors.add(route_layer.name(), QCoreApplication.translate(
                         'FiberQPlugin', "the route would not take its new shape"))
                     route_layer.rollBack()
