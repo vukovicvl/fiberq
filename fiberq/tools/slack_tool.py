@@ -12,7 +12,14 @@ from .base import (
     PlacementSnapper, snap_match
 )
 
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
+
+from ..core import interchange_fields as fm
+from ..core.slack_manager import slack_operation
+from ..i18n import safe_format
+from ..models.schema import canonical_layer_name
 # Phase 5.2: Logging
+from ..utils.errors import OperationErrors, check_commit, describe
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
@@ -180,21 +187,29 @@ class SlackPlaceTool(QgsMapTool):
                                      on_edge=(side == "sredina")))
 
     def canvasReleaseEvent(self, event):
-        """Handle mouse release - place slack point."""
-        p = self.toMapCoordinates(event.pos())
+        """Place one slack point where the user clicked.
 
+        A Qt slot, so it must not raise: anything that escapes reaches QGIS's
+        "unhandled Python error" dialog, which tells the user about a traceback
+        instead of about their cable. ``absorb=True`` turns that into the same
+        one-line report as every other failure here.
+        """
+        with OperationErrors(slack_operation(), self.iface, absorb=True) as errors:
+            self._place_slack(self.toMapCoordinates(event.pos()), errors)
+
+    def _place_slack(self, p, errors) -> None:
+        """The body of :meth:`canvasReleaseEvent`, free to raise."""
         kl, kf, strana_val, place_pt = self._resolve(p)
 
-        cable_layer_id = kl.id() if kl else None
-        cable_fid = int(kf.id()) if kf else None
-
-        if cable_layer_id is None:
+        if kl is None:
             QMessageBox.information(
                 self.iface.mainWindow(),
-                "Optical slacks",
-                "No cable found nearby."
+                slack_operation(),
+                QCoreApplication.translate('FiberQSlack', "No cable found nearby.")
             )
             return
+        cable_layer_id = kl.id()
+        cable_fid = int(kf.id())
 
         # Determine location type based on nearest node
         (nl, nf, nd) = self._nearest_node(place_pt)
@@ -206,31 +221,23 @@ class SlackPlaceTool(QgsMapTool):
             else:
                 lok = "Objekat"
 
-        # Get or create slack layer
-        # Issue #2: Handle both main plugin (_ensure_slack_layer) and SlackManager (ensure_slack_layer)
-        vl = None
-        if self.plugin:
-            if hasattr(self.plugin, '_ensure_slack_layer'):
-                vl = self.plugin._ensure_slack_layer()
-            elif hasattr(self.plugin, 'ensure_slack_layer'):
-                vl = self.plugin.ensure_slack_layer()
-
+        vl = self._slack_layer()
         if vl is None:
-            # Fallback: find existing slack layer
-            for lyr in QgsProject.instance().mapLayers().values():
-                if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
-                    lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and  # noqa: W504
-                        lyr.name() in ("Opticke_rezerve", "Optical slacks", "Optical slack")):
-                    vl = lyr
-                    break
+            errors.add(None, QCoreApplication.translate(
+                'FiberQSlack', "there is no optical slack layer to write to"))
+            return
 
-            if vl is None:
-                QMessageBox.warning(
-                    self.iface.mainWindow(),
-                    "Optical slacks",
-                    "Slack layer not found!"
-                )
-                return
+        # R9: on a pre-1.0 project the pair is kabl_layer_id / kabl_fid.
+        # Writing the modern name into such a layer raises KeyError, which is
+        # how clicking a cable in an old project used to end the operation.
+        layer_id_field, fid_field = fm.cable_link_fields(vl.fields().names())
+        if not layer_id_field:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQSlack',
+                "'{layer}' has no cable reference columns, so no slack was created")
+            errors.add(vl.name(), safe_format(
+                QCoreApplication.translate('FiberQSlack', src), src, layer=vl.name()))
+            return
 
         # Create feature
         f = QgsFeature(vl.fields())
@@ -238,44 +245,81 @@ class SlackPlaceTool(QgsMapTool):
         f["tip"] = self.params.get("tip", "Terminal")
         f["duzina_m"] = int(self.params.get("duzina_m", 20))
         f["lokacija"] = lok
-        f["cable_layer_id"] = cable_layer_id
-        f["cable_fid"] = cable_fid
+        f[layer_id_field] = cable_layer_id
+        f[fid_field] = cable_fid
         f["strana"] = strana_val or "sredina"
 
         # Phase 0.1: Set UUID for FiberQ Designer
         try:
             from ..utils.uuid_utils import set_feature_uuid
             set_feature_uuid(f)
-        except Exception as e:
-            logger.debug(f"Failed to set uuid on slack feature: {e}")
+        except (AttributeError, ImportError, KeyError, RuntimeError, TypeError, ValueError) as exc:
+            # Without an identity the slack cannot travel into a bundle or be
+            # matched on the way back, so it is reported rather than shrugged off.
+            errors.add(None, f"could not give the slack an identity: {describe(exc)}")
 
         vl.startEditing()
-        vl.addFeature(f)
-        vl.commitChanges()
+        if not vl.addFeature(f):
+            errors.add(vl.name(), QCoreApplication.translate(
+                'FiberQSlack', "the slack point was rejected by the layer"))
+            return
+        if not check_commit(vl, errors):
+            return
         vl.triggerRepaint()
 
         # Record for undo (v1.2 — Feature 2)
-        try:
-            if self.plugin and hasattr(self.plugin, 'undo_manager') and self.plugin.undo_manager:
-                self.plugin.undo_manager.record_add(vl, f)
-        except Exception as e:
-            logger.debug(f"Error recording undo for slack: {e}")
+        undo_mgr = getattr(self.plugin, 'undo_manager', None) if self.plugin else None
+        if undo_mgr:
+            try:
+                undo_mgr.record_add(vl, f)
+            except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+                # The slack is saved; only its undo entry is missing.
+                logger.warning(f"Could not record the new slack for undo: {exc}")
 
-        # Recompute slack for the cable
-        # Issue #2: Handle both main plugin (_recompute_slack_for_cable) and SlackManager (recompute_slack_for_cable)
-        try:
-            if self.plugin:
-                if hasattr(self.plugin, '_recompute_slack_for_cable'):
-                    self.plugin._recompute_slack_for_cable(cable_layer_id, cable_fid)
-                elif hasattr(self.plugin, 'recompute_slack_for_cable'):
-                    self.plugin.recompute_slack_for_cable(cable_layer_id, cable_fid)
-        except Exception as e:
-            logger.debug(f"Error in SlackPlaceTool.canvasReleaseEvent: {e}")
+        self._recompute(cable_layer_id, cable_fid, errors)
 
-        try:
-            self.iface.messageBar().pushInfo("Optical slacks", "Slack saved.")
-        except Exception as e:
-            logger.debug(f"Error in SlackPlaceTool.canvasReleaseEvent: {e}")
+        if not errors.failed:
+            self.iface.messageBar().pushInfo(
+                slack_operation(),
+                QCoreApplication.translate('FiberQSlack', "Slack saved."))
+
+    def _slack_layer(self):
+        """The layer to write the slack into, or None.
+
+        Issue #2: the plugin exposes this as ``_ensure_slack_layer`` and the
+        SlackManager as ``ensure_slack_layer``.
+        """
+        if self.plugin:
+            for name in ('_ensure_slack_layer', 'ensure_slack_layer'):
+                maker = getattr(self.plugin, name, None)
+                if maker is not None:
+                    vl = maker()
+                    if vl is not None:
+                        return vl
+                    break
+        for lyr in QgsProject.instance().mapLayers().values():
+            if isinstance(lyr, QgsVectorLayer) and lyr.isValid() and lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and canonical_layer_name(lyr.name()) == "Optical slack":
+                return lyr
+        return None
+
+    def _recompute(self, cable_layer_id, cable_fid, errors) -> None:
+        """Re-total the cable's slack, reporting into this operation.
+
+        Issue #2: the name differs between the plugin and the SlackManager, and
+        only the manager's own signature takes the collector.
+        """
+        if not self.plugin:
+            return
+        for name in ('_recompute_slack_for_cable', 'recompute_slack_for_cable'):
+            recompute = getattr(self.plugin, name, None)
+            if recompute is None:
+                continue
+            try:
+                recompute(cable_layer_id, cable_fid, errors)
+            except TypeError:
+                # An older wrapper that does not pass the collector through.
+                recompute(cable_layer_id, cable_fid)
+            return
 
     def keyPressEvent(self, event):
         """Handle ESC key to cancel tool."""

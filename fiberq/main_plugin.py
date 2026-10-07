@@ -31,7 +31,12 @@ from .i18n import (
     install_translator,
     language_name,
     remove_translator,
+    safe_format,
 )
+# R9: a pre-1.0 project stores the slack->cable reference under its Serbian
+# name, and reading the modern one raises KeyError instead of missing quietly.
+from .core import interchange_fields as fm
+from .utils.errors import OperationErrors, describe
 
 # =============================================================================
 # Phase 5.1: Logging infrastructure
@@ -1409,11 +1414,23 @@ class FiberQPlugin:
         if self.slack_manager:
             self.slack_manager.stylize_slack_layer(vl)
 
-    def _recompute_slack_for_cable(self, cable_layer_id: str, cable_fid: int):
-        """Compute sum of slack for cable and update cable attributes."""
+    def _recompute_slack_for_cable(self, cable_layer_id: str, cable_fid: int, errors=None) -> bool:
+        """Re-total one cable's slack and write it back.
+
+        Args:
+            cable_layer_id: Layer ID of the cable.
+            cable_fid: Feature ID of the cable.
+            errors: An :class:`~fiberq.utils.errors.OperationErrors` to report
+                into, so one gesture touching a dozen cables still produces one
+                message. Left out, the manager reports on its own.
+
+        Returns:
+            True when the cable was updated.
+        """
         # Phase 3.1: Delegate to SlackManager
-        if self.slack_manager:
-            self.slack_manager.recompute_slack_for_cable(cable_layer_id, cable_fid)
+        if not self.slack_manager:
+            return False
+        return self.slack_manager.recompute_slack_for_cable(cable_layer_id, cable_fid, errors)
 
     def _start_slack_interactive(self, default_tip="Terminal"):
         """Start map tool for interactive slack placement."""
@@ -3210,9 +3227,45 @@ class FiberQPlugin:
         self.iface.mapCanvas().setMapTool(self.point_tool)
         self._record_cmd('place_pole')
 
+    def _cables_behind(self, layer, feats, errors):
+        """``{(cable layer id, cable fid)}`` for the slack features given.
+
+        Resolved through the pre-1.0 names. On an old project the pair is
+        ``kabl_layer_id`` / ``kabl_fid``, so reading the modern name raised
+        ``KeyError`` -- and the handler that caught it logged at debug, which
+        at the default level writes nothing. Deleting a 30 m loop therefore
+        left the cable still claiming 30 m of slack: the one number the user
+        deleted the loop in order to change.
+        """
+        layer_id_field, fid_field = fm.cable_link_fields(layer.fields().names())
+        if not layer_id_field:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                "'{layer}' has no cable reference columns, so no cable total was updated")
+            errors.add(layer.name(), safe_format(self.tr(src), src, layer=layer.name()))
+            return set()
+
+        found = set()
+        for f in feats:
+            raw_layer_id = f[layer_id_field]
+            raw_fid = f[fid_field]
+            if not raw_layer_id or raw_fid is None or str(raw_fid).strip() in ("", "NULL"):
+                continue  # an unlinked slack: there is no cable to re-total
+            try:
+                found.add((str(raw_layer_id), int(raw_fid)))
+            except (TypeError, ValueError) as exc:
+                errors.add(layer.name(), f"slack feature {f.id()}: {describe(exc)}")
+        return found
+
     def delete_selected(self):
+        """Delete the selection from every layer that will allow it.
+
+        Deleting a slack loop also changes the cable it belonged to, so the
+        cables behind the deleted features are re-totalled afterwards.
+        """
         from qgis.core import QgsProject, QgsVectorLayer, QgsVectorDataProvider
 
+        errors = OperationErrors(self.tr("Delete"), self.iface)
         obrisano = 0
         # set of cables affected by deleted slack
         affected_cables = set()   # (cable_layer_id, cable_fid)
@@ -3225,16 +3278,10 @@ class FiberQPlugin:
             ):
                 selected_feats = list(lyr.selectedFeatures())
 
-                # If deleting from Optical_slack layer - remember which cables it affected
+                # If deleting from the optical slack layer, remember which
+                # cables it affected so their totals can be re-computed.
                 if lyr.name() in ("Opticke_rezerve", "Optical slack"):
-                    for f in selected_feats:
-                        try:
-                            cable_layer_id = f["cable_layer_id"]
-                            cable_fid = int(f["cable_fid"])
-                            if cable_layer_id:
-                                affected_cables.add((cable_layer_id, cable_fid))
-                        except Exception as e:
-                            logger.debug(f"Error in FiberQPlugin.delete_selected: {e}")
+                    affected_cables.update(self._cables_behind(lyr, selected_feats, errors))
 
                 selected_ids = [f.id() for f in selected_feats]
                 if selected_ids:
@@ -3247,12 +3294,13 @@ class FiberQPlugin:
                 lyr.removeSelection()
 
         # AFTER deleting slack – recalculate slack for affected cables
-        if affected_cables:
-            for cable_layer_id, cable_fid in affected_cables:
-                try:
-                    self._recompute_slack_for_cable(cable_layer_id, cable_fid)
-                except Exception as e:
-                    logger.debug(f"Error in FiberQPlugin.delete_selected: {e}")
+        for cable_layer_id, cable_fid in sorted(affected_cables):
+            self._recompute_slack_for_cable(cable_layer_id, cable_fid, errors)
+
+        # One entry naming the first problem, before the count dialog, so the
+        # user does not read "Deleted 1 selected features" and assume the cable
+        # followed.
+        errors.report()
 
         if obrisano == 0:
             QMessageBox.information(self.iface.mainWindow(), self.tr("Delete"),

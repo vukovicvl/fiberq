@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from qgis.PyQt.QtCore import Qt, QVariant
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, Qt, QVariant
 from qgis.PyQt.QtWidgets import QMessageBox
 from qgis.core import (
     QgsDistanceArea,
@@ -18,9 +18,18 @@ from qgis.core import (
 )
 from qgis.gui import QgsMapTool, QgsVertexMarker
 
+from ..core import interchange_fields as fm
+from ..i18n import safe_format
+from ..utils.errors import OperationErrors, check_commit, describe
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _break_operation() -> str:
+    """Title on the message-bar entries this module pushes."""
+    src = QT_TRANSLATE_NOOP('FiberQBreak', "Fiber break")
+    return QCoreApplication.translate('FiberQBreak', src)
 
 
 class FiberBreakTool(QgsMapTool):
@@ -255,10 +264,23 @@ class FiberBreakTool(QgsMapTool):
         self.snap_marker.show()
 
     def canvasReleaseEvent(self, event):
+        """Record a fibre break where the user clicked.
+
+        A Qt slot, so it must not raise: anything escaping reaches QGIS's
+        "unhandled Python error" dialog, which tells the user about a traceback
+        instead of about their cable.
+        """
         if event.button() != Qt.MouseButton.LeftButton:
             return
+        with OperationErrors(_break_operation(), self.iface, absorb=True) as errors:
+            self._record_break(self.toMapCoordinates(event.pos()), errors)
 
-        map_pt = self.toMapCoordinates(event.pos())
+    def _record_break(self, map_pt, errors) -> None:
+        """The body of :meth:`canvasReleaseEvent`, free to raise.
+
+        Hardened as its caller is: splitting a slot into "must not raise" and
+        "may raise" only helps if the half that may raise is still watched.
+        """
         map_pt_geom = QgsGeometry.fromPointXY(map_pt)
 
         nearest = None
@@ -270,8 +292,10 @@ class FiberBreakTool(QgsMapTool):
                     if geom is None:
                         continue
                     dist = geom.distance(map_pt_geom)
-                except Exception as e:
-                    logger.debug(f"could not compute distance to feature: {e}")
+                except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+                    # Skipping in silence changes which cable the break is
+                    # recorded against, and the user has no way to notice.
+                    errors.add(lyr.name(), f"feature {feat.id()}: {describe(exc)}")
                     continue
 
                 if nearest_dist is None or (dist is not None and dist < nearest_dist):
@@ -319,15 +343,36 @@ class FiberBreakTool(QgsMapTool):
         distance_m = float(total_len_to_seg + partial)
 
         ev_layer = self._ensure_break_layer()
+        if ev_layer is None:
+            errors.add(None, QCoreApplication.translate(
+                'FiberQBreak', "there is no fibre break layer to write to"))
+            return
+
+        # R9: a pre-1.0 break layer calls the pair kabl_layer_id / kabl_fid,
+        # and writing the modern name into it raises KeyError rather than
+        # missing quietly. No such layer has been found in the wild, which is
+        # exactly why it is worth resolving here instead of waiting for one.
+        layer_id_field, fid_field = fm.cable_link_fields(ev_layer.fields().names())
+        if not layer_id_field:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQBreak',
+                "'{layer}' has no cable reference columns, so the break was not recorded")
+            errors.add(ev_layer.name(), safe_format(
+                QCoreApplication.translate('FiberQBreak', src), src, layer=ev_layer.name()))
+            return
+
         ev = QgsFeature(ev_layer.fields())
         ev.setGeometry(QgsGeometry.fromPointXY(snapped_pt if snapped_pt else map_pt))
         ev["naziv"] = "Fiber break"
-        ev["cable_layer_id"] = lyr.id()
+        ev[layer_id_field] = lyr.id()
 
         try:
-            ev["cable_fid"] = int(feat.id())
-        except Exception:
-            ev["cable_fid"] = -1
+            ev[fid_field] = int(feat.id())
+        except (TypeError, ValueError) as exc:
+            # -1 is this layer's "the feature id did not survive", and a break
+            # that cannot name its cable is worth saying out loud.
+            ev[fid_field] = -1
+            errors.add(lyr.name(), f"could not record which cable broke: {describe(exc)}")
 
         ev["distance_m"] = round(distance_m, 3)
         ev["segments_hit"] = 1
@@ -337,12 +382,18 @@ class FiberBreakTool(QgsMapTool):
             from ..utils.uuid_utils import set_feature_uuid
 
             set_feature_uuid(ev)
-        except Exception as e:
-            logger.debug(f"could not set feature uuid: {e}")
+        except (AttributeError, ImportError, KeyError, RuntimeError, TypeError, ValueError) as exc:
+            # Without an identity the break does not travel into a bundle and
+            # cannot be matched on the way back.
+            errors.add(None, f"could not give the break an identity: {describe(exc)}")
 
         ev_layer.startEditing()
-        ev_layer.addFeature(ev)
-        ev_layer.commitChanges()
+        if not ev_layer.addFeature(ev):
+            errors.add(ev_layer.name(), QCoreApplication.translate(
+                'FiberQBreak', "the break point was rejected by the layer"))
+            return
+        if not check_commit(ev_layer, errors):
+            return
         ev_layer.triggerRepaint()
 
         seg_count = max(0, len(pts) - 1)
@@ -352,10 +403,13 @@ class FiberBreakTool(QgsMapTool):
             f"Distance: {round(distance_m, 2)} m • "
             f"Segments: {seg_count}"
         )
-        try:
-            self.iface.messageBar().pushInfo("Fiber break", msg)
-        except Exception:
-            QMessageBox.information(self.iface.mainWindow(), "Fiber break", msg)
+        if not errors.failed:
+            # No cheerful summary on top of a reported failure: a user who
+            # reads both learns to read neither.
+            try:
+                self.iface.messageBar().pushInfo(_break_operation(), msg)
+            except (AttributeError, RuntimeError, TypeError):
+                QMessageBox.information(self.iface.mainWindow(), _break_operation(), msg)
 
         self.snap_marker.setCenter(snapped_pt if snapped_pt else map_pt)
         self.snap_marker.show()

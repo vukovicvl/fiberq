@@ -111,6 +111,7 @@ FIBERQ_WRITE_CALLS = frozenset({
 CRITICAL = {
     # R9
     "fiberq/addons/fiber_break.py": frozenset({
+        "FiberBreakTool._record_break",
         "FiberBreakTool.canvasReleaseEvent",
     }),
     # R5
@@ -166,6 +167,16 @@ CRITICAL = {
     }),
     # R9
     "fiberq/core/slack_manager.py": frozenset({
+        "SlackManager._add_one_terminal_slack",
+        "SlackManager._endpoints_of",
+        "SlackManager._generate_terminal_slacks",
+        "SlackManager._ground_length",
+        "SlackManager._location_at",
+        "SlackManager._record_slack_undo",
+        "SlackManager._say_slacks_created",
+        "SlackManager._slack_total",
+        "SlackManager._stamp_uuid",
+        "SlackManager._total_slack_onto_cable",
         "SlackManager.generate_terminal_slack_for_selected",
         "SlackManager.recompute_slack_for_cable",
     }),
@@ -183,6 +194,7 @@ CRITICAL = {
     }),
     # R3, R5, R6, R7, R8
     "fiberq/main_plugin.py": frozenset({
+        "FiberQPlugin._cables_behind",
         "FiberQPlugin._change_element_type",
         "FiberQPlugin._save_color_catalogs",
         "FiberQPlugin.delete_selected",
@@ -194,6 +206,9 @@ CRITICAL = {
     }),
     # R9
     "fiberq/tools/slack_tool.py": frozenset({
+        "SlackPlaceTool._place_slack",
+        "SlackPlaceTool._recompute",
+        "SlackPlaceTool._slack_layer",
         "SlackPlaceTool.canvasReleaseEvent",
     }),
     # R2
@@ -253,19 +268,9 @@ ALLOWED_SILENT = {
     ("fiberq/main_plugin.py",
      "FiberQPlugin._change_element_type"): (4, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
     ("fiberq/main_plugin.py",
-     "FiberQPlugin.delete_selected"): (2, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/main_plugin.py",
      "FiberQPlugin.lay_cable"): (1, "R8 Cable laying -- fix/wp4-write-paths"),
     ("fiberq/main_plugin.py",
      "FiberQPlugin.lay_cable_type"): (1, "R8 Cable laying -- fix/wp4-write-paths"),
-    ("fiberq/addons/fiber_break.py",
-     "FiberBreakTool.canvasReleaseEvent"): (2, "R9 Old projects: slack and fibre-break link -- fix/wp4-legacy-slack"),
-    ("fiberq/core/slack_manager.py",
-     "SlackManager.generate_terminal_slack_for_selected"): (6, "R9 Old projects: slack and fibre-break link -- fix/wp4-legacy-slack"),
-    ("fiberq/core/slack_manager.py",
-     "SlackManager.recompute_slack_for_cable"): (4, "R9 recompute must refuse to write, not zero silently -- fix/wp4-legacy-slack"),
-    ("fiberq/tools/slack_tool.py",
-     "SlackPlaceTool.canvasReleaseEvent"): (4, "R9 Old projects: slack and fibre-break link -- fix/wp4-legacy-slack"),
 }
 
 #: Write calls whose result is still discarded on a hardened path. Kept apart
@@ -293,14 +298,6 @@ ALLOWED_WRITES = {
      "FiberQPlugin._change_element_type"): (2, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
     ("fiberq/main_plugin.py",
      "FiberQPlugin.delete_selected"): (2, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/addons/fiber_break.py",
-     "FiberBreakTool.canvasReleaseEvent"): (2, "R9 Old projects: slack and fibre-break link -- fix/wp4-legacy-slack"),
-    ("fiberq/core/slack_manager.py",
-     "SlackManager.generate_terminal_slack_for_selected"): (2, "R9 Old projects: slack and fibre-break link -- fix/wp4-legacy-slack"),
-    ("fiberq/core/slack_manager.py",
-     "SlackManager.recompute_slack_for_cable"): (2, "R9 recompute must refuse to write, not zero silently -- fix/wp4-legacy-slack"),
-    ("fiberq/tools/slack_tool.py",
-     "SlackPlaceTool.canvasReleaseEvent"): (2, "R9 Old projects: slack and fibre-break link -- fix/wp4-legacy-slack"),
 }
 
 #: What test D pins the package-wide silent-handler count to. Test D asserts
@@ -326,7 +323,7 @@ ALLOWED_WRITES = {
 #: from v1.5.0 is what branches 3 and 4 left behind
 #: when they rewrote the placement tools: handlers deleted with the code around
 #: them, less the few that ``length_sync.py`` brought in.
-SILENCE_CEILING = 786
+SILENCE_CEILING = 768
 
 
 # ---------------------------------------------------------------------------
@@ -587,7 +584,7 @@ def test_d_package_wide_silence_does_not_grow():
 #: deleting a line from CRITICAL removes a whole operation from this gate with
 #: nothing in fiberq/ changing -- and that diff looks exactly like the one
 #: section 2.2 sanctions, where a branch deletes its own allowance rows.
-HARDENED_FUNCTIONS = 60
+HARDENED_FUNCTIONS = 75
 HARDENED_FILES = 15
 
 
