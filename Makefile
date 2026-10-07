@@ -61,6 +61,7 @@ I18N_SOURCES = $(shell find $(PKG) -name '*.py' \
 .PHONY: help deps lint flake8 bandit test test-cov package install uninstall clean tag release version mapping-doc docs-pdf \
         i18n-update i18n-compile i18n-stats i18n-check \
         qt6-check qt6-check-local qt6-check-docker \
+        floor-check floor-check-local floor-check-docker \
         bench bench-list bench-smoke
 
 help:
@@ -69,6 +70,7 @@ help:
 	@echo "  lint      flake8 + bandit  (mirrors the plugins.qgis.org scan gate)"
 	@echo "  test      run the pytest suite (needs QGIS bindings - see header)"
 	@echo "  qt6-check mirrors the plugins.qgis.org Qt6 Check tab (needs docker)"
+	@echo "  floor-check parse + import every module on the declared qgisMinimumVersion"
 	@echo "  package   build $(ZIP) for upload to the QGIS plugin repository"
 	@echo "  install   copy the plugin into your local QGIS profile (manual testing)"
 	@echo "  clean     remove dist/ and caches"
@@ -114,6 +116,46 @@ test:
 
 test-cov:
 	QT_QPA_PLATFORM=offscreen $(PYTHON) -m pytest --cov=$(PKG) --cov-report=term-missing --cov-report=xml
+
+# ---- declared-floor gate ----------------------------------------------------
+# metadata.txt promises qgisMinimumVersion, and nothing was checking it. Both CI
+# legs run a Python new enough to accept syntax the floor rejects (3.44 ships
+# 3.13, 3.40 ships 3.12, the 3.22 floor ships 3.8), and neither imports a module
+# the floor cannot load. A release shipped with fiberq/core/validation_report.py
+# a hard SyntaxError on 3.22 and the whole fiberq/addons package unimportable
+# there, through a green CI, a clean flake8, a clean Bandit and a clean Qt6 check.
+#
+# pytest cannot do this job: pytest-qgis will not even load on the 3.22 image
+# (Python 3.8 against its `list[...]` annotations), which is why the floor had no
+# coverage in the first place. So this is a plain script, run in the floor image.
+#
+# FLOOR_IMAGE must track qgisMinimumVersion in fiberq/metadata.txt. If you raise
+# one, raise the other.
+FLOOR_IMAGE ?= qgis/qgis:3.22
+FLOOR_PY ?= python3
+
+floor-check:
+	@if [ -n "$$FLOOR_LOCAL" ]; then \
+		$(MAKE) --no-print-directory floor-check-local; \
+	elif command -v docker >/dev/null 2>&1; then \
+		$(MAKE) --no-print-directory floor-check-docker; \
+	else \
+		echo "docker not found. Install it, or run inside QGIS $(FLOOR_IMAGE):"; \
+		echo "  make floor-check-local"; \
+		exit 3; \
+	fi
+
+# Inside an already-correct interpreter (CI runs this one, in the floor image).
+floor-check-local:
+	@$(FLOOR_PY) tests/floor_check.py
+
+# PYTHONDONTWRITEBYTECODE because the mount is read-only and the script does not
+# need bytecode; HOME=/tmp because the image's default HOME is not writable as a
+# non-root user.
+floor-check-docker:
+	@docker run --rm --network none -v "$(CURDIR)":/src:ro -w /src \
+		-e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 -e QT_QPA_PLATFORM=offscreen \
+		"$(FLOOR_IMAGE)" $(FLOOR_PY) tests/floor_check.py
 
 # ---- Qt6 compatibility gate -------------------------------------------------
 # plugins.qgis.org runs QGIS's own pyqt5_to_pyqt6.py over every upload and shows

@@ -42,6 +42,31 @@ jobs:
             "qgis/qgis:${{ matrix.qgis }}" \
             bash -c "apt-get update -qq && apt-get install -y --no-install-recommends make >/dev/null && make deps && make lint && make test"
 
+  # The floor that fiberq/metadata.txt promises. Nothing was checking it: both
+  # legs above run a Python new enough to accept syntax the floor rejects (3.44
+  # ships 3.13, the 3.22 floor ships 3.8), and neither imports a module the floor
+  # cannot load. A release shipped with fiberq/core/validation_report.py a hard
+  # SyntaxError on 3.22 and the whole fiberq/addons package unimportable there,
+  # through a green CI, a clean flake8, a clean Bandit and a clean Qt6 check.
+  #
+  # Not part of the matrix above, because that matrix runs `make test` and
+  # pytest-qgis will not load on the 3.22 image at all (Python 3.8 against its
+  # `list[...]` annotations) -- which is why the floor had no coverage. This leg
+  # runs the one thing that CAN run there: parse and import every module.
+  floor-check:
+    name: Declared floor (QGIS 3.22)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse and import every module on the declared floor
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/src:ro" -w /src \
+            -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+            -e QT_QPA_PLATFORM=offscreen \
+            "qgis/qgis:3.22" \
+            python3 tests/floor_check.py
+
   # The same check plugins.qgis.org runs on every upload (its "Qt6 Check" tab).
   # The QGIS 4 leg above cannot replace it: FiberQ routes old enum names through
   # utils/compat.py, so the plugin runs on Qt6 while the source may still carry
