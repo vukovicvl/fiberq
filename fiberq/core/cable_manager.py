@@ -38,6 +38,7 @@ from qgis.core import (
 )
 
 # Phase 5.2: Logging
+from . import interchange_fields as fm
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
 logger = get_logger(__name__)
@@ -804,9 +805,17 @@ class CableManager:
             "total_fibers": QVariant.Int,
             "color_standard": QVariant.String,
         }
+        # U4: a pre-1.0 cable layer calls cable_laying "polaganje_kabla".
+        # Asking only for the modern name finds nothing, so v1.5.0 added a
+        # SECOND column beside the one already holding the value -- and then
+        # wrote the new cable's installation type into the new column, leaving
+        # the layer with two half-filled columns meaning the same thing. The
+        # bundle exporter then mapped both to installation_type, which is where
+        # the fiberq_uuid overwrite came from (see _canonical_layer).
+        existing_names = cables_layer.fields().names()
         to_add = []
         for fname, ftype in needed_fields.items():
-            if cables_layer.fields().indexFromName(fname) == -1:
+            if not fm.actual_field(existing_names, fname):
                 to_add.append(QgsField(fname, ftype))
         if to_add:
             prov = (cables_layer.providerType() or "").lower()
@@ -909,7 +918,13 @@ class CableManager:
         feat.setAttribute("slabljenje_dbkm", slabljenje_dbkm)
         feat.setAttribute("hrom_disp_ps_nmxkm", hrom_disp_ps_nmxkm)
         feat.setAttribute("stanje_kabla", stanje_kabla)
-        feat.setAttribute("cable_laying", cable_laying)
+        # Whichever spelling this layer actually has. setAttribute() raises
+        # KeyError for a name the layer does not carry -- measured on 3.44 and
+        # 4.0, despite the C++ signature suggesting it answers False -- so the
+        # name is resolved rather than assumed.
+        laying_field = fm.actual_field(cables_layer.fields().names(), "cable_laying")
+        if laying_field:
+            feat.setAttribute(laying_field, cable_laying)
         feat.setAttribute("vrsta_mreze", vrsta_mreze)
         feat.setAttribute("godina_ugradnje", godina_ugradnje)
         feat.setAttribute("konstr_vlakna_u_cevcicama", konstr_vlakna_u_cevcicama)

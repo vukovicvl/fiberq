@@ -297,8 +297,22 @@ class InterchangeBundleWriter:
 
         # Field plan: rename to canonical, drop the project-local pair, keep
         # anything the format has no name for under the name it arrived with.
+        #
+        # U4: two source columns can want the same destination. A pre-1.0 cable
+        # layer that v1.5.0's lay_cable has touched carries BOTH
+        # ``polaganje_kabla`` and ``cable_laying``, and both map to
+        # ``installation_type``. ``QgsFields.append`` refuses the duplicate and
+        # answers False, leaving ``count()`` unchanged -- so ``count() - 1``
+        # pointed at the *previous* field and every later column shifted by
+        # one. With fiberq_uuid sitting between the two laying columns, that
+        # wrote the cable's installation type over the identity of every
+        # exported cable: the one column the whole format is keyed on.
+        #
+        # So the result of append() is read, and a refused name is merged into
+        # the destination already planned for it.
         fields = QgsFields()
         plan = []  # (source index, destination index, canonical name)
+        merged = set()  # destinations more than one source column feeds
         for src_index, source in enumerate(source_fields):
             name = source.name()
             if fm.modern_field(name) in fm.STRUCTURAL_FIELDS:
@@ -307,8 +321,14 @@ class InterchangeBundleWriter:
             field = QgsField(source)
             if canonical_name and canonical_name != name:
                 field.setName(canonical_name)
-            fields.append(field)
-            plan.append((src_index, fields.count() - 1, canonical_name or name))
+            if fields.append(field):
+                plan.append((src_index, fields.count() - 1, canonical_name or name))
+                continue
+            existing = fields.indexFromName(field.name())
+            if existing < 0:
+                return None, f"could not plan the bundle copy of '{canonical}'"
+            merged.add(existing)
+            plan.append((src_index, existing, canonical_name or name))
 
         structural = [
             name for name in fm.STRUCTURAL_FIELDS
@@ -362,6 +382,18 @@ class InterchangeBundleWriter:
                 value = source_feature.attribute(src_index)
                 if roster and value is not None:
                     value = fm.canonical_value(roster, canonical_name, value)
+                if dest_index in merged:
+                    # First non-blank wins, and nothing blank overwrites it.
+                    # Per feature only one of the two columns is ever filled:
+                    # cables laid before the rename carry the Serbian one,
+                    # cables laid by v1.5.0 carry the English one. Merging is
+                    # therefore lossless here, and the project's own columns
+                    # are left exactly as they are -- no on-disk migration,
+                    # which would rewrite user data and break user expressions.
+                    if self._is_blank(value):
+                        continue
+                    if not self._is_blank(feature.attribute(dest_index)):
+                        continue
                 feature.setAttribute(dest_index, value)
 
             # A value already on the feature is never overwritten: that is what
