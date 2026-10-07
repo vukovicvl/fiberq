@@ -432,7 +432,14 @@ class RouteManager:
                              transform, tip_trase, errors):
         """Copy every line in ``imported_layer`` into the Route layer.
 
-        Returns ``(added, skipped)``.
+        Returns ``(added, skipped, saved)``. ``saved`` is True when this call
+        opened the editing session and the commit went through, False when it
+        opened one and the commit was refused, and None when the user already
+        had the layer in edit mode -- their session, theirs to save.
+
+        A refused commit never zeroes ``added``: "added" and "saved" are
+        different facts, and saying one for the other is how a refused write came
+        out as "No lines found for import in the file!".
 
         R6. Three things used to end the whole import on one bad feature, with
         the Route layer left in edit mode holding a partial result:
@@ -480,17 +487,33 @@ class RouteManager:
                         geom_line = moved
                     if self._add_one_route(route_layer, geom_line, tip_trase, errors):
                         added += 1
+                    else:
+                        # A route the LAYER refuses was counted in neither
+                        # total, so it vanished from the report entirely: a
+                        # read-only Route layer took three routes, added none,
+                        # skipped none, and the user was told the file held no
+                        # lines (measured on 3.44.15).
+                        skipped += 1
         except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
             errors.add(None, exc)
             route_layer.destroyEditCommand()
             if not was_editing:
                 route_layer.rollBack()
-            return 0, skipped
+            # destroyEditCommand() undoes this import's own edits either way, so
+            # nothing was added however the session is owned.
+            return 0, skipped, None if was_editing else False
 
         route_layer.endEditCommand()
-        if not was_editing and not check_commit(route_layer, errors):
-            return 0, skipped
-        return added, skipped
+        if was_editing:
+            # The user's session, theirs to save. Not an error, and not "saved".
+            return added, skipped, None
+        if not check_commit(route_layer, errors):
+            # NOT zero. QGIS keeps refused features in the layer's buffer (see
+            # utils.errors.check_commit), so they really are in the layer -- and
+            # reporting zero here is what made the caller tell the user the file
+            # had held no lines, sending them to inspect a file that was fine.
+            return added, skipped, False
+        return added, skipped, True
 
     @staticmethod
     def _route_parts(geom):
@@ -565,13 +588,20 @@ class RouteManager:
         tip_trase = self._ask_route_type("Imported route type")
 
         with OperationErrors(_route_import(), self.iface) as errors:
-            count_added, skipped = self._add_imported_routes(
+            count_added, skipped, saved = self._add_imported_routes(
                 imported_layer, route_layer, src_crs, dst_crs, transform,
                 tip_trase, errors)
         if skipped:
+            # Reason-free, because the reasons differ and each is already
+            # written down where it happened: a reprojection that could not work
+            # (errors.add above), a geometry that is not a line (_route_parts),
+            # or a route the layer refused (_add_one_route). The old wording
+            # said "were not routes", which contradicted the reprojection
+            # warning sitting next to it in the same message bar about a feature
+            # that WAS a route.
             src = QT_TRANSLATE_NOOP(
                 'FiberQRoutes',
-                "{count} feature(s) in the file were not routes and were skipped.")
+                "{count} feature(s) in the file could not be imported and were skipped.")
             self.iface.messageBar().pushInfo(
                 _route_import(),
                 safe_format(QCoreApplication.translate('FiberQRoutes', src), src,
@@ -580,12 +610,32 @@ class RouteManager:
 
         tip_label_display = ROUTE_TYPE_LABELS.get(tip_trase, tip_trase)
 
-        if count_added:
+        # Four outcomes, each saying which one it is. Before this they collapsed
+        # into two, and a refused commit came out as "No lines found for import
+        # in the file!" -- about a file that was fine, while the routes sat
+        # unsaved in the layer's buffer. The user's next move was to go and
+        # inspect the file; the retry the modal invites then found the layer
+        # already editable and reported a bare success (measured on 3.44.15).
+        if count_added and saved is False:
+            src = QT_TRANSLATE_NOOP('FiberQRoutes', "{count} route(s) were added to the Route layer but could not be saved. Close any program holding the file open, then use Layer > Save Layer Edits. The reason is in the message bar.")
+            QMessageBox.warning(self.iface.mainWindow(), "FiberQ",
+                                safe_format(QCoreApplication.translate('FiberQRoutes', src), src, count=count_added))
+        elif count_added and saved is None:
+            src = QT_TRANSLATE_NOOP('FiberQRoutes', "{count} route(s) of type {kind} were added to the Route layer. They are not saved yet, because you already had the layer open for editing -- use Layer > Save Layer Edits when you are ready.")
+            QMessageBox.information(self.iface.mainWindow(), "FiberQ",
+                                    safe_format(QCoreApplication.translate('FiberQRoutes', src), src, count=count_added, kind=tip_label_display))
+        elif count_added:
             QMessageBox.information(
                 self.iface.mainWindow(),
                 "FiberQ",
                 f"Imported {count_added} routes into the 'Route' layer!\n(All are of type: {tip_label_display})"
             )
+        elif skipped:
+            # The file DID hold features. Saying "no lines found" here is the
+            # same lie in a quieter form.
+            src = QT_TRANSLATE_NOOP('FiberQRoutes', "None of the {count} feature(s) in the file could be imported. The reason is in the message bar.")
+            QMessageBox.warning(self.iface.mainWindow(), "FiberQ",
+                                safe_format(QCoreApplication.translate('FiberQRoutes', src), src, count=skipped))
         else:
             QMessageBox.warning(
                 self.iface.mainWindow(),
