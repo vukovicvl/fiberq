@@ -220,8 +220,9 @@ def test_the_demo_opens_on_its_network(tmp_path):
     saved = project.viewSettings().defaultViewExtent()
     assert not saved.isNull(), "demo_project.qgz saves no view extent"
 
+    # Not setNull(): QGIS 3.34 and later only, and a fresh QgsRectangle is
+    # already null. See the note in fixtures/make_demo_project.py.
     data = QgsRectangle()
-    data.setNull()
     for layer in project.mapLayers().values():
         if isinstance(layer, QgsVectorLayer) and not layer.extent().isNull():
             data.combineExtentWith(layer.extent())

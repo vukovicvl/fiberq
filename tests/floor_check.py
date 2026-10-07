@@ -2,9 +2,16 @@
 """Parse and import every module in the plugin on the QGIS the floor declares.
 
 ``make floor-check`` runs this inside the image for the ``qgisMinimumVersion``
-in ``fiberq/metadata.txt``. It is deliberately NOT a pytest file: pytest-qgis
-will not load on the 3.22 image at all (its Python is 3.8, pytest-qgis uses
-``list[...]`` annotations), which is precisely why the floor had no coverage.
+in ``fiberq/metadata.txt``. It is not a pytest file, because the point is to run
+on the OLDEST Python any supported QGIS ships: ``qgis/qgis:3.22`` has Python
+3.8, and pytest-qgis declares ``Requires-Python >= 3.10``, so it cannot even be
+imported there.
+
+That is a Python floor, not a QGIS one, and the distinction matters: the other
+3.22 image, ``qgis/qgis:release-3_22``, ships Python 3.10.6 with the same QGIS
+3.22.16, and the whole pytest suite DOES run there. CI runs both -- this script
+on 3.8 for the syntax a newer Python would accept, and the real suite on
+``release-3_22`` for behaviour. Neither replaces the other.
 
 What it catches, and nothing else does:
 
@@ -14,6 +21,11 @@ What it catches, and nothing else does:
   ``SyntaxError`` there and "Export validation report" threw an unhandled error
   out of its Qt slot. QGIS 3.40 ships 3.12 and 3.44 ships 3.13, so both CI legs
   stayed green and it shipped in a release.
+* **A package that takes its own submodules down.** ``addons/__init__.py``
+  imports all six addons, so one bad import there makes every one of them
+  unavailable -- including the fibre-break tool, reached lazily as
+  ``from .addons.fiber_break import FiberBreakTool``, which must import the
+  failing ``__init__`` first.
 * **Imports from the wrong Qt module.** ``QAction`` and ``QShortcut`` moved from
   ``QtWidgets`` to ``QtGui`` in Qt6. Importing them from ``QtGui`` works from
   3.40 up and fails on 3.22, and because the failure is at module scope it took
@@ -41,12 +53,18 @@ cannot import on the floor, the honest answer is to raise
 import importlib
 import os
 import pathlib
+import subprocess
 import sys
 import traceback
 
 PACKAGE = "fiberq"
 SEED = os.path.join("tests", "floor_seed")
-MIN_SEED = int(os.environ.get("FLOOR_MIN_SEED", "3"))
+#: Six, and the sixth is the point. ``seed_broken_pkg`` contributes three: the
+#: package, its broken submodule, and ``fine`` -- which only shows up if the
+#: fresh-interpreter re-check in ``_import_failures`` is working. If that
+#: regresses, the count drops to 5 and this gate refuses to call the package
+#: clean. That is the whole reason the number is pinned rather than counted.
+MIN_SEED = int(os.environ.get("FLOOR_MIN_SEED", "6"))
 
 
 def _module_names(root, repo):
@@ -86,13 +104,44 @@ def _syntax_failures(root):
     return failures
 
 
+#: Imports one module in a fresh interpreter. Used only to re-check the
+#: submodules of a package whose own ``__init__`` failed -- see
+#: ``_import_failures``.
+_CHILD = """
+import sys, importlib
+sys.path.insert(0, sys.argv[2])
+from qgis.core import QgsApplication
+QgsApplication.setPrefixPath('/usr', True)
+_app = QgsApplication([], False)
+_app.initQgis()
+importlib.import_module(sys.argv[1])
+"""
+
+
 def _import_failures(root, repo, already_broken):
     """Every module that will not import, skipping ones that did not parse.
 
-    A file that does not parse raises ``SyntaxError`` from
-    ``import_module`` too; listing it twice is noise, so the syntax pass owns
-    it. Everything else -- a wrong Qt module, a missing name, a module-scope
-    call that fails -- shows up here.
+    A file that does not parse raises ``SyntaxError`` from ``import_module``
+    too; listing it twice is noise, so the syntax pass owns it. Everything else
+    -- a wrong Qt module, a missing name, a module-scope call that fails --
+    shows up here.
+
+    **Why the second pass.** One interpreter is not enough. When a package's
+    ``__init__`` imports its submodules and one of them fails, the ones that
+    already succeeded stay in ``sys.modules``, while the package itself is
+    removed. Importing such a submodule afterwards then finds it cached and
+    answers a false OK. Measured on qgis/qgis:3.22 with only
+    ``addons/hotkeys.py`` broken: one interpreter reported 5 failures, a fresh
+    one per module reported 7 -- and the two it missed were
+    ``addons.fiber_break`` and ``addons.fiberq_preview``, the break-distance
+    tool and a user-facing dialog. ``addons/__init__.py`` imports those before
+    ``hotkeys``, which is the only reason they looked fine. An invisible
+    allowlist in a gate whose docstring promises none.
+
+    So: after the in-process pass, every module under a package that FAILED is
+    re-checked in a fresh interpreter. On a clean tree no package fails, so this
+    costs nothing -- zero subprocesses. It is only the failing run that pays,
+    and a failing run is allowed to be slow.
     """
     failures = []
     for name in _module_names(root, repo):
@@ -102,6 +151,25 @@ def _import_failures(root, repo, already_broken):
             importlib.import_module(name)
         except Exception as exc:  # noqa: BLE001 - any import failure IS the finding
             failures.append((name, exc, traceback.format_exc()))
+
+    failed_packages = {name for name, _exc, _tb in failures}
+    if not failed_packages:
+        return failures
+
+    reported = set(failed_packages)
+    for name in _module_names(root, repo):
+        if name in reported or name in already_broken:
+            continue
+        if not any(name.startswith(pkg + ".") for pkg in failed_packages):
+            continue
+        child = subprocess.run(
+            [sys.executable, "-c", _CHILD, name, str(repo)],
+            capture_output=True, text=True)
+        if child.returncode != 0:
+            tail = child.stderr.strip().splitlines() or ["(no stderr)"]
+            failures.append((name, RuntimeError(tail[-1]),
+                             "\n".join(tail[-6:]) + "\n  (fresh interpreter)"))
+            reported.add(name)
     return failures
 
 

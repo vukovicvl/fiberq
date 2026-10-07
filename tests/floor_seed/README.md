@@ -2,18 +2,32 @@
 
 These files **intentionally** use syntax and imports that the plugin's declared floor
 rejects. They are the self-test for `make floor-check`: the target scans this directory as
-well as `fiberq/`, and **fails if it reports fewer than three findings here**.
+well as `fiberq/`, and **fails if it reports fewer than six findings here** (`FLOOR_MIN_SEED`).
 
 Why: a gate that stops reporting goes quietly green and stops protecting the release.
 Both defects this gate exists for shipped through a green CI, a clean flake8, a clean
 Bandit and a clean Qt6 check — nothing was watching the floor. Seeding known-bad code
 proves the gate can still see a problem before it is allowed to call the plugin clean.
 
-| File | Seeds | Fails on |
-|---|---|---|
-| `seed_pep701.py` | single quotes nested inside a single-quoted f-string | Python < 3.12 (QGIS 3.22 ships 3.8) |
-| `seed_qt6_import.py` | `QAction`/`QShortcut` from `qgis.PyQt.QtGui`, their Qt6 home | QGIS 3.22 (Qt5 keeps them in `QtWidgets`) |
-| `seed_walrus_py312.py` | a type-parameter list (`def f[T]()`), PEP 695 | Python < 3.12 |
+| File | Seeds | Fails on | Findings |
+|---|---|---|---|
+| `seed_pep701.py` | single quotes nested inside a single-quoted f-string | Python < 3.12 (`qgis/qgis:3.22` ships 3.8) | 1 |
+| `seed_walrus_py312.py` | a type-parameter list (`def f[T]()`), PEP 695 | Python < 3.12 | 1 |
+| `seed_qt6_import.py` | `QAction`/`QShortcut` from `qgis.PyQt.QtGui`, their Qt6 home | QGIS 3.22 (Qt5 keeps them in `QtWidgets`) | 1 |
+| `seed_broken_pkg/` | a package whose `__init__` imports a good submodule **before** a bad one | QGIS 3.22 | 3 |
+
+**Six findings from four seeds**, and the arithmetic matters. `seed_broken_pkg`
+contributes three: the package, its `broken` submodule, and `fine` — which imports
+perfectly well on its own. `fine` is a finding because no user can reach it through a
+package whose `__init__` raises, and it is reported **only** if the gate re-checks a
+failed package's submodules in a fresh interpreter.
+
+That is what the pinned number really guards. The first version of this gate imported
+everything in one interpreter, so `fine` was found already cached in `sys.modules` and
+reported OK — measured on the real package, it under-reported `fiberq/addons` as 5
+broken modules when the truth was 7, silently excusing `addons.fiber_break` and
+`addons.fiberq_preview`. If that re-check ever regresses, the count here falls to 5 and
+the gate refuses to call the plugin clean instead of going quietly green.
 
 Rules for this directory:
 

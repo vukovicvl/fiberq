@@ -300,7 +300,7 @@ def to_html(result: ValidationResult, title: Optional[str] = None) -> str:
     # 3.22 ships Python 3.8, where this file was a hard SyntaxError -- so the
     # whole module failed to import and "Export validation report" threw an
     # unhandled Python error out of its Qt slot. 3.40 ships 3.12 and was fine,
-    # which is why it went unnoticed. tests/test_floor_imports.py now parses
+    # which is why it went unnoticed. tests/floor_check.py now parses
     # and imports every module on the declared floor.
     run_label = _tr(QT_TRANSLATE_NOOP('ValidationReport', "Run"))
     parts.append(f'<h2>{_esc(run_label)}</h2><div class="meta"><dl>')

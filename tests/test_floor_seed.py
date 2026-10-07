@@ -34,6 +34,15 @@ SEEDS = {
         "def first[T](",
         "a PEP 695 type-parameter list (Python 3.12+)",
     ),
+    "seed_broken_pkg/__init__.py": (
+        "from . import fine",
+        "a package that imports a good submodule BEFORE a bad one, so the good one is "
+        "left cached in sys.modules and an in-process re-import of it answers a false OK",
+    ),
+    "seed_broken_pkg/broken.py": (
+        "from qgis.PyQt.QtGui import QAction, QShortcut",
+        "the import that breaks that package's __init__",
+    ),
 }
 
 
@@ -58,14 +67,24 @@ def test_each_seed_still_seeds_what_it_claims(name):
 
 
 def test_the_seed_count_matches_what_the_gate_demands():
-    """FLOOR_MIN_SEED in tests/floor_check.py must not outrun the seeds.
+    """FLOOR_MIN_SEED in tests/floor_check.py must not drift from the seeds.
 
-    If someone adds a seed, the floor can be raised. If someone removes one
-    without lowering the minimum, `make floor-check` fails for the wrong reason
-    and the next person "fixes" it by lowering the bar.
+    The gate expects SIX findings, which is not the same as six files:
+    ``seed_broken_pkg`` contributes three on its own — the package, its broken
+    submodule, and ``fine``. ``fine`` imports perfectly well; it is a finding
+    only because no user could ever reach it through a package whose
+    ``__init__`` raises, and it appears only if the gate's fresh-interpreter
+    re-check is working. That is what pins the number: if that re-check
+    regresses, the count falls to 5 and the gate says so instead of going green.
+
+    So do not "simplify" this to len(SEEDS). If you add or remove a seed, work
+    out what it contributes and update the gate, this test and the README
+    together.
     """
     gate = (SEED_DIR.parent / "floor_check.py").read_text(encoding="utf-8")
-    assert 'MIN_SEED = int(os.environ.get("FLOOR_MIN_SEED", "3"))' in gate, (
-        "floor_check.py's default minimum changed. Keep it equal to the number of seeds "
-        f"({len(SEEDS)}) and update this test and the README together.")
-    assert len(SEEDS) == 3, "this file and floor_check.py's default must agree"
+    assert 'MIN_SEED = int(os.environ.get("FLOOR_MIN_SEED", "6"))' in gate, (
+        "floor_check.py's default minimum changed. Keep it at the number of findings the "
+        "seeds produce (6 for the current set) and update this test and the README too.")
+    assert (SEED_DIR / "seed_broken_pkg" / "fine.py").is_file(), (
+        "seed_broken_pkg/fine.py is the one that proves the fresh-interpreter re-check "
+        "still runs. Without it the gate's count drops and nothing notices.")
