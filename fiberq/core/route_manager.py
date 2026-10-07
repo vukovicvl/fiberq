@@ -13,7 +13,7 @@ Phase 5.2: Added logging infrastructure
 
 from typing import Optional, List, Tuple
 
-from qgis.PyQt.QtCore import QVariant, Qt
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, QVariant, Qt
 from qgis.PyQt.QtWidgets import QMessageBox, QInputDialog, QFileDialog
 
 from qgis.core import (
@@ -30,9 +30,19 @@ from qgis.core import (
 )
 
 # Phase 5.2: Logging
+from ..i18n import safe_format
+from ..utils.errors import OperationErrors, check_commit, describe
+from ..utils import file_filters
+from ..utils.geometry import transformed
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
 logger = get_logger(__name__)
+
+
+def _route_import() -> str:
+    """Title on the message-bar entries the route importer pushes."""
+    src = QT_TRANSLATE_NOOP('FiberQRoutes', "Import route")
+    return QCoreApplication.translate('FiberQRoutes', src)
 
 
 # Route type options and labels
@@ -418,12 +428,119 @@ class RouteManager:
             f"Route has been created!\nLength: {duzina_m:.2f} m ({duzina_km:.2f} km)\nType: {tip_label_display}"
         )
 
+    def _add_imported_routes(self, imported_layer, route_layer, src_crs, dst_crs,
+                             transform, tip_trase, errors):
+        """Copy every line in ``imported_layer`` into the Route layer.
+
+        Returns ``(added, skipped)``.
+
+        R6. Three things used to end the whole import on one bad feature, with
+        the Route layer left in edit mode holding a partial result:
+
+        * ``geom.asPolyline()`` on a **point** is ``TypeError``, and on a
+          **null geometry** ``ValueError`` (measured on 3.44.15 and 4.0.3). The
+          ``if polyline and len(polyline) >= 2`` guard underneath could never
+          run, so a point GeoJSON -- the obvious thing to try -- killed it.
+        * a reprojection that cannot work does NOT raise. It answers
+          ``Success`` and leaves ``inf inf`` behind, so the importer wrote
+          infinite geometry into the project and reported success. Both the
+          exception and the infinite outcome are handled by
+          ``utils.geometry.transformed``.
+        * ``addFeature`` and ``commitChanges`` both discarded their result.
+
+        The work is scoped in an **edit command**, and the layer is only
+        committed if this call opened the editing session. A user who already
+        had unsaved edits keeps them: the import joins their undo stack instead
+        of committing their buffer for them, and a failure destroys only the
+        import's own command.
+        """
+        was_editing = route_layer.isEditable()
+        if not was_editing:
+            route_layer.startEditing()
+        route_layer.beginEditCommand(_route_import())
+
+        added = 0
+        skipped = 0
+        try:
+            for feat in imported_layer.getFeatures():
+                parts = self._route_parts(feat.geometry())
+                if not parts:
+                    skipped += 1
+                    continue
+                for polyline in parts:
+                    geom_line = QgsGeometry.fromPolylineXY(polyline)
+                    if src_crs != dst_crs:
+                        moved = transformed(geom_line, transform)
+                        if moved is None:
+                            errors.add(None, QCoreApplication.translate(
+                                'FiberQRoutes',
+                                "a route could not be reprojected and was left out"))
+                            skipped += 1
+                            continue
+                        geom_line = moved
+                    if self._add_one_route(route_layer, geom_line, tip_trase, errors):
+                        added += 1
+        except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+            errors.add(None, exc)
+            route_layer.destroyEditCommand()
+            if not was_editing:
+                route_layer.rollBack()
+            return 0, skipped
+
+        route_layer.endEditCommand()
+        if not was_editing and not check_commit(route_layer, errors):
+            return 0, skipped
+        return added, skipped
+
+    @staticmethod
+    def _route_parts(geom):
+        """The line parts of a geometry, or ``[]`` when it has none.
+
+        Answers ``[]`` for a point, a polygon and a null geometry rather than
+        raising, which is the whole of R6's non-line case.
+        """
+        if geom is None or geom.isNull() or geom.isEmpty():
+            return []
+        if geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
+            return []
+        if geom.isMultipart():
+            parts = geom.asMultiPolyline() or []
+        else:
+            parts = [geom.asPolyline()]
+        return [part for part in parts if part and len(part) >= 2]
+
+    def _add_one_route(self, route_layer, geom_line, tip_trase, errors) -> bool:
+        """One imported route feature. True when it reached the layer."""
+        new_feat = QgsFeature(route_layer.fields())
+        duzina_m = ground_length(geom_line, route_layer)
+        new_feat.setGeometry(geom_line)
+        new_feat.setAttribute("naziv", f"Imported route {route_layer.featureCount() + 1}")
+        new_feat.setAttribute("duzina", duzina_m)
+        new_feat.setAttribute("duzina_km", round(duzina_m / 1000.0, 2))
+        new_feat.setAttribute("tip_trase", tip_trase)
+        # Phase 0.1: Set UUID
+        try:
+            from ..utils.uuid_utils import set_feature_uuid
+            set_feature_uuid(new_feat)
+        except (AttributeError, ImportError, KeyError, RuntimeError, TypeError, ValueError) as exc:
+            # Without an identity the route does not travel into a bundle and
+            # cannot be matched on the way back, so this is a real loss.
+            errors.add(None, f"could not give an imported route an identity: {describe(exc)}")
+        if not route_layer.addFeature(new_feat):
+            errors.add(route_layer.name(), QCoreApplication.translate(
+                'FiberQRoutes', "a route was rejected by the layer"))
+            return False
+        return True
+
     def import_route_from_file(self) -> None:
         """Import routes from external file (KML/KMZ/DWG/GPX/Shape)."""
         filename, _ = QFileDialog.getOpenFileName(
             self.iface.mainWindow(),
-            "Choose route file (KML/KMZ/DWG/GPX/Shape)", "",
-            "GIS files (*.kml *.kmz *.dwg *.gpx *.shp);;All files (*)"
+            QCoreApplication.translate('FiberQRoutes', "Choose a route file"), "",
+            file_filters.with_any(
+                QCoreApplication.translate('FiberQRoutes', "GIS files"),
+                file_filters.GIS,
+                QCoreApplication.translate('FiberQRoutes', "All files"))
         )
         if not filename:
             return
@@ -447,59 +564,18 @@ class RouteManager:
         # Ask for route type
         tip_trase = self._ask_route_type("Imported route type")
 
-        route_layer.startEditing()
-        count_added = 0
-
-        for feat in imported_layer.getFeatures():
-            geom = feat.geometry()
-            if geom.isMultipart():
-                multi = geom.asMultiPolyline()
-                if multi:
-                    for polyline in multi:
-                        if polyline and len(polyline) >= 2:
-                            new_feat = QgsFeature(route_layer.fields())
-                            geom_line = QgsGeometry.fromPolylineXY(polyline)
-                            if src_crs != dst_crs:
-                                geom_line.transform(transform)
-                            duzina_m = ground_length(geom_line, route_layer)
-                            duzina_km = round(duzina_m / 1000.0, 2)
-                            new_feat.setGeometry(geom_line)
-                            new_feat.setAttribute("naziv", f"Imported route {route_layer.featureCount() + 1}")
-                            new_feat.setAttribute("duzina", duzina_m)
-                            new_feat.setAttribute("duzina_km", duzina_km)
-                            new_feat.setAttribute("tip_trase", tip_trase)
-                            # Phase 0.1: Set UUID
-                            try:
-                                from ..utils.uuid_utils import set_feature_uuid
-                                set_feature_uuid(new_feat)
-                            except Exception as e:
-                                logger.debug(f"Could not set feature uuid on imported route: {e}")
-                            route_layer.addFeature(new_feat)
-                            count_added += 1
-            else:
-                polyline = geom.asPolyline()
-                if polyline and len(polyline) >= 2:
-                    new_feat = QgsFeature(route_layer.fields())
-                    geom_line = QgsGeometry.fromPolylineXY(polyline)
-                    if src_crs != dst_crs:
-                        geom_line.transform(transform)
-                    duzina_m = ground_length(geom_line, route_layer)
-                    duzina_km = round(duzina_m / 1000.0, 2)
-                    new_feat.setGeometry(geom_line)
-                    new_feat.setAttribute("naziv", f"Imported route {route_layer.featureCount() + 1}")
-                    new_feat.setAttribute("duzina", duzina_m)
-                    new_feat.setAttribute("duzina_km", duzina_km)
-                    new_feat.setAttribute("tip_trase", tip_trase)
-                    # Phase 0.1: Set UUID
-                    try:
-                        from ..utils.uuid_utils import set_feature_uuid
-                        set_feature_uuid(new_feat)
-                    except Exception as e:
-                        logger.debug(f"Could not set feature uuid on imported route: {e}")
-                    route_layer.addFeature(new_feat)
-                    count_added += 1
-
-        route_layer.commitChanges()
+        with OperationErrors(_route_import(), self.iface) as errors:
+            count_added, skipped = self._add_imported_routes(
+                imported_layer, route_layer, src_crs, dst_crs, transform,
+                tip_trase, errors)
+        if skipped:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQRoutes',
+                "{count} feature(s) in the file were not routes and were skipped.")
+            self.iface.messageBar().pushInfo(
+                _route_import(),
+                safe_format(QCoreApplication.translate('FiberQRoutes', src), src,
+                            count=skipped))
         self.stylize_route_layer(route_layer)
 
         tip_label_display = ROUTE_TYPE_LABELS.get(tip_trase, tip_trase)

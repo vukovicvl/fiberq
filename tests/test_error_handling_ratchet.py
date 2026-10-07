@@ -114,6 +114,27 @@ CRITICAL = {
         "FiberBreakTool._record_break",
         "FiberBreakTool.canvasReleaseEvent",
     }),
+    # U9: the link storage R12 depends on -- a picture QGIS 4 can finally open
+    # is no use if the QGIS 3 save dropped the link. Same precedent as U6's
+    # gpkg_target: an unclaimed module a claimed path rests on.
+    "fiberq/core/feature_links.py": frozenset({
+        "_read_all",
+        "_read_legacy",
+        "_write_all",
+        "link_clear",
+        "link_get",
+        "link_set",
+    }),
+    # R11
+    "fiberq/dialogs/schematic_dialog.py": frozenset({
+        "OpticalSchematicDialog._center_on",
+        "OpticalSchematicDialog._drop_highlight",
+    }),
+    # R12
+    "fiberq/utils/image_watcher.py": frozenset({
+        "CanvasImageClickWatcher._show_picture_under",
+        "CanvasImageClickWatcher.eventFilter",
+    }),
     # R5
     "fiberq/core/color_manager.py": frozenset({
         "ColorManager.load_color_catalogs",
@@ -161,6 +182,9 @@ CRITICAL = {
     }),
     # R6, R7
     "fiberq/core/route_manager.py": frozenset({
+        "RouteManager._add_imported_routes",
+        "RouteManager._add_one_route",
+        "RouteManager._route_parts",
         "RouteManager.change_route_type",
         "RouteManager.import_route_from_file",
         "RouteManager.merge_all_routes",
@@ -192,9 +216,20 @@ CRITICAL = {
         "_BOMDialog._export_csv",
         "_BOMDialog._export_xlsx",
     }),
-    # R3, R5, R6, R7, R8
+    # R10, R6: the geometry primitives Route correction and the importers rest on
+    "fiberq/utils/geometry.py": frozenset({
+        "geometry_point",
+        "is_finite",
+        "line_vertices",
+        "transformed",
+    }),
+    # R3, R5, R6, R7, R8, R10
     "fiberq/main_plugin.py": frozenset({
+        "FiberQPlugin._add_imported_points",
+        "FiberQPlugin._add_one_point",
         "FiberQPlugin._cables_behind",
+        "FiberQPlugin.check_consistency",
+        "FiberQPlugin.fix_route_to_pole",
         "FiberQPlugin._change_element_type",
         "FiberQPlugin._save_color_catalogs",
         "FiberQPlugin.delete_selected",
@@ -255,10 +290,6 @@ ALLOWED_SILENT = {
      "RelationsManager.load_relations"): (1, "R5 Relations, latent elements, colour catalogues -- fix/wp4-write-paths"),
     ("fiberq/main_plugin.py",
      "FiberQPlugin._save_color_catalogs"): (1, "R5 Relations, latent elements, colour catalogues -- fix/wp4-write-paths"),
-    ("fiberq/core/route_manager.py",
-     "RouteManager.import_route_from_file"): (2, "R6 Import points / Import route -- fix/wp4-crashes-imports"),
-    ("fiberq/main_plugin.py",
-     "FiberQPlugin.import_points"): (4, "R6 Import points / Import route -- fix/wp4-crashes-imports"),
     ("fiberq/core/layer_manager.py",
      "_copy_attributes_between_layers"): (3, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
     ("fiberq/core/route_manager.py",
@@ -278,10 +309,6 @@ ALLOWED_SILENT = {
 #: one hides an exception, the other ignores an answer. Sharing one counter
 #: would let a branch "fix" a swallowed exception by checking a return value.
 ALLOWED_WRITES = {
-    ("fiberq/core/route_manager.py",
-     "RouteManager.import_route_from_file"): (3, "R6 Import points / Import route -- fix/wp4-crashes-imports"),
-    ("fiberq/main_plugin.py",
-     "FiberQPlugin.import_points"): (8, "R6 Import points / Import route -- fix/wp4-crashes-imports"),
     ("fiberq/core/layer_manager.py",
      "_copy_attributes_between_layers"): (2, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
     ("fiberq/core/route_manager.py",
@@ -323,7 +350,7 @@ ALLOWED_WRITES = {
 #: from v1.5.0 is what branches 3 and 4 left behind
 #: when they rewrote the placement tools: handlers deleted with the code around
 #: them, less the few that ``length_sync.py`` brought in.
-SILENCE_CEILING = 762
+SILENCE_CEILING = 753
 
 
 # ---------------------------------------------------------------------------
@@ -584,8 +611,8 @@ def test_d_package_wide_silence_does_not_grow():
 #: deleting a line from CRITICAL removes a whole operation from this gate with
 #: nothing in fiberq/ changing -- and that diff looks exactly like the one
 #: section 2.2 sanctions, where a branch deletes its own allowance rows.
-HARDENED_FUNCTIONS = 75
-HARDENED_FILES = 15
+HARDENED_FUNCTIONS = 96
+HARDENED_FILES = 19
 
 
 def test_the_hardened_set_is_not_quietly_narrowed():

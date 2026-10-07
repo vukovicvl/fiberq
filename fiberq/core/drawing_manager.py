@@ -13,7 +13,7 @@ import os
 import re
 from typing import List
 
-from qgis.PyQt.QtCore import QUrl
+from qgis.PyQt.QtCore import QCoreApplication, QUrl
 from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox, QInputDialog
 from qgis.PyQt.QtGui import QDesktopServices
 
@@ -23,6 +23,8 @@ from qgis.core import (
 )
 
 # Phase 5.2: Logging
+from . import feature_links
+from ..utils import file_filters
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
@@ -49,11 +51,11 @@ class DrawingManager:
     # -------------------------------------------------------------------------
 
     def drawing_key(self, layer: QgsVectorLayer, fid: int) -> str:
-        """Generate storage key for a drawing path."""
+        """The pre-1.6.0 per-feature key. Kept so the fallback can be tested."""
         return f"drawing_map/{layer.id()}/{int(fid)}"
 
     def drawing_layers_key(self, layer: QgsVectorLayer, fid: int) -> str:
-        """Generate storage key for drawing layer IDs."""
+        """The pre-1.6.0 per-feature key. Kept so the fallback can be tested."""
         return f"drawing_layers/{layer.id()}/{int(fid)}"
 
     # -------------------------------------------------------------------------
@@ -61,42 +63,34 @@ class DrawingManager:
     # -------------------------------------------------------------------------
 
     def drawing_layers_get(self, layer: QgsVectorLayer, fid: int) -> List[str]:
-        """Get list of layer IDs associated with a drawing.
+        """The layer IDs that make up one feature's drawing.
 
-        Issue #7: Check both new key (FiberQPlugin) and legacy key (StuboviPlugin)
-        for backward compatibility with old projects.
+        U9: through :mod:`fiberq.core.feature_links`. The old per-feature key
+        ended in the feature id, which QGIS 3 cannot write as an XML element
+        name, so every drawing link was dropped at save. The old key is still
+        read -- under both scopes -- and migrated when it answers.
         """
-        key = self.drawing_layers_key(layer, fid)
-        # Try new key first
-        s = QgsProject.instance().readEntry("FiberQPlugin", key, "")[0]
-        if not s:
-            # Fall back to legacy key for backward compatibility
-            s = QgsProject.instance().readEntry("StuboviPlugin", key, "")[0]
-        return [x for x in (s.split(",") if s else []) if x]
+        stored = feature_links.link_get(
+            feature_links.DRAWING_LAYERS, layer.id(), fid, default=[])
+        if isinstance(stored, str):
+            # A legacy value that reached here as the old comma-joined string.
+            stored = stored.split(",")
+        return [str(x) for x in stored if x]
 
     def drawing_layers_set(self, layer: QgsVectorLayer, fid: int, layer_ids: List[str]) -> None:
-        """Set list of layer IDs associated with a drawing."""
-        key = self.drawing_layers_key(layer, fid)
-        QgsProject.instance().writeEntry("FiberQPlugin", key, ",".join(layer_ids or []))
+        """Record which layers make up one feature's drawing."""
+        feature_links.link_set(
+            feature_links.DRAWING_LAYERS, layer.id(), fid,
+            [str(x) for x in (layer_ids or [])])
 
     def drawing_get(self, layer: QgsVectorLayer, fid: int) -> str:
-        """Get the drawing path for a feature.
-
-        Issue #7: Check both new key (FiberQPlugin) and legacy key (StuboviPlugin)
-        for backward compatibility with old projects.
-        """
-        key = self.drawing_key(layer, fid)
-        # Try new key first
-        path = QgsProject.instance().readEntry("FiberQPlugin", key, "")[0]
-        if not path:
-            # Fall back to legacy key for backward compatibility
-            path = QgsProject.instance().readEntry("StuboviPlugin", key, "")[0]
-        return path
+        """The drawing attached to one feature, or ``''``. See U9 above."""
+        return feature_links.link_get(feature_links.DRAWINGS, layer.id(), fid)
 
     def drawing_set(self, layer: QgsVectorLayer, fid: int, path: str) -> None:
-        """Set the drawing path for a feature."""
-        key = self.drawing_key(layer, fid)
-        QgsProject.instance().writeEntry("FiberQPlugin", key, path)
+        """Attach a drawing to one feature, or clear it when ``path`` is empty."""
+        feature_links.link_set(
+            feature_links.DRAWINGS, layer.id(), fid, path or "")
 
     # -------------------------------------------------------------------------
     # Group management
@@ -319,7 +313,10 @@ class DrawingManager:
             self.iface.mainWindow(),
             "Select drawing",
             "",
-            "DWG/DXF (*.dwg *.dxf);;All files (*.*)"
+            file_filters.with_any(
+                QCoreApplication.translate('FiberQDrawings', "DWG/DXF drawings"),
+                file_filters.DRAWINGS,
+                QCoreApplication.translate('FiberQDrawings', "All files"))
         )
         if not path:
             return

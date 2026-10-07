@@ -6,7 +6,7 @@ from qgis.PyQt.QtWidgets import (
     QFileDialog)
 from qgis.core import (
     QgsVectorFileWriter, QgsVectorLayer,
-    QgsProject, QgsField, QgsFeature,
+    QgsProject, QgsField, QgsFeature, QgsFeatureRequest,
     QgsGeometry, QgsPointXY, QgsWkbTypes,
     QgsSymbol, QgsUnitTypes, QgsCoordinateTransform
 )
@@ -35,9 +35,12 @@ from .i18n import (
 )
 # R9: a pre-1.0 project stores the slack->cable reference under its Serbian
 # name, and reading the modern one raises KeyError instead of missing quietly.
+from .core import feature_links
 from .core import interchange_fields as fm
+from .utils import file_filters
+from .utils.geometry import geometry_point, line_endpoint, line_part_count, transformed
 from .models.schema import canonical_layer_name
-from .utils.errors import OperationErrors, describe
+from .utils.errors import OperationErrors, check_commit, describe, report_error
 
 # =============================================================================
 # Phase 5.1: Logging infrastructure
@@ -579,8 +582,10 @@ class FiberQPlugin:
         prj = QgsProject.instance()
         default_dir = os.path.dirname(prj.fileName()) if prj.fileName() else os.path.expanduser('~')
 
-        gpkg_filter = self.tr('GeoPackage bundle (*.gpkg)')
-        json_filter = self.tr('GeoJSON bundle — a folder, no relations (*)')
+        gpkg_filter = file_filters.named(
+            self.tr('GeoPackage bundle'), file_filters.BUNDLE)
+        json_filter = file_filters.named(
+            self.tr('GeoJSON bundle — a folder, no relations'), file_filters.ANY)
         #: The overwrite prompt is ours, not the file dialog's. A native "file
         #: exists, replace?" can *delete* the target before it hands the path
         #: back, and a deleted bundle has no metadata left to merge -- so
@@ -713,7 +718,7 @@ class FiberQPlugin:
             self.iface.mainWindow(),
             self.tr('Import FiberQ interchange bundle'),
             default_dir,
-            self.tr('GeoPackage bundle (*.gpkg)'))
+            file_filters.named(self.tr('GeoPackage bundle'), file_filters.BUNDLE))
         if not path:
             return
 
@@ -1195,7 +1200,8 @@ class FiberQPlugin:
             self.iface.mainWindow(),
             self.tr('Choose image'),
             '',
-            self.tr('Images (*.jpg *.jpeg *.png *.gif);;All files (*.*)')
+            file_filters.with_any(self.tr('Images'), file_filters.IMAGES,
+                                  self.tr('All files'))
         )
         if not path:
             return
@@ -3393,9 +3399,10 @@ class FiberQPlugin:
     def import_points(self):
         filename, _ = QFileDialog.getOpenFileName(
             self.iface.mainWindow(),
-            self.tr("Choose a file with points (KML/KMZ/DWG/Shape/GPX)"),
+            self.tr("Choose a file with points"),
             "",
-            self.tr("GIS files (*.kml *.kmz *.shp *.dwg *.gpx);;All files (*)")
+            file_filters.with_any(self.tr("GIS files"), file_filters.GIS,
+                                  self.tr("All files"))
         )
         if not filename:
             return
@@ -3427,8 +3434,11 @@ class FiberQPlugin:
                 nm = d.get("name")
                 if nm and nm not in node_layer_names:
                     node_layer_names.append(nm)
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin.import_points: {e}")
+        except (AttributeError, ImportError, KeyError, TypeError, ValueError) as exc:
+            # The roster of layers the user may import into. A failure here
+            # silently shortens the list offered, which reads as "that layer
+            # does not exist" -- so it is said out loud.
+            report_error(self.tr("Import points"), None, exc, self.iface)
 
         existing_layers = [
             lyr for lyr in QgsProject.instance().mapLayers().values()
@@ -3486,15 +3496,18 @@ class FiberQPlugin:
                 # Create new point layer for other types (Joint Closures, etc.)
                 crs = self.iface.mapCanvas().mapSettings().destinationCrs().authid()
                 layer = QgsVectorLayer(f"Point?crs={crs}", new_layer_name, "memory")
-                pr = layer.dataProvider()
-                # Add fields depending on layer type
-                if new_layer_name == "Nastavci":
-                    pr.addAttributes([QgsField("naziv", QVariant.String)])
-                elif new_layer_name == "ZOK":
-                    pr.addAttributes([QgsField("naziv", QVariant.String)])
-                else:
-                    # generic layer with single 'naziv' field
-                    pr.addAttributes([QgsField("naziv", QVariant.String)])
+                # R6: all three branches added the same single 'naziv'
+                # field, and all three discarded the result -- so a provider
+                # that refused it left a layer with no attributes at all, and
+                # the import then wrote points into it and reported success.
+                if not layer.dataProvider().addAttributes(
+                        [QgsField("naziv", QVariant.String)]):
+                    report_error(self.tr("Import points"), new_layer_name,
+                                 QCoreApplication.translate(
+                                     'FiberQPlugin',
+                                     "the new layer would not take its 'naziv' field"),
+                                 self.iface)
+                    return
 
                 layer.updateFields()
                 QgsProject.instance().addMapLayer(layer, True)
@@ -3517,66 +3530,134 @@ class FiberQPlugin:
                                     self.tr("Unable to find the target layer!"))
                 return
 
-        # Extra protection: if target is Poles, ensure 'tip' field exists
-        try:
-            if layer.name() in ("Poles", "Poles") and "tip" not in layer.fields().names():
-                layer.startEditing()
-                layer.dataProvider().addAttributes([QgsField("tip", QVariant.String)])
-                layer.updateFields()
-                layer.commitChanges()
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin.import_points: {e}")
+        # Extra protection: if target is Poles, ensure 'tip' field exists.
+        # R6: this swallowed its failure at debug level and discarded both
+        # write results, so a Poles layer that could not take the field was
+        # imported into anyway -- every new pole silently without a type.
+        if (canonical_layer_name(layer.name()) == "Poles"
+                and "tip" not in layer.fields().names()):  # noqa: W503
+            # was_editing: see fix_route_to_pole. rollBack() here would throw
+            # away whatever the user had digitised into the Poles layer and not
+            # yet saved, to tidy up after a field that could not be added.
+            field_was_editing = layer.isEditable()
+            with OperationErrors(self.tr("Import points"), self.iface) as field_errors:
+                if not field_was_editing:
+                    layer.startEditing()
+                if not layer.dataProvider().addAttributes([QgsField("tip", QVariant.String)]):
+                    field_errors.add(layer.name(), QCoreApplication.translate(
+                        'FiberQPlugin', "the layer would not take its 'tip' field"))
+                    if not field_was_editing:
+                        layer.rollBack()
+                else:
+                    layer.updateFields()
+                    if not field_was_editing:
+                        check_commit(layer, field_errors)
 
         # Transformacija koordinata ako je potrebno
         src_crs = imported_layer.crs()
         dst_crs = layer.crs()
         transform = QgsCoordinateTransform(src_crs, dst_crs, QgsProject.instance())
 
-        layer.startEditing()
-        broj_dodatih = 0
-        for feat in imported_layer.getFeatures():
-            geom = feat.geometry()
-            if not geom or geom.isEmpty():
-                continue
-
-            # Transformacija ako je potrebno
-            if src_crs != dst_crs:
-                geom.transform(transform)
-
-            # Add each individual Point (even from MultiPoint)
-            if geom.type() == QgsWkbTypes.GeometryType.PointGeometry:
-                if geom.isMultipart():
-                    for pt in geom.asMultiPoint():
-                        if pt:
-                            new_feat = QgsFeature(layer.fields())
-                            new_feat.setGeometry(QgsGeometry.fromPointXY(pt))
-                            # For Poles layer set default tip = "POLE"
-                            try:
-                                if layer.name() in ("Poles", "Poles") and "tip" in layer.fields().names():
-                                    new_feat["tip"] = "POLE"
-                            except Exception as e:
-                                logger.debug(f"Error in FiberQPlugin.import_points: {e}")
-                            layer.addFeature(new_feat)
-                            broj_dodatih += 1
-                else:
-                    pt = geom.asPoint()
-                    if pt:
-                        new_feat = QgsFeature(layer.fields())
-                        new_feat.setGeometry(QgsGeometry.fromPointXY(pt))
-                        try:
-                            if layer.name() in ("Poles", "Poles") and "tip" in layer.fields().names():
-                                new_feat["tip"] = "POLE"
-                        except Exception as e:
-                            logger.debug(f"Error in FiberQPlugin.import_points: {e}")
-                        layer.addFeature(new_feat)
-                        broj_dodatih += 1
-            # If Line or Polygon, skip!
-
-        layer.commitChanges()
+        with OperationErrors(self.tr("Import points"), self.iface) as errors:
+            broj_dodatih, skipped = self._add_imported_points(
+                imported_layer, layer, src_crs, dst_crs, transform, errors)
         layer.triggerRepaint()
 
-        QMessageBox.information(self.iface.mainWindow(), "FiberQ",
-                                self.tr("Imported {count} points into layer '{layer}'!").format(count=broj_dodatih, layer=layer.name()))
+        if skipped:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                "{count} point(s) in the file could not be placed and were skipped.")
+            self.iface.messageBar().pushInfo(
+                self.tr("Import points"),
+                safe_format(self.tr(src), src, count=skipped))
+
+        if not errors.failed:
+            QMessageBox.information(self.iface.mainWindow(), "FiberQ",
+                                    self.tr("Imported {count} points into layer '{layer}'!").format(count=broj_dodatih, layer=layer.name()))
+
+    def _add_imported_points(self, imported_layer, layer, src_crs, dst_crs,
+                             transform, errors):
+        """Copy every point in ``imported_layer`` into ``layer``.
+
+        Returns ``(added, skipped)``.
+
+        R6. The loop this replaces reprojected in place with
+        ``geom.transform(transform)`` and ignored the answer. A reprojection
+        that cannot work does NOT raise -- measured on 3.44.15 and 4.0.3, it
+        returns ``Success`` and leaves ``inf inf`` behind -- so an
+        out-of-domain coordinate was written into the layer as an infinite
+        point, and ``addFeature`` and ``commitChanges`` both discarded their
+        result on top of that. The import announced how many points it had
+        added without knowing whether any of them had arrived.
+
+        Scoped in an **edit command**, and committed only if this call opened
+        the editing session: a user who already had unsaved edits keeps them,
+        and the import joins their undo stack rather than committing their
+        buffer for them.
+        """
+        was_editing = layer.isEditable()
+        if not was_editing:
+            layer.startEditing()
+        layer.beginEditCommand(self.tr("Import points"))
+
+        added = 0
+        skipped = 0
+        set_tip = (canonical_layer_name(layer.name()) == "Poles"
+                   and "tip" in layer.fields().names())  # noqa: W503
+        try:
+            for feat in imported_layer.getFeatures():
+                geom = feat.geometry()
+                if geom is None or geom.isNull() or geom.isEmpty():
+                    skipped += 1
+                    continue
+                if src_crs != dst_crs:
+                    geom = transformed(geom, transform)
+                    if geom is None:
+                        skipped += 1
+                        continue
+                if geom.type() != QgsWkbTypes.GeometryType.PointGeometry:
+                    skipped += 1  # a line or polygon in a point import
+                    continue
+                for point in (geom.asMultiPoint() if geom.isMultipart() else [geom.asPoint()]):
+                    if point is None:
+                        skipped += 1
+                        continue
+                    if self._add_one_point(layer, point, set_tip, errors):
+                        added += 1
+                    else:
+                        skipped += 1
+        except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+            errors.add(None, exc)
+            layer.destroyEditCommand()
+            if not was_editing:
+                layer.rollBack()
+            return 0, skipped
+
+        layer.endEditCommand()
+        if not was_editing and not check_commit(layer, errors):
+            return 0, skipped
+        return added, skipped
+
+    def _add_one_point(self, layer, point, set_tip, errors) -> bool:
+        """One imported point. True when it reached the layer."""
+        new_feat = QgsFeature(layer.fields())
+        new_feat.setGeometry(QgsGeometry.fromPointXY(point))
+        if set_tip:
+            new_feat["tip"] = "POLE"
+        # U16: imported points carried no fiberq_uuid, so WP2's B4 rule
+        # reported every one of them as missing its identity until the project
+        # was closed and reopened -- the uuid migration runs on project load,
+        # which is why it looked like it fixed itself.
+        try:
+            from .utils.uuid_utils import set_feature_uuid
+            set_feature_uuid(new_feat)
+        except (AttributeError, ImportError, KeyError, RuntimeError, TypeError, ValueError) as exc:
+            errors.add(None, f"could not give an imported point an identity: {describe(exc)}")
+        if not layer.addFeature(new_feat):
+            errors.add(layer.name(), QCoreApplication.translate(
+                'FiberQPlugin', "a point was rejected by the layer"))
+            return False
+        return True
 
     # Automatska korekcija
 
@@ -3801,40 +3882,130 @@ class FiberQPlugin:
                 logger.debug(f"Error in FiberQPlugin.export_all_features: {e}")
         self._export_active_layer(only_selected=False)
 
+    def _route_layer(self):
+        """The project's Route layer, under any of its names, or None.
+
+        U15: the lookup this replaces was `lyr.name() in ('Route', 'Route')`,
+        so a project whose layer is called Trasa had no Route layer as far as
+        Correct was concerned, and the correction stopped with "Route layer
+        'Route' not found!".
+        """
+        for lyr in QgsProject.instance().mapLayers().values():
+            if not isinstance(lyr, QgsVectorLayer) or not lyr.isValid():
+                continue
+            if lyr.geometryType() != QgsWkbTypes.GeometryType.LineGeometry:
+                continue
+            if canonical_layer_name(lyr.name()) == "Route":
+                return lyr
+        return None
+
     def check_consistency(self):
         self.popravljive_greske = []
-        layers = {
-            lyr.name(): lyr
-            for lyr in QgsProject.instance().mapLayers().values()
-            if isinstance(lyr, QgsVectorLayer)
-        }
+        # U15: this read
+        #     route_layer = layers.get("Route") or layers.get("Route")
+        #     poles_layer = layers.get("Poles") or layers.get("Poles")
+        # -- the SAME key twice, under a comment promising "support both
+        # Serbian and English names". Someone English-ified both halves of each
+        # pair, so the Serbian fallback it was written for was gone: on a
+        # project whose layers are called Trasa and Stubovi, route_layer came
+        # back None, the whole check was skipped, and Route correction
+        # announced "No errors found!". canonical_layer_name knows every
+        # spelling, and is the same resolver Delete selected uses.
+        layers = {}
+        for lyr in QgsProject.instance().mapLayers().values():
+            if not isinstance(lyr, QgsVectorLayer) or not lyr.isValid():
+                continue
+            layers.setdefault(canonical_layer_name(lyr.name()) or lyr.name(), lyr)
 
-        # support both Serbian and English names
-        route_layer = layers.get("Route") or layers.get("Route")
-        poles_layer = layers.get("Poles") or layers.get("Poles")
-        manholes_layer = layers.get("Manholes") or layers.get("OKNA")
+        route_layer = layers.get("Route")
+        poles_layer = layers.get("Poles")
+        manholes_layer = layers.get("Manholes")
+
+        # U15: and it said "No errors found!" when it had checked nothing at
+        # all, which is the one answer a consistency check must never give.
+        if route_layer is None:
+            QMessageBox.information(
+                self.iface.mainWindow(), self.tr("Route correction"),
+                self.tr("This project has no Route layer, so nothing was checked."))
+            return
+        if poles_layer is None and manholes_layer is None:
+            QMessageBox.information(
+                self.iface.mainWindow(), self.tr("Route correction"),
+                self.tr("This project has no Poles or Manholes layer, so route "
+                        "ends could not be checked."))
+            return
+
+        # Counted outside the block, because it is read outside it: a project
+        # whose Route or Poles layer is missing skips the whole body, and
+        # assigning this only inside was an UnboundLocalError on exactly those
+        # projects.
+        without_geometry = 0
 
         if route_layer and (poles_layer or manholes_layer):
+            # R10: a feature with no geometry answers asPoint() with
+            # "ValueError: Null geometry cannot be converted to a point."
+            # (measured on both stacks), and QGIS creates one whenever a row is
+            # added without digitising. One such pole used to end the whole
+            # check, so the user got a traceback instead of their route errors.
             pole_points = []
-            if poles_layer:
-                pole_points += [f.geometry().asPoint() for f in poles_layer.getFeatures()]
-            if manholes_layer:
-                pole_points += [f.geometry().asPoint() for f in manholes_layer.getFeatures()]
+            for source in (poles_layer, manholes_layer):
+                if source is None:
+                    continue
+                for pole in source.getFeatures():
+                    point = geometry_point(pole.geometry())
+                    if point is None:
+                        without_geometry += 1
+                        continue
+                    pole_points.append(point)
 
             for feat in route_layer.getFeatures():
-                geom = feat.geometry()
-                poly = geom.asPolyline()
-                if not poly:
+                # R10: and asPolyline() RAISES on a multipart route rather than
+                # answering an empty list, so `if not poly: continue` never
+                # saw one. line_endpoint goes through line_vertices, which
+                # tests the multipart case first.
+                #
+                # A route's ends are its FIRST vertex and its LAST one, across
+                # every part. Reading them off the first part alone reported a
+                # 2-part route's real end as unattached (it looked at where
+                # part 1 stops, which is the near side of the gap) and then
+                # offered to drag that mid-route vertex onto a pole. It also
+                # has to agree with fix_route_to_pole below, or correcting an
+                # end would not clear the error that asked for it.
+                start, _ = line_endpoint(feat.geometry())
+                end, _ = line_endpoint(feat.geometry(), last=True)
+                if start is None:
                     continue
-                start = poly[0]
-                end = poly[-1]
+
+                # Being in pieces is a defect in its own right, and reading
+                # only the outer two ends cannot see it. Part order is storage
+                # order -- whatever a merge, a shapefile or the provider
+                # produced, invisible to the user and not the direction of
+                # travel. So a route stored as ((10 0, 20 0),(0 0, 10 0)) has
+                # the junction at BOTH outer positions: without this, two bare
+                # ends at (0 0) and (20 0) would be answered with "No errors
+                # found!" -- measured. There is deliberately no 'popravka':
+                # dragging the end of a gap onto a pole makes the geometry
+                # worse, and what such a route needs is merging, not moving.
+                pieces = line_part_count(feat.geometry())
+                if pieces > 1:
+                    self.popravljive_greske.append({
+                        'msg': (f"Route (ID {feat.id()}) is in {pieces} separate pieces. "
+                                f"Only its two outer ends were checked against poles."),
+                        'feat': feat,
+                        'layer': route_layer,
+                    })
                 # Start
                 if not any(QgsPointXY(sp).distance(start) < 1e-2 for sp in pole_points):
                     greska = {
                         'msg': f"Start of route (ID {feat.id()}) is NOT on a pole.",
                         'feat': feat,
                         'layer': route_layer,
-                        'popravka': lambda f=feat: self.fix_route_to_pole(f, must_start=True)
+                        # U15: by ID, not by this feature object. The
+                        # object holds the geometry as it was when the check
+                        # ran, so correcting the start and then the end wrote
+                        # the stale geometry back and REVERTED the start --
+                        # measured: ends (1, 99) -> (0, 99) -> (1, 100).
+                        'popravka': lambda fid=feat.id(): self.fix_route_to_pole(fid, must_start=True)
                     }
                     self.popravljive_greske.append(greska)
                 # Kraj
@@ -3843,9 +4014,17 @@ class FiberQPlugin:
                         'msg': f"End of route (ID {feat.id()}) is NOT on a pole.",
                         'feat': feat,
                         'layer': route_layer,
-                        'popravka': lambda f=feat: self.fix_route_to_pole(f, must_start=False)
+                        'popravka': lambda fid=feat.id(): self.fix_route_to_pole(fid, must_start=False)
                     }
                     self.popravljive_greske.append(greska)
+
+        if without_geometry:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                "{count} pole or manhole(s) have no position yet and were not checked.")
+            self.iface.messageBar().pushWarning(
+                self.tr("Route correction"),
+                safe_format(self.tr(src), src, count=without_geometry))
 
         if not self.popravljive_greske:
             #: Dialog title for the results of the route-consistency check
@@ -3861,64 +4040,137 @@ class FiberQPlugin:
         # Automatska korekcija
 
     def fix_route_to_pole(self, route_feature, must_start=True):
-        poles_layer = next((lyr for lyr in QgsProject.instance().mapLayers().values()
-                            if lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry
-                            and lyr.name() in ('Poles', 'Poles')), None)  # noqa: W503
+        """Drag one end of a route onto the nearest pole or manhole.
 
-        if not poles_layer:
+        Args:
+            route_feature: The route's feature **id**, or the feature itself.
+                An id is what the check now passes: a captured feature carries
+                the geometry as it was when the check ran, so correcting the
+                start and then the end wrote the stale shape back and undid the
+                first correction. Measured: ends at x = (1, 99) became (0, 99)
+                and then (1, 100). A feature is still accepted, because that is
+                what the tests and any external caller hand over.
+            must_start: Correct the first vertex rather than the last.
+        """
+        # R10: isinstance FIRST. mapLayers() is keyed by layer id, which
+        # starts with the layer name, so iteration is roughly name order -- and
+        # a raster basemap called anything before "Poles" was reached first.
+        # QgsRasterLayer has no geometryType(), so Correct died with
+        # "AttributeError: 'QgsRasterLayer' object has no attribute
+        # 'geometryType'" (measured on both stacks) on any project with a
+        # basemap, which is most of them.
+        #
+        # U15: and it looked only at a layer literally named 'Poles'
+        # (`lyr.name() in ('Poles', 'Poles')` -- the same name twice again),
+        # while the CHECK counts manholes as a valid route end. So an end
+        # sitting correctly on a manhole was reported as an error and then
+        # "corrected" by dragging it to a distant pole, or not corrected at all
+        # when the project has no Poles layer. Both layers are candidates here
+        # now, resolved the same canonical way as the check.
+        candidates = []
+        for lyr in QgsProject.instance().mapLayers().values():
+            if not isinstance(lyr, QgsVectorLayer) or not lyr.isValid():
+                continue
+            if lyr.geometryType() != QgsWkbTypes.GeometryType.PointGeometry:
+                continue
+            if canonical_layer_name(lyr.name()) in ("Poles", "Manholes"):
+                candidates.append(lyr)
+
+        if not candidates:
             QMessageBox.warning(self.iface.mainWindow(), "FiberQ",
                                 self.tr("Layer 'Poles' not found!"))
             return
 
-        geom = route_feature.geometry()
-        poly = geom.asPolyline()
-        if not poly:
+        route_layer = self._route_layer()
+        if route_layer is None:
+            QMessageBox.warning(self.iface.mainWindow(), "FiberQ",
+                                self.tr("Route layer 'Route' not found!"))
             return
 
-        # Find nearest pole for start/end
-        if must_start:
-            route_point = poly[0]
-            idx = 0
-        else:
-            route_point = poly[-1]
-            idx = -1
+        # U15: re-read the feature, so the geometry is whatever it is NOW.
+        feature_id = route_feature if isinstance(route_feature, int) else route_feature.id()
+        fresh = next(iter(route_layer.getFeatures(QgsFeatureRequest(int(feature_id)))), None)
+        if fresh is None:
+            return
+
+        # R10: multipart again -- asPolyline() raises rather than answering
+        # empty, so this guard never ran on the geometry it was written for.
+        #
+        # The end being corrected is identified by its GLOBAL vertex index, and
+        # the geometry is edited through moveVertex below rather than rebuilt.
+        # The first cut of this fix read the first part's vertices and wrote
+        # back QgsGeometry.fromPolylineXY(poly), which is single-part: on a
+        # 2-part route that DESTROYED part 2 and still reported "Route has been
+        # automatically attached to a pole." Measured on 3.44.15 -- a 2-part,
+        # 20 m route came back as 1 part, 11 m, and on a GeoPackage layer the
+        # loss commits to disk, because OGR accepts a LineString into a
+        # MultiLineString column and answers SUCCESS.
+        route_point, idx = line_endpoint(fresh.geometry(), last=not must_start)
+        if route_point is None:
+            return
 
         min_dist = None
         nearest_stub = None
-        for pole_feat in poles_layer.getFeatures():
-            pole_pt = pole_feat.geometry().asPoint()
-            dist = QgsPointXY(pole_pt).distance(route_point)
-            if min_dist is None or dist < min_dist:
-                min_dist = dist
-                nearest_stub = pole_pt
+        for source in candidates:
+            for pole_feat in source.getFeatures():
+                pole_pt = geometry_point(pole_feat.geometry())
+                if pole_pt is None:
+                    continue  # R10: a pole with no position is not a candidate
+                dist = pole_pt.distance(route_point)
+                if min_dist is None or dist < min_dist:
+                    min_dist = dist
+                    nearest_stub = pole_pt
 
         # If pole found, move start/end of route to pole
         if nearest_stub and min_dist > 1e-2:
-            poly[idx] = QgsPointXY(nearest_stub)
-            new_geom = QgsGeometry.fromPolylineXY(poly)
-
-            # Find 'Route' layer in project (QgsFeature doesn't have .layer())
-            route_layer = next(
-                (lyr for lyr in QgsProject.instance().mapLayers().values()
-                 if isinstance(lyr, QgsVectorLayer)
-                 and lyr.name() in ('Route', 'Route')  # noqa: W503
-                 and lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry),  # noqa: W503
-                None
-            )
-            if not route_layer:
-                QMessageBox.warning(self.iface.mainWindow(), "FiberQ",
-                                    self.tr("Route layer 'Route' not found!"))
+            # On a copy, and in place: moveVertex keeps the part structure and
+            # the wkbType, so a multipart route keeps every part and a
+            # MultiLineString layer still gets a geometry it can store.
+            # It answers False for an index it does not hold rather than
+            # raising, and leaves the geometry alone (measured on both stacks),
+            # so the result is checked.
+            new_geom = QgsGeometry(fresh.geometry())
+            if not new_geom.moveVertex(nearest_stub.x(), nearest_stub.y(), idx):
+                with OperationErrors(self.tr("Route correction"), self.iface) as errors:
+                    errors.add(route_layer.name(), QCoreApplication.translate(
+                        'FiberQPlugin', "the end of this route could not be moved"))
                 return
 
-            route_layer.startEditing()
-            route_layer.changeGeometry(route_feature.id(), new_geom)
-            route_layer.commitChanges()
-            route_layer.triggerRepaint()
-            QMessageBox.information(
-                self.iface.mainWindow(),
-                "FiberQ",
-                self.tr("Route has been automatically attached to a pole.")
-            )
+            # R10: both results used to be discarded, so a Correct that the
+            # provider refused still announced "Route has been automatically
+            # attached to a pole." -- and the user went looking for a route
+            # that had not moved.
+            #
+            # was_editing, because this must not touch an edit session it did
+            # not open. The first cut of the R10 fix called startEditing() and
+            # rollBack() unconditionally, and both ends of that were wrong:
+            # running Correct while the user had unsaved routes digitised
+            # SAVED them and closed the session on the way out, and a refused
+            # write rolled the whole buffer back and DESTROYED them, saying
+            # only "the route would not take its new shape" (both measured on
+            # 3.44.15 against a GeoPackage). utils/errors.py states the policy
+            # this file imports from it: a failed write is never tidied up by
+            # throwing the user's work away. Same guard as
+            # route_manager._add_imported_routes.
+            was_editing = route_layer.isEditable()
+            with OperationErrors(self.tr("Route correction"), self.iface) as errors:
+                if not was_editing:
+                    route_layer.startEditing()
+                if not route_layer.changeGeometry(int(feature_id), new_geom):
+                    errors.add(route_layer.name(), QCoreApplication.translate(
+                        'FiberQPlugin', "the route would not take its new shape"))
+                    if not was_editing:
+                        route_layer.rollBack()
+                elif was_editing or check_commit(route_layer, errors):
+                    # Left uncommitted on purpose when the user was already
+                    # editing: the correction joins their edit session and they
+                    # save it with the rest of their work.
+                    route_layer.triggerRepaint()
+                    QMessageBox.information(
+                        self.iface.mainWindow(),
+                        "FiberQ",
+                        self.tr("Route has been automatically attached to a pole.")
+                    )
 
     # === DRAWINGS / ATTACHMENTS (DWG/DXF) ===
     def _drawing_key(self, layer, fid):
@@ -3943,9 +4195,11 @@ class FiberQPlugin:
                 return self.drawing_manager.drawing_layers_get(layer, fid)
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin._drawing_layers_get: {e}")
-        key = self._drawing_layers_key(layer, fid)
-        s = QgsProject.instance().readEntry("FiberQPlugin", key, "")[0]
-        return [x for x in (s.split(",") if s else []) if x]
+        stored = feature_links.link_get(
+            feature_links.DRAWING_LAYERS, layer.id(), fid, default=[])
+        if isinstance(stored, str):
+            stored = stored.split(",")
+        return [str(x) for x in stored if x]
 
     def _drawing_layers_set(self, layer, fid, layer_ids):
         """Set drawing layer IDs."""
@@ -3956,8 +4210,9 @@ class FiberQPlugin:
                 return
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin._drawing_layers_set: {e}")
-        key = self._drawing_layers_key(layer, fid)
-        QgsProject.instance().writeEntry("FiberQPlugin", key, ",".join(layer_ids or []))
+        feature_links.link_set(
+            feature_links.DRAWING_LAYERS, layer.id(), fid,
+            [str(x) for x in (layer_ids or [])])
 
     def _drawing_get(self, layer, fid):
         """Get drawing path."""
@@ -3967,8 +4222,7 @@ class FiberQPlugin:
                 return self.drawing_manager.drawing_get(layer, fid)
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin._drawing_get: {e}")
-        key = self._drawing_key(layer, fid)
-        return QgsProject.instance().readEntry("FiberQPlugin", key, "")[0]
+        return feature_links.link_get(feature_links.DRAWINGS, layer.id(), fid)
 
     def _drawing_set(self, layer, fid, path):
         """Set drawing path."""
@@ -4402,23 +4656,31 @@ from .dialogs.slack_dialog import SlackDialog  # noqa: E402
 from .ui.objects_ui import ObjectsUI  # noqa: E402
 
 
+# U9: these were a SECOND implementation of the picture link. Import picture
+# and Clear picture wrote through here, while image_tool and image_watcher read
+# through utils.legacy_bridge -- and only the reader knew about the pre-1.0
+# StuboviPlugin scope. Both now go through core.feature_links, which is the one
+# place that knows the storage shape, so a write and a read cannot disagree.
+
+
 def _img_key(layer, fid):
+    """The pre-1.6.0 per-feature key. Kept so the fallback can be tested."""
     return f"image_map/{layer.id()}/{int(fid)}"
 
 
 def _img_get(layer, fid):
     try:
-        return QgsProject.instance().readEntry("FiberQPlugin", _img_key(layer, fid), "")[0]
-    except Exception as e:
-        logger.debug(f"Error in FiberQPlugin._img_get: {e}")
+        return feature_links.link_get(feature_links.IMAGES, layer.id(), fid)
+    except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+        logger.warning(f"Could not read the picture link: {exc}")
         return ""
 
 
 def _img_set(layer, fid, path):
     try:
-        QgsProject.instance().writeEntry("FiberQPlugin", _img_key(layer, fid), path or "")
-    except Exception as e:
-        logger.debug(f"Error in FiberQPlugin._img_set: {e}")
+        feature_links.link_set(feature_links.IMAGES, layer.id(), fid, path or "")
+    except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+        logger.warning(f"Could not store the picture link: {exc}")
 
 
 # ============================================================================

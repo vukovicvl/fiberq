@@ -24,6 +24,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 # Phase 5.2: Logging
+from ..utils import file_filters
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
@@ -187,7 +188,9 @@ class ColorCatalogManagerDialog(QDialog):
             QMessageBox.critical(self, "Export", f"Error saving: {e}")
 
     def _on_import_catalog(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Import catalog", "", "JSON (*.json)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import catalog", "",
+            file_filters.named("JSON", file_filters.JSON))
         if not path:
             return
         try:

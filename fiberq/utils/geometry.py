@@ -5,8 +5,9 @@ This module contains geometry utility functions for point manipulation,
 snapping, distance calculations, and coordinate transformations.
 """
 
+import math
 from typing import Optional, Tuple, List, Dict
-from qgis.core import QgsPointXY, QgsGeometry, QgsVectorLayer
+from qgis.core import QgsPointXY, QgsGeometry, QgsVectorLayer, QgsWkbTypes
 
 # Phase 5.2: Logging
 from .logger import get_logger
@@ -69,19 +70,8 @@ def get_first_last_points(geom: QgsGeometry) -> Tuple[Optional[QgsPointXY], Opti
         Tuple of (first_point, last_point, all_points_list)
         Returns (None, None, []) if geometry is invalid
     """
-    if geom is None or geom.isEmpty():
-        return None, None, []
-
-    # Try simple polyline first
-    line = geom.asPolyline()
-
-    if not line:
-        # Try multipart polyline
-        multi = geom.asMultiPolyline()
-        if multi and len(multi) > 0:
-            line = multi[0]
-
-    if not line or len(line) < 2:
+    line = line_vertices(geom, first_part_only=True)
+    if len(line) < 2:
         return None, None, []
 
     return (
@@ -91,32 +81,186 @@ def get_first_last_points(geom: QgsGeometry) -> Tuple[Optional[QgsPointXY], Opti
     )
 
 
-def extract_line_vertices(geom: QgsGeometry) -> List[QgsPointXY]:
-    """
-    Extract all vertices from a line geometry.
+def line_vertices(geom: QgsGeometry, first_part_only: bool = False) -> List[QgsPointXY]:
+    """The vertices of a line geometry, multipart or not. ``[]`` if it has none.
+
+    **The multipart case is tested first, and that is the whole point.**
+    ``asPolyline()`` does not answer an empty list for a MultiLineString: it
+    raises ``TypeError`` (measured on 3.44.15 and 4.0.3). So the idiom this
+    replaces --
+
+        line = geom.asPolyline()
+        if not line:
+            multi = geom.asMultiPolyline()   # unreachable
+
+    -- could never reach its own fallback, and every caller died on the first
+    multipart feature instead of handling it. A Route or cable layer becomes
+    multipart through an imported shapefile, a QGIS merge or a provider that
+    promotes on write, so this is not a theoretical shape.
 
     Args:
-        geom: Line geometry
-
-    Returns:
-        List of QgsPointXY vertices
+        geom: The geometry to read.
+        first_part_only: Return only the first part of a multipart geometry.
+            That is what a caller wants when it needs *one* line's two ends;
+            the default concatenates every part, which is what a caller
+            counting vertices wants.
     """
-    if geom is None or geom.isEmpty():
+    if geom is None or geom.isNull() or geom.isEmpty():
         return []
-
-    line = geom.asPolyline()
-    if line:
-        return [QgsPointXY(p) for p in line]
-
-    # Handle multipart
-    multi = geom.asMultiPolyline()
-    if multi:
+    if geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
+        # A point or polygon answers asPolyline() with a TypeError, not an
+        # empty list (measured on both stacks), so the type is checked before
+        # the shape. A route importer handed a point GeoJSON used to die here.
+        return []
+    if QgsWkbTypes.isMultiType(geom.wkbType()):
+        parts = geom.asMultiPolyline()
+        if not parts:
+            return []
+        if first_part_only:
+            return [QgsPointXY(p) for p in parts[0]]
         vertices = []
-        for part in multi:
+        for part in parts:
             vertices.extend([QgsPointXY(p) for p in part])
         return vertices
+    return [QgsPointXY(p) for p in geom.asPolyline()]
 
-    return []
+
+def extract_line_vertices(geom: QgsGeometry) -> List[QgsPointXY]:
+    """Every vertex of a line geometry. See :func:`line_vertices`."""
+    return line_vertices(geom)
+
+
+def line_endpoint(geom: QgsGeometry, last: bool = False) -> Tuple[Optional[QgsPointXY], int]:
+    """A line's first or last vertex, with the index ``moveVertex`` wants.
+
+    Answers ``(None, -1)`` when ``geom`` holds fewer than two line vertices.
+
+    **The point and the index both come from the stored coordinates**, through
+    ``constGet().nCoordinates()`` and ``vertexAt()``, and that is deliberate.
+    ``line_vertices`` goes through ``asPolyline()``, which SEGMENTIZES a
+    CircularString, a CompoundCurve or a MultiCurve -- it runs ``curveToLine()``
+    first -- while ``moveVertex`` indexes the coordinates the geometry really
+    holds. Counting one and indexing the other moves the wrong coordinate, and
+    ``moveVertex`` still answers True, so nothing notices. Measured on 3.22.16,
+    3.44.15, 4.0.3 and 4.2.3::
+
+        CircularString (0 0, 500 1, 1000 0)   stored 3, segmentized 2
+        CircularString (0 0, 5 5, 10 0)       stored 3, segmentized 181
+
+    A 1 km road curve with 1 m of sag is the first of those: its segmentized
+    count of 2 makes index 1 look like the end, when index 1 is the arc's middle
+    control point. Dragging that onto a pole turns a 1000 m route into a 6.28 m
+    circle, with the end still unattached. The second segmentizes to MORE points
+    than it stores, so the index overshoots and ``vertexAt`` answers
+    ``(nan nan)``. For every linear geometry the two counts are equal, which is
+    why a MultiLineString test alone cannot see any of this.
+
+    The index runs flat across the parts of a multipart geometry: the last
+    vertex of a two-by-two MultiLineString is index 3, not part 1 vertex 1.
+    Handing it to :meth:`QgsGeometry.moveVertex` edits the geometry **in place
+    and keeps its part structure and its wkbType**, where rebuilding the line
+    from ``line_vertices`` and ``QgsGeometry.fromPolylineXY`` silently throws
+    every part but the first away -- and a GeoPackage Route layer accepts that
+    single-part geometry, commits "SUCCESS" and loses the rest of the route on
+    disk (measured on 3.44.15: a 2-part, 20 m route reloaded as 1 part, 31 m).
+
+    "Last" means the last vertex of the last part, not of the first part. For a
+    single-part line, which is nearly every route, that is the same vertex it
+    always was.
+
+    Args:
+        geom: The geometry to read.
+        last: Answer the last vertex rather than the first.
+    """
+    if geom is None or geom.isNull() or geom.isEmpty():
+        return None, -1
+    if geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
+        # A point or polygon has ends, but not ones this is about, and
+        # vertexAt() would answer a coordinate from a ring.
+        return None, -1
+    stored = geom.constGet()
+    if stored is None:
+        return None, -1
+    count = stored.nCoordinates()
+    if count < 2:
+        return None, -1
+    index = count - 1 if last else 0
+    return QgsPointXY(geom.vertexAt(index)), index
+
+
+def line_part_count(geom: QgsGeometry) -> int:
+    """How many separate pieces a line geometry is in. ``0`` when it is not a line.
+
+    ``partCount()`` answers 1 for a plain LineString, 1 for a CompoundCurve
+    (which is ONE line made of several segments, not several lines) and 1 for a
+    MultiLineString that happens to hold a single part; it answers the real
+    number for a MultiLineString or a MultiCurve with more. Measured on
+    3.22.16, 3.44.15 and 4.0.3. ``isMultipart()`` is not the same question --
+    it is true for a one-part MultiLineString, which is what a GeoPackage
+    column gives every ordinary route.
+    """
+    if geom is None or geom.isNull() or geom.isEmpty():
+        return 0
+    if geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
+        return 0
+    stored = geom.constGet()
+    if stored is None:
+        return 0
+    return stored.partCount()
+
+
+def is_finite(geom: QgsGeometry) -> bool:
+    """True when every coordinate of ``geom`` is a real number.
+
+    A reprojection that cannot work does **not** raise: measured on 3.44.15 and
+    4.0.3, ``QgsGeometry.transform`` answers
+    ``GeometryOperationResult.Success`` and leaves ``LineString (inf inf, inf
+    inf)`` behind. So catching ``QgsCsException`` is not enough on its own --
+    an importer that only did that wrote infinite geometry into the project and
+    reported success. Checked on the bounding box, which is one call and covers
+    every vertex.
+    """
+    if geom is None or geom.isNull() or geom.isEmpty():
+        return False
+    box = geom.boundingBox()
+    return all(math.isfinite(value) for value in
+               (box.xMinimum(), box.yMinimum(), box.xMaximum(), box.yMaximum()))
+
+
+def transformed(geom: QgsGeometry, transform) -> Optional[QgsGeometry]:
+    """A copy of ``geom`` in the transform's target CRS, or ``None``.
+
+    ``None`` means "this feature cannot be reprojected" -- either the transform
+    raised, or it succeeded and produced coordinates that are not numbers (see
+    :func:`is_finite`). A caller importing many features skips and counts those
+    rather than letting one of them end the import.
+    """
+    if geom is None or geom.isNull():
+        return None
+    moved = QgsGeometry(geom)
+    try:
+        moved.transform(transform)
+    except Exception as exc:  # QgsCsException, and anything the proj stack adds
+        logger.warning(f"Could not reproject a geometry: {exc}")
+        return None
+    return moved if is_finite(moved) else None
+
+
+def geometry_point(geom: QgsGeometry) -> Optional[QgsPointXY]:
+    """The point of a point geometry, or ``None`` when it has none.
+
+    ``asPoint()`` on a feature with no geometry is
+    ``ValueError: Null geometry cannot be converted to a point.`` (measured on
+    both stacks), and a layer can hold such a feature perfectly happily -- QGIS
+    creates one whenever a row is added without digitising. Callers that sweep
+    a whole layer have to expect it.
+    """
+    if geom is None or geom.isNull() or geom.isEmpty():
+        return None
+    if QgsWkbTypes.isMultiType(geom.wkbType()):
+        parts = geom.asMultiPoint()
+        return QgsPointXY(parts[0]) if parts else None
+    return QgsPointXY(geom.asPoint())
 
 
 def convert_to_simple_line(geom: QgsGeometry) -> Optional[QgsGeometry]:
