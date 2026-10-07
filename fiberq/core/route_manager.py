@@ -171,9 +171,25 @@ class RouteManager:
         return route_layer
 
     def _ensure_route_fields(self, route_layer: QgsVectorLayer) -> None:
-        """Ensure route layer has all required fields."""
+        """Ensure route layer has all required fields.
+
+        Does not open or close an edit session the caller did not ask for. This
+        runs on the way to every Import route, including the usual case where
+        the layer already has all four columns and there is nothing to do -- and
+        it used to call startEditing() and commitChanges() unconditionally, so
+        an import SAVED whatever the user had digitised and not saved, and
+        dropped them out of edit mode. Measured on 3.44.15: one unsaved route in
+        the buffer before, committed to the provider and the session closed
+        after, with nothing said.
+
+        The session is not touched at all now, because it never needed to be:
+        every column here is added through ``dataProvider().addAttributes()``,
+        which writes to the provider directly and bypasses the edit buffer. The
+        commitChanges() was therefore never committing the fields -- they were
+        already there -- it was only ever committing whatever else happened to be
+        in the buffer, which is to say the user's work.
+        """
         added_fields = []
-        route_layer.startEditing()
 
         if route_layer.fields().indexFromName("naziv") == -1:
             route_layer.dataProvider().addAttributes([QgsField("naziv", QVariant.String)])
@@ -190,7 +206,6 @@ class RouteManager:
 
         if added_fields:
             route_layer.updateFields()
-        route_layer.commitChanges()
 
         # WP1b identity invariant: ensure the fiberq_uuid column exists on the
         # Route layer (both freshly created and found-existing layers reach here

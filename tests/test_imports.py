@@ -300,6 +300,50 @@ def test_every_imported_route_gets_a_length_and_a_type(project, tmp_path):
 # f010/f039: the importer must say which of the four things happened
 # ---------------------------------------------------------------------------
 
+def test_ensuring_the_route_fields_does_not_touch_the_edit_session(project):
+    """f007. The sibling test above calls _add_imported_routes directly, so it
+    never reached this function -- which every real Import route goes through
+    first, and which called startEditing() and commitChanges() unconditionally.
+
+    Measured on 3.44.15: one unsaved route in the buffer before, committed to the
+    provider and the session closed after, with nothing said. Every column here
+    is added through the data provider, which bypasses the edit buffer, so the
+    commit was never writing the fields -- only the user's work.
+    """
+    route = _route_layer(project)
+    route.startEditing()
+    pending = QgsFeature(route.fields())
+    pending.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(0, 9), QgsPointXY(1, 9)]))
+    pending.setAttribute("naziv", "the user's own line")
+    assert route.addFeature(pending)
+    manager = _route_manager(project, FakeIface())
+
+    manager._ensure_route_fields(route)
+
+    assert route.isEditable(), "the session was not ours to close"
+    assert len(route.editBuffer().addedFeatures()) == 1, "nor their work ours to save"
+    assert len(list(route.dataProvider().getFeatures())) == 0
+    route.rollBack()
+
+
+@pytest.mark.parametrize("start_editing", [False, True])
+def test_the_route_fields_are_still_added(project, start_editing):
+    """And the columns do arrive, session or no session -- that is the point."""
+    layer = QgsVectorLayer("LineString?crs=EPSG:3857", "Route", "memory")
+    layer.dataProvider().addAttributes([QgsField("duzina", QVariant.Double)])
+    layer.updateFields()
+    project.addMapLayer(layer)
+    if start_editing:
+        layer.startEditing()
+    manager = _route_manager(project, FakeIface())
+
+    manager._ensure_route_fields(layer)
+
+    for column in ("naziv", "duzina", "duzina_km", "tip_trase"):
+        assert column in layer.fields().names(), column
+    assert layer.isEditable() is start_editing, "the session is left as it was found"
+
+
 def test_a_route_layer_missing_a_column_is_reported_not_raised(project, tmp_path):
     """f009. QgsFeature.setAttribute RAISES KeyError for an absent field.
 
