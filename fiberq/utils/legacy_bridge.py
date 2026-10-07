@@ -29,6 +29,7 @@ from qgis.core import (
 )
 
 # Phase 5.2: Logging
+from ..core import feature_links
 from .logger import get_logger
 logger = get_logger(__name__)
 
@@ -222,34 +223,32 @@ NASTAVAK_DEF = {"name": "Joint Closures", "symbol": {"name": "diamond", "color":
 
 
 def _img_key(layer, fid):
+    """The pre-1.6.0 per-feature key. Kept for the tests that pin the fallback."""
     return f"image_map/{layer.id()}/{int(fid)}"
 
 
 def _img_get(layer, fid):
-    """Get image path for a feature.
+    """The picture attached to one feature, or ``''``.
 
-    Issue #6: Check both new key (FiberQPlugin) and legacy key (StuboviPlugin)
-    for backward compatibility with old projects.
+    U9: through core.feature_links, which stores the links in one JSON entry.
+    The old per-feature key ended in the feature id, and QGIS 3 cannot write a
+    key segment that starts with a digit -- so every picture link was dropped
+    at save. feature_links still reads the old key (both scopes) and migrates
+    what it finds.
     """
     try:
-        key = _img_key(layer, fid)
-        # Try new key first
-        path = QgsProject.instance().readEntry("FiberQPlugin", key, "")[0]
-        if path:
-            return path
-        # Fall back to legacy key for backward compatibility
-        path = QgsProject.instance().readEntry("StuboviPlugin", key, "")[0]
-        return path
-    except Exception:
+        return feature_links.link_get(feature_links.IMAGES, layer.id(), fid)
+    except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+        logger.warning(f"Could not read the picture link: {exc}")
         return ""
 
 
 def _img_set(layer, fid, path):
-    """Set image path for a feature."""
+    """Attach a picture to one feature, or clear it when ``path`` is empty."""
     try:
-        QgsProject.instance().writeEntry("FiberQPlugin", _img_key(layer, fid), path or "")
-    except Exception as e:
-        logger.debug(f"Could not write image path entry: {e}")
+        feature_links.link_set(feature_links.IMAGES, layer.id(), fid, path or "")
+    except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+        logger.warning(f"Could not store the picture link: {exc}")
 
 
 def _set_objects_layer_alias(layer):

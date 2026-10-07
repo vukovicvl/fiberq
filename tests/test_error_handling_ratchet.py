@@ -114,6 +114,17 @@ CRITICAL = {
         "FiberBreakTool._record_break",
         "FiberBreakTool.canvasReleaseEvent",
     }),
+    # U9: the link storage R12 depends on -- a picture QGIS 4 can finally open
+    # is no use if the QGIS 3 save dropped the link. Same precedent as U6's
+    # gpkg_target: an unclaimed module a claimed path rests on.
+    "fiberq/core/feature_links.py": frozenset({
+        "_read_all",
+        "_read_legacy",
+        "_write_all",
+        "link_clear",
+        "link_get",
+        "link_set",
+    }),
     # R5
     "fiberq/core/color_manager.py": frozenset({
         "ColorManager.load_color_catalogs",
@@ -323,7 +334,7 @@ ALLOWED_WRITES = {
 #: from v1.5.0 is what branches 3 and 4 left behind
 #: when they rewrote the placement tools: handlers deleted with the code around
 #: them, less the few that ``length_sync.py`` brought in.
-SILENCE_CEILING = 762
+SILENCE_CEILING = 760
 
 
 # ---------------------------------------------------------------------------
@@ -584,8 +595,8 @@ def test_d_package_wide_silence_does_not_grow():
 #: deleting a line from CRITICAL removes a whole operation from this gate with
 #: nothing in fiberq/ changing -- and that diff looks exactly like the one
 #: section 2.2 sanctions, where a branch deletes its own allowance rows.
-HARDENED_FUNCTIONS = 75
-HARDENED_FILES = 15
+HARDENED_FUNCTIONS = 81
+HARDENED_FILES = 16
 
 
 def test_the_hardened_set_is_not_quietly_narrowed():

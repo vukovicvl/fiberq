@@ -35,6 +35,7 @@ from .i18n import (
 )
 # R9: a pre-1.0 project stores the slack->cable reference under its Serbian
 # name, and reading the modern one raises KeyError instead of missing quietly.
+from .core import feature_links
 from .core import interchange_fields as fm
 from .models.schema import canonical_layer_name
 from .utils.errors import OperationErrors, describe
@@ -3943,9 +3944,11 @@ class FiberQPlugin:
                 return self.drawing_manager.drawing_layers_get(layer, fid)
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin._drawing_layers_get: {e}")
-        key = self._drawing_layers_key(layer, fid)
-        s = QgsProject.instance().readEntry("FiberQPlugin", key, "")[0]
-        return [x for x in (s.split(",") if s else []) if x]
+        stored = feature_links.link_get(
+            feature_links.DRAWING_LAYERS, layer.id(), fid, default=[])
+        if isinstance(stored, str):
+            stored = stored.split(",")
+        return [str(x) for x in stored if x]
 
     def _drawing_layers_set(self, layer, fid, layer_ids):
         """Set drawing layer IDs."""
@@ -3956,8 +3959,9 @@ class FiberQPlugin:
                 return
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin._drawing_layers_set: {e}")
-        key = self._drawing_layers_key(layer, fid)
-        QgsProject.instance().writeEntry("FiberQPlugin", key, ",".join(layer_ids or []))
+        feature_links.link_set(
+            feature_links.DRAWING_LAYERS, layer.id(), fid,
+            [str(x) for x in (layer_ids or [])])
 
     def _drawing_get(self, layer, fid):
         """Get drawing path."""
@@ -3967,8 +3971,7 @@ class FiberQPlugin:
                 return self.drawing_manager.drawing_get(layer, fid)
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin._drawing_get: {e}")
-        key = self._drawing_key(layer, fid)
-        return QgsProject.instance().readEntry("FiberQPlugin", key, "")[0]
+        return feature_links.link_get(feature_links.DRAWINGS, layer.id(), fid)
 
     def _drawing_set(self, layer, fid, path):
         """Set drawing path."""
@@ -4402,23 +4405,31 @@ from .dialogs.slack_dialog import SlackDialog  # noqa: E402
 from .ui.objects_ui import ObjectsUI  # noqa: E402
 
 
+# U9: these were a SECOND implementation of the picture link. Import picture
+# and Clear picture wrote through here, while image_tool and image_watcher read
+# through utils.legacy_bridge -- and only the reader knew about the pre-1.0
+# StuboviPlugin scope. Both now go through core.feature_links, which is the one
+# place that knows the storage shape, so a write and a read cannot disagree.
+
+
 def _img_key(layer, fid):
+    """The pre-1.6.0 per-feature key. Kept so the fallback can be tested."""
     return f"image_map/{layer.id()}/{int(fid)}"
 
 
 def _img_get(layer, fid):
     try:
-        return QgsProject.instance().readEntry("FiberQPlugin", _img_key(layer, fid), "")[0]
-    except Exception as e:
-        logger.debug(f"Error in FiberQPlugin._img_get: {e}")
+        return feature_links.link_get(feature_links.IMAGES, layer.id(), fid)
+    except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+        logger.warning(f"Could not read the picture link: {exc}")
         return ""
 
 
 def _img_set(layer, fid, path):
     try:
-        QgsProject.instance().writeEntry("FiberQPlugin", _img_key(layer, fid), path or "")
-    except Exception as e:
-        logger.debug(f"Error in FiberQPlugin._img_set: {e}")
+        feature_links.link_set(feature_links.IMAGES, layer.id(), fid, path or "")
+    except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+        logger.warning(f"Could not store the picture link: {exc}")
 
 
 # ============================================================================
