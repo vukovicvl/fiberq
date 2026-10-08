@@ -206,6 +206,12 @@ CRITICAL = {
         "RelationsManager.save_latent",
         "RelationsManager.save_relations",
     }),
+    # R8. CableManager.lay_cable holds the whole cable-laying write path and was
+    # never named here, so the gate watched the two main_plugin wrappers that
+    # swallowed its failures and not the code producing them.
+    "fiberq/core/cable_manager.py": frozenset({
+        "CableManager.lay_cable",
+    }),
     # R6, R7
     "fiberq/core/route_manager.py": frozenset({
         "RouteManager._add_imported_routes",
@@ -301,8 +307,12 @@ CRITICAL = {
         "RoutingUI.on_project_target_changed",
         "RoutingUI.settle_auto_gpkg",
     }),
-    # R8
+    # R8. build_network_graph joins the two path builders: it held the same
+    # dead asPolyline()/asMultiPolyline() fallback, so the graph build died on
+    # the first multipart route and the two builders above it could only ever
+    # answer "no path".
     "fiberq/utils/routing.py": frozenset({
+        "build_network_graph",
         "build_path_across_joined_routes",
         "build_path_across_network",
     }),
@@ -316,16 +326,22 @@ CRITICAL = {
 #: an error path is cosmetic, and reporting a reporting failure helps nobody --
 #: but then its reason must say so instead of naming a branch.
 ALLOWED_SILENT = {
+    # Not branch 9's to clear, and deliberately not presented as if they were.
+    # R8's row is the multipart break, the two wrapper swallows and the
+    # path-finding ones -- all fixed. These six are the colour-code lookup, the
+    # cables-layer search, the display-name helper and the two attribute
+    # setters: separate pre-award defects in the same long function. The
+    # function is gated from here so the number can only fall, which is better
+    # than leaving the whole write path unwatched because part of it is out of
+    # scope. Recorded in docs/private/FiberQ-WP4-followups.md.
+    ("fiberq/core/cable_manager.py",
+     "CableManager.lay_cable"): (6, "pre-award swallows in the same function, not in R8's row"),
     ("fiberq/main_plugin.py",
      "FiberQPlugin.export_all_features"): (1, "R3 Export active layer -- fix/wp4-write-paths"),
     ("fiberq/main_plugin.py",
      "FiberQPlugin.export_selected_features"): (1, "R3 Export active layer -- fix/wp4-write-paths"),
     ("fiberq/dialogs/bom_dialog.py",
      "_BOMDialog._build"): (2, "R4 BOM export -- fix/wp4-write-paths"),
-    ("fiberq/main_plugin.py",
-     "FiberQPlugin.lay_cable"): (1, "R8 Cable laying -- fix/wp4-write-paths"),
-    ("fiberq/main_plugin.py",
-     "FiberQPlugin.lay_cable_type"): (1, "R8 Cable laying -- fix/wp4-write-paths"),
 }
 
 #: Write calls whose result is still discarded on a hardened path. Kept apart
@@ -333,6 +349,10 @@ ALLOWED_SILENT = {
 #: one hides an exception, the other ignores an answer. Sharing one counter
 #: would let a branch "fix" a swallowed exception by checking a return value.
 ALLOWED_WRITES = {
+    # As above: two dataProvider().addAttributes() calls that build the cable
+    # layer's schema, neither of them R8's row. Gated so they cannot grow.
+    ("fiberq/core/cable_manager.py",
+     "CableManager.lay_cable"): (2, "pre-award schema writes in the same function, not in R8's row"),
 }
 
 #: What test D pins the package-wide silent-handler count to. Test D asserts
@@ -363,7 +383,7 @@ ALLOWED_WRITES = {
 #: from v1.5.0 is what branches 3 and 4 left behind
 #: when they rewrote the placement tools: handlers deleted with the code around
 #: them, less the few that ``length_sync.py`` brought in.
-SILENCE_CEILING = 728
+SILENCE_CEILING = 722
 
 
 # ---------------------------------------------------------------------------
@@ -638,9 +658,12 @@ def test_d_package_wide_silence_does_not_grow():
 #: FiberQUndoManager's undo, redo, clear, _ensure_editable, _commit and
 #: _stack_back -- the state machine that decides whether to commit at all,
 #: which this gate watched not at all while watching the three helpers it
-#: calls. No R-row moved.
-HARDENED_FUNCTIONS = 116
-HARDENED_FILES = 20
+#: calls. The last two are CableManager.lay_cable -- the whole cable-laying
+#: write path, which this gate watched not at all while watching the two
+#: main_plugin wrappers that swallowed its failures -- and
+#: routing.build_network_graph. No R-row moved.
+HARDENED_FUNCTIONS = 118
+HARDENED_FILES = 21
 
 
 def test_the_hardened_set_is_not_quietly_narrowed():

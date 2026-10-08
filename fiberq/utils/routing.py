@@ -15,8 +15,9 @@ from collections import defaultdict, deque
 
 from qgis.core import QgsPointXY, QgsVectorLayer
 
+from .errors import describe
 from .geometry import (
-    fuzzy_key, round_key, get_first_last_points,
+    fuzzy_key, line_parts, round_key, get_first_last_points,
     find_nearest_vertex
 )
 
@@ -52,22 +53,14 @@ def build_network_graph(
     segments: List[Tuple[Tuple[int, int], Tuple[int, int]]] = []
 
     for feature in layer.getFeatures():
-        geom = feature.geometry()
-        if geom is None or geom.isEmpty():
-            continue
-
-        # Handle simple polyline
-        line = geom.asPolyline()
-        if line:
-            _process_line_part(line, tolerance, key_to_point, segments)
-            continue
-
-        # Handle multipart polyline
-        multiline = geom.asMultiPolyline()
-        if multiline:
-            for part in multiline:
-                if len(part) >= 2:
-                    _process_line_part(part, tolerance, key_to_point, segments)
+        # WP4 4.2 item R8. This used to be `line = geom.asPolyline()` / `if
+        # line:` / `multiline = geom.asMultiPolyline()`, which raises TypeError
+        # on any multipart geometry before the multipart branch can be reached.
+        # So the whole graph build died on the first multipart route -- and an
+        # ESRI Shapefile line layer is multipart for every feature, single-part
+        # or not. See utils.geometry.line_parts.
+        for part in line_parts(feature.geometry()):
+            _process_line_part(part, tolerance, key_to_point, segments)
 
     return key_to_point, segments
 
@@ -226,7 +219,16 @@ def build_path_across_network(
         # Convert keys back to points
         return [key_to_point[k] for k in path_keys]
 
-    except Exception:
+    except (AttributeError, IndexError, KeyError, RuntimeError, TypeError, ValueError) as exc:
+        # R8. Still answers "no path", and that is deliberate rather than lazy:
+        # FiberQPlugin.lay_cable's callback is
+        # `self._build_path_across_network(...) or self._build_path_across_joined_trasa(...)`,
+        # so a falsy answer runs a coarser feature-level search that often does
+        # find a route. Raising here would skip that rescue in exactly the case
+        # where the user needs it. What changes is that the reason is no longer
+        # thrown away: "no path found" used to blame the user's data for the
+        # plugin's own failures.
+        logger.warning("could not build a path across the network: %s", describe(exc))
         return None
 
 
@@ -347,7 +349,10 @@ def build_path_across_joined_routes(
 
         return path_pts
 
-    except Exception:
+    except (AttributeError, IndexError, KeyError, RuntimeError, TypeError, ValueError) as exc:
+        # As above: answered as "no path" on purpose so the caller's fallback
+        # still runs, but the reason is recorded instead of discarded.
+        logger.warning("could not build a path across joined routes: %s", describe(exc))
         return None
 
 

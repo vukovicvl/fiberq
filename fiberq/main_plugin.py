@@ -3427,13 +3427,18 @@ class FiberQPlugin:
         # Minimal fallback - needs RouteManager
 
     def lay_cable_type(self, tip, podtip):
-        """Set cable type and subtype, then lay cable."""
+        """Set cable type and subtype, then lay cable.
+
+        R8. The handler here used to be ``logger.debug``, which at the default
+        log level writes nothing anywhere, so every way laying a cable could
+        fail came out as nothing happening at all.
+        """
         if self.cable_manager:
             try:
                 self.cable_manager.lay_cable_type(tip, podtip)
                 self._record_cmd('lay_cable', tip=tip, podtip=podtip)
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin.lay_cable_type: {e}")
+            except Exception as exc:  # noqa: BLE001 - Qt slot boundary
+                report_error(self.tr("Lay cable"), None, exc, self.iface)
 
     def lay_cable(self):
         """Lay a cable along a route between two selected elements."""
@@ -3445,8 +3450,14 @@ class FiberQPlugin:
                     color_codes_callback=self._list_color_codes,
                     path_callback=lambda tl, p1, p2, tol: self._build_path_across_network(tl, p1, p2, tol) or self._build_path_across_joined_trasa(tl, p1, p2, tol)
                 )
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin.lay_cable: {e}")
+            except Exception as exc:  # noqa: BLE001 - Qt slot boundary
+                # R8. Measured on a shapefile Route layer: CableManager.lay_cable
+                # raised TypeError out of asPolyline(), this swallowed it at
+                # debug, and the user -- having filled in the whole cable picker
+                # and clicked OK -- got no cable, no dialog, no message bar and
+                # no log line. The multipart cause is fixed in cable_manager;
+                # this is the handler that made it invisible.
+                report_error(self.tr("Lay cable"), None, exc, self.iface)
 
     def import_route_from_file(self):
         """Import routes from external file."""
