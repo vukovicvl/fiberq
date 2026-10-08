@@ -259,7 +259,15 @@ CRITICAL = {
         "FiberQUndoManager._restore_feature",
     }),
     # R4
+    # R4. _export picks the writer and _measured_length / _note_lines are where
+    # the counting lives, so a silent handler in any of them would put the
+    # under-count straight back. _export_csv and _export_xlsx were already here.
     "fiberq/dialogs/bom_dialog.py": frozenset({
+        "_BOMDialog._export",
+        "_BOMDialog._measured_length",
+        "_BOMDialog._note_lines",
+        "_BOMDialog._remove_partial",
+        "_BOMDialog._write_xlsx",
         "_BOMDialog._build",
         "_BOMDialog._export_csv",
         "_BOMDialog._export_xlsx",
@@ -340,8 +348,6 @@ ALLOWED_SILENT = {
      "FiberQPlugin.export_all_features"): (1, "R3 Export active layer -- fix/wp4-write-paths"),
     ("fiberq/main_plugin.py",
      "FiberQPlugin.export_selected_features"): (1, "R3 Export active layer -- fix/wp4-write-paths"),
-    ("fiberq/dialogs/bom_dialog.py",
-     "_BOMDialog._build"): (2, "R4 BOM export -- fix/wp4-write-paths"),
 }
 
 #: Write calls whose result is still discarded on a hardened path. Kept apart
@@ -383,7 +389,7 @@ ALLOWED_WRITES = {
 #: from v1.5.0 is what branches 3 and 4 left behind
 #: when they rewrote the placement tools: handlers deleted with the code around
 #: them, less the few that ``length_sync.py`` brought in.
-SILENCE_CEILING = 722
+SILENCE_CEILING = 719
 
 
 # ---------------------------------------------------------------------------
@@ -661,8 +667,10 @@ def test_d_package_wide_silence_does_not_grow():
 #: calls. The last two are CableManager.lay_cable -- the whole cable-laying
 #: write path, which this gate watched not at all while watching the two
 #: main_plugin wrappers that swallowed its failures -- and
-#: routing.build_network_graph. No R-row moved.
-HARDENED_FUNCTIONS = 118
+#: routing.build_network_graph, and the last five are the BOM dialog's
+#: _export, _measured_length, _note_lines, _remove_partial and _write_xlsx --
+#: where R4's counting and reporting now live. No R-row moved.
+HARDENED_FUNCTIONS = 123
 HARDENED_FILES = 21
 
 
