@@ -194,6 +194,13 @@ def test_a_refused_commit_stops_the_convert(core, project, tmp_path):
     layer.addFeature(pending)
 
     assert export_one_layer_to_gpkg(layer, str(tmp_path / "auto.gpkg"), core.iface) is False
+    # These two are what make this a test of R2's guard. Without them the whole
+    # GeoPackage suite -- 45 tests -- still passed with that guard deleted
+    # (measured): export_one_layer_to_gpkg answers False either way, because the
+    # writer fails later on the same blocked insert. The guard's claim is that it
+    # stops BEFORE the writer and says why.
+    assert not os.path.exists(tmp_path / "auto.gpkg"), "it must stop before the writer, not after it"
+    assert "insert blocked" in core.bar.warnings[0], core.bar.warnings
     assert str(original) in layer.source()
     assert layer.isEditable()
     layer.rollBack()
