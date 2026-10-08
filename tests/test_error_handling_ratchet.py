@@ -187,6 +187,12 @@ CRITICAL = {
     "fiberq/core/route_manager.py": frozenset({
         "RouteManager._add_imported_routes",
         "RouteManager._add_one_route",
+        # The three the merge was split into. A new sibling method is a new
+        # qualname, so without these rows an extract-a-helper refactor would
+        # quietly carry its handlers out of this gate's sight.
+        "RouteManager._chain_selected_routes",
+        "RouteManager._set_merged_attributes",
+        "RouteManager._write_merged_route",
         "RouteManager._route_parts",
         "RouteManager.change_route_type",
         "RouteManager.import_route_from_file",
@@ -295,8 +301,6 @@ ALLOWED_SILENT = {
      "FiberQPlugin._save_color_catalogs"): (1, "R5 Relations, latent elements, colour catalogues -- fix/wp4-write-paths"),
     ("fiberq/core/layer_manager.py",
      "_copy_attributes_between_layers"): (3, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/core/route_manager.py",
-     "RouteManager.merge_all_routes"): (1, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
     ("fiberq/core/undo_manager.py",
      "FiberQUndoManager._add_feature"): (1, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
     ("fiberq/main_plugin.py",
@@ -316,8 +320,6 @@ ALLOWED_WRITES = {
      "_copy_attributes_between_layers"): (2, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
     ("fiberq/core/route_manager.py",
      "RouteManager.change_route_type"): (2, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/core/route_manager.py",
-     "RouteManager.merge_all_routes"): (3, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
     ("fiberq/core/undo_manager.py",
      "FiberQUndoManager._add_feature"): (1, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
     ("fiberq/core/undo_manager.py",
@@ -349,11 +351,12 @@ ALLOWED_WRITES = {
 #: a narrow rule would leave a free lane open. On the same two trees the wider
 #: rule gives 830 and 816, and this branch took it to 786:
 #: R1, R2 and U6 between them hardened nineteen and deleted twelve along with
-#: the two duplicate GeoPackage exports. The fall of 14
+#: the two duplicate GeoPackage exports. Branch 9 then took it to 752, one at a
+#: time, each in the commit that hardened the handler. The fall of 14
 #: from v1.5.0 is what branches 3 and 4 left behind
 #: when they rewrote the placement tools: handlers deleted with the code around
 #: them, less the few that ``length_sync.py`` brought in.
-SILENCE_CEILING = 753
+SILENCE_CEILING = 752
 
 
 # ---------------------------------------------------------------------------
@@ -614,7 +617,11 @@ def test_d_package_wide_silence_does_not_grow():
 #: deleting a line from CRITICAL removes a whole operation from this gate with
 #: nothing in fiberq/ changing -- and that diff looks exactly like the one
 #: section 2.2 sanctions, where a branch deletes its own allowance rows.
-HARDENED_FUNCTIONS = 96
+#: 99 after branch 9 added RouteManager._chain_selected_routes,
+#: ._set_merged_attributes and ._write_merged_route -- the three methods
+#: merge_all_routes was split into. The R7 row did not move; the code it covers
+#: is now in four functions instead of one, and all four are named above.
+HARDENED_FUNCTIONS = 99
 HARDENED_FILES = 19
 
 
