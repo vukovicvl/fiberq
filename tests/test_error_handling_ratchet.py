@@ -323,8 +323,6 @@ ALLOWED_SILENT = {
     ("fiberq/dialogs/bom_dialog.py",
      "_BOMDialog._build"): (2, "R4 BOM export -- fix/wp4-write-paths"),
     ("fiberq/main_plugin.py",
-     "FiberQPlugin._change_element_type"): (4, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/main_plugin.py",
      "FiberQPlugin.lay_cable"): (1, "R8 Cable laying -- fix/wp4-write-paths"),
     ("fiberq/main_plugin.py",
      "FiberQPlugin.lay_cable_type"): (1, "R8 Cable laying -- fix/wp4-write-paths"),
@@ -335,10 +333,6 @@ ALLOWED_SILENT = {
 #: one hides an exception, the other ignores an answer. Sharing one counter
 #: would let a branch "fix" a swallowed exception by checking a return value.
 ALLOWED_WRITES = {
-    ("fiberq/main_plugin.py",
-     "FiberQPlugin._change_element_type"): (2, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/main_plugin.py",
-     "FiberQPlugin.delete_selected"): (2, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
 }
 
 #: What test D pins the package-wide silent-handler count to. Test D asserts
@@ -369,7 +363,7 @@ ALLOWED_WRITES = {
 #: from v1.5.0 is what branches 3 and 4 left behind
 #: when they rewrote the placement tools: handlers deleted with the code around
 #: them, less the few that ``length_sync.py`` brought in.
-SILENCE_CEILING = 732
+SILENCE_CEILING = 728
 
 
 # ---------------------------------------------------------------------------

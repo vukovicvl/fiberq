@@ -277,3 +277,128 @@ def test_a_caller_without_a_collector_still_surfaces_the_problem(project, tmp_pa
 
     assert pushed and "operator" in pushed[0], (
         f"a caller with no collector lost the message: {pushed}")
+
+
+# ---------------------------------------------------------------------------
+# the operation itself: Change element type, and Delete selected
+# ---------------------------------------------------------------------------
+#
+# The tests above cover the attribute copy. These cover the two operations whose
+# writes were discarded around it, which is the rest of R7's row.
+
+class FakeBar:
+    def __init__(self):
+        self.infos = []
+        self.warnings = []
+
+    def pushInfo(self, title, text):
+        self.infos.append(text)
+
+    def pushWarning(self, title, text):
+        self.warnings.append(text)
+
+    def pushSuccess(self, title, text):
+        self.infos.append(text)
+
+    def pushCritical(self, title, text):
+        self.warnings.append(text)
+
+
+class FakeIface:
+    def __init__(self):
+        self.bar = FakeBar()
+
+    def messageBar(self):
+        return self.bar
+
+    def mainWindow(self):
+        return None
+
+
+def _block(path, table, operation):
+    con = sqlite3.connect(path)
+    con.execute(f'''CREATE TRIGGER no_{operation}_{table} BEFORE {operation.upper()} ON "{table}"
+                    BEGIN SELECT RAISE(ABORT, 'FiberQ test: {operation}s blocked'); END;''')
+    con.commit()
+    con.close()
+
+
+def _rows(path, table):
+    con = sqlite3.connect(path)
+    try:
+        return sorted(str(r[0]) for r in con.execute(f'SELECT naziv FROM "{table}"'))
+    finally:
+        con.close()
+
+
+def test_a_refused_source_delete_says_the_element_is_in_both_layers(project, tmp_path):
+    """The integrity failure this item exists for.
+
+    ``src_layer.startEditing()``, ``deleteFeature`` and ``commitChanges`` were
+    all inside ONE silent handler with every result discarded, so a refused
+    delete left the element in BOTH layers while ``ChangeElementTypeTool``
+    pushed "Element changed to: OTB".
+    """
+    from fiberq.main_plugin import FiberQPlugin
+
+    path = str(tmp_path / "elements.gpkg")
+    source = _gpkg_point_layer(path, [("naziv", QVariant.String)], [{"naziv": "pole 7"}])
+    project.addMapLayer(source)
+
+    destination = QgsVectorLayer("Point?crs=EPSG:3857", "OTB", "memory")
+    destination.dataProvider().addAttributes([QgsField("naziv", QVariant.String)])
+    destination.updateFields()
+    project.addMapLayer(destination)
+
+    _block(path, "Poles", "delete")
+
+    # Driven through the real method with only the destination lookup stubbed:
+    # building a whole FiberQPlugin needs an iface the suite does not have, and
+    # a __new__ with the two attributes the method touches is the smallest thing
+    # that still runs the real code rather than a reimplementation of it.
+    plugin = FiberQPlugin.__new__(FiberQPlugin)
+    plugin.iface = FakeIface()
+    import fiberq.main_plugin as mp
+    original = mp._ensure_element_layer_with_style
+    mp._ensure_element_layer_with_style = lambda plug, name: destination
+    try:
+        FiberQPlugin._change_element_type(plugin, source, 1, "OTB")
+    finally:
+        mp._ensure_element_layer_with_style = original
+
+    assert "pole 7" in _rows(path, "Poles"), (
+        "the source row should still be there -- that is the failure being reported")
+    said = " ".join(plugin.iface.bar.warnings)
+    assert "both layers" in said, (
+        f"the element is now duplicated and nothing said so: {plugin.iface.bar.warnings}")
+
+
+def test_a_refused_delete_selected_does_not_report_a_count(project, tmp_path):
+    """Measured with a BEFORE DELETE trigger: "Deleted 2 selected features from
+    all layers." with both rows still in the file. ``obrisano`` counted the
+    loop, not the deletions."""
+    from fiberq.main_plugin import FiberQPlugin
+
+    path = str(tmp_path / "poles.gpkg")
+    layer = _gpkg_point_layer(path, [("naziv", QVariant.String)],
+                              [{"naziv": "p0"}, {"naziv": "p1"}])
+    project.addMapLayer(layer)
+    _block(path, "Poles", "delete")
+    layer.selectAll()
+
+    plugin = FiberQPlugin.__new__(FiberQPlugin)
+    plugin.iface = FakeIface()
+
+    said = []
+    import fiberq.main_plugin as mp
+    original = mp.QMessageBox.information
+    mp.QMessageBox.information = staticmethod(lambda *a, **k: said.append(str(a[-1])))
+    try:
+        FiberQPlugin.delete_selected(plugin)
+    finally:
+        mp.QMessageBox.information = original
+
+    assert _rows(path, "Poles") == ["p0", "p1"], "nothing should have left the file"
+    assert not any("Deleted 2" in text for text in said), (
+        f"a refused delete was counted as done: {said}")
+    assert plugin.iface.bar.warnings, "nothing was said about the refusal"

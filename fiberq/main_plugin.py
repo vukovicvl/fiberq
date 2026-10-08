@@ -1091,50 +1091,92 @@ class FiberQPlugin:
         # ensure target layer
         dst_layer = _ensure_element_layer_with_style(self, new_name)
 
+        # R7. The collector is threaded into the attribute copy so its findings
+        # -- a primary key it could not read, a column it could not add -- land
+        # in the same message-bar entry as everything else here, instead of the
+        # helper pushing a second one of its own.
+        errors = OperationErrors(self.tr("Change element type"), self.iface)
+
         # copy attributes (without PK fields)
-        vals = _copy_attributes_between_layers(f, dst_layer)
+        vals = _copy_attributes_between_layers(f, dst_layer, errors)
 
         # create new feature
         new_f = QgsFeature(dst_layer.fields())
         try:
             new_f.setGeometry(QgsGeometry(f.geometry()))
-        except Exception as e:
-            logger.debug(f"Could not create geometry copy, using original: {e}")
+        except (RuntimeError, TypeError, ValueError) as exc:
+            logger.warning("Could not copy the geometry, using the original: %s", describe(exc))
             new_f.setGeometry(f.geometry())
 
+        refused = []
         for k, v in vals.items():
             try:
                 new_f.setAttribute(k, v)
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._change_element_type: {e}")
+            except (KeyError, TypeError, ValueError):
+                # setAttribute RAISES KeyError for a column the destination does
+                # not have; it does not answer False. A value dropped here is a
+                # value the moved element loses for good, because the source is
+                # deleted next.
+                refused.append(k)
+        if refused:
+            errors.add(dst_layer.name(), safe_format(QCoreApplication.translate(
+                'FiberQPlugin',
+                "{columns} could not be written to the moved element, so those values are lost"),
+                "{columns} could not be written to the moved element, so those values are lost",
+                columns=", ".join(sorted(refused))))
 
         # INSERT into destination (check success!)
-        dst_layer.startEditing()
-        ok = dst_layer.addFeature(new_f)
-        if not ok:
-            try:
+        dst_was_editing = dst_layer.isEditable()
+        if not dst_was_editing and not dst_layer.startEditing():
+            errors.report()
+            raise RuntimeError("The target layer could not be opened for editing.")
+        if not dst_layer.addFeature(new_f):
+            # Only a session THIS call opened may be rolled back. The old code
+            # rolled back unconditionally, which threw away whatever else the
+            # user had unsaved on the destination layer -- the same defect as
+            # f006, and the reason the source is still intact afterwards is the
+            # only thing that made it survivable.
+            if not dst_was_editing:
                 dst_layer.rollBack()
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._change_element_type: {e}")
+            errors.report()
             raise RuntimeError("Failed to insert into target layer (constraint/PK conflict).")
 
-        if not dst_layer.commitChanges():
-            try:
-                dst_layer.rollBack()
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._change_element_type: {e}")
+        if not dst_was_editing and not check_commit(dst_layer, errors):
+            errors.report()
             raise RuntimeError("Failed to commit changes to target layer.")
 
         dst_layer.triggerRepaint()
 
-        # delete old only after successful insert
-        try:
-            src_layer.startEditing()
-            src_layer.deleteFeature(int(src_fid))
-            src_layer.commitChanges()
-            src_layer.triggerRepaint()
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin._change_element_type: {e}")
+        # Delete the original only after the copy is safely in the file. The
+        # result of all three of these used to be discarded inside one silent
+        # handler, so a refused delete left the element in BOTH layers with the
+        # tool reporting "Element changed to: ...". Reported, not raised: the
+        # move itself succeeded, and raising here would tell the user the
+        # opposite of what happened.
+        src_was_editing = src_layer.isEditable()
+        if not src_was_editing and not src_layer.startEditing():
+            errors.add(src_layer.name(), QCoreApplication.translate(
+                'FiberQPlugin', "this layer could not be opened for editing"))
+        elif not src_layer.deleteFeature(int(src_fid)):
+            errors.add(src_layer.name(), QCoreApplication.translate(
+                'FiberQPlugin',
+                "the element was copied but the original could not be removed, so it is now in"
+                " both layers"))
+            if not src_was_editing:
+                src_layer.rollBack()
+        elif not src_was_editing:
+            # The CONSEQUENCE goes in check_commit's `what`, not in a second
+            # add(). OperationErrors renders its first few distinct reasons and
+            # COUNTS the rest, and the provider's own text is several lines, so
+            # a separate line saying "it is now in both layers" was exactly the
+            # one being counted. As `what` it leads the entry and the provider's
+            # reason follows it.
+            check_commit(src_layer, errors, what=QCoreApplication.translate(
+                'FiberQPlugin',
+                "the element was copied but the original could not be removed, so it is now in"
+                " both layers"))
+        src_layer.triggerRepaint()
+        errors.report()
 
     def activate_change_element_type_tool(self):
         try:
@@ -3245,11 +3287,29 @@ class FiberQPlugin:
 
                 selected_ids = [f.id() for f in selected_feats]
                 if selected_ids:
-                    lyr.startEditing()
+                    # R7. Every one of these three results used to be thrown
+                    # away and `obrisano` counted the loop, not the deletions:
+                    # measured with a BEFORE DELETE trigger, the dialog said
+                    # "Deleted 2 selected features from all layers." with both
+                    # rows still in the file.
+                    was_editing = lyr.isEditable()
+                    if not was_editing and not lyr.startEditing():
+                        errors.add(lyr.name(), QCoreApplication.translate(
+                            'FiberQPlugin', "this layer could not be opened for editing"))
+                        lyr.removeSelection()
+                        continue
+                    buffered = 0
                     for fid in selected_ids:
-                        lyr.deleteFeature(fid)
-                        obrisano += 1
-                    lyr.commitChanges()
+                        if lyr.deleteFeature(fid):
+                            buffered += 1
+                        else:
+                            errors.add(lyr.name(), QCoreApplication.translate(
+                                'FiberQPlugin', "the layer refused to delete one of the features"))
+                    # A layer the user already had open is theirs to save: the
+                    # deletion joins their edit session instead of committing
+                    # their other unsaved work for them.
+                    if was_editing or check_commit(lyr, errors):
+                        obrisano += buffered
                     lyr.triggerRepaint()
                 lyr.removeSelection()
 

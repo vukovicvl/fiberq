@@ -64,7 +64,7 @@ from qgis.core import (
 )
 from qgis.PyQt.QtCore import QVariant
 
-from fiberq.core.undo_manager import FiberQUndoManager, OpType
+from fiberq.core.undo_manager import FiberQUndoManager
 
 
 class FakeBar:
