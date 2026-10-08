@@ -196,8 +196,13 @@ def line_part_count(geom: QgsGeometry) -> int:
     MultiLineString that happens to hold a single part; it answers the real
     number for a MultiLineString or a MultiCurve with more. Measured on
     3.22.16, 3.44.15 and 4.0.3. ``isMultipart()`` is not the same question --
-    it is true for a one-part MultiLineString, which is what a GeoPackage
-    column gives every ordinary route.
+    it is true for a one-part MultiLineString, and an **ESRI Shapefile** line
+    layer hands back exactly that for every feature, single-part or not: the
+    format does not distinguish, so OGR declares the layer MultiLineString and
+    `asPolyline()` raises on all of it. A GeoPackage only does so when the
+    column itself was declared MultiLineString; FiberQ's own GeoPackage export
+    writes a LineString column, so its routes read back single-part. Measured
+    on all three.
     """
     if geom is None or geom.isNull() or geom.isEmpty():
         return 0
@@ -207,6 +212,51 @@ def line_part_count(geom: QgsGeometry) -> int:
     if stored is None:
         return 0
     return stored.partCount()
+
+
+def line_parts(geom: QgsGeometry) -> List[List[QgsPointXY]]:
+    """Each separate line in a geometry, as its own list of points. ``[]`` if none.
+
+    The multipart case is tested FIRST, as in :func:`line_vertices`, and for the
+    same measured reason: ``asPolyline()`` does not answer an empty list for a
+    multipart geometry, it raises ``TypeError``. So the idiom this replaces --
+
+        line = geom.asPolyline()
+        if not line:
+            multi = geom.asMultiPolyline()   # unreachable
+            line = multi[0]
+
+    -- can never reach its own fallback. Whatever the fallback was written to
+    handle, it handles nothing. ``asMultiPolyline()`` is the mirror image and
+    raises on a single-part LineString, so neither call is safe unguarded.
+    Measured on 3.22.16, 3.44.15 and 4.0.3.
+
+    This matters far beyond genuinely branching routes, because an **ESRI
+    Shapefile** line layer reads back as MultiLineString even when every feature
+    is a plain two-point line (the format has no single/multi distinction, so
+    OGR declares the layer from the format, not the content). A shapefile is the
+    ordinary way to bring an existing network into QGIS, and
+    ``RouteManager._find_route_layer`` tests ``geometryType()`` -- the dimension
+    -- so such a layer is accepted as the Route layer and reaches every caller
+    here.
+
+    Returns one list per part, each with at least two points; parts with fewer
+    are dropped, because a one-point "line" is not something a caller counting
+    segments, chaining routes or measuring length can use. A caller that wants
+    one flat list of vertices wants :func:`line_vertices`; a caller that wants
+    one line's two ends wants :func:`line_endpoint`.
+    """
+    if geom is None or geom.isNull() or geom.isEmpty():
+        return []
+    if geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
+        # A point or a polygon answers asPolyline() with a TypeError and a null
+        # geometry with a ValueError, so the type is checked before the shape.
+        return []
+    if QgsWkbTypes.isMultiType(geom.wkbType()):
+        parts = geom.asMultiPolyline() or []
+    else:
+        parts = [geom.asPolyline()]
+    return [[QgsPointXY(point) for point in part] for part in parts if part and len(part) >= 2]
 
 
 def is_finite(geom: QgsGeometry) -> bool:
