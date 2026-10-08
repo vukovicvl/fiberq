@@ -12,7 +12,7 @@ Phase 5.2: Added logging infrastructure
 
 from typing import List, Dict, Any, Tuple
 
-from qgis.PyQt.QtCore import QVariant, Qt
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, QVariant, Qt
 from qgis.PyQt.QtWidgets import QMessageBox, QDialog
 from qgis.PyQt.QtGui import QColor
 
@@ -39,9 +39,27 @@ from qgis.core import (
 
 # Phase 5.2: Logging
 from . import interchange_fields as fm
+from ..i18n import safe_format
+from ..utils.errors import OperationErrors, check_commit, describe
+from ..utils.geometry import line_parts
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
 logger = get_logger(__name__)
+
+#: WP4 4.2 item R8. The cable-laying strings, in the FiberQCables context.
+_LAY_TITLE = QT_TRANSLATE_NOOP('FiberQCables', "Lay cable")
+_LAID = QT_TRANSLATE_NOOP('FiberQCables', "Cable has been laid along the route!")
+_LAID_UNSAVED = QT_TRANSLATE_NOOP(
+    'FiberQCables',
+    "The cable layer was already in edit mode, so this cable is not saved yet. Use Layer > Save"
+    " Layer Edits when you are ready.")
+_REFUSED = QT_TRANSLATE_NOOP(
+    'FiberQCables', "the cable layer refused the new cable, so nothing was laid")
+_NOT_EDITABLE = QT_TRANSLATE_NOOP(
+    'FiberQCables', "the cable layer could not be opened for editing, so nothing was laid")
+_NO_LENGTH = QT_TRANSLATE_NOOP(
+    'FiberQCables',
+    "the cable layer has no {columns} column, so this cable was laid without its length recorded")
 
 # Phase 0.1: UUID support for FiberQ Designer
 from ..utils.uuid_utils import FIBERQ_UUID_FIELD, generate_uuid  # noqa: E402
@@ -853,27 +871,38 @@ class CableManager:
         do_naziv = _disp_name(selected[1][0], selected[1][1])
 
         # Find cable geometry along route
+        #
+        # WP4 4.2 item R8. This used to read `line = geom.asPolyline()` / `if
+        # not line:` / `multi = geom.asMultiPolyline()` / `line = multi[0]`.
+        # asPolyline() RAISES TypeError on any multipart geometry, so the
+        # fallback below it was unreachable and the TypeError left this method
+        # entirely -- into FiberQPlugin.lay_cable's `except Exception as e:
+        # logger.debug(...)`, which at the default log level writes nothing
+        # anywhere. "Lay cable" was a completely silent no-op: the user filled
+        # in the whole cable picker, clicked OK, and got no cable, no dialog, no
+        # message bar and no log line.
+        #
+        # An ESRI Shapefile line layer is multipart for EVERY feature,
+        # single-part or not, so that was every shapefile Route layer. Each part
+        # is now searched on its own, which is also what `multi[0]` got wrong
+        # even when it was reachable: a cable could only ever be found along the
+        # first piece of a route. See utils.geometry.line_parts.
         cable_geom = None
         for feat in route_layer.getFeatures():
-            geom = feat.geometry()
-            if geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
-                continue
-            line = geom.asPolyline()
-            if not line:
-                multi = geom.asMultiPolyline()
-                if multi and len(multi) > 0:
-                    line = multi[0]
-            dists1 = [QgsPointXY(point1).distance(QgsPointXY(p)) for p in line]
-            dists2 = [QgsPointXY(point2).distance(QgsPointXY(p)) for p in line]
-            min_dist1 = min(dists1)
-            min_dist2 = min(dists2)
-            idx1 = dists1.index(min_dist1)
-            idx2 = dists2.index(min_dist2)
-            if min_dist1 < 1 and min_dist2 < 1 and idx1 != idx2:
-                if idx1 < idx2:
-                    cable_geom = QgsGeometry.fromPolylineXY(line[idx1:idx2 + 1])
-                else:
-                    cable_geom = QgsGeometry.fromPolylineXY(list(reversed(line[idx2:idx1 + 1])))
+            for line in line_parts(feat.geometry()):
+                dists1 = [QgsPointXY(point1).distance(QgsPointXY(p)) for p in line]
+                dists2 = [QgsPointXY(point2).distance(QgsPointXY(p)) for p in line]
+                min_dist1 = min(dists1)
+                min_dist2 = min(dists2)
+                idx1 = dists1.index(min_dist1)
+                idx2 = dists2.index(min_dist2)
+                if min_dist1 < 1 and min_dist2 < 1 and idx1 != idx2:
+                    if idx1 < idx2:
+                        cable_geom = QgsGeometry.fromPolylineXY(line[idx1:idx2 + 1])
+                    else:
+                        cable_geom = QgsGeometry.fromPolylineXY(list(reversed(line[idx2:idx1 + 1])))
+                    break
+            if cable_geom is not None:
                 break
 
         if cable_geom is None:
@@ -881,18 +910,24 @@ class CableManager:
             tol_units = self.iface.mapCanvas().mapUnitsPerPixel() * 6
             path_pts = None
 
+            # R8. Both of these logged at debug -- nothing, anywhere -- and the
+            # method then said "Joint closures or elements are not at the ends
+            # of the same route or connected routes", which blames the user's
+            # data for the plugin's own failure. (The message in both handlers
+            # also named _disp_name, a different method entirely, so even the
+            # debug line pointed at the wrong place.)
             if path_callback:
                 try:
                     path_pts = path_callback(route_layer, point1, point2, tol_units)
-                except Exception as e:
-                    logger.debug(f"Error in CableManager._disp_name: {e}")
+                except Exception as exc:  # noqa: BLE001 - a caller's callback
+                    logger.warning("the path callback failed: %s", describe(exc))
             elif self.route_manager:
                 try:
                     path_pts = self.route_manager.build_path_across_network(route_layer, QgsPointXY(point1), QgsPointXY(point2), tol_units)
                     if not path_pts:
                         path_pts = self.route_manager.build_path_across_joined_routes(route_layer, QgsPointXY(point1), QgsPointXY(point2), tol_units)
-                except Exception as e:
-                    logger.debug(f"Error in CableManager._disp_name: {e}")
+                except (AttributeError, IndexError, KeyError, RuntimeError, TypeError, ValueError) as exc:
+                    logger.warning("could not search for a path across the routes: %s", describe(exc))
 
             if path_pts:
                 cable_geom = QgsGeometry.fromPolylineXY(path_pts)
@@ -950,29 +985,60 @@ class CableManager:
                 feat.setAttribute(FIBERQ_UUID_FIELD, generate_uuid())
         except Exception as e:
             logger.debug(f"Error setting UUID on cable: {e}")
-        try:
+        with OperationErrors(QCoreApplication.translate('FiberQCables', _LAY_TITLE),
+                             self.iface) as errors:
+            # setAttribute RAISES KeyError for a column the layer does not have
+            # -- it does not answer False -- so a cable layer missing one of
+            # these used to end the whole operation here, silently, through the
+            # caller's debug handler.
             cable_length = ground_length(cable_geom, cables_layer)
-            feat.setAttribute("duzina_m", cable_length)
-            feat.setAttribute("slack_m", 0.0)  # Issue #1: Initialize slack to 0
-            feat.setAttribute("total_len_m", cable_length)  # Issue #1: Set total_len_m = duzina_m initially
-        except Exception as e:
-            logger.debug(f"Error in CableManager.lay_cable setting length: {e}")
+            missing = []
+            for name, value in (("duzina_m", cable_length),
+                                ("slack_m", 0.0),
+                                ("total_len_m", cable_length)):
+                if feat.fields().indexFromName(name) < 0:
+                    missing.append(name)
+                    continue
+                feat.setAttribute(name, value)
+            if missing:
+                errors.add(cables_layer.name(), safe_format(
+                    QCoreApplication.translate('FiberQCables', _NO_LENGTH), _NO_LENGTH,
+                    columns=", ".join(missing)))
 
-        cables_layer.startEditing()
-        cables_layer.addFeature(feat)
-        cables_layer.commitChanges()
-        cables_layer.updateExtents()
-        cables_layer.triggerRepaint()
+            # R7/R8: all three results used to be discarded, so a GeoPackage
+            # that refused the insert still produced "Cable has been laid along
+            # the route!" with zero rows on disk -- and startEditing() was
+            # unguarded, so laying a cable committed whatever else the user had
+            # unsaved on that layer.
+            was_editing = cables_layer.isEditable()
+            if not was_editing and not cables_layer.startEditing():
+                errors.add(cables_layer.name(), QCoreApplication.translate(
+                    'FiberQCables', _NOT_EDITABLE))
+                return
+            if not cables_layer.addFeature(feat):
+                errors.add(cables_layer.name(), QCoreApplication.translate(
+                    'FiberQCables', _REFUSED))
+                if not was_editing:
+                    cables_layer.rollBack()
+                return
+            if not was_editing and not check_commit(cables_layer, errors):
+                return
+            cables_layer.updateExtents()
+            cables_layer.triggerRepaint()
 
-        # Record for undo (v1.2 — Feature 2)
-        try:
+            # Record for undo (v1.2 — Feature 2). Only now: an undo entry for a
+            # cable that never reached the layer would undo somebody else's
+            # work on the next press.
             undo_mgr = getattr(self, 'undo_manager', None)
             if undo_mgr:
                 undo_mgr.record_add(cables_layer, feat)
-        except Exception as e:
-            logger.debug(f"Error recording undo for cable: {e}")
 
-        QMessageBox.information(self.iface.mainWindow(), "FiberQ", "Cable has been laid along the route!")
+            if errors.failed:
+                return
+            message = QCoreApplication.translate('FiberQCables', _LAID)
+            if was_editing:
+                message += "\n" + QCoreApplication.translate('FiberQCables', _LAID_UNSAVED)
+            QMessageBox.information(self.iface.mainWindow(), "FiberQ", message)
 
 
 __all__ = ['CableManager']

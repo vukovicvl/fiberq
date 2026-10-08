@@ -9,8 +9,9 @@ This module provides management for:
 Phase 5.2: Added logging infrastructure
 """
 
-import json
 from typing import Optional, List, Dict, Any, Tuple
+
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
 
 from qgis.core import (
     QgsProject,
@@ -22,8 +23,13 @@ from qgis.core import (
 )
 
 # Phase 5.2: Logging
+from .project_store import read_json_entry, write_json_entry
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
+
+#: WP4 4.2 item R5. See fiberq.core.project_store.
+_RELATIONS = QT_TRANSLATE_NOOP('FiberQStore', "Optical relations")
+_LATENT = QT_TRANSLATE_NOOP('FiberQStore', "Pass-through elements")
 
 
 class RelationsManager:
@@ -51,35 +57,37 @@ class RelationsManager:
         return self.RELATIONS_STORAGE_KEY
 
     def load_relations(self) -> Dict[str, Any]:
-        """Load relations from project storage."""
-        # Try DataManager first
+        """Load relations from project storage.
+
+        WP4 4.2 item R5. There used to be two implementations here: a
+        delegation to DataManager wrapped in a silent handler, and a duplicate
+        of the same read-parse-default idiom underneath it as a "fallback". The
+        handler could only fire if ``readEntry`` itself raised, and when it did
+        the failure fell THROUGH to the duplicate -- so it was handled twice and
+        reported neither time. Both now go through the one store.
+
+        The no-DataManager path is live, not dead: ``main_plugin`` sets
+        ``self.data_manager = None`` when DataManager construction fails and
+        passes that None here, which is exactly when the user is least likely
+        to be told anything.
+        """
         if self.data_manager:
-            try:
-                return self.data_manager.load_relations()
-            except Exception as e:
-                logger.debug(f"Error in RelationsManager.load_relations: {e}")
+            return self.data_manager.load_relations()
+        return read_json_entry(
+            'StuboviPlugin', self.RELATIONS_STORAGE_KEY, {"relations": []},
+            QCoreApplication.translate('FiberQStore', _RELATIONS), expect="relations")
 
-        # Fallback: direct project access
-        s = QgsProject.instance().readEntry('StuboviPlugin', self.RELATIONS_STORAGE_KEY, '')[0]
-        if not s:
-            return {"relations": []}
-        try:
-            return json.loads(s)
-        except Exception:
-            return {"relations": []}
+    def save_relations(self, data: Dict[str, Any]) -> bool:
+        """Save relations to project storage. True when it got there.
 
-    def save_relations(self, data: Dict[str, Any]) -> None:
-        """Save relations to project storage."""
-        # Try DataManager first
+        The old shape swallowed a failed delegation with no ``return`` after it,
+        so the fallback ``writeEntry`` then ran a SECOND time on the same key.
+        """
         if self.data_manager:
-            try:
-                self.data_manager.save_relations(data)
-                return
-            except Exception as e:
-                logger.debug(f"Error in RelationsManager.save_relations: {e}")
-
-        # Fallback: direct project access
-        QgsProject.instance().writeEntry('StuboviPlugin', self.RELATIONS_STORAGE_KEY, json.dumps(data))
+            return self.data_manager.save_relations(data)
+        return write_json_entry(
+            'StuboviPlugin', self.RELATIONS_STORAGE_KEY, data,
+            QCoreApplication.translate('FiberQStore', _RELATIONS))
 
     def get_relation_by_id(self, data: Dict[str, Any], rid: Any) -> Optional[Dict[str, Any]]:
         """Get relation by ID from data dict."""
@@ -203,35 +211,25 @@ class RelationsManager:
         return self.LATENT_STORAGE_KEY
 
     def load_latent(self) -> Dict[str, Any]:
-        """Load latent elements from project storage."""
-        # Try DataManager first
+        """Load latent elements from project storage. See :meth:`load_relations`.
+
+        The old fallback had no shape check at all, so valid JSON of the wrong
+        shape was handed straight back and raised ``AttributeError`` in the
+        caller's ``data.get("cables", {})`` instead of being reported here.
+        """
         if self.data_manager:
-            try:
-                return self.data_manager.load_latent()
-            except Exception as e:
-                logger.debug(f"Error in RelationsManager.load_latent: {e}")
+            return self.data_manager.load_latent()
+        return read_json_entry(
+            'StuboviPlugin', self.LATENT_STORAGE_KEY, {"cables": {}},
+            QCoreApplication.translate('FiberQStore', _LATENT), expect="cables")
 
-        # Fallback: direct project access
-        s = QgsProject.instance().readEntry('StuboviPlugin', self.LATENT_STORAGE_KEY, '')[0]
-        if not s:
-            return {"cables": {}}
-        try:
-            return json.loads(s)
-        except Exception:
-            return {"cables": {}}
-
-    def save_latent(self, data: Dict[str, Any]) -> None:
-        """Save latent elements to project storage."""
-        # Try DataManager first
+    def save_latent(self, data: Dict[str, Any]) -> bool:
+        """Save latent elements to project storage. True when it got there."""
         if self.data_manager:
-            try:
-                self.data_manager.save_latent(data)
-                return
-            except Exception as e:
-                logger.debug(f"Error in RelationsManager.save_latent: {e}")
-
-        # Fallback: direct project access
-        QgsProject.instance().writeEntry('StuboviPlugin', self.LATENT_STORAGE_KEY, json.dumps(data))
+            return self.data_manager.save_latent(data)
+        return write_json_entry(
+            'StuboviPlugin', self.LATENT_STORAGE_KEY, data,
+            QCoreApplication.translate('FiberQStore', _LATENT))
 
     def cable_key(self, layer_id: str, fid: int) -> str:
         """

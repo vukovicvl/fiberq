@@ -5,7 +5,7 @@ from qgis.PyQt.QtWidgets import (
     QAction, QMessageBox, QInputDialog, QDialog, QVBoxLayout, QLabel, QDialogButtonBox,
     QFileDialog)
 from qgis.core import (
-    QgsVectorFileWriter, QgsVectorLayer,
+    QgsVectorLayer,
     QgsProject, QgsField, QgsFeature, QgsFeatureRequest,
     QgsGeometry, QgsPointXY, QgsWkbTypes,
     QgsSymbol, QgsUnitTypes, QgsCoordinateTransform
@@ -1091,50 +1091,92 @@ class FiberQPlugin:
         # ensure target layer
         dst_layer = _ensure_element_layer_with_style(self, new_name)
 
+        # R7. The collector is threaded into the attribute copy so its findings
+        # -- a primary key it could not read, a column it could not add -- land
+        # in the same message-bar entry as everything else here, instead of the
+        # helper pushing a second one of its own.
+        errors = OperationErrors(self.tr("Change element type"), self.iface)
+
         # copy attributes (without PK fields)
-        vals = _copy_attributes_between_layers(f, dst_layer)
+        vals = _copy_attributes_between_layers(f, dst_layer, errors)
 
         # create new feature
         new_f = QgsFeature(dst_layer.fields())
         try:
             new_f.setGeometry(QgsGeometry(f.geometry()))
-        except Exception as e:
-            logger.debug(f"Could not create geometry copy, using original: {e}")
+        except (RuntimeError, TypeError, ValueError) as exc:
+            logger.warning("Could not copy the geometry, using the original: %s", describe(exc))
             new_f.setGeometry(f.geometry())
 
+        refused = []
         for k, v in vals.items():
             try:
                 new_f.setAttribute(k, v)
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._change_element_type: {e}")
+            except (KeyError, TypeError, ValueError):
+                # setAttribute RAISES KeyError for a column the destination does
+                # not have; it does not answer False. A value dropped here is a
+                # value the moved element loses for good, because the source is
+                # deleted next.
+                refused.append(k)
+        if refused:
+            errors.add(dst_layer.name(), safe_format(QCoreApplication.translate(
+                'FiberQPlugin',
+                "{columns} could not be written to the moved element, so those values are lost"),
+                "{columns} could not be written to the moved element, so those values are lost",
+                columns=", ".join(sorted(refused))))
 
         # INSERT into destination (check success!)
-        dst_layer.startEditing()
-        ok = dst_layer.addFeature(new_f)
-        if not ok:
-            try:
+        dst_was_editing = dst_layer.isEditable()
+        if not dst_was_editing and not dst_layer.startEditing():
+            errors.report()
+            raise RuntimeError("The target layer could not be opened for editing.")
+        if not dst_layer.addFeature(new_f):
+            # Only a session THIS call opened may be rolled back. The old code
+            # rolled back unconditionally, which threw away whatever else the
+            # user had unsaved on the destination layer -- the same defect as
+            # f006, and the reason the source is still intact afterwards is the
+            # only thing that made it survivable.
+            if not dst_was_editing:
                 dst_layer.rollBack()
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._change_element_type: {e}")
+            errors.report()
             raise RuntimeError("Failed to insert into target layer (constraint/PK conflict).")
 
-        if not dst_layer.commitChanges():
-            try:
-                dst_layer.rollBack()
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._change_element_type: {e}")
+        if not dst_was_editing and not check_commit(dst_layer, errors):
+            errors.report()
             raise RuntimeError("Failed to commit changes to target layer.")
 
         dst_layer.triggerRepaint()
 
-        # delete old only after successful insert
-        try:
-            src_layer.startEditing()
-            src_layer.deleteFeature(int(src_fid))
-            src_layer.commitChanges()
-            src_layer.triggerRepaint()
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin._change_element_type: {e}")
+        # Delete the original only after the copy is safely in the file. The
+        # result of all three of these used to be discarded inside one silent
+        # handler, so a refused delete left the element in BOTH layers with the
+        # tool reporting "Element changed to: ...". Reported, not raised: the
+        # move itself succeeded, and raising here would tell the user the
+        # opposite of what happened.
+        src_was_editing = src_layer.isEditable()
+        if not src_was_editing and not src_layer.startEditing():
+            errors.add(src_layer.name(), QCoreApplication.translate(
+                'FiberQPlugin', "this layer could not be opened for editing"))
+        elif not src_layer.deleteFeature(int(src_fid)):
+            errors.add(src_layer.name(), QCoreApplication.translate(
+                'FiberQPlugin',
+                "the element was copied but the original could not be removed, so it is now in"
+                " both layers"))
+            if not src_was_editing:
+                src_layer.rollBack()
+        elif not src_was_editing:
+            # The CONSEQUENCE goes in check_commit's `what`, not in a second
+            # add(). OperationErrors renders its first few distinct reasons and
+            # COUNTS the rest, and the provider's own text is several lines, so
+            # a separate line saying "it is now in both layers" was exactly the
+            # one being counted. As `what` it leads the entry and the provider's
+            # reason follows it.
+            check_commit(src_layer, errors, what=QCoreApplication.translate(
+                'FiberQPlugin',
+                "the element was copied but the original could not be removed, so it is now in"
+                " both layers"))
+        src_layer.triggerRepaint()
+        errors.report()
 
     def activate_change_element_type_tool(self):
         try:
@@ -2383,21 +2425,29 @@ class FiberQPlugin:
         return []
 
     def _load_color_catalogs(self):
-        """Load color catalogs."""
+        """Load color catalogs. See :mod:`fiberq.core.project_store` (R5).
+
+        The handler that used to be here had its own default of
+        ``{"catalogs": []}`` -- EMPTY, where the layer below falls back to the
+        built-in TIA-598-C list. So the two disagreed about what a failure looks
+        like, and this is the method the colour dialog actually calls: the
+        dialog opened with an empty list and its Save then wrote
+        ``{"catalogs": []}`` over whatever was there.
+        """
         if self.color_manager:
-            try:
-                return self.color_manager.load_color_catalogs()
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._load_color_catalogs: {e}")
+            return self.color_manager.load_color_catalogs()
         return {"catalogs": []}
 
     def _save_color_catalogs(self, data):
-        """Save color catalogs."""
+        """Save color catalogs. True when the entry reached the project.
+
+        The colour dialog calls this immediately before ``accept()``, so the
+        discarded result meant the dialog closed as though the catalogue the
+        user had just built were saved.
+        """
         if self.color_manager:
-            try:
-                self.color_manager.save_color_catalogs(data)
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._save_color_catalogs: {e}")
+            return self.color_manager.save_color_catalogs(data)
+        return False
 
     def _list_color_codes(self):
         """List color codes."""
@@ -2611,21 +2661,22 @@ class FiberQPlugin:
         return "Relacije/relations_v1"
 
     def _load_relations(self):
-        """Load relations."""
+        """Load relations. See :mod:`fiberq.core.project_store` (R5)."""
         if self.relations_manager:
-            try:
-                return self.relations_manager.load_relations()
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._load_relations: {e}")
+            return self.relations_manager.load_relations()
         return {"relations": []}
 
     def _save_relations(self, data):
-        """Save relations."""
+        """Save relations. True when the entry reached the project.
+
+        The relations dialog calls this from four separate user actions -- new
+        relation, deleted relation, cables assigned, cables removed -- and
+        refreshes from its own in-memory copy either way, so all four could
+        fail with no message and no sign in the dialog.
+        """
         if self.relations_manager:
-            try:
-                self.relations_manager.save_relations(data)
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._save_relations: {e}")
+            return self.relations_manager.save_relations(data)
+        return False
 
     def _relation_by_id(self, data, rid):
         """Get relation by ID."""
@@ -2655,21 +2706,16 @@ class FiberQPlugin:
         return "LatentElements/latent_v1"
 
     def _load_latent(self):
-        """Load latent elements."""
+        """Load latent elements. See :mod:`fiberq.core.project_store` (R5)."""
         if self.relations_manager:
-            try:
-                return self.relations_manager.load_latent()
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._load_latent: {e}")
+            return self.relations_manager.load_latent()
         return {"cables": {}}
 
     def _save_latent(self, data):
-        """Save latent elements."""
+        """Save latent elements. True when the entry reached the project."""
         if self.relations_manager:
-            try:
-                self.relations_manager.save_latent(data)
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._save_latent: {e}")
+            return self.relations_manager.save_latent(data)
+        return False
 
     def _cable_key(self, layer_id, fid):
         """Generate cable key."""
@@ -3241,11 +3287,29 @@ class FiberQPlugin:
 
                 selected_ids = [f.id() for f in selected_feats]
                 if selected_ids:
-                    lyr.startEditing()
+                    # R7. Every one of these three results used to be thrown
+                    # away and `obrisano` counted the loop, not the deletions:
+                    # measured with a BEFORE DELETE trigger, the dialog said
+                    # "Deleted 2 selected features from all layers." with both
+                    # rows still in the file.
+                    was_editing = lyr.isEditable()
+                    if not was_editing and not lyr.startEditing():
+                        errors.add(lyr.name(), QCoreApplication.translate(
+                            'FiberQPlugin', "this layer could not be opened for editing"))
+                        lyr.removeSelection()
+                        continue
+                    buffered = 0
                     for fid in selected_ids:
-                        lyr.deleteFeature(fid)
-                        obrisano += 1
-                    lyr.commitChanges()
+                        if lyr.deleteFeature(fid):
+                            buffered += 1
+                        else:
+                            errors.add(lyr.name(), QCoreApplication.translate(
+                                'FiberQPlugin', "the layer refused to delete one of the features"))
+                    # A layer the user already had open is theirs to save: the
+                    # deletion joins their edit session instead of committing
+                    # their other unsaved work for them.
+                    if was_editing or check_commit(lyr, errors):
+                        obrisano += buffered
                     lyr.triggerRepaint()
                 lyr.removeSelection()
 
@@ -3363,13 +3427,18 @@ class FiberQPlugin:
         # Minimal fallback - needs RouteManager
 
     def lay_cable_type(self, tip, podtip):
-        """Set cable type and subtype, then lay cable."""
+        """Set cable type and subtype, then lay cable.
+
+        R8. The handler here used to be ``logger.debug``, which at the default
+        log level writes nothing anywhere, so every way laying a cable could
+        fail came out as nothing happening at all.
+        """
         if self.cable_manager:
             try:
                 self.cable_manager.lay_cable_type(tip, podtip)
                 self._record_cmd('lay_cable', tip=tip, podtip=podtip)
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin.lay_cable_type: {e}")
+            except Exception as exc:  # noqa: BLE001 - Qt slot boundary
+                report_error(self.tr("Lay cable"), None, exc, self.iface)
 
     def lay_cable(self):
         """Lay a cable along a route between two selected elements."""
@@ -3381,8 +3450,14 @@ class FiberQPlugin:
                     color_codes_callback=self._list_color_codes,
                     path_callback=lambda tl, p1, p2, tol: self._build_path_across_network(tl, p1, p2, tol) or self._build_path_across_joined_trasa(tl, p1, p2, tol)
                 )
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin.lay_cable: {e}")
+            except Exception as exc:  # noqa: BLE001 - Qt slot boundary
+                # R8. Measured on a shapefile Route layer: CableManager.lay_cable
+                # raised TypeError out of asPolyline(), this swallowed it at
+                # debug, and the user -- having filled in the whole cable picker
+                # and clicked OK -- got no cable, no dialog, no message bar and
+                # no log line. The multipart cause is fixed in cable_manager;
+                # this is the handler that made it invisible.
+                report_error(self.tr("Lay cable"), None, exc, self.iface)
 
     def import_route_from_file(self):
         """Import routes from external file."""
@@ -3657,228 +3732,41 @@ class FiberQPlugin:
             return False
         return True
 
-    # Automatska korekcija
-
-    def _export_active_layer(self, only_selected: bool):
-        """Helper to export active vector layer (all or only selected features)
-        to one of the common exchange formats (GPX, KML/KMZ, GeoPackage)."""
-        # Active layer must be a vector layer
-        if not isinstance(self.iface.activeLayer(), QgsVectorLayer):
-            QMessageBox.warning(
-                self.iface.mainWindow(),
-                self.tr("Export"),
-                self.tr("Please select an active vector layer before exporting.")
-            )
-            return
-
-        layer = self.iface.activeLayer()
-
-        # Check selection if needed
-        if only_selected and layer.selectedFeatureCount() == 0:
-            QMessageBox.information(
-                self.iface.mainWindow(),
-                self.tr("Export"),
-                self.tr("There are no selected features on the active layer.")
-            )
-            return
-
-        # Let user choose format
-        formats = [
-            ("GeoPackage (*.gpkg)", ".gpkg"),
-            ("KML/KMZ (*.kml *.kmz)", ".kml"),
-            ("GPX (*.gpx)", ".gpx"),
-        ]
-        items = [label for (label, _ext) in formats]
-        choice, ok = QInputDialog.getItem(
-            self.iface.mainWindow(),
-            self.tr("Export format"),
-            self.tr("Select output format:"),
-            items,
-            0,
-            False,
-        )
-        if not ok or not choice:
-            return
-
-        ext = None
-        for label, e in formats:
-            if label == choice:
-                ext = e
-                break
-        if not ext:
-            return
-
-        # Suggest filename next to current project (if any)
-        project_path = QgsProject.instance().fileName()
-        if project_path:
-            base_dir = os.path.dirname(project_path)
-        else:
-            base_dir = os.path.expanduser("~")
-
-        safe_layer_name = layer.name().replace(" ", "_")
-        suggested = os.path.join(base_dir, safe_layer_name + ext)
-
-        filename, _ = QFileDialog.getSaveFileName(
-            self.iface.mainWindow(),
-            self.tr("Export layer"),
-            suggested,
-            choice,
-        )
-        if not filename:
-            return
-
-        # Ensure extension
-        if not filename.lower().endswith(ext):
-            filename += ext
-
-        from qgis.core import QgsCoordinateReferenceSystem
-
-        lower_ext = os.path.splitext(filename)[1].lower()
-
-        # GPX/KML/KMZ are typically in WGS84
-        if lower_ext in (".gpx", ".kml", ".kmz"):
-            dest_crs = QgsCoordinateReferenceSystem("EPSG:4326")
-        else:
-            dest_crs = layer.crs()
-
-        # Try to guess driver for extension
-        driver_name = ""
-        try:
-            driver_name = QgsVectorFileWriter.driverForExtension(lower_ext)
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin._export_active_layer: {e}")
-            driver_name = ""
-
-        if not driver_name:
-            mapping = {
-                ".gpkg": "GPKG",
-                ".gpx": "GPX",
-                ".kml": "KML",
-                ".kmz": "KML",
-            }
-            driver_name = mapping.get(lower_ext, "")
-
-        if not driver_name:
-            QMessageBox.warning(
-                self.iface.mainWindow(),
-                self.tr("Export"),
-                self.tr("Unknown driver for extension '{ext}'.").format(ext=lower_ext)
-            )
-            return
-
-        # Perform export using the best available API
-        try:
-            result = None
-
-            if hasattr(QgsVectorFileWriter, "writeAsVectorFormatV3"):
-                opts = QgsVectorFileWriter.SaveVectorOptions()
-                opts.driverName = driver_name
-                opts.fileEncoding = "UTF-8"
-                opts.onlySelectedFeatures = bool(only_selected)
-                ctx = QgsProject.instance().transformContext()
-                result = QgsVectorFileWriter.writeAsVectorFormatV3(
-                    layer,
-                    filename,
-                    ctx,
-                    opts,
-                )
-
-            elif hasattr(QgsVectorFileWriter, "writeAsVectorFormatV2"):
-                opts = QgsVectorFileWriter.SaveVectorOptions()
-                opts.driverName = driver_name
-                opts.fileEncoding = "UTF-8"
-                opts.onlySelectedFeatures = bool(only_selected)
-                ctx = QgsProject.instance().transformContext()
-                result = QgsVectorFileWriter.writeAsVectorFormatV2(
-                    layer,
-                    filename,
-                    ctx,
-                    opts,
-                )
-
-            else:
-                # Fallback to deprecated API
-                result = QgsVectorFileWriter.writeAsVectorFormat(
-                    layer,
-                    filename,
-                    "UTF-8",
-                    dest_crs,
-                    driver_name,
-                    onlySelected=bool(only_selected),
-                )
-
-        except Exception as ex:
-            QMessageBox.critical(
-                self.iface.mainWindow(),
-                self.tr("Export"),
-                self.tr("Error while exporting:\n{details}").format(details=ex)
-            )
-            return
-
-        # Normalize result: QGIS versions may return 1, 2 or more values.
-        if isinstance(result, tuple):
-            if len(result) >= 2:
-                res = result[0]
-                err_message = result[1] or ""
-            else:
-                res = result[0]
-                err_message = ""
-        else:
-            res = result
-            err_message = ""
-
-        if res != QgsVectorFileWriter.WriterError.NoError:
-            QMessageBox.critical(
-                self.iface.mainWindow(),
-                self.tr("Export"),
-                self.tr("Export failed: {details}").format(details=err_message)
-            )
-        else:
-            # WP1: two complete sentences instead of one sentence assembled from a
-            # separately translated "selected features"/"all features" fragment.
-            # The fragment form is untranslatable into French: "de" + "les"
-            # contracts to the mandatory "des", which no runtime substitution
-            # into a fixed "de {scope}" can produce. Only the layer name and the
-            # path stay as placeholders.
-            if only_selected:
-                #: Confirmation shown after exporting ONLY the features the
-                #: user had selected. {layer} is the source layer name, {path} the
-                #: written file. Keep as one whole sentence - do not split it.
-                msg = self.tr("Successfully exported the selected features of layer '{layer}'\n"
-                              "to:\n{path}").format(layer=layer.name(), path=filename)
-            else:
-                #: Confirmation shown after exporting the WHOLE layer (no
-                #: selection filter). {layer} is the source layer name, {path} the
-                #: written file. Keep as one whole sentence - do not split it.
-                msg = self.tr("Successfully exported all features of layer '{layer}'\n"
-                              "to:\n{path}").format(layer=layer.name(), path=filename)
-            QMessageBox.information(
-                self.iface.mainWindow(),
-                self.tr("Export"),
-                msg
-            )
-
-    def export_selected_features(self):
-        """Export only selected features of the active layer. Delegates to ExportManager."""
-        # Phase 8: Delegate to ExportManager
-        if self.export_manager:
-            try:
-                self.export_manager.export_selected_features()
-                return
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin.export_selected_features: {e}")
-        self._export_active_layer(only_selected=True)
-
     def export_all_features(self):
-        """Export all features of the active layer. Delegates to ExportManager."""
-        # Phase 8: Delegate to ExportManager
+        """Export all features of the active layer. Delegates to ExportManager.
+
+        WP4 4.2 item R3. A failure used to be swallowed at debug level -- which
+        writes nothing, anywhere -- and then the whole export was re-run through
+        _export_active_layer, a 198-line near-identical second copy. Measured on
+        3.22, 3.44 and 4.0 through this entry point: the user was asked for a
+        format and a filename a SECOND time; the one success message described
+        only the second write, so the file the manager had already written sat
+        on disk unmentioned; cancelling the second dialog said nothing at all
+        although that first file was complete; and when the cause was shared the
+        copy hit the same wall and the exception escaped the slot anyway.
+
+        The two writers produced structurally identical GeoPackages and
+        byte-identical KML, so the retry never could have rescued the first
+        attempt. All it did was cost the user the knowledge that the export had
+        failed, plus a stray file and two extra dialogs. The copy is deleted.
+        """
         if self.export_manager:
             try:
                 self.export_manager.export_all_features()
-                return
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin.export_all_features: {e}")
-        self._export_active_layer(only_selected=False)
+            except Exception as exc:  # noqa: BLE001 - Qt slot boundary
+                report_error(self.tr("Export"), None, exc, self.iface)
+
+    def export_selected_features(self):
+        """Export only selected features of the active layer.
+
+        See :meth:`export_all_features` for what R3 changed and why the second
+        copy of the export is gone.
+        """
+        if self.export_manager:
+            try:
+                self.export_manager.export_selected_features()
+            except Exception as exc:  # noqa: BLE001 - Qt slot boundary
+                report_error(self.tr("Export"), None, exc, self.iface)
 
     def _route_layer(self):
         """The project's Route layer, under any of its names, or None.

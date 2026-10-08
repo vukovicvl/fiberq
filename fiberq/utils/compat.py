@@ -370,6 +370,29 @@ def safe_import_qgis_core(*names):
 # VERSION-SPECIFIC FEATURE CHECKS
 # =============================================================================
 
+def has_xlsxwriter() -> bool:
+    """True when XLSX export is possible in this QGIS.
+
+    ``xlsxwriter`` is an optional dependency and is absent from the qgis/qgis
+    3.22, 3.44 and 4.0 images, so this must stay a **function-level** import.
+    A module-scope ``import xlsxwriter`` here would be a hard import failure for
+    everything that imports ``compat`` -- which is most of the package -- rather
+    than a missing feature, and ``make floor-check`` would stop the release.
+    That is the whole reason optional imports live behind a function in this
+    module (see the module docstring).
+
+    One place decides, instead of the two independent probes the BOM dialog used
+    to run: one to pick the file filter, one to pick the writer. They could
+    disagree, and when they did the user was offered an Excel filter and then
+    silently handed a CSV.
+    """
+    try:
+        import xlsxwriter  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def has_feature(feature_name: str) -> bool:
     """
     Check if a QGIS feature is available in current version.
@@ -439,6 +462,7 @@ UnitTypes = CompatUnitTypes()
 # =============================================================================
 
 __all__ = [
+    'has_xlsxwriter',
     # Version info
     'QGIS_VERSION',
     'QGIS_VERSION_INT',

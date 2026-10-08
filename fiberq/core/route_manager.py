@@ -33,7 +33,7 @@ from qgis.core import (
 from ..i18n import safe_format
 from ..utils.errors import OperationErrors, check_commit, describe
 from ..utils import file_filters
-from ..utils.geometry import transformed
+from ..utils.geometry import line_parts, transformed
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
 logger = get_logger(__name__)
@@ -43,6 +43,80 @@ def _route_import() -> str:
     """Title on the message-bar entries the route importer pushes."""
     src = QT_TRANSLATE_NOOP('FiberQRoutes', "Import route")
     return QCoreApplication.translate('FiberQRoutes', src)
+
+
+def _merge_routes() -> str:
+    """Title on the message-bar entries a merge pushes."""
+    src = QT_TRANSLATE_NOOP('FiberQRoutes', "Merge routes")
+    return QCoreApplication.translate('FiberQRoutes', src)
+
+
+#: How far apart two route ends may be and still count as touching, in layer
+#: units. This is float noise, NOT a domain tolerance: routes that share a
+#: vertex measure exactly 0.0 apart (measured on 3.22.16, 3.44.15 and 4.0.3),
+#: so there is no judgement to make about how big a real gap has to be before
+#: it is worth mentioning. Every gap is worth mentioning.
+_JOIN_EPSILON = 1e-9
+
+#: The merge's user-facing strings. Held as module constants because each one is
+#: used twice -- once as the QT_TRANSLATE_NOOP source pylupdate6 extracts, once
+#: as safe_format's fallback if a translator renames a placeholder -- and a
+#: literal repeated at both sites is a literal that drifts.
+_MERGED_OK = QT_TRANSLATE_NOOP(
+    'FiberQRoutes', "Route has been created!\nLength: {length} m ({km} km)\nType: {type}")
+_MERGED_NAME = QT_TRANSLATE_NOOP('FiberQRoutes', "Merged route")
+_MERGED_SKIPPED = QT_TRANSLATE_NOOP(
+    'FiberQRoutes', "{count} of the selected routes had no line to merge and were left alone.")
+_MERGED_GAP = QT_TRANSLATE_NOOP(
+    'FiberQRoutes',
+    "The routes were not touching. A straight segment {gap} m long was added to join them, so the"
+    " merged route is longer than the routes it replaces. Undo if that is not what you wanted.")
+_MERGED_UNSAVED = QT_TRANSLATE_NOOP(
+    'FiberQRoutes',
+    "The Route layer was already in edit mode, so this merge is not saved yet. Use Layer > Save"
+    " Layer Edits when you are ready.")
+_UNUSABLE = QT_TRANSLATE_NOOP(
+    'FiberQRoutes', "{count} of the selected routes had no line in them and could not be merged")
+_NOT_EDITABLE = QT_TRANSLATE_NOOP(
+    'FiberQRoutes', "the Route layer could not be opened for editing, so nothing was changed")
+_MERGE_REFUSED = QT_TRANSLATE_NOOP(
+    'FiberQRoutes',
+    "the layer refused the merged route, so the routes it would have replaced were left alone")
+_LEFTOVER = QT_TRANSLATE_NOOP(
+    'FiberQRoutes',
+    "the merged route was saved, but {count} of the routes it replaces could not be removed. Delete"
+    " them by hand so the network is not counted twice")
+_NO_COLUMNS = QT_TRANSLATE_NOOP(
+    'FiberQRoutes',
+    "the Route layer has no {columns} column, so the merged route was saved without it. Its"
+    " geometry is correct; its length and type are not recorded")
+#: What :meth:`RouteManager._write_merged_route` managed to do. Four outcomes
+#: and not a bool, because "saved" and "the merged route is on disk but so are
+#: the routes it replaces" need different things said to the user, and a bool
+#: forced the second one into the error collector -- which renders the first few
+#: reasons and COUNTS the rest, so the one sentence the user had to act on was
+#: the one that got counted.
+_SAVED = 'saved'
+_IN_BUFFER = 'in-buffer'
+_NOT_WRITTEN = 'not-written'
+_DUPLICATED = 'duplicated'
+
+_RETAG_OK = QT_TRANSLATE_NOOP(
+    'FiberQRoutes', "Route type has been changed to '{type}' for {count} route(s).")
+_RETAG_NONE = QT_TRANSLATE_NOOP(
+    'FiberQRoutes',
+    "This Route layer has no {column} column, so there is nowhere to record a route type. Save the"
+    " project to a GeoPackage, or add the column to the layer, and try again.")
+_RETAG_REFUSED = QT_TRANSLATE_NOOP(
+    'FiberQRoutes', "{count} of the selected routes would not take the new type")
+_RETAG_UNSAVED = QT_TRANSLATE_NOOP(
+    'FiberQRoutes',
+    "The Route layer was already in edit mode, so this change is not saved yet. Use Layer > Save"
+    " Layer Edits when you are ready.")
+_CMD_RETAG = QT_TRANSLATE_NOOP('FiberQRoutes', "Change route type")
+
+_CMD_ADD = QT_TRANSLATE_NOOP('FiberQRoutes', "Add merged route")
+_CMD_REMOVE = QT_TRANSLATE_NOOP('FiberQRoutes', "Remove merged routes")
 
 
 # Route type options and labels
@@ -324,7 +398,51 @@ class RouteManager:
         )
 
     def merge_all_routes(self) -> None:
-        """Merge selected routes into one."""
+        """Merge the selected routes into one, and say what happened to them.
+
+        WP4 4.2 item R7. Four separate things were wrong here, all measured on
+        3.22.16, 3.44.15 and 4.0.3 through this entry point.
+
+        **It crashed on a multipart route.** ``asPolyline()`` raises
+        ``TypeError`` on a multipart line rather than answering an empty list,
+        so the ``asMultiPolyline()`` fallback underneath was unreachable and the
+        ``TypeError`` left the QAction slot -- ``FiberQPlugin.merge_all_routes``
+        has no handler -- as QGIS's own unhandled-error dialog. An ESRI
+        Shapefile line layer is multipart for *every* feature, single-part or
+        not, so this was every shapefile Route layer, not an exotic shape. See
+        :func:`utils.geometry.line_parts`.
+
+        **It destroyed both routes and reported success.** The old code deleted
+        the originals and added the merged route in one edit session, then
+        discarded ``commitChanges()``. On a GeoPackage whose Route table refuses
+        the insert, a commit is *partial*: measured, ``commitErrors()`` reads
+        ``['SUCCESS: 2 feature(s) deleted.', 'ERROR: 1 feature(s) not added.']``
+        and the table went from two rows to **zero** while the modal said
+        "Route has been created! Length: 20.00 m". ``getFeatures()`` still
+        answered "Merged route" because it reads through the edit buffer, so
+        canvas and attribute table looked right until the project was reopened.
+
+        So the order is now the other way round and that is the fix, not merely
+        the report: the merged route is added and committed **first**, and the
+        originals are removed only once it is safely on disk. A refusal now
+        costs the user a duplicate they can see and delete, instead of two
+        routes they cannot get back.
+
+        **It invented a joining segment in silence.** The "Cannot merge into
+        single line! Routes are not connected end-to-end." branch could never
+        run: ``QgsGeometry.fromPolylineXY`` answers a single-part LineString for
+        any list of points, so ``isMultipart()`` was always False there.
+        Measured -- two routes 490 m apart merged into one 510 m route with a
+        straight segment across the gap and a modal reporting "Length:
+        510.00 m". The chaining loop knows the distance of every join it makes,
+        so the gap is now reported as the fact it is. No tolerance is invented:
+        routes meeting at a shared vertex measure exactly 0.0 apart.
+
+        **It committed the user's own unsaved work.** ``startEditing()`` was
+        unguarded, so a merge saved whatever else was in the layer's buffer.
+        Same defect as the route importer's, fixed the same way: if this call
+        did not open the editing session it does not commit one.
+        """
         route_layer = self._find_route_layer()
         if route_layer is None:
             QMessageBox.warning(self.iface.mainWindow(), "FiberQ", "Layer 'Route' is not found!")
@@ -341,28 +459,90 @@ class RouteManager:
             )
             return
 
-        # Extract polylines
+        title = _merge_routes()
+        with OperationErrors(title, self.iface) as errors:
+            chain, gap_m, unusable = self._chain_selected_routes(selected_feats, errors)
+            if chain is None:
+                QMessageBox.warning(
+                    self.iface.mainWindow(),
+                    "FiberQ",
+                    "Not enough valid lines to merge!"
+                )
+                return
+
+            geom = QgsGeometry.fromPolylineXY(chain)
+            tip_trase = self._ask_route_type("Type of connected route")
+            duzina_m = ground_length(geom, route_layer)
+            duzina_km = round(duzina_m / 1000.0, 2)
+
+            outcome = self._write_merged_route(route_layer, selected_feats, geom,
+                                               tip_trase, duzina_m, errors)
+            if outcome == _NOT_WRITTEN:
+                return
+            self.stylize_route_layer(route_layer)
+
+            if outcome == _DUPLICATED:
+                # The one outcome that needs a modal even though it failed: the
+                # merged route IS saved, the routes it replaces are still there,
+                # and until the user deletes them the network is measured twice.
+                # errors has the provider's reason; this is the consequence.
+                QMessageBox.warning(
+                    self.iface.mainWindow(), "FiberQ",
+                    safe_format(QCoreApplication.translate('FiberQRoutes', _LEFTOVER), _LEFTOVER,
+                                count=len(selected_feats)))
+                return
+
+            if errors.failed:
+                # The collector pushes the reasons on its way out; a success
+                # modal on top of them would be the old lie in a new place.
+                return
+
+            tip_label_display = ROUTE_TYPE_LABELS.get(tip_trase, tip_trase)
+            lines = [safe_format(QCoreApplication.translate('FiberQRoutes', _MERGED_OK),
+                                 _MERGED_OK, length=f"{duzina_m:.2f}", km=f"{duzina_km:.2f}",
+                                 type=tip_label_display)]
+            if unusable:
+                lines.append(safe_format(QCoreApplication.translate('FiberQRoutes', _MERGED_SKIPPED),
+                                         _MERGED_SKIPPED, count=unusable))
+            if gap_m > _JOIN_EPSILON:
+                lines.append(safe_format(QCoreApplication.translate('FiberQRoutes', _MERGED_GAP),
+                                         _MERGED_GAP, gap=f"{gap_m:.2f}"))
+            if outcome == _IN_BUFFER:
+                lines.append(QCoreApplication.translate('FiberQRoutes', _MERGED_UNSAVED))
+            QMessageBox.information(self.iface.mainWindow(), "FiberQ", "\n".join(lines))
+
+    def _chain_selected_routes(self, selected_feats, errors):
+        """One list of points joining every selected route, nearest end first.
+
+        Returns ``(chain, largest_gap_m, unusable_count)``, or
+        ``(None, 0.0, n)`` when fewer than two routes could be read.
+
+        Every part of a multipart route is chained, not just ``parts[0]``: a
+        GeoPackage MultiLineString column accepts a single-part LineString and
+        drops the other parts on disk, so rebuilding from one part is data loss
+        rather than a simplification.
+
+        ``largest_gap_m`` is the longest straight segment the chaining had to
+        invent, in layer units. It is measured, not guessed, from the distances
+        the loop already computes.
+        """
         polylines = []
+        unusable = 0
         for feat in selected_feats:
-            geom = feat.geometry()
-            pts = geom.asPolyline()
-            if not pts:
-                multi = geom.asMultiPolyline()
-                if multi and len(multi) > 0:
-                    pts = multi[0]
-            if pts and len(pts) >= 2:
-                polylines.append(list(pts))
+            parts = line_parts(feat.geometry())
+            if not parts:
+                unusable += 1
+                continue
+            polylines.extend([list(part) for part in parts])
 
         if len(polylines) < 2:
-            QMessageBox.warning(
-                self.iface.mainWindow(),
-                "FiberQ",
-                "Not enough valid lines to merge!"
-            )
-            return
+            if unusable:
+                errors.add(None, safe_format(QCoreApplication.translate('FiberQRoutes', _UNUSABLE),
+                                             _UNUSABLE, count=unusable))
+            return None, 0.0, unusable
 
-        # Chain polylines by nearest endpoint
         chain = polylines.pop(0)
+        largest_gap = 0.0
         while polylines:
             min_dist = None
             min_poly_idx = None
@@ -389,59 +569,114 @@ class RouteManager:
                 next_poly.reverse()
             if reverse_chain:
                 chain.reverse()
+            if min_dist is not None and min_dist > largest_gap:
+                largest_gap = min_dist
             if chain[-1] == next_poly[0]:
                 chain += next_poly[1:]
             else:
                 chain += next_poly
 
-        geom = QgsGeometry.fromPolylineXY(chain)
+        if unusable:
+            errors.add(None, safe_format(QCoreApplication.translate('FiberQRoutes', _UNUSABLE),
+                                         _UNUSABLE, count=unusable))
+        return chain, largest_gap, unusable
 
-        # Convert multipart to single if needed
-        if geom.isMultipart():
-            lines = geom.asMultiPolyline()
-            if lines and len(lines) == 1:
-                geom = QgsGeometry.fromPolylineXY(lines[0])
-            else:
-                QMessageBox.warning(
-                    self.iface.mainWindow(),
-                    "Merge routes",
-                    "Cannot merge into single line! Routes are not connected end-to-end."
-                )
-                return
+    def _write_merged_route(self, route_layer, selected_feats, geom, tip_trase, duzina_m, errors):
+        """Add the merged route, then remove the routes it replaces.
 
-        # Ask for route type
-        tip_trase = self._ask_route_type("Type of connected route")
+        Returns one of ``_SAVED``, ``_IN_BUFFER`` (the user's own edit session
+        owns the result), ``_NOT_WRITTEN`` (nothing was written and nothing was
+        removed) or ``_DUPLICATED`` (the merged route is on disk and so are the
+        routes it replaces).
 
-        duzina_m = ground_length(geom, route_layer)
-        duzina_km = round(duzina_m / 1000.0, 2)
-
-        # Delete old features and add merged
-        route_layer.startEditing()
-        for f in selected_feats:
-            route_layer.deleteFeature(f.id())
+        **The add is committed before the first delete.** A GeoPackage commit is
+        not atomic across operations: with an insert-blocking trigger the old
+        single-session code had its deletes succeed and its insert refused, and
+        both routes were gone from the file. Committing the addition first means
+        the worst a refusal can now cost is a duplicate route the user can see.
+        """
+        was_editing = route_layer.isEditable()
+        if not was_editing and not route_layer.startEditing():
+            errors.add(route_layer.name(), QCoreApplication.translate(
+                'FiberQRoutes', _NOT_EDITABLE))
+            return _NOT_WRITTEN
 
         feat = QgsFeature(route_layer.fields())
         feat.setGeometry(geom)
-        feat.setAttribute("naziv", "Merged route")
-        feat.setAttribute("duzina", duzina_m)
-        feat.setAttribute("duzina_km", duzina_km)
-        feat.setAttribute("tip_trase", tip_trase)
-        # Phase 0.1: Set UUID for FiberQ Designer
+        self._set_merged_attributes(feat, route_layer, duzina_m, tip_trase, errors)
+
+        route_layer.beginEditCommand(QCoreApplication.translate('FiberQRoutes', _CMD_ADD))
+        if not route_layer.addFeature(feat):
+            errors.add(route_layer.name(), QCoreApplication.translate(
+                'FiberQRoutes', _MERGE_REFUSED))
+            route_layer.destroyEditCommand()
+            if not was_editing:
+                route_layer.rollBack()
+            return _NOT_WRITTEN
+        route_layer.endEditCommand()
+
+        if not was_editing and not check_commit(route_layer, errors):
+            # The merged route did not reach the file, so the originals stay
+            # exactly where they are. Nothing to undo and nothing lost.
+            return _NOT_WRITTEN
+
+        # Only now the originals, and in their own edit command so that one
+        # undo takes the removal back without taking the merged route with it.
+        if not was_editing and not route_layer.startEditing():
+            errors.add(route_layer.name(), QCoreApplication.translate(
+                'FiberQRoutes', _NOT_EDITABLE))
+            return _DUPLICATED
+        route_layer.beginEditCommand(QCoreApplication.translate('FiberQRoutes', _CMD_REMOVE))
+        refused = sum(1 for old_feat in selected_feats if not route_layer.deleteFeature(old_feat.id()))
+        route_layer.endEditCommand()
+        if was_editing:
+            if refused:
+                errors.add(route_layer.name(), safe_format(
+                    QCoreApplication.translate('FiberQRoutes', _LEFTOVER), _LEFTOVER, count=refused))
+            return _IN_BUFFER
+        # check_commit reports the provider's own reason. The CONSEQUENCE goes
+        # to the caller, which has a modal for it: deleteFeature() answers True
+        # for every feature here and it is the commit that gets refused, so
+        # `refused` is usually 0 and the outcome cannot be read off the write
+        # results at all.
+        if check_commit(route_layer, errors) and not refused:
+            return _SAVED
+        return _DUPLICATED
+
+    def _set_merged_attributes(self, feat, route_layer, duzina_m, tip_trase, errors):
+        """Fill the merged route's columns, naming any the layer does not have.
+
+        ``QgsFeature.setAttribute`` **raises KeyError** for a column that is not
+        there -- it does not answer False (measured on all three legs). A
+        read-only Route layer cannot gain the columns ``_ensure_route_fields``
+        tries to add, so this used to end the merge with a bare
+        ``KeyError: 'duzina'`` and no message at all.
+        """
+        values = [
+            ("naziv", QCoreApplication.translate('FiberQRoutes', _MERGED_NAME)),
+            ("duzina", duzina_m),
+            ("duzina_km", round(duzina_m / 1000.0, 2)),
+            ("tip_trase", tip_trase),
+        ]
+        fields = feat.fields()
+        missing = []
+        for name, value in values:
+            if fields.indexFromName(name) < 0:
+                missing.append(name)
+                continue
+            feat.setAttribute(name, value)
+        if missing:
+            errors.add(route_layer.name(), safe_format(
+                QCoreApplication.translate('FiberQRoutes', _NO_COLUMNS), _NO_COLUMNS,
+                columns=", ".join(missing)))
         try:
             from ..utils.uuid_utils import set_feature_uuid
             set_feature_uuid(feat)
-        except Exception as e:
-            logger.debug(f"Could not set feature uuid on merged route: {e}")
-        route_layer.addFeature(feat)
-        route_layer.commitChanges()
-        self.stylize_route_layer(route_layer)
-
-        tip_label_display = ROUTE_TYPE_LABELS.get(tip_trase, tip_trase)
-        QMessageBox.information(
-            self.iface.mainWindow(),
-            "FiberQ",
-            f"Route has been created!\nLength: {duzina_m:.2f} m ({duzina_km:.2f} km)\nType: {tip_label_display}"
-        )
+        except (AttributeError, ImportError, KeyError, RuntimeError, TypeError, ValueError) as exc:
+            # Without an identity the route does not travel into a bundle and
+            # cannot be matched on the way back, so this is a real loss. Same
+            # handling as _add_one_route's.
+            errors.add(None, f"could not give the merged route an identity: {describe(exc)}")
 
     def _add_imported_routes(self, imported_layer, route_layer, src_crs, dst_crs,
                              transform, tip_trase, errors):
@@ -543,16 +778,14 @@ class RouteManager:
 
         Answers ``[]`` for a point, a polygon and a null geometry rather than
         raising, which is the whole of R6's non-line case.
+
+        This is now one line on top of :func:`utils.geometry.line_parts`, which
+        is the same code promoted out of here so that ``cable_manager`` and
+        ``utils.routing`` -- which had the broken version of it -- can share
+        the fixed one. Kept as a method because R6's tests and
+        ``_add_imported_routes`` call it by this name.
         """
-        if geom is None or geom.isNull() or geom.isEmpty():
-            return []
-        if geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
-            return []
-        if geom.isMultipart():
-            parts = geom.asMultiPolyline() or []
-        else:
-            parts = [geom.asPolyline()]
-        return [part for part in parts if part and len(part) >= 2]
+        return line_parts(geom)
 
     def _add_one_route(self, route_layer, geom_line, tip_trase, errors) -> bool:
         """One imported route feature. True when it reached the layer."""
@@ -698,23 +931,59 @@ class RouteManager:
             return
         tip_trase = ROUTE_LABEL_TO_CODE.get(tip_label, ROUTE_TYPE_OPTIONS[0])
 
-        # Update all selected features
-        route_layer.startEditing()
-        count = 0
+        # The column has to exist before an edit session is worth opening.
+        # Measured on 3.22.16, 3.44.15 and 4.0.3: on a Route layer whose only
+        # columns are fid and naziv, indexFromName answers -1,
+        # changeAttributeValue(fid, -1, value) answers False for every feature,
+        # commitChanges() then SUCCEEDS because there is nothing to commit, and
+        # the user was told "Route type has been changed to 'Underground' for 2
+        # route(s)." Nothing had changed and nothing was said.
         idx_tip = route_layer.fields().indexFromName("tip_trase")
-        for feat in selected_feats:
-            route_layer.changeAttributeValue(feat.id(), idx_tip, tip_trase)
-            count += 1
+        if idx_tip < 0:
+            QMessageBox.warning(
+                self.iface.mainWindow(), "FiberQ",
+                safe_format(QCoreApplication.translate('FiberQRoutes', _RETAG_NONE),
+                            _RETAG_NONE, column="tip_trase"))
+            return
 
-        route_layer.commitChanges()
-        self.stylize_route_layer(route_layer)
+        with OperationErrors(QCoreApplication.translate('FiberQRoutes', _CMD_RETAG),
+                             self.iface) as errors:
+            was_editing = route_layer.isEditable()
+            if not was_editing and not route_layer.startEditing():
+                errors.add(route_layer.name(), QCoreApplication.translate(
+                    'FiberQRoutes', _NOT_EDITABLE))
+                return
 
-        tip_label_display = ROUTE_TYPE_LABELS.get(tip_trase, tip_trase)
-        QMessageBox.information(
-            self.iface.mainWindow(),
-            "Change route type",
-            f"Route type has been changed to '{tip_label_display}' for {count} route(s)."
-        )
+            route_layer.beginEditCommand(QCoreApplication.translate('FiberQRoutes', _CMD_RETAG))
+            count = 0
+            refused = 0
+            for feat in selected_feats:
+                if route_layer.changeAttributeValue(feat.id(), idx_tip, tip_trase):
+                    count += 1
+                else:
+                    refused += 1
+            route_layer.endEditCommand()
+            if refused:
+                errors.add(route_layer.name(), safe_format(
+                    QCoreApplication.translate('FiberQRoutes', _RETAG_REFUSED),
+                    _RETAG_REFUSED, count=refused))
+
+            saved = None
+            if not was_editing:
+                saved = check_commit(route_layer, errors)
+            self.stylize_route_layer(route_layer)
+
+            if saved is False or not count:
+                # Nothing reached the file, so there is nothing to announce.
+                # check_commit has already put the provider's reason on the bar.
+                return
+
+            tip_label_display = ROUTE_TYPE_LABELS.get(tip_trase, tip_trase)
+            lines = [safe_format(QCoreApplication.translate('FiberQRoutes', _RETAG_OK),
+                                 _RETAG_OK, type=tip_label_display, count=count)]
+            if saved is None:
+                lines.append(QCoreApplication.translate('FiberQRoutes', _RETAG_UNSAVED))
+            QMessageBox.information(self.iface.mainWindow(), "FiberQ", "\n".join(lines))
 
 
 # Export constants for backward compatibility

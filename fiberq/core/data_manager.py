@@ -14,13 +14,21 @@ Phase 8 of the modular refactoring.
 import json
 import os
 from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
 
 # WP1a: schema version marker
+from .project_store import read_json_entry, write_json_entry
 from .schema_version import write_project_schema_version
 
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
+
+#: WP4 4.2 item R5. What each entry is called when something goes wrong with
+#: it. Translated at the call site, where the context stays a literal.
+_RELATIONS = QT_TRANSLATE_NOOP('FiberQStore', "Optical relations")
+_LATENT = QT_TRANSLATE_NOOP('FiberQStore', "Pass-through elements")
+_CATALOGS = QT_TRANSLATE_NOOP('FiberQStore', "Colour catalogues")
 
 
 class DataManager:
@@ -56,18 +64,18 @@ class DataManager:
         """
         Load relations data from project storage.
 
+        WP4 4.2 item R5: unreadable stored text used to come back as
+        ``{"relations": []}`` and the next save overwrote it. See
+        :mod:`fiberq.core.project_store` for what happens now and what was
+        measured.
+
         Returns:
             dict: Relations data with 'relations' list
         """
-        s = QgsProject.instance().readEntry(
-            self.PLUGIN_NAMESPACE, self.RELATIONS_KEY, ''
-        )[0]
-        if not s:
-            return {"relations": []}
-        try:
-            return json.loads(s)
-        except Exception:
-            return {"relations": []}
+        return read_json_entry(
+            self.PLUGIN_NAMESPACE, self.RELATIONS_KEY, {"relations": []},
+            QCoreApplication.translate('FiberQStore', _RELATIONS),
+            expect="relations", iface=self.iface)
 
     def save_relations(self, data):
         """
@@ -75,15 +83,15 @@ class DataManager:
 
         Args:
             data: dict with 'relations' list
+
+        Returns:
+            bool: True when the entry reached the project. A caller that closes
+            a dialog on the strength of this must check it -- ``json.dumps``
+            refuses payloads it cannot serialise, and that used to be swallowed.
         """
-        try:
-            QgsProject.instance().writeEntry(
-                self.PLUGIN_NAMESPACE,
-                self.RELATIONS_KEY,
-                json.dumps(data)
-            )
-        except Exception as e:
-            logger.debug(f"Error in DataManager.save_relations: {e}")
+        return write_json_entry(
+            self.PLUGIN_NAMESPACE, self.RELATIONS_KEY, data,
+            QCoreApplication.translate('FiberQStore', _RELATIONS), iface=self.iface)
 
     def get_relation_by_id(self, data, relation_id):
         """
@@ -128,15 +136,10 @@ class DataManager:
         Returns:
             dict: Latent elements data with 'cables' dict
         """
-        s = QgsProject.instance().readEntry(
-            self.PLUGIN_NAMESPACE, self.LATENT_KEY, ''
-        )[0]
-        if not s:
-            return {"cables": {}}
-        try:
-            return json.loads(s)
-        except Exception:
-            return {"cables": {}}
+        return read_json_entry(
+            self.PLUGIN_NAMESPACE, self.LATENT_KEY, {"cables": {}},
+            QCoreApplication.translate('FiberQStore', _LATENT),
+            expect="cables", iface=self.iface)
 
     def save_latent(self, data):
         """
@@ -144,15 +147,13 @@ class DataManager:
 
         Args:
             data: dict with 'cables' dict
+
+        Returns:
+            bool: True when the entry reached the project.
         """
-        try:
-            QgsProject.instance().writeEntry(
-                self.PLUGIN_NAMESPACE,
-                self.LATENT_KEY,
-                json.dumps(data)
-            )
-        except Exception as e:
-            logger.debug(f"Error in DataManager.save_latent: {e}")
+        return write_json_entry(
+            self.PLUGIN_NAMESPACE, self.LATENT_KEY, data,
+            QCoreApplication.translate('FiberQStore', _LATENT), iface=self.iface)
 
     @staticmethod
     def cable_key(layer_id, fid):
@@ -204,18 +205,16 @@ class DataManager:
         Returns:
             dict: Color catalogs data with 'catalogs' list
         """
-        s = QgsProject.instance().readEntry(
-            self.PLUGIN_NAMESPACE, self.COLOR_CATALOGS_KEY, ''
-        )[0]
-        if not s:
-            return {"catalogs": self.get_default_color_sets()}
-        try:
-            obj = json.loads(s)
-            if not isinstance(obj, dict) or "catalogs" not in obj:
-                obj = {"catalogs": self.get_default_color_sets()}
-            return obj
-        except Exception:
-            return {"catalogs": self.get_default_color_sets()}
+        # The default here is the built-in TIA-598-C list, which is why this was
+        # the worst of the three to lose: the manager opened looking exactly
+        # like a correct fresh install, so there was nothing to suspect.
+        # Measured -- a truncated entry answered ['TIA-598-C'] and after one
+        # save the user's own 'MyShop-24' was gone from the project file.
+        return read_json_entry(
+            self.PLUGIN_NAMESPACE, self.COLOR_CATALOGS_KEY,
+            {"catalogs": self.get_default_color_sets()},
+            QCoreApplication.translate('FiberQStore', _CATALOGS),
+            expect="catalogs", iface=self.iface)
 
     def save_color_catalogs(self, data):
         """
@@ -223,15 +222,13 @@ class DataManager:
 
         Args:
             data: dict with 'catalogs' list
+
+        Returns:
+            bool: True when the entry reached the project.
         """
-        try:
-            QgsProject.instance().writeEntry(
-                self.PLUGIN_NAMESPACE,
-                self.COLOR_CATALOGS_KEY,
-                json.dumps(data)
-            )
-        except Exception as e:
-            logger.debug(f"Error in DataManager.save_color_catalogs: {e}")
+        return write_json_entry(
+            self.PLUGIN_NAMESPACE, self.COLOR_CATALOGS_KEY, data,
+            QCoreApplication.translate('FiberQStore', _CATALOGS), iface=self.iface)
 
     def list_color_codes(self):
         """

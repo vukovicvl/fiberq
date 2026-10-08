@@ -138,15 +138,21 @@ CRITICAL = {
         "CanvasImageClickWatcher._show_picture_under",
         "CanvasImageClickWatcher.eventFilter",
     }),
-    # R5
+    # R5. save_color_catalogs held TWO swallows -- one on the delegation, one
+    # on the duplicate write it fell through to -- and the gate watched neither.
     "fiberq/core/color_manager.py": frozenset({
         "ColorManager.load_color_catalogs",
+        "ColorManager.save_color_catalogs",
     }),
-    # R5
+    # R5. save_latent and save_color_catalogs were never in here, so half the
+    # defect was never watched: the gate saw the relations save and neither of
+    # the other two, although all three had the identical swallow.
     "fiberq/core/data_manager.py": frozenset({
         "DataManager.load_color_catalogs",
         "DataManager.load_latent",
         "DataManager.load_relations",
+        "DataManager.save_color_catalogs",
+        "DataManager.save_latent",
         "DataManager.save_relations",
     }),
     # U6: the pure pre-flight and naming rules both export paths depend on
@@ -158,8 +164,12 @@ CRITICAL = {
         "table_in_use",
         "table_name_for",
     }),
-    # R1, R2
+    # R1, R2, R3. export_active_layer and _do_export are THE export path now
+    # that main_plugin's duplicate is deleted; neither was named here before,
+    # so the one that actually ran was the one the gate did not watch.
     "fiberq/core/export_manager.py": frozenset({
+        "ExportManager._do_export",
+        "ExportManager.export_active_layer",
         "ExportManager._ask_where_to_save",
         "ExportManager._export_one_layer",
         "ExportManager._project_entry",
@@ -176,17 +186,46 @@ CRITICAL = {
     }),
     # R1, R2, R7
     "fiberq/core/layer_manager.py": frozenset({
+        # _copy_attributes holds the body; the public name is now the wrapper
+        # that owns the error collector. Both are named so the split cannot
+        # carry the handlers out of this gate's sight.
+        "_copy_attributes",
         "_copy_attributes_between_layers",
     }),
-    # R5
+    # R5: the one module in core/ that is allowed to touch QgsProject, because
+    # the store IS the project. It owns the whole read-parse-default policy that
+    # used to be written out four times, so a silent handler here would put the
+    # defect back in all twelve places at once.
+    "fiberq/core/project_store.py": frozenset({
+        "quarantine_unreadable",
+        "read_json_entry",
+        "write_json_entry",
+        "_report",
+        "_report_write",
+    }),
+    # R5. Same gap on the save side as data_manager's.
     "fiberq/core/relations_manager.py": frozenset({
         "RelationsManager.load_latent",
         "RelationsManager.load_relations",
+        "RelationsManager.save_latent",
+        "RelationsManager.save_relations",
+    }),
+    # R8. CableManager.lay_cable holds the whole cable-laying write path and was
+    # never named here, so the gate watched the two main_plugin wrappers that
+    # swallowed its failures and not the code producing them.
+    "fiberq/core/cable_manager.py": frozenset({
+        "CableManager.lay_cable",
     }),
     # R6, R7
     "fiberq/core/route_manager.py": frozenset({
         "RouteManager._add_imported_routes",
         "RouteManager._add_one_route",
+        # The three the merge was split into. A new sibling method is a new
+        # qualname, so without these rows an extract-a-helper refactor would
+        # quietly carry its handlers out of this gate's sight.
+        "RouteManager._chain_selected_routes",
+        "RouteManager._set_merged_attributes",
+        "RouteManager._write_merged_route",
         "RouteManager._route_parts",
         "RouteManager.change_route_type",
         "RouteManager.import_route_from_file",
@@ -208,13 +247,31 @@ CRITICAL = {
         "SlackManager.recompute_slack_for_cable",
     }),
     # R7
+    # R7. undo/redo, _ensure_editable, _commit, _stack_back and clear were never
+    # named here, although that is where the decision to commit is actually
+    # made: the gate watched the three helpers and not the state machine
+    # driving them, and _unsaved lives in the state machine.
     "fiberq/core/undo_manager.py": frozenset({
+        "FiberQUndoManager._commit",
+        "FiberQUndoManager._ensure_editable",
+        "FiberQUndoManager._stack_back",
+        "FiberQUndoManager.clear",
+        "FiberQUndoManager.redo",
+        "FiberQUndoManager.undo",
         "FiberQUndoManager._add_feature",
         "FiberQUndoManager._delete_feature",
         "FiberQUndoManager._restore_feature",
     }),
     # R4
+    # R4. _export picks the writer and _measured_length / _note_lines are where
+    # the counting lives, so a silent handler in any of them would put the
+    # under-count straight back. _export_csv and _export_xlsx were already here.
     "fiberq/dialogs/bom_dialog.py": frozenset({
+        "_BOMDialog._export",
+        "_BOMDialog._measured_length",
+        "_BOMDialog._note_lines",
+        "_BOMDialog._remove_partial",
+        "_BOMDialog._write_xlsx",
         "_BOMDialog._build",
         "_BOMDialog._export_csv",
         "_BOMDialog._export_xlsx",
@@ -262,8 +319,12 @@ CRITICAL = {
         "RoutingUI.on_project_target_changed",
         "RoutingUI.settle_auto_gpkg",
     }),
-    # R8
+    # R8. build_network_graph joins the two path builders: it held the same
+    # dead asPolyline()/asMultiPolyline() fallback, so the graph build died on
+    # the first multipart route and the two builders above it could only ever
+    # answer "no path".
     "fiberq/utils/routing.py": frozenset({
+        "build_network_graph",
         "build_path_across_joined_routes",
         "build_path_across_network",
     }),
@@ -277,34 +338,16 @@ CRITICAL = {
 #: an error path is cosmetic, and reporting a reporting failure helps nobody --
 #: but then its reason must say so instead of naming a branch.
 ALLOWED_SILENT = {
-    ("fiberq/main_plugin.py",
-     "FiberQPlugin.export_all_features"): (1, "R3 Export active layer -- fix/wp4-write-paths"),
-    ("fiberq/main_plugin.py",
-     "FiberQPlugin.export_selected_features"): (1, "R3 Export active layer -- fix/wp4-write-paths"),
-    ("fiberq/dialogs/bom_dialog.py",
-     "_BOMDialog._build"): (2, "R4 BOM export -- fix/wp4-write-paths"),
-    ("fiberq/core/color_manager.py",
-     "ColorManager.load_color_catalogs"): (1, "R5 Relations, latent elements, colour catalogues -- fix/wp4-write-paths"),
-    ("fiberq/core/data_manager.py",
-     "DataManager.save_relations"): (1, "R5 Relations, latent elements, colour catalogues -- fix/wp4-write-paths"),
-    ("fiberq/core/relations_manager.py",
-     "RelationsManager.load_latent"): (1, "R5 Relations, latent elements, colour catalogues -- fix/wp4-write-paths"),
-    ("fiberq/core/relations_manager.py",
-     "RelationsManager.load_relations"): (1, "R5 Relations, latent elements, colour catalogues -- fix/wp4-write-paths"),
-    ("fiberq/main_plugin.py",
-     "FiberQPlugin._save_color_catalogs"): (1, "R5 Relations, latent elements, colour catalogues -- fix/wp4-write-paths"),
-    ("fiberq/core/layer_manager.py",
-     "_copy_attributes_between_layers"): (3, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/core/route_manager.py",
-     "RouteManager.merge_all_routes"): (1, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/core/undo_manager.py",
-     "FiberQUndoManager._add_feature"): (1, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/main_plugin.py",
-     "FiberQPlugin._change_element_type"): (4, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/main_plugin.py",
-     "FiberQPlugin.lay_cable"): (1, "R8 Cable laying -- fix/wp4-write-paths"),
-    ("fiberq/main_plugin.py",
-     "FiberQPlugin.lay_cable_type"): (1, "R8 Cable laying -- fix/wp4-write-paths"),
+    # Not branch 9's to clear, and deliberately not presented as if they were.
+    # R8's row is the multipart break, the two wrapper swallows and the
+    # path-finding ones -- all fixed. These six are the colour-code lookup, the
+    # cables-layer search, the display-name helper and the two attribute
+    # setters: separate pre-award defects in the same long function. The
+    # function is gated from here so the number can only fall, which is better
+    # than leaving the whole write path unwatched because part of it is out of
+    # scope. Recorded in docs/private/FiberQ-WP4-followups.md.
+    ("fiberq/core/cable_manager.py",
+     "CableManager.lay_cable"): (6, "pre-award swallows in the same function, not in R8's row"),
 }
 
 #: Write calls whose result is still discarded on a hardened path. Kept apart
@@ -312,22 +355,10 @@ ALLOWED_SILENT = {
 #: one hides an exception, the other ignores an answer. Sharing one counter
 #: would let a branch "fix" a swallowed exception by checking a return value.
 ALLOWED_WRITES = {
-    ("fiberq/core/layer_manager.py",
-     "_copy_attributes_between_layers"): (2, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/core/route_manager.py",
-     "RouteManager.change_route_type"): (2, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/core/route_manager.py",
-     "RouteManager.merge_all_routes"): (3, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/core/undo_manager.py",
-     "FiberQUndoManager._add_feature"): (1, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/core/undo_manager.py",
-     "FiberQUndoManager._delete_feature"): (1, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/core/undo_manager.py",
-     "FiberQUndoManager._restore_feature"): (3, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/main_plugin.py",
-     "FiberQPlugin._change_element_type"): (2, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/main_plugin.py",
-     "FiberQPlugin.delete_selected"): (2, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
+    # As above: two dataProvider().addAttributes() calls that build the cable
+    # layer's schema, neither of them R8's row. Gated so they cannot grow.
+    ("fiberq/core/cable_manager.py",
+     "CableManager.lay_cable"): (2, "pre-award schema writes in the same function, not in R8's row"),
 }
 
 #: What test D pins the package-wide silent-handler count to. Test D asserts
@@ -349,11 +380,16 @@ ALLOWED_WRITES = {
 #: a narrow rule would leave a free lane open. On the same two trees the wider
 #: rule gives 830 and 816, and this branch took it to 786:
 #: R1, R2 and U6 between them hardened nineteen and deleted twelve along with
-#: the two duplicate GeoPackage exports. The fall of 14
+#: the two duplicate GeoPackage exports. Branch 9 then took it down one commit
+#: at a time, each in the commit that hardened the handler, and the figure is
+#: always read off this gate's own failure message rather than computed in
+#: advance -- six concurrent plans for this branch each predicted a number from
+#: the 753 baseline and all six were wrong by the time they were written. The
+#: fall of 14
 #: from v1.5.0 is what branches 3 and 4 left behind
 #: when they rewrote the placement tools: handlers deleted with the code around
 #: them, less the few that ``length_sync.py`` brought in.
-SILENCE_CEILING = 753
+SILENCE_CEILING = 717
 
 
 # ---------------------------------------------------------------------------
@@ -614,8 +650,31 @@ def test_d_package_wide_silence_does_not_grow():
 #: deleting a line from CRITICAL removes a whole operation from this gate with
 #: nothing in fiberq/ changing -- and that diff looks exactly like the one
 #: section 2.2 sanctions, where a branch deletes its own allowance rows.
-HARDENED_FUNCTIONS = 96
-HARDENED_FILES = 19
+#: 110 in 20 files after branch 9, and every one of the fourteen is a WIDENING.
+#: Four came from splitting two hardened functions and naming every piece
+#: (RouteManager._chain_selected_routes, ._set_merged_attributes,
+#: ._write_merged_route; layer_manager._copy_attributes). Five are the new
+#: core/project_store.py, which owns the whole read-parse-default policy R5
+#: used to have written out four times -- a silent handler there would put the
+#: defect back in all twelve places at once. The other five close a hole this
+#: gate had from the start: DataManager.save_latent, .save_color_catalogs,
+#: RelationsManager.save_latent, .save_relations and
+#: ColorManager.save_color_catalogs were never named, although each held the
+#: same swallow as the one save the gate did watch. The last six are
+#: FiberQUndoManager's undo, redo, clear, _ensure_editable, _commit and
+#: _stack_back -- the state machine that decides whether to commit at all,
+#: which this gate watched not at all while watching the three helpers it
+#: calls. The last two are CableManager.lay_cable -- the whole cable-laying
+#: write path, which this gate watched not at all while watching the two
+#: main_plugin wrappers that swallowed its failures -- and
+#: routing.build_network_graph, and the last five are the BOM dialog's
+#: _export, _measured_length, _note_lines, _remove_partial and _write_xlsx --
+#: where R4's counting and reporting now live. The last two are
+#: ExportManager.export_active_layer and ._do_export, which R3 made THE
+#: export path by deleting main_plugin's duplicate -- the one that actually
+#: ran was the one this gate did not watch. No R-row moved.
+HARDENED_FUNCTIONS = 125
+HARDENED_FILES = 21
 
 
 def test_the_hardened_set_is_not_quietly_narrowed():
