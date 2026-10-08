@@ -92,6 +92,22 @@ class DrawingManager:
         feature_links.link_set(
             feature_links.DRAWINGS, layer.id(), fid, path or "")
 
+    def drawing_set_many(self, layer: QgsVectorLayer, fids, path: str) -> None:
+        """Attach one drawing to many features, in a single project write.
+
+        One JSON entry holds every drawing link in the project, so writing it
+        per feature re-parses and re-serialises a growing blob each time --
+        cleanly quadratic, and "Attach drawing" runs over the whole selection.
+        """
+        feature_links.link_set_many(
+            feature_links.DRAWINGS, layer.id(), {fid: path or "" for fid in fids})
+
+    def drawing_layers_set_many(self, layer: QgsVectorLayer, fids, layer_ids) -> None:
+        """Record one drawing's layer ids against many features, in one write."""
+        value = [str(x) for x in (layer_ids or [])]
+        feature_links.link_set_many(
+            feature_links.DRAWING_LAYERS, layer.id(), {fid: list(value) for fid in fids})
+
     # -------------------------------------------------------------------------
     # Group management
     # -------------------------------------------------------------------------
@@ -344,10 +360,12 @@ class DrawingManager:
         subgroup = self.ensure_drawings_group(cat)
         added_layer_ids = self.try_add_dwg_to_group(path, subgroup)
 
-        # Save association for each selected feature
-        for f in feats:
-            self.drawing_set(layer, f.id(), path)
-            self.drawing_layers_set(layer, f.id(), added_layer_ids)
+        # Two project writes for the whole selection, not two per feature: the
+        # per-feature form is quadratic in the size of the selection (see
+        # feature_links.link_set_many), and this loop did it twice over.
+        fids = [f.id() for f in feats]
+        self.drawing_set_many(layer, fids, path)
+        self.drawing_layers_set_many(layer, fids, added_layer_ids)
 
         QMessageBox.information(
             self.iface.mainWindow(),

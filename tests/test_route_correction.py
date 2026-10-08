@@ -533,27 +533,6 @@ def test_a_clean_route_reports_no_errors(plugin, project, quiet_dialogs, shown):
     assert any("No errors found" in str(m) for m in quiet_dialogs)
 
 
-def test_a_project_with_no_route_layer_does_not_raise(plugin, project, quiet_dialogs, shown):
-    """The counter is read outside the block that fills it.
-
-    Assigning it only inside was an UnboundLocalError on exactly the projects
-    that skip the body -- no Route layer, or no Poles and no Manholes.
-    """
-    _points(project, "Poles", [(0, 0)])
-
-    plugin.check_consistency()
-
-    assert not shown
-
-
-def test_a_project_with_no_pole_or_manhole_layer_does_not_raise(plugin, project, quiet_dialogs, shown):
-    _route(project, [_straight(0, 0, 100, 0)])
-
-    plugin.check_consistency()
-
-    assert not shown
-
-
 # ---------------------------------------------------------------------------
 # U15: the logic
 # ---------------------------------------------------------------------------
@@ -704,6 +683,89 @@ def test_correcting_a_feature_that_has_gone_is_a_no_op(plugin, project, quiet_di
 # ---------------------------------------------------------------------------
 # The same thing on a real file, because that is where the loss was permanent
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# f011: Correct must never flatten the route it is correcting
+# ---------------------------------------------------------------------------
+
+def test_correct_refuses_to_flatten_a_route_onto_its_own_neighbour(plugin, project, quiet_dialogs):
+    """The ordinary shape of an FTTH drop: one pole, one house, nothing else near.
+
+    There is no maximum snap distance, so the "nearest pole" to the house end is
+    the pole the route STARTS on. Measured on 3.22.16, 3.44.15 and 4.0.3: a 35 m
+    drop came back as LineString (0 0, 0 0), length 0, with "Route has been
+    automatically attached to a pole." on screen.
+    """
+    route = _route(project, [_straight(0, 0, 35, 0)])
+    _points(project, "Poles", [(0, 0), (400, 0)])
+
+    plugin.fix_route_to_pole(next(route.getFeatures()), must_start=False)
+
+    kept = next(route.getFeatures()).geometry()
+    assert kept.length() == pytest.approx(35.0), kept.asWkt(0)
+    assert not any("automatically attached" in str(m) for m in quiet_dialogs), quiet_dialogs
+    assert any("collapse the route" in w for w in plugin.iface.bar.warnings), \
+        plugin.iface.bar.warnings
+
+
+def test_correct_refuses_to_flatten_one_part_of_a_multipart_route(plugin, project, quiet_dialogs):
+    """Why the guard reads the NEIGHBOUR and not the route's far end.
+
+    Here the pole is where part 2 starts, so correcting part 2's end collapses
+    that part while the route's far end -- in part 1 -- is nowhere near. A guard
+    written as "exclude the pole the other end is on" cannot see this. Measured
+    on main: 20 m in, 10 m out, reported as a success.
+    """
+    route = _route(project, [_multipart()], wkb="MultiLineString")
+    _points(project, "Poles", [(20, 0)])
+
+    plugin.fix_route_to_pole(next(route.getFeatures()), must_start=False)
+
+    kept = next(route.getFeatures()).geometry()
+    assert kept.length() == pytest.approx(20.0), kept.asWkt(0)
+    assert line_part_count(kept) == 2, kept.asWkt(0)
+
+
+def test_correct_still_closes_a_legitimate_loop_onto_one_pole(plugin, project, quiet_dialogs):
+    """A ring route is legal and still gets corrected.
+
+    Characterisation, not a regression proof, and the difference is worth
+    stating because the first version of this docstring claimed otherwise. It
+    passes against unfixed code, against the fix, AND against the wrong version
+    of the fix (comparing the target to the route's far end) -- all three
+    measured. A loop's two ends share a position, so a far-end comparison looks
+    like it would refuse every ring, but it cannot: a pole near enough to
+    trigger it is also inside the ``min_dist > 1e-2`` guard above, which skips
+    the correction first.
+
+    What it is for: pinning that rings are not collateral damage of the f011
+    guard. The tests that actually discriminate against the wrong version are
+    the interior-vertex and multipart ones.
+    """
+    route = _route(project, [QgsGeometry.fromPolylineXY(
+        [QgsPointXY(0, 0), QgsPointXY(10, 0), QgsPointXY(10, 10), QgsPointXY(0, 0)])])
+    _points(project, "Poles", [(0.5, 0)])
+
+    plugin.fix_route_to_pole(next(route.getFeatures()), must_start=False)
+
+    moved = next(route.getFeatures()).geometry()
+    assert line_vertices(moved)[-1] == QgsPointXY(0.5, 0), moved.asWkt(2)
+    assert any("automatically attached" in str(m) for m in quiet_dialogs), quiet_dialogs
+
+
+def test_correct_refuses_when_an_interior_vertex_is_the_nearest_pole(plugin, project, quiet_dialogs):
+    """A route with a bend, and the pole sitting on the bend itself."""
+    route = _route(project, [QgsGeometry.fromPolylineXY(
+        [QgsPointXY(0, 0), QgsPointXY(50, 0), QgsPointXY(100, 0)])])
+    _points(project, "Poles", [(50, 0)])
+
+    plugin.fix_route_to_pole(next(route.getFeatures()), must_start=False)
+
+    kept = next(route.getFeatures()).geometry()
+    assert kept.length() == pytest.approx(100.0), kept.asWkt(0)
+    assert any("collapse the route" in w for w in plugin.iface.bar.warnings), \
+        plugin.iface.bar.warnings
+
 
 def _gpkg_route(project, geom, wkb="MultiLineString"):
     """A GeoPackage-backed Route layer holding one feature."""

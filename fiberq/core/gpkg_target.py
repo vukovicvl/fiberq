@@ -32,7 +32,10 @@ features are gone -- measured: three features in, one feature out, no exception
 and no warning anywhere.
 
 The rule is: a layer already living in this GeoPackage keeps the table it is
-already using, and anything else gets a name nothing else has claimed.
+already using, and anything else gets a name nothing else has claimed --
+where "claimed" is decided case-insensitively, because SQLite and OGR both
+resolve a table name that way and "poles" is the spelling ogr2ogr, "Package
+layers" and a PostGIS dump produce.
 """
 import os
 import sqlite3
@@ -181,12 +184,31 @@ def table_name_for(layer_name, source, gpkg_path, fallback="layer", also_taken=(
     if already:
         return already
 
-    taken = existing_tables(gpkg_path) | set(also_taken)
+    # Folded, because neither thing this name has to get past is
+    # case-sensitive. SQLite resolves a table name case-insensitively EVEN WHEN
+    # QUOTED, and OGR resolves a GeoPackage layer name the same way -- while the
+    # gpkg_contents row this reads is compared case-sensitively, so the two
+    # disagree. Measured on GDAL 3.10.3 against a file holding "poles":
+    #
+    #     existing_tables          -> {'poles'}
+    #     table_name_for('Poles')  -> 'Poles'          (thought it was free)
+    #     SELECT count(*) FROM "Poles"             -> 3   (same table)
+    #     gpkg_contents WHERE table_name='Poles'   -> 0   (different row)
+    #
+    # and writing one feature to "Poles" dropped the three in "poles" and
+    # answered NoError, with a green "All layers saved to" on screen. Lowercase
+    # is not an exotic spelling either: it is what ogr2ogr, QGIS's own "Package
+    # layers" and a PostGIS dump all produce, so this is the ordinary shape of
+    # a GeoPackage someone else prepared.
+    #
+    # The chosen name keeps its own case -- only the collision test folds.
+    taken = {str(name).casefold() for name in existing_tables(gpkg_path)}
+    taken |= {str(name).casefold() for name in also_taken}
     base = flatten_name(layer_name, fallback)
-    if base not in taken:
+    if base.casefold() not in taken:
         return base
     counter = 2
-    while f"{base}_{counter}" in taken:
+    while f"{base}_{counter}".casefold() in taken:
         counter += 1
     return f"{base}_{counter}"
 

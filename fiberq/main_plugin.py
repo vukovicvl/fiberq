@@ -1206,9 +1206,8 @@ class FiberQPlugin:
         if not path:
             return
 
-        # 3) store mapping on each selected feature
-        for f in feats:
-            _img_set(layer, f.id(), path)
+        # 3) store the mapping for the whole selection in one project write
+        _img_set_many(layer, [f.id() for f in feats], path)
 
         QMessageBox.information(self.iface.mainWindow(), 'FiberQ',
                                 #: Confirmation after attaching one photo to the selected
@@ -1248,8 +1247,7 @@ class FiberQPlugin:
                                     self.tr('Select one or more elements and try again.'))
             return
         feats = layer.selectedFeatures()
-        for f in feats:
-            _img_set(layer, f.id(), '')
+        _img_set_many(layer, [f.id() for f in feats], '')
         QMessageBox.information(self.iface.mainWindow(), 'FiberQ',
                                 #: Confirmation after detaching the photo from the selected
                                 #: map elements. Only the link is cleared - the image file itself
@@ -3935,10 +3933,21 @@ class FiberQPlugin:
                         "ends could not be checked."))
             return
 
-        # Counted outside the block, because it is read outside it: a project
-        # whose Route or Poles layer is missing skips the whole body, and
-        # assigning this only inside was an UnboundLocalError on exactly those
-        # projects.
+        # Counted outside the block below, because it is read outside it. That
+        # was load-bearing when R10 wrote it: a project with no Route layer, or
+        # none of Poles and Manholes, skipped the whole body, and assigning this
+        # only inside raised UnboundLocalError on exactly those projects.
+        #
+        # U15's early returns above now answer both of those projects before
+        # this line is reached, so the guard below can no longer be false and
+        # this assignment is belt and braces -- kept because it costs nothing,
+        # and because it is what keeps the read at the end of this function safe
+        # if either early return is ever relaxed to warn-and-continue. It is NOT
+        # pinned by a test any more and cannot be: no reachable project makes
+        # the guard false. The two tests that claimed to pin it passed with the
+        # regression reinstated (proved by mutation) and duplicated the pair
+        # that checks the messages, so they were deleted rather than left to
+        # look like protection.
         without_geometry = 0
 
         if route_layer and (poles_layer or manholes_layer):
@@ -4134,6 +4143,45 @@ class FiberQPlugin:
                 with OperationErrors(self.tr("Route correction"), self.iface) as errors:
                     errors.add(route_layer.name(), QCoreApplication.translate(
                         'FiberQPlugin', "the end of this route could not be moved"))
+                return
+
+            # f011: and refuse to flatten the route onto itself. There is no
+            # maximum snap distance here, so the "nearest pole" can be the pole
+            # this route's OTHER end already sits on -- which is the ordinary
+            # shape of an FTTH drop, one pole and one house. Measured on
+            # 3.22.16, 3.44.15 and 4.0.3: a 1 km route with poles at (0 0) and
+            # (5000 0) came back as LineString (0 0, 0 0), length 0, announced
+            # as "Route has been automatically attached to a pole."
+            #
+            # The test is the moved end's own NEIGHBOUR vertex, because that is
+            # what the defect actually is: a segment becomes zero-length when
+            # its two ends meet. The tempting version -- "refuse the pole the
+            # route's OTHER end is already on" -- was measured against this and
+            # misses two real cases:
+            #
+            #   route (0 0, 50 0, 100 0), pole on the bend at (50 0): the far
+            #       end is 50 m away, so it allows the last segment to collapse
+            #   a 2-part route with the pole where part 2 starts: the far end is
+            #       in part 1 and cannot see part 2 collapsing. 20 m became
+            #       10 m, reported as a success.
+            #
+            # Both are covered by tests that fail against that version. A closed
+            # loop is unaffected either way -- its ends share a position, but a
+            # pole close enough to matter is also within the min_dist guard
+            # above -- so rings are not the reason, though it is pinned too.
+            #
+            # adjacentVertices() answers -1 on the outer side of an end AND
+            # across a part boundary, and indexes the stored coordinates, the
+            # same basis as line_endpoint -- so curves and multiparts both
+            # work. Moving a vertex does not change adjacency, so reading it
+            # from the already-moved copy is the same answer.
+            before_idx, after_idx = new_geom.adjacentVertices(idx)
+            neighbour_idx = after_idx if must_start else before_idx
+            if neighbour_idx >= 0 and QgsPointXY(new_geom.vertexAt(neighbour_idx)).distance(nearest_stub) < 1e-2:
+                src = QT_TRANSLATE_NOOP('FiberQPlugin', "The nearest pole is {distance} map units away and already sits where this route's next vertex is, so attaching the route to it would collapse the route to nothing. The route was left alone.")
+                self.iface.messageBar().pushWarning(
+                    self.tr("Route correction"),
+                    safe_format(self.tr(src), src, distance=f"{min_dist:.1f}"))
                 return
 
             # R10: both results used to be discarded, so a Correct that the
@@ -4681,6 +4729,22 @@ def _img_set(layer, fid, path):
         feature_links.link_set(feature_links.IMAGES, layer.id(), fid, path or "")
     except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
         logger.warning(f"Could not store the picture link: {exc}")
+
+
+def _img_set_many(layer, fids, path):
+    """One project write for a whole selection, instead of one per feature.
+
+    Attach picture and Clear picture both run over the selection, and one JSON
+    entry holds every picture link of the project -- so writing it per feature
+    re-parses and re-serialises a growing blob each time. Measured on 3.44.15 it
+    is cleanly quadratic: 0.33 ms per feature at 1,000, 0.94 ms at 4,000. This
+    project's own largest benchmark city has 10,083 poles.
+    """
+    try:
+        feature_links.link_set_many(
+            feature_links.IMAGES, layer.id(), {fid: path or "" for fid in fids})
+    except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+        logger.warning(f"Could not store the picture links: {exc}")
 
 
 # ============================================================================

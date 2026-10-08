@@ -137,6 +137,59 @@ def test_a_path_a_uri_would_mangle_still_reads_its_tables(tmp_path, name):
     assert gt.table_name_for("Poles", "Point?crs=EPSG:3857", str(target)) == "Poles_2"
 
 
+# ---------------------------------------------------------------------------
+# f001/f005: a name is claimed case-insensitively, because the store is
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("stored, wanted", [
+    ("poles", "Poles"),     # what ogr2ogr, "Package layers" and PostGIS produce
+    ("POLES", "Poles"),
+    ("Poles", "poles"),
+    ("PoLeS", "pOlEs"),
+])
+def test_a_table_differing_only_in_case_is_already_claimed(tmp_path, stored, wanted):
+    """The guard compared names case-sensitively; SQLite and OGR do not.
+
+    Measured on GDAL 3.10.3 against a real GeoPackage holding "poles" with three
+    features: ``table_name_for("Poles")`` answered "Poles", the writer answered
+    NoError, and the three features were gone -- because ``SELECT ... FROM
+    "Poles"`` resolves to the same table EVEN QUOTED, while the gpkg_contents
+    row compare that found "nothing claimed" does not.
+    """
+    target = _make_gpkg(tmp_path / f"{stored}.gpkg", [stored])
+
+    chosen = gt.table_name_for(wanted, "Point?crs=EPSG:3857", str(target))
+
+    assert chosen.casefold() != stored.casefold(), (
+        f"{wanted!r} must not be written over {stored!r}; got {chosen!r}")
+    assert chosen == f"{wanted}_2"
+
+
+def test_the_chosen_name_keeps_its_own_case(tmp_path):
+    """Only the collision test folds -- a new table is still spelled as asked."""
+    target = _make_gpkg(tmp_path / "empty.gpkg", [])
+
+    assert gt.table_name_for("Poles", "Point?crs=EPSG:3857", str(target)) == "Poles"
+    assert gt.table_name_for("poles", "Point?crs=EPSG:3857", str(target)) == "poles"
+
+
+def test_a_name_handed_out_this_run_is_claimed_case_insensitively(tmp_path):
+    """also_taken has the same problem: Save all writes a project in one pass."""
+    target = _make_gpkg(tmp_path / "run.gpkg", [])
+
+    chosen = gt.table_name_for("Poles", "Point?crs=EPSG:3857", str(target),
+                               also_taken=("poles",))
+
+    assert chosen == "Poles_2", chosen
+
+
+def test_the_suffix_search_also_folds(tmp_path):
+    """Poles_2 taken in another case must not be handed out as free either."""
+    target = _make_gpkg(tmp_path / "suffix.gpkg", ["poles", "POLES_2"])
+
+    assert gt.table_name_for("Poles", "Point?crs=EPSG:3857", str(target)) == "Poles_3"
+
+
 def test_every_code_it_returns_is_declared():
     """So a caller mapping codes to sentences can be checked for completeness."""
     import ast

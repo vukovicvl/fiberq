@@ -148,12 +148,19 @@ def test_the_table_is_registered_so_gdal_can_see_it(gpkg):
 
 
 def test_a_locked_geopackage_fails_before_touching_anything(gpkg):
-    """BEGIN IMMEDIATE takes the lock up front, so a held file fails clean.
+    """A held file fails clean, and says which file and why.
 
-    ``schema_version`` is seeded deliberately: it is a key the writer DELETEs
-    before re-inserting, so without the transaction the delete would stick and
-    the row would be gone. A test seeded only with keys the writer never
-    touches would pass with no transaction at all.
+    This case pins the *reporting*, not the rollback. An EXCLUSIVE holder blocks
+    the connection's very first statement, so nothing the writer sends ever
+    runs -- which means every assertion below also holds for the pre-U7 DROP
+    sequence, and for no transaction at all (measured: this test passes
+    unchanged against both). The ``schema_version`` seed is kept because it is
+    harmless, but it is not what makes this test bite.
+
+    The transaction is measured by
+    :func:`test_a_write_that_fails_part_way_rolls_back` and
+    :func:`test_an_interrupted_write_leaves_the_old_table_intact`, both of which
+    fail when ``BEGIN IMMEDIATE`` is removed.
     """
     _put(gpkg, {"designer_project_id": "abc-123", "schema_version": "0.1"})
     before = _rows(gpkg)
@@ -174,13 +181,20 @@ def test_a_locked_geopackage_fails_before_touching_anything(gpkg):
 def test_a_write_that_fails_part_way_rolls_back(gpkg):
     """A trigger that rejects one key must not cost the others.
 
-    The seeded ``project_version`` is the point: the writer deletes and
-    re-inserts it *before* reaching the key the trigger rejects, so only a real
-    rollback brings it back. Without the transaction this test fails with that
-    row missing -- which is what makes it a test of the transaction rather than
-    of the trigger.
+    The seeded ``schema_version`` is the point. It is both the first key the
+    writer rewrites and the key the trigger rejects, so the DELETE lands on a row
+    that exists and the INSERT then aborts -- and only a real rollback brings
+    that row back. ``project_version`` is seeded as a key the trigger never
+    reaches, so the rollback has to restore the whole file rather than the one
+    row it tripped on.
+
+    The previous version of this seeded neither, so the DELETE before the ABORT
+    was a no-op and no metadata row was ever rolled back: with BEGIN IMMEDIATE
+    removed it still failed, but only at the LAST assertion, on the
+    ``gpkg_contents`` row. The stated mechanism was not the one being measured.
     """
-    _put(gpkg, {"designer_project_id": "abc-123", "project_version": "0.1"})
+    _put(gpkg, {"designer_project_id": "abc-123", "project_version": "0.1",
+                "schema_version": "0.1"})
     before = _rows(gpkg)
     with sqlite3.connect(str(gpkg)) as conn:
         conn.execute(
@@ -194,7 +208,9 @@ def test_a_write_that_fails_part_way_rolls_back(gpkg):
     assert written is False
     assert "disk full" in reason
     assert _rows(gpkg) == before, "a partial write reached disk"
-    assert before["project_version"] == "0.1", "the rolled-back row did not come back"
+    # Read the FILE, not the snapshot: `before["project_version"]` can only ever
+    # be "0.1", because that is what _put wrote into it a few lines above.
+    assert _rows(gpkg)["schema_version"] == "0.1", "the rolled-back row did not come back"
 
     with sqlite3.connect(str(gpkg)) as conn:
         registered = conn.execute(
@@ -207,12 +223,23 @@ def test_an_interrupted_write_leaves_the_old_table_intact(gpkg):
     """Kill the process part-way through the real write and read the file back.
 
     A child process runs the actual ``_write_metadata_table`` with sqlite's
-    ``execute`` rigged to call ``os._exit`` on the sixth statement -- after the
-    table is created and the first key written. On the old sequence that left
-    the table present, registered and EMPTY, because DROP and CREATE were
-    durable before the first INSERT ever ran.
+    ``execute`` rigged to call ``os._exit`` one statement after the first row
+    reaches ``_fiberq_metadata`` -- so the table has been created, registered,
+    and one already-present key deleted and re-inserted, when the process dies.
+    On the old sequence that left the table present, registered and EMPTY,
+    because DROP and CREATE were durable before the first INSERT ever ran.
+
+    Two things had to be corrected for that to be what is actually measured.
+    The kill predicate matched the writer's ``INSERT OR REPLACE INTO
+    GPKG_CONTENTS`` as well, because that statement carries the string
+    ``_fiberq_metadata`` in its VALUES list -- so the kill landed on the DELETE,
+    one statement early, before any metadata row existed. And the seed did not
+    include ``schema_version``, the first key the writer rewrites, so there was
+    no row for that DELETE to remove. Measured: with the transaction deleted,
+    this test used to PASS.
     """
-    _put(gpkg, {"designer_project_id": "abc-123", "relations_json": '{"relations":[]}'})
+    _put(gpkg, {"designer_project_id": "abc-123", "relations_json": '{"relations":[]}',
+                "schema_version": "0.1"})
     before = _rows(gpkg)
 
     repo = str(pathlib.Path(__file__).resolve().parent.parent)
@@ -245,7 +272,14 @@ def test_an_interrupted_write_leaves_the_old_table_intact(gpkg):
                     os._exit(9)
                 sql = " ".join(str(args[0] if args else "").split()).upper()
                 result = self._inner.execute(*args, **kwargs)
-                if sql.startswith("INSERT") and "_FIBERQ_METADATA" in sql:
+                # INSERT INTO, anchored on the target table. The old predicate
+                # was `startswith("INSERT") and "_FIBERQ_METADATA" in sql`,
+                # which also matched the writer's
+                # `INSERT OR REPLACE INTO GPKG_CONTENTS (...)` -- that
+                # statement carries the string '_fiberq_metadata' in its VALUES
+                # list. So the kill armed one statement too early and fired on
+                # the DELETE, before any metadata row had been written.
+                if sql.startswith("INSERT INTO _FIBERQ_METADATA"):
                     state["inserted"] += 1
                 return result
 

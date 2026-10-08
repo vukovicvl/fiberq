@@ -241,9 +241,10 @@ def test_a_point_file_is_skipped_not_fatal(project, tmp_path):
     iface = FakeIface()
     manager = _route_manager(project, iface)
 
-    added, skipped = _import_routes(project, manager, path, route)
+    added, skipped, saved = _import_routes(project, manager, path, route)
 
     assert (added, skipped) == (0, 2)
+    assert saved is True, "the importer opened the session, so it owns the commit"
     assert route.featureCount() == 0
     assert not route.isEditable(), "the layer must not be left in edit mode"
 
@@ -258,10 +259,11 @@ def test_a_mixed_file_imports_the_lines_and_counts_the_rest(project, tmp_path):
     route = _route_layer(project)
     manager = _route_manager(project, FakeIface())
 
-    added, skipped = _import_routes(project, manager, path, route)
+    added, skipped, saved = _import_routes(project, manager, path, route)
 
     assert added == 2
     assert skipped == 2
+    assert saved is True
     assert route.featureCount() == 2
     assert not route.isEditable()
 
@@ -273,9 +275,10 @@ def test_a_multipart_line_imports_every_part(project, tmp_path):
     route = _route_layer(project)
     manager = _route_manager(project, FakeIface())
 
-    added, skipped = _import_routes(project, manager, path, route)
+    added, skipped, saved = _import_routes(project, manager, path, route)
 
     assert (added, skipped) == (2, 0)
+    assert saved is True
     assert route.featureCount() == 2
 
 
@@ -291,6 +294,137 @@ def test_every_imported_route_gets_a_length_and_a_type(project, tmp_path):
     assert feat["tip_trase"] == "podzemna"
     assert float(feat["duzina"]) > 0.0
     assert feat["duzina_km"] == pytest.approx(float(feat["duzina"]) / 1000.0, abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# f010/f039: the importer must say which of the four things happened
+# ---------------------------------------------------------------------------
+
+def test_ensuring_the_route_fields_does_not_touch_the_edit_session(project):
+    """f007. The sibling test above calls _add_imported_routes directly, so it
+    never reached this function -- which every real Import route goes through
+    first, and which called startEditing() and commitChanges() unconditionally.
+
+    Measured on 3.44.15: one unsaved route in the buffer before, committed to the
+    provider and the session closed after, with nothing said. Every column here
+    is added through the data provider, which bypasses the edit buffer, so the
+    commit was never writing the fields -- only the user's work.
+    """
+    route = _route_layer(project)
+    route.startEditing()
+    pending = QgsFeature(route.fields())
+    pending.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(0, 9), QgsPointXY(1, 9)]))
+    pending.setAttribute("naziv", "the user's own line")
+    assert route.addFeature(pending)
+    manager = _route_manager(project, FakeIface())
+
+    manager._ensure_route_fields(route)
+
+    assert route.isEditable(), "the session was not ours to close"
+    assert len(route.editBuffer().addedFeatures()) == 1, "nor their work ours to save"
+    assert len(list(route.dataProvider().getFeatures())) == 0
+    route.rollBack()
+
+
+@pytest.mark.parametrize("start_editing", [False, True])
+def test_the_route_fields_are_still_added(project, start_editing):
+    """And the columns do arrive, session or no session -- that is the point."""
+    layer = QgsVectorLayer("LineString?crs=EPSG:3857", "Route", "memory")
+    layer.dataProvider().addAttributes([QgsField("duzina", QVariant.Double)])
+    layer.updateFields()
+    project.addMapLayer(layer)
+    if start_editing:
+        layer.startEditing()
+    manager = _route_manager(project, FakeIface())
+
+    manager._ensure_route_fields(layer)
+
+    for column in ("naziv", "duzina", "duzina_km", "tip_trase"):
+        assert column in layer.fields().names(), column
+    assert layer.isEditable() is start_editing, "the session is left as it was found"
+
+
+def test_a_route_layer_missing_a_column_is_reported_not_raised(project, tmp_path):
+    """f009. QgsFeature.setAttribute RAISES KeyError for an absent field.
+
+    _add_one_route sets four attributes outside any try, and the enclosing except
+    tuple did not list KeyError -- so a Route layer without "naziv" sent
+    KeyError('naziv') out of the Qt slot as a QGIS crash dialog, with the edit
+    command still open and the layer still editable. Measured on main.
+    """
+    path = _geojson(tmp_path, "one.geojson",
+                    [_feature(_line([[0.0, 0.0], [0.001, 0.0]]))])
+    layer = QgsVectorLayer("LineString?crs=EPSG:3857", "Route", "memory")
+    layer.dataProvider().addAttributes([QgsField("duzina", QVariant.Double)])
+    layer.updateFields()
+    project.addMapLayer(layer)
+    manager = _route_manager(project, FakeIface())
+
+    added, _skipped, saved = _import_routes(project, manager, path, layer)
+
+    assert added == 0
+    assert saved is False
+    assert not layer.isEditable(), "the edit command must not be left open"
+    assert manager.iface.bar.warnings, "and the user has to be told"
+
+
+def test_a_route_the_layer_refuses_is_counted_as_skipped(project, tmp_path):
+    """It used to be counted in neither total, so it vanished from the report.
+
+    Measured on 3.44.15 with a read-only Route layer and a 3-line file: added 0,
+    skipped 0, and the user was told "No lines found for import in the file!"
+    about a file that held three perfectly good lines.
+    """
+    path = _geojson(tmp_path, "three.geojson", [
+        _feature(_line([[0.0, 0.0], [0.001, 0.0]])),
+        _feature(_line([[0.0, 1.0], [0.001, 1.0]])),
+        _feature(_line([[0.0, 2.0], [0.001, 2.0]])),
+    ])
+    route = _route_layer(project)
+    route.setReadOnly(True)
+    manager = _route_manager(project, FakeIface())
+
+    added, skipped, _saved = _import_routes(project, manager, path, route)
+
+    assert added == 0
+    assert skipped == 3, "every refused route has to land in a total"
+
+
+def test_a_refused_commit_does_not_zero_the_count(project, tmp_path, monkeypatch):
+    """"Added" and "saved" are different facts, and this is where they diverge.
+
+    QGIS keeps the features in the layer's buffer when a commit is refused, so
+    they really are in the layer. Returning 0 is what made the caller announce
+    that the file had held no lines.
+    """
+    path = _geojson(tmp_path, "two.geojson", [
+        _feature(_line([[0.0, 0.0], [0.001, 0.0]])),
+        _feature(_line([[0.0, 1.0], [0.001, 1.0]])),
+    ])
+    route = _route_layer(project)
+    manager = _route_manager(project, FakeIface())
+    monkeypatch.setattr(route, "commitChanges", lambda *a, **k: False)
+
+    added, skipped, saved = _import_routes(project, manager, path, route)
+
+    assert added == 2, "the routes are in the buffer, so they were added"
+    assert skipped == 0
+    assert saved is False, "and the caller has to know they are not on disk"
+
+
+def test_joining_the_users_session_is_reported_as_unsaved_not_as_saved(project, tmp_path):
+    """saved is None when the user owned the session: not an error, not 'saved'."""
+    path = _geojson(tmp_path, "one.geojson",
+                    [_feature(_line([[0.0, 0.0], [0.001, 0.0]]))])
+    route = _route_layer(project)
+    route.startEditing()
+    manager = _route_manager(project, FakeIface())
+
+    added, _skipped, saved = _import_routes(project, manager, path, route)
+
+    assert added == 1
+    assert saved is None, "their session, theirs to save"
+    assert route.isEditable(), "and it is still open"
 
 
 def test_an_import_does_not_commit_the_users_pending_edits(project, tmp_path):
@@ -310,7 +444,7 @@ def test_an_import_does_not_commit_the_users_pending_edits(project, tmp_path):
     assert route.addFeature(pending)
     manager = _route_manager(project, FakeIface())
 
-    added, _skipped = _import_routes(project, manager, path, route)
+    added, _skipped, _saved = _import_routes(project, manager, path, route)
 
     assert added == 1
     assert route.isEditable(), "the user's session must still be open"

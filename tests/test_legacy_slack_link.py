@@ -595,6 +595,75 @@ def test_fiber_break_refuses_a_layer_with_no_link_columns(project, monkeypatch):
     assert "no cable reference columns" in iface.bar.warnings[0]
 
 
+# ---------------------------------------------------------------------------
+# The edit session a recompute opens. 50 tests over this function and not one
+# of them had the cable layer in edit mode first, which is how a rollBack()
+# that destroys the user's work got in with the suite green.
+# ---------------------------------------------------------------------------
+
+def _unsaved_cable(layer):
+    """One cable in the layer's buffer and not committed, as a digitising user leaves it."""
+    layer.startEditing()
+    feat = QgsFeature(layer.fields())
+    feat.setGeometry(QgsGeometry.fromPolylineXY([QgsPointXY(0, 50), QgsPointXY(10, 50)]))
+    feat["naziv"] = "UNSAVED"
+    assert layer.addFeature(feat)
+    assert len(layer.editBuffer().addedFeatures()) == 1
+    return feat
+
+
+def test_a_refused_slack_write_keeps_the_users_unsaved_cable_edits(project):
+    """f006, and it is the same defect family as the Route correction rollBack.
+
+    ``total_len_m`` as an expression field makes ``updateFeature()`` answer
+    False, which is the real failure branch -- measured on 3.44.15 and 4.0.3,
+    where the unsaved cable was gone, the layer was out of edit mode, and the
+    only thing said was "the cable would not take its new slack total".
+    """
+    cable_layer, cable_fid = _cable_layer(project)
+    # An expression field cannot be written, so updateFeature() refuses.
+    cable_layer.addExpressionField("1", QgsField("total_len_m2", QVariant.Double))
+    slack_layer = _slack_layer(project)
+    _add_slack(slack_layer, cable_layer.id(), cable_fid, 20.0)
+    iface = FakeIface()
+    _unsaved_cable(cable_layer)
+
+    before = cable_layer.dataProvider().featureCount()
+    _manager(project, iface).recompute_slack_for_cable(cable_layer.id(), cable_fid)
+
+    assert cable_layer.isEditable(), "the user's edit session must still be open"
+    assert len(cable_layer.editBuffer().addedFeatures()) == 1, "their cable must survive"
+    assert cable_layer.dataProvider().featureCount() == before, "and must not be saved either"
+
+
+def test_a_recompute_does_not_save_the_users_session_for_them(project):
+    """The success path must not commit work the user never asked to save."""
+    cable_layer, cable_fid = _cable_layer(project)
+    slack_layer = _slack_layer(project)
+    _add_slack(slack_layer, cable_layer.id(), cable_fid, 20.0)
+    _unsaved_cable(cable_layer)
+    before = cable_layer.dataProvider().featureCount()
+
+    assert _manager(project).recompute_slack_for_cable(cable_layer.id(), cable_fid)
+
+    assert cable_layer.isEditable(), "a recompute must not close a session it did not open"
+    assert cable_layer.dataProvider().featureCount() == before, "nothing of theirs was saved"
+    assert _cable_values(cable_layer, cable_fid)[0] == 20.0, "and the slack total did land"
+
+
+def test_a_recompute_still_commits_when_it_opened_the_session(project):
+    """The ordinary case: nobody was editing, so the recompute saves its own work."""
+    cable_layer, cable_fid = _cable_layer(project)
+    slack_layer = _slack_layer(project)
+    _add_slack(slack_layer, cable_layer.id(), cable_fid, 20.0)
+    assert not cable_layer.isEditable()
+
+    assert _manager(project).recompute_slack_for_cable(cable_layer.id(), cable_fid)
+
+    assert not cable_layer.isEditable(), "and leaves the layer as it found it"
+    assert _cable_values(cable_layer, cable_fid)[0] == 20.0
+
+
 class _Planar:
     """Stands in for QgsDistanceArea: plain cartesian metres."""
 

@@ -413,9 +413,11 @@ class ExportManager:
         * **The appearance**, captured before the swap. A fresh layer loads the
           GeoPackage's *default* style, and saving that back would overwrite the
           one the user set.
-        * **The layer id.** Picture links (``image_map/<layer id>/<fid>``),
-          drawing links and the relation and latent-element stores are all keyed
-          by it, so a new id silently orphans every one of them.
+        * **The layer id.** Picture and drawing links
+          (``FeatureLinks/images_v1``, holding ``{layer id: {fid: path}}``, plus
+          the pre-1.6.0 ``image_map/<layer id>/<fid>`` keys the fallback still
+          reads) and the relation and latent-element stores are all keyed by it,
+          so a new id silently orphans every one of them.
           :meth:`QgsMapLayer.setId` arrived in QGIS 3.36; below that the id
           cannot be kept, and the message says so rather than letting the user
           discover it.
@@ -650,9 +652,16 @@ class ExportManager:
         """
         Write the _fiberq_metadata non-spatial table into a GeoPackage.
 
-        Creates (or replaces) a table with two columns:
+        Creates the table when it is absent, with two columns:
             key   TEXT PRIMARY KEY
             value TEXT
+
+        and otherwise keeps the one already in the file. It no longer *replaces*
+        the table: replacing it is what used to leave it present, registered and
+        EMPTY whenever anything interrupted the write, because the DROP and
+        CREATE were durable before the first row was ever inserted. Only the
+        keys this plugin computed are rewritten; a key another tool put there is
+        left alone, and how many were left is logged.
 
         Each row stores one metadata key-value pair for FiberQ Designer.
 
