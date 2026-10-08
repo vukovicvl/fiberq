@@ -2,7 +2,10 @@
 
 ``FIBERQ_LOG_LEVEL`` defaults to WARNING, so ``except Exception as e:
 logger.debug(...)`` reaches no log panel, no message bar and no user. It is
-``pass`` with a comment, and the plugin has 816 handlers of that shape.
+``pass`` with a comment. There were 816 handlers of that shape when this gate
+was written; that figure is history and does not move. The live count is
+``SILENCE_CEILING`` below -- what test D asserts by equality, and the one place
+the number is maintained.
 
 WP4's reliability work does not pretend it will fix all of them. It hardens the
 operations that **write, export, import or migrate data** -- where a swallowed
@@ -48,11 +51,11 @@ Swallow-and-return is **not** counted, and that is a real blind spot worth
 knowing before you trust a green run. ``except Exception: return None`` responds
 to the caller, so :func:`is_silent` scores it zero -- which is the build plan's
 own census rule ("body only pass/debug/continue/break"), and widening it would
-move 107 handlers package-wide and re-open the claim arithmetic. The cost today
-is nine handlers inside hardened functions that this gate reads as already
-clean: ``data_manager.py:69, :138, :217``, ``relations_manager.py:68, :220``,
-``color_manager.py:124`` -- every site R5's row names -- plus
-``export_manager.py:436`` and ``routing.py:229, :350``, which are R8's. Those
+move about 107 handlers package-wide and re-open the claim arithmetic. The cost
+today is eight handlers inside hardened functions that this gate reads as
+already clean: ``data_manager.py:69, :138, :217``,
+``relations_manager.py:68, :220``, ``color_manager.py:124`` -- every site R5's
+row names -- plus ``routing.py:229, :350``, which are R8's. Those
 two rows are carried by their own behaviour tests, not by this file. Do not read
 an empty ALLOWED row for them as "nothing to do".
 

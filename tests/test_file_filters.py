@@ -139,8 +139,23 @@ def test_a_built_filter_has_the_shape_qt_expects():
 # The call sites use it
 # ---------------------------------------------------------------------------
 
-def test_every_file_dialog_filter_comes_from_this_module():
-    """A literal filter at a call site is how the two lists drifted apart."""
+def test_every_open_dialog_filter_comes_from_this_module():
+    """A literal filter at an OPEN dialog is how the two lists drifted apart.
+
+    Open dialogs only, and the name says so now. A save dialog names one format
+    of its own -- PNG, SVG, JSON, ``.gpkg`` -- shares its list with nothing, and
+    passes the filter as a plain literal rather than through ``tr()``. Eight
+    such sites keep their pattern inline on purpose (measured by AST:
+    ``export_manager.py:350``, ``bom_dialog.py:237, :239``,
+    ``color_dialog.py:180``, ``schematic_dialog.py:879, :892, :904``,
+    ``routing_ui.py:342``), so widening this scan to ``getSaveFileName`` turns
+    it red on all eight for no gain.
+
+    The rule that can actually break a dialog -- a translator editing a pattern
+    -- is carried by
+    :func:`test_no_translated_literal_carries_a_file_pattern`, which walks every
+    translated literal regardless of which dialog it reaches.
+    """
     offenders = []
     for path in _python_files():
         if os.path.basename(path) == "file_filters.py":

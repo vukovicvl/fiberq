@@ -1,9 +1,14 @@
 """Save all layers to GeoPackage tells you when a layer did not make it.
 
-WP4 4.2, item R1. Every one of these fails on v1.5.0, and they fail the same
-way: the operation finishes, pushes *"All layers saved to: ..."* in green, and
-the layer that did not make it is mentioned only in a debug log that a default
-install never writes.
+WP4 4.2, item R1. **Nine** of these twelve fail on v1.5.0, and they fail the
+same way: the operation finishes, pushes *"All layers saved to: ..."* in green,
+and the layer that did not make it is mentioned only in a debug log that a
+default install never writes.
+
+The other three are guards, not reproductions, and saying so is the point -- a
+docstring that overclaims is the one a reviewer stops trusting. One is the
+happy-path control; the other two assert behaviour v1.5.0 already had, and are
+here because branch 6 rewrote the code underneath them.
 
 The one that matters most is
 :func:`test_a_layer_whose_commit_fails_is_not_repointed`. Repointing a layer

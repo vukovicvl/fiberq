@@ -148,12 +148,19 @@ def test_the_table_is_registered_so_gdal_can_see_it(gpkg):
 
 
 def test_a_locked_geopackage_fails_before_touching_anything(gpkg):
-    """BEGIN IMMEDIATE takes the lock up front, so a held file fails clean.
+    """A held file fails clean, and says which file and why.
 
-    ``schema_version`` is seeded deliberately: it is a key the writer DELETEs
-    before re-inserting, so without the transaction the delete would stick and
-    the row would be gone. A test seeded only with keys the writer never
-    touches would pass with no transaction at all.
+    This case pins the *reporting*, not the rollback. An EXCLUSIVE holder blocks
+    the connection's very first statement, so nothing the writer sends ever
+    runs -- which means every assertion below also holds for the pre-U7 DROP
+    sequence, and for no transaction at all (measured: this test passes
+    unchanged against both). The ``schema_version`` seed is kept because it is
+    harmless, but it is not what makes this test bite.
+
+    The transaction is measured by
+    :func:`test_a_write_that_fails_part_way_rolls_back` and
+    :func:`test_an_interrupted_write_leaves_the_old_table_intact`, both of which
+    fail when ``BEGIN IMMEDIATE`` is removed.
     """
     _put(gpkg, {"designer_project_id": "abc-123", "schema_version": "0.1"})
     before = _rows(gpkg)
