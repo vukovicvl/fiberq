@@ -19,6 +19,7 @@ from qgis.core import (
     QgsCoordinateTransformContext, QgsCoordinateReferenceSystem,
     QgsMapLayerStyle,
 )
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
 from qgis.PyQt.QtWidgets import QFileDialog, QMessageBox, QInputDialog
 
 # WP1a: canonical schema version + project marker
@@ -26,10 +27,35 @@ from ..models.schema import SCHEMA_VERSION
 from .schema_version import mark_project_current
 
 # Phase 5.2: Logging
+from ..i18n import safe_format
 from ..utils.errors import OperationErrors, check_commit, describe
 from ..utils.logger import get_logger
 from .gpkg_target import table_in_use, table_name_for
 logger = get_logger(__name__)
+
+#: WP4 4.2 item R3. These two sentences come from the duplicate export this
+#: branch deleted (main_plugin._export_active_layer), where WP1 had put them --
+#: and where nothing could reach them, because that copy only ran when this one
+#: raised. The live path had the fragment-assembled form WP1 replaced:
+#:
+#:     scope_txt = "selected features" if only_selected else "all features"
+#:     f"Successfully exported {scope_txt} from layer '{...}'"
+#:
+#: which is untranslatable into French: "de" + "les" contracts to the mandatory
+#: "des", and no runtime substitution into a fixed "de {scope}" can produce it.
+#: So WP1's delivered fix sat in unreachable code while the bug it fixed was
+#: what users saw. Moving them here is what makes WP1 reachable.
+#:
+#: Keep each as ONE whole sentence; do not reassemble them from fragments. Only
+#: the layer name and the path are placeholders.
+#:
+#: Confirmation shown after exporting ONLY the features the user had selected.
+_EXPORTED_SELECTED = QT_TRANSLATE_NOOP(
+    'FiberQExport',
+    "Successfully exported the selected features of layer '{layer}'\nto:\n{path}")
+#: Confirmation shown after exporting the WHOLE layer (no selection filter).
+_EXPORTED_ALL = QT_TRANSLATE_NOOP(
+    'FiberQExport', "Successfully exported all features of layer '{layer}'\nto:\n{path}")
 
 #: Title on every message-bar entry this module pushes. Kept as it has always
 #: read, so a user who has seen it before still recognises it.
@@ -242,12 +268,12 @@ class ExportManager:
                 f"Export failed: {err_message}"
             )
         else:
-            scope_txt = "selected features" if only_selected else "all features"
+            source = _EXPORTED_SELECTED if only_selected else _EXPORTED_ALL
             QMessageBox.information(
                 self.iface.mainWindow(),
                 "Export",
-                f"Successfully exported {scope_txt} from layer '{layer.name()}'\n"
-                f"to:\n{filename}"
+                safe_format(QCoreApplication.translate('FiberQExport', source), source,
+                            layer=layer.name(), path=filename)
             )
 
     def export_selected_features(self):

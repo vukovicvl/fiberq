@@ -164,8 +164,12 @@ CRITICAL = {
         "table_in_use",
         "table_name_for",
     }),
-    # R1, R2
+    # R1, R2, R3. export_active_layer and _do_export are THE export path now
+    # that main_plugin's duplicate is deleted; neither was named here before,
+    # so the one that actually ran was the one the gate did not watch.
     "fiberq/core/export_manager.py": frozenset({
+        "ExportManager._do_export",
+        "ExportManager.export_active_layer",
         "ExportManager._ask_where_to_save",
         "ExportManager._export_one_layer",
         "ExportManager._project_entry",
@@ -344,10 +348,6 @@ ALLOWED_SILENT = {
     # scope. Recorded in docs/private/FiberQ-WP4-followups.md.
     ("fiberq/core/cable_manager.py",
      "CableManager.lay_cable"): (6, "pre-award swallows in the same function, not in R8's row"),
-    ("fiberq/main_plugin.py",
-     "FiberQPlugin.export_all_features"): (1, "R3 Export active layer -- fix/wp4-write-paths"),
-    ("fiberq/main_plugin.py",
-     "FiberQPlugin.export_selected_features"): (1, "R3 Export active layer -- fix/wp4-write-paths"),
 }
 
 #: Write calls whose result is still discarded on a hardened path. Kept apart
@@ -389,7 +389,7 @@ ALLOWED_WRITES = {
 #: from v1.5.0 is what branches 3 and 4 left behind
 #: when they rewrote the placement tools: handlers deleted with the code around
 #: them, less the few that ``length_sync.py`` brought in.
-SILENCE_CEILING = 719
+SILENCE_CEILING = 717
 
 
 # ---------------------------------------------------------------------------
@@ -669,8 +669,11 @@ def test_d_package_wide_silence_does_not_grow():
 #: main_plugin wrappers that swallowed its failures -- and
 #: routing.build_network_graph, and the last five are the BOM dialog's
 #: _export, _measured_length, _note_lines, _remove_partial and _write_xlsx --
-#: where R4's counting and reporting now live. No R-row moved.
-HARDENED_FUNCTIONS = 123
+#: where R4's counting and reporting now live. The last two are
+#: ExportManager.export_active_layer and ._do_export, which R3 made THE
+#: export path by deleting main_plugin's duplicate -- the one that actually
+#: ran was the one this gate did not watch. No R-row moved.
+HARDENED_FUNCTIONS = 125
 HARDENED_FILES = 21
 
 

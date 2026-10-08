@@ -5,7 +5,7 @@ from qgis.PyQt.QtWidgets import (
     QAction, QMessageBox, QInputDialog, QDialog, QVBoxLayout, QLabel, QDialogButtonBox,
     QFileDialog)
 from qgis.core import (
-    QgsVectorFileWriter, QgsVectorLayer,
+    QgsVectorLayer,
     QgsProject, QgsField, QgsFeature, QgsFeatureRequest,
     QgsGeometry, QgsPointXY, QgsWkbTypes,
     QgsSymbol, QgsUnitTypes, QgsCoordinateTransform
@@ -3732,228 +3732,41 @@ class FiberQPlugin:
             return False
         return True
 
-    # Automatska korekcija
-
-    def _export_active_layer(self, only_selected: bool):
-        """Helper to export active vector layer (all or only selected features)
-        to one of the common exchange formats (GPX, KML/KMZ, GeoPackage)."""
-        # Active layer must be a vector layer
-        if not isinstance(self.iface.activeLayer(), QgsVectorLayer):
-            QMessageBox.warning(
-                self.iface.mainWindow(),
-                self.tr("Export"),
-                self.tr("Please select an active vector layer before exporting.")
-            )
-            return
-
-        layer = self.iface.activeLayer()
-
-        # Check selection if needed
-        if only_selected and layer.selectedFeatureCount() == 0:
-            QMessageBox.information(
-                self.iface.mainWindow(),
-                self.tr("Export"),
-                self.tr("There are no selected features on the active layer.")
-            )
-            return
-
-        # Let user choose format
-        formats = [
-            ("GeoPackage (*.gpkg)", ".gpkg"),
-            ("KML/KMZ (*.kml *.kmz)", ".kml"),
-            ("GPX (*.gpx)", ".gpx"),
-        ]
-        items = [label for (label, _ext) in formats]
-        choice, ok = QInputDialog.getItem(
-            self.iface.mainWindow(),
-            self.tr("Export format"),
-            self.tr("Select output format:"),
-            items,
-            0,
-            False,
-        )
-        if not ok or not choice:
-            return
-
-        ext = None
-        for label, e in formats:
-            if label == choice:
-                ext = e
-                break
-        if not ext:
-            return
-
-        # Suggest filename next to current project (if any)
-        project_path = QgsProject.instance().fileName()
-        if project_path:
-            base_dir = os.path.dirname(project_path)
-        else:
-            base_dir = os.path.expanduser("~")
-
-        safe_layer_name = layer.name().replace(" ", "_")
-        suggested = os.path.join(base_dir, safe_layer_name + ext)
-
-        filename, _ = QFileDialog.getSaveFileName(
-            self.iface.mainWindow(),
-            self.tr("Export layer"),
-            suggested,
-            choice,
-        )
-        if not filename:
-            return
-
-        # Ensure extension
-        if not filename.lower().endswith(ext):
-            filename += ext
-
-        from qgis.core import QgsCoordinateReferenceSystem
-
-        lower_ext = os.path.splitext(filename)[1].lower()
-
-        # GPX/KML/KMZ are typically in WGS84
-        if lower_ext in (".gpx", ".kml", ".kmz"):
-            dest_crs = QgsCoordinateReferenceSystem("EPSG:4326")
-        else:
-            dest_crs = layer.crs()
-
-        # Try to guess driver for extension
-        driver_name = ""
-        try:
-            driver_name = QgsVectorFileWriter.driverForExtension(lower_ext)
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin._export_active_layer: {e}")
-            driver_name = ""
-
-        if not driver_name:
-            mapping = {
-                ".gpkg": "GPKG",
-                ".gpx": "GPX",
-                ".kml": "KML",
-                ".kmz": "KML",
-            }
-            driver_name = mapping.get(lower_ext, "")
-
-        if not driver_name:
-            QMessageBox.warning(
-                self.iface.mainWindow(),
-                self.tr("Export"),
-                self.tr("Unknown driver for extension '{ext}'.").format(ext=lower_ext)
-            )
-            return
-
-        # Perform export using the best available API
-        try:
-            result = None
-
-            if hasattr(QgsVectorFileWriter, "writeAsVectorFormatV3"):
-                opts = QgsVectorFileWriter.SaveVectorOptions()
-                opts.driverName = driver_name
-                opts.fileEncoding = "UTF-8"
-                opts.onlySelectedFeatures = bool(only_selected)
-                ctx = QgsProject.instance().transformContext()
-                result = QgsVectorFileWriter.writeAsVectorFormatV3(
-                    layer,
-                    filename,
-                    ctx,
-                    opts,
-                )
-
-            elif hasattr(QgsVectorFileWriter, "writeAsVectorFormatV2"):
-                opts = QgsVectorFileWriter.SaveVectorOptions()
-                opts.driverName = driver_name
-                opts.fileEncoding = "UTF-8"
-                opts.onlySelectedFeatures = bool(only_selected)
-                ctx = QgsProject.instance().transformContext()
-                result = QgsVectorFileWriter.writeAsVectorFormatV2(
-                    layer,
-                    filename,
-                    ctx,
-                    opts,
-                )
-
-            else:
-                # Fallback to deprecated API
-                result = QgsVectorFileWriter.writeAsVectorFormat(
-                    layer,
-                    filename,
-                    "UTF-8",
-                    dest_crs,
-                    driver_name,
-                    onlySelected=bool(only_selected),
-                )
-
-        except Exception as ex:
-            QMessageBox.critical(
-                self.iface.mainWindow(),
-                self.tr("Export"),
-                self.tr("Error while exporting:\n{details}").format(details=ex)
-            )
-            return
-
-        # Normalize result: QGIS versions may return 1, 2 or more values.
-        if isinstance(result, tuple):
-            if len(result) >= 2:
-                res = result[0]
-                err_message = result[1] or ""
-            else:
-                res = result[0]
-                err_message = ""
-        else:
-            res = result
-            err_message = ""
-
-        if res != QgsVectorFileWriter.WriterError.NoError:
-            QMessageBox.critical(
-                self.iface.mainWindow(),
-                self.tr("Export"),
-                self.tr("Export failed: {details}").format(details=err_message)
-            )
-        else:
-            # WP1: two complete sentences instead of one sentence assembled from a
-            # separately translated "selected features"/"all features" fragment.
-            # The fragment form is untranslatable into French: "de" + "les"
-            # contracts to the mandatory "des", which no runtime substitution
-            # into a fixed "de {scope}" can produce. Only the layer name and the
-            # path stay as placeholders.
-            if only_selected:
-                #: Confirmation shown after exporting ONLY the features the
-                #: user had selected. {layer} is the source layer name, {path} the
-                #: written file. Keep as one whole sentence - do not split it.
-                msg = self.tr("Successfully exported the selected features of layer '{layer}'\n"
-                              "to:\n{path}").format(layer=layer.name(), path=filename)
-            else:
-                #: Confirmation shown after exporting the WHOLE layer (no
-                #: selection filter). {layer} is the source layer name, {path} the
-                #: written file. Keep as one whole sentence - do not split it.
-                msg = self.tr("Successfully exported all features of layer '{layer}'\n"
-                              "to:\n{path}").format(layer=layer.name(), path=filename)
-            QMessageBox.information(
-                self.iface.mainWindow(),
-                self.tr("Export"),
-                msg
-            )
-
-    def export_selected_features(self):
-        """Export only selected features of the active layer. Delegates to ExportManager."""
-        # Phase 8: Delegate to ExportManager
-        if self.export_manager:
-            try:
-                self.export_manager.export_selected_features()
-                return
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin.export_selected_features: {e}")
-        self._export_active_layer(only_selected=True)
-
     def export_all_features(self):
-        """Export all features of the active layer. Delegates to ExportManager."""
-        # Phase 8: Delegate to ExportManager
+        """Export all features of the active layer. Delegates to ExportManager.
+
+        WP4 4.2 item R3. A failure used to be swallowed at debug level -- which
+        writes nothing, anywhere -- and then the whole export was re-run through
+        _export_active_layer, a 198-line near-identical second copy. Measured on
+        3.22, 3.44 and 4.0 through this entry point: the user was asked for a
+        format and a filename a SECOND time; the one success message described
+        only the second write, so the file the manager had already written sat
+        on disk unmentioned; cancelling the second dialog said nothing at all
+        although that first file was complete; and when the cause was shared the
+        copy hit the same wall and the exception escaped the slot anyway.
+
+        The two writers produced structurally identical GeoPackages and
+        byte-identical KML, so the retry never could have rescued the first
+        attempt. All it did was cost the user the knowledge that the export had
+        failed, plus a stray file and two extra dialogs. The copy is deleted.
+        """
         if self.export_manager:
             try:
                 self.export_manager.export_all_features()
-                return
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin.export_all_features: {e}")
-        self._export_active_layer(only_selected=False)
+            except Exception as exc:  # noqa: BLE001 - Qt slot boundary
+                report_error(self.tr("Export"), None, exc, self.iface)
+
+    def export_selected_features(self):
+        """Export only selected features of the active layer.
+
+        See :meth:`export_all_features` for what R3 changed and why the second
+        copy of the export is gone.
+        """
+        if self.export_manager:
+            try:
+                self.export_manager.export_selected_features()
+            except Exception as exc:  # noqa: BLE001 - Qt slot boundary
+                report_error(self.tr("Export"), None, exc, self.iface)
 
     def _route_layer(self):
         """The project's Route layer, under any of its names, or None.
