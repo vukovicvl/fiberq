@@ -237,7 +237,17 @@ CRITICAL = {
         "SlackManager.recompute_slack_for_cable",
     }),
     # R7
+    # R7. undo/redo, _ensure_editable, _commit, _stack_back and clear were never
+    # named here, although that is where the decision to commit is actually
+    # made: the gate watched the three helpers and not the state machine
+    # driving them, and _unsaved lives in the state machine.
     "fiberq/core/undo_manager.py": frozenset({
+        "FiberQUndoManager._commit",
+        "FiberQUndoManager._ensure_editable",
+        "FiberQUndoManager._stack_back",
+        "FiberQUndoManager.clear",
+        "FiberQUndoManager.redo",
+        "FiberQUndoManager.undo",
         "FiberQUndoManager._add_feature",
         "FiberQUndoManager._delete_feature",
         "FiberQUndoManager._restore_feature",
@@ -312,8 +322,6 @@ ALLOWED_SILENT = {
      "FiberQPlugin.export_selected_features"): (1, "R3 Export active layer -- fix/wp4-write-paths"),
     ("fiberq/dialogs/bom_dialog.py",
      "_BOMDialog._build"): (2, "R4 BOM export -- fix/wp4-write-paths"),
-    ("fiberq/core/undo_manager.py",
-     "FiberQUndoManager._add_feature"): (1, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
     ("fiberq/main_plugin.py",
      "FiberQPlugin._change_element_type"): (4, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
     ("fiberq/main_plugin.py",
@@ -327,12 +335,6 @@ ALLOWED_SILENT = {
 #: one hides an exception, the other ignores an answer. Sharing one counter
 #: would let a branch "fix" a swallowed exception by checking a return value.
 ALLOWED_WRITES = {
-    ("fiberq/core/undo_manager.py",
-     "FiberQUndoManager._add_feature"): (1, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/core/undo_manager.py",
-     "FiberQUndoManager._delete_feature"): (1, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
-    ("fiberq/core/undo_manager.py",
-     "FiberQUndoManager._restore_feature"): (3, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
     ("fiberq/main_plugin.py",
      "FiberQPlugin._change_element_type"): (2, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
     ("fiberq/main_plugin.py",
@@ -367,7 +369,7 @@ ALLOWED_WRITES = {
 #: from v1.5.0 is what branches 3 and 4 left behind
 #: when they rewrote the placement tools: handlers deleted with the code around
 #: them, less the few that ``length_sync.py`` brought in.
-SILENCE_CEILING = 733
+SILENCE_CEILING = 732
 
 
 # ---------------------------------------------------------------------------
@@ -638,8 +640,12 @@ def test_d_package_wide_silence_does_not_grow():
 #: gate had from the start: DataManager.save_latent, .save_color_catalogs,
 #: RelationsManager.save_latent, .save_relations and
 #: ColorManager.save_color_catalogs were never named, although each held the
-#: same swallow as the one save the gate did watch. No R-row moved.
-HARDENED_FUNCTIONS = 110
+#: same swallow as the one save the gate did watch. The last six are
+#: FiberQUndoManager's undo, redo, clear, _ensure_editable, _commit and
+#: _stack_back -- the state machine that decides whether to commit at all,
+#: which this gate watched not at all while watching the three helpers it
+#: calls. No R-row moved.
+HARDENED_FUNCTIONS = 116
 HARDENED_FILES = 20
 
 
