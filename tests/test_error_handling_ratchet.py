@@ -176,6 +176,10 @@ CRITICAL = {
     }),
     # R1, R2, R7
     "fiberq/core/layer_manager.py": frozenset({
+        # _copy_attributes holds the body; the public name is now the wrapper
+        # that owns the error collector. Both are named so the split cannot
+        # carry the handlers out of this gate's sight.
+        "_copy_attributes",
         "_copy_attributes_between_layers",
     }),
     # R5
@@ -293,8 +297,6 @@ ALLOWED_SILENT = {
      "ColorManager.load_color_catalogs"): (1, "R5 Relations, latent elements, colour catalogues -- fix/wp4-write-paths"),
     ("fiberq/core/data_manager.py",
      "DataManager.save_relations"): (1, "R5 Relations, latent elements, colour catalogues -- fix/wp4-write-paths"),
-    ("fiberq/core/layer_manager.py",
-     "_copy_attributes_between_layers"): (3, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
     ("fiberq/core/relations_manager.py",
      "RelationsManager.load_latent"): (1, "R5 Relations, latent elements, colour catalogues -- fix/wp4-write-paths"),
     ("fiberq/core/relations_manager.py",
@@ -316,8 +318,6 @@ ALLOWED_SILENT = {
 #: one hides an exception, the other ignores an answer. Sharing one counter
 #: would let a branch "fix" a swallowed exception by checking a return value.
 ALLOWED_WRITES = {
-    ("fiberq/core/layer_manager.py",
-     "_copy_attributes_between_layers"): (2, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
     ("fiberq/core/undo_manager.py",
      "FiberQUndoManager._add_feature"): (1, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
     ("fiberq/core/undo_manager.py",
@@ -354,7 +354,7 @@ ALLOWED_WRITES = {
 #: from v1.5.0 is what branches 3 and 4 left behind
 #: when they rewrote the placement tools: handlers deleted with the code around
 #: them, less the few that ``length_sync.py`` brought in.
-SILENCE_CEILING = 752
+SILENCE_CEILING = 749
 
 
 # ---------------------------------------------------------------------------
@@ -615,11 +615,12 @@ def test_d_package_wide_silence_does_not_grow():
 #: deleting a line from CRITICAL removes a whole operation from this gate with
 #: nothing in fiberq/ changing -- and that diff looks exactly like the one
 #: section 2.2 sanctions, where a branch deletes its own allowance rows.
-#: 99 after branch 9 added RouteManager._chain_selected_routes,
-#: ._set_merged_attributes and ._write_merged_route -- the three methods
-#: merge_all_routes was split into. The R7 row did not move; the code it covers
-#: is now in four functions instead of one, and all four are named above.
-HARDENED_FUNCTIONS = 99
+#: 100 after branch 9 split two hardened functions into smaller ones and named
+#: every piece: RouteManager._chain_selected_routes, ._set_merged_attributes and
+#: ._write_merged_route out of merge_all_routes, and layer_manager._copy_attributes
+#: out of _copy_attributes_between_layers. No R-row moved; the code those rows
+#: cover is simply in more functions than before, and all of them are above.
+HARDENED_FUNCTIONS = 100
 HARDENED_FILES = 19
 
 

@@ -23,13 +23,34 @@ from qgis.core import (
     QgsFeature, QgsGeometry, QgsDistanceArea,
     QgsFillSymbol, QgsLinePatternFillSymbolLayer, QgsSimpleFillSymbolLayer,
 )
-from qgis.PyQt.QtCore import QVariant
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, QVariant
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QMessageBox
 
 # Phase 5.2: Logging
+from ..i18n import safe_format
+from ..utils.errors import OperationErrors, describe
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
+
+#: WP4 4.2 item R7. _copy_attributes_between_layers' user-facing strings. The
+#: context must be a literal at every call site -- pylupdate6 reads the literal
+#: argument and can extract neither a constant nor a variable.
+_PK_UNREADABLE = QT_TRANSLATE_NOOP(
+    'FiberQLayers',
+    "could not read which column is {name}'s primary key, so fid/id/gid was assumed. If its key"
+    " is called something else, moving this element may fail")
+_PROVIDER_UNREADABLE = QT_TRANSLATE_NOOP(
+    'FiberQLayers',
+    "could not tell what kind of layer {name} is, so no column will be added to it. Any value"
+    " whose column is missing there will be left empty")
+_NO_COLUMNS_ADDED = QT_TRANSLATE_NOOP(
+    'FiberQLayers',
+    "could not add the column(s) {columns} to {name}, so those values will be left empty on the"
+    " moved element")
+_VALUE_UNREADABLE = QT_TRANSLATE_NOOP(
+    'FiberQLayers', "could not read {column} from the element being moved, so it was left empty")
+_COPY_TITLE = QT_TRANSLATE_NOOP('FiberQLayers', "Change element type")
 
 # Phase 0.1: UUID support for FiberQ Designer
 from ..utils.uuid_utils import FIBERQ_UUID_FIELD, ensure_uuid_field, set_feature_uuid  # noqa: E402
@@ -265,18 +286,60 @@ def _ensure_element_layer_with_style(plugin, layer_name: str):
     return elem_layer
 
 
-def _copy_attributes_between_layers(src_feat, dst_layer):
-    """
-    Map attributes by normalized names; add missing fields on destination (only when safe).
-    IMPORTANT: never copy PK fields (fid/id/gid...) into destination.
+def _copy_attributes_between_layers(src_feat, dst_layer, errors=None):
+    """Map a feature's attributes onto a destination layer's column names.
+
+    Never copies primary-key columns (fid/id/gid and whatever the provider
+    says), adds the destination's missing columns where that is safe, and
+    answers a dict keyed by destination field names.
+
+    WP4 4.2 item R7. Two measured defects, both silent.
+
+    **It committed the user's unsaved work.** ``dataProvider().addAttributes()``
+    needs no edit session at all -- measured on 3.22.16, 3.44.15 and 4.0.3, the
+    column reaches the file with ``isEditable()`` False throughout -- so the
+    ``startEditing()``/``commitChanges()`` pair around it never committed the
+    columns. All it ever committed was whatever else was in the destination
+    layer's buffer, which is the user's own work. Measured: a destination layer
+    the user had in edit mode with one unsaved point, one Change element type
+    click, and that point was on disk with the layer out of edit mode -- saved
+    by a function whose name says it copies attributes. Same defect as the route
+    importer's f007, fixed the same way: both calls are gone, because there was
+    never anything here to commit.
+
+    **It blanked the values it could not make room for.** ``addAttributes()``
+    answers False on a read-only file and on a duplicate column name (measured,
+    all three legs). When it did, ``dst_map`` was rebuilt without the new
+    columns and those values simply vanished from the result. Measured on a
+    read-only destination GeoPackage: ``vals`` came back ``{'naziv': 'pole 7'}``
+    where the source feature had ``operator='Telekom'``; the element was moved
+    with its columns blanked, the original deleted, and the message bar said
+    "Element changed to: OTB".
 
     Args:
-        src_feat: Source feature with attributes
-        dst_layer: Destination layer
+        src_feat: Source feature with attributes.
+        dst_layer: Destination layer.
+        errors: The :class:`OperationErrors` collecting the operation this is
+            part of. ``None`` builds a local one and reports before returning,
+            so a caller that has not been threaded through yet still surfaces a
+            line rather than losing it.
 
     Returns:
-        dict: Attribute values keyed by destination field names
+        dict: Attribute values keyed by destination field names.
     """
+    own_errors = errors is None
+    if own_errors:
+        errors = OperationErrors(QCoreApplication.translate('FiberQLayers', _COPY_TITLE))
+    try:
+        return _copy_attributes(src_feat, dst_layer, errors)
+    finally:
+        if own_errors:
+            errors.report()
+
+
+def _copy_attributes(src_feat, dst_layer, errors):
+    """The body of :func:`_copy_attributes_between_layers`, with a collector."""
+    name = dst_layer.name()
     # Normalized field name maps
     src_map = {_normalize_name(f.name()): f for f in src_feat.fields()}
     dst_map = {_normalize_name(f.name()): f for f in dst_layer.fields()}
@@ -288,15 +351,22 @@ def _copy_attributes_between_layers(src_feat, dst_layer):
         for i in pk_idxs:
             if 0 <= i < dst_layer.fields().count():
                 skip.add(_normalize_name(dst_layer.fields()[i].name()))
-    except Exception as e:
-        logger.debug(f"Error in _copy_attributes_between_layers: {e}")
+    except (AttributeError, RuntimeError, TypeError) as exc:
+        # The fid/id/gid guess stands, because it is better than nothing -- but
+        # a destination whose key is called something else will have that key
+        # copied into it, and the insert then fails on exactly the primary-key
+        # conflict this skip list exists to prevent.
+        errors.add(name, safe_format(QCoreApplication.translate('FiberQLayers', _PK_UNREADABLE),
+                                     _PK_UNREADABLE, name=name) + f" ({describe(exc)})")
 
     # Allow schema change only for local/OGR/memory style providers
     prov = ""
     try:
         prov = (dst_layer.providerType() or "").lower()
-    except Exception as e:
-        logger.debug(f"Error in _copy_attributes_between_layers: {e}")
+    except (AttributeError, RuntimeError, TypeError) as exc:
+        errors.add(name, safe_format(
+            QCoreApplication.translate('FiberQLayers', _PROVIDER_UNREADABLE),
+            _PROVIDER_UNREADABLE, name=name) + f" ({describe(exc)})")
     allow_schema_change = prov in ("ogr", "memory")
 
     # Add missing non-PK fields (only when allowed)
@@ -307,14 +377,20 @@ def _copy_attributes_between_layers(src_feat, dst_layer):
         if key not in dst_map:
             try:
                 to_add.append(QgsField(f.name(), f.type() if hasattr(f, "type") else QVariant.String))
-            except Exception:
+            except (AttributeError, TypeError, ValueError):
                 to_add.append(QgsField(f.name(), QVariant.String))
 
     if to_add and allow_schema_change:
-        dst_layer.startEditing()
-        dst_layer.dataProvider().addAttributes(to_add)
+        # No edit session: addAttributes goes straight to the provider, and the
+        # startEditing/commitChanges pair that used to be here only ever
+        # committed the user's own buffered work. Measured on all three legs.
+        if not dst_layer.dataProvider().addAttributes(to_add):
+            errors.add(name, safe_format(
+                QCoreApplication.translate('FiberQLayers', _NO_COLUMNS_ADDED), _NO_COLUMNS_ADDED,
+                columns=", ".join(f.name() for f in to_add), name=name))
+        # updateFields and the rebuild run either way, so the values that CAN
+        # be written still are.
         dst_layer.updateFields()
-        dst_layer.commitChanges()
         dst_map = {_normalize_name(f.name()): f for f in dst_layer.fields()}
 
     # Build attribute dict (skip PK fields)
@@ -325,8 +401,10 @@ def _copy_attributes_between_layers(src_feat, dst_layer):
         if key in dst_map:
             try:
                 vals[dst_map[key].name()] = src_feat[f.name()]
-            except Exception as e:
-                logger.debug(f"Error in _copy_attributes_between_layers: {e}")
+            except (KeyError, TypeError) as exc:
+                errors.add(name, safe_format(
+                    QCoreApplication.translate('FiberQLayers', _VALUE_UNREADABLE),
+                    _VALUE_UNREADABLE, column=f.name()) + f" ({describe(exc)})")
     return vals
 
 
