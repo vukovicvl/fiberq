@@ -432,12 +432,54 @@ def test_a_merge_inside_the_user_s_session_says_it_is_not_saved_yet(
 # ---------------------------------------------------------------------------
 
 def test_a_route_layer_without_the_length_columns_is_reported_not_a_traceback(
-        manager, project, tmp_path):
+        manager, project, tmp_path, monkeypatch):
     """``QgsFeature.setAttribute`` RAISES KeyError for a column that is not
-    there -- it does not answer False (measured on all three legs). A read-only
-    Route layer cannot gain the columns ``_ensure_route_fields`` tries to add,
-    so this used to end with a bare ``KeyError: 'duzina'`` and no message."""
+    there -- it does not answer False (measured on all three legs). A Route
+    layer that cannot gain the columns ``_ensure_route_fields`` tries to add
+    used to end the merge with a bare ``KeyError: 'duzina'`` and no message.
+
+    ``addAttributes`` is made to refuse rather than the file being chmod-ed:
+    the qgis/qgis containers run as **root** in CI, root ignores permission
+    bits, and the chmod version of this test added the columns quite happily
+    there and failed on all three legs. Same reason
+    ``tests/test_change_element_type.py`` monkeypatches instead.
+    """
     path = str(tmp_path / "bare.gpkg")
+    mem = QgsVectorLayer("LineString?crs=EPSG:3857", "Route", "memory")
+    mem.dataProvider().addAttributes([QgsField("naziv", QVariant.String)])
+    mem.updateFields()
+    for wkt in ("LineString (0 0, 10 0)", "LineString (10 0, 20 0)"):
+        feature = QgsFeature(mem.fields())
+        feature.setGeometry(QgsGeometry.fromWkt(wkt))
+        feature.setAttribute("naziv", "bare")
+        assert mem.dataProvider().addFeatures([feature])[0]
+    options = QgsVectorFileWriter.SaveVectorOptions()
+    options.driverName = "GPKG"
+    options.layerName = "Route"
+    assert QgsVectorFileWriter.writeAsVectorFormatV3(
+        mem, path, QgsCoordinateTransformContext(), options)[0] == 0
+
+    layer = QgsVectorLayer(f"{path}|layername=Route", "Route", "ogr")
+    assert layer.isValid()
+    project.addMapLayer(layer)
+    monkeypatch.setattr(layer.dataProvider(), "addAttributes", lambda *a, **k: False)
+    _select_all(layer)
+
+    manager.merge_all_routes()  # must not raise
+
+    assert manager.iface.bar.warnings, "a read-only Route layer produced no message at all"
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores the write bit")
+def test_a_read_only_route_layer_for_real(manager, project, tmp_path):
+    """The same thing without the patch, for anyone running as themselves.
+
+    The pair is the house pattern -- see ``tests/test_gpkg_target.py``. The
+    monkeypatched test above runs everywhere including CI, where the containers
+    are root; this one exercises the real refusal and skips where it would be
+    a lie.
+    """
+    path = str(tmp_path / "ro.gpkg")
     mem = QgsVectorLayer("LineString?crs=EPSG:3857", "Route", "memory")
     mem.dataProvider().addAttributes([QgsField("naziv", QVariant.String)])
     mem.updateFields()

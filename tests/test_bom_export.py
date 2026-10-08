@@ -221,10 +221,49 @@ def test_a_report_with_nothing_to_complain_about_says_nothing(project):
 # the writers
 # ---------------------------------------------------------------------------
 
-def test_a_read_only_target_is_reported_instead_of_raising(project, tmp_path, modals):
+def test_a_read_only_target_is_reported_instead_of_raising(
+        project, tmp_path, modals, monkeypatch):
     """Measured: ``PermissionError`` out of a Qt slot, into QGIS's blocking
     "Python error" dialog, which ``open_bom_dialog``'s own try/except never
-    saw because the BOM dialog is the active modal widget."""
+    saw because the BOM dialog is the active modal widget.
+
+    The refusal is injected rather than created with ``chmod``, and that is not
+    squeamishness: the qgis/qgis containers run as **root** in CI, root ignores
+    permission bits, and the first version of this test wrote the file quite
+    happily there and failed on all three legs. A test whose premise depends on
+    the uid it runs under is a test that only holds where you happened to try
+    it. ``tests/test_change_element_type.py`` says the same thing about a
+    chmod-444 GeoPackage behaving differently on the 3.22 floor.
+    """
+    _cables(project, [("LineString (0 0, 100 0)", {"duzina_m": 100.0})])
+    dialog = _dialog(project)
+
+    import fiberq.dialogs.bom_dialog as bom
+    path = str(tmp_path / "bom.csv")
+
+    def refuse(*args, **kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setitem(bom.__dict__, "open", refuse)
+
+    assert dialog._export_csv(path) is False  # must not raise
+
+    assert modals["critical"], "a failed export said nothing"
+    assert not modals["info"], f"a failed export claimed success: {modals['info']}"
+    assert path in modals["critical"][0], modals["critical"]
+    assert "Permission denied" in modals["critical"][0], (
+        f"the operating system's half of the story was dropped: {modals['critical']}")
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores the write bit")
+def test_a_read_only_target_for_real(project, tmp_path, modals):
+    """The same thing without the patch, for anyone running as themselves.
+
+    The pair is the house pattern -- see ``tests/test_gpkg_target.py``. The
+    monkeypatched test above runs everywhere including CI, where the containers
+    are root; this one exercises the real operating-system refusal for a
+    developer running as a normal user, and skips where it would be a lie.
+    """
     _cables(project, [("LineString (0 0, 100 0)", {"duzina_m": 100.0})])
     dialog = _dialog(project)
 
@@ -239,7 +278,6 @@ def test_a_read_only_target_is_reported_instead_of_raising(project, tmp_path, mo
 
     assert modals["critical"], "a failed export said nothing"
     assert not modals["info"], f"a failed export claimed success: {modals['info']}"
-    assert path in modals["critical"][0], modals["critical"]
 
 
 def test_a_write_that_fails_part_way_does_not_leave_a_half_written_file(

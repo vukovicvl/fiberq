@@ -159,13 +159,18 @@ def test_a_failed_export_does_not_re_run_the_whole_export(wrapper):
 
     **This is a source assertion, and it is one on purpose.** The behaviour
     version -- drive the wrapper with a manager that raises and count the
-    dialogs -- cannot be shown red: against a tree with the fix reverted, the
-    fallback reaches a modal that an offscreen run never answers, and the test
-    hangs instead of failing. A hanging test proves nothing, slowly, and a test
-    whose red I cannot demonstrate is exactly what this branch has spent its
-    time removing. So the claim is checked the way the error-handling ratchet
-    checks its claims: on the parsed source, which is deterministic and does go
-    red. The reporting behaviour has its own test below.
+    dialogs -- cannot be shown red: against a tree with the fix reverted the
+    fallback blocks on a modal that an offscreen run never answers, so the test
+    hangs instead of failing. Located with ``faulthandler`` rather than guessed
+    at: the blocking frame is ``main_plugin.py:3742`` in the deleted
+    ``_export_active_layer``, a ``QMessageBox.warning`` on the
+    "Please select an active vector layer before exporting." path.
+
+    A hanging test proves nothing, slowly, and a test whose red cannot be
+    demonstrated is exactly what this branch has spent its time removing. So the
+    claim is checked the way the error-handling ratchet checks its own: on the
+    parsed source, which is deterministic and does go red. The reporting
+    behaviour has its own test below.
     """
     import ast
     import inspect
