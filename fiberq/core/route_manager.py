@@ -101,6 +101,20 @@ _IN_BUFFER = 'in-buffer'
 _NOT_WRITTEN = 'not-written'
 _DUPLICATED = 'duplicated'
 
+_RETAG_OK = QT_TRANSLATE_NOOP(
+    'FiberQRoutes', "Route type has been changed to '{type}' for {count} route(s).")
+_RETAG_NONE = QT_TRANSLATE_NOOP(
+    'FiberQRoutes',
+    "This Route layer has no {column} column, so there is nowhere to record a route type. Save the"
+    " project to a GeoPackage, or add the column to the layer, and try again.")
+_RETAG_REFUSED = QT_TRANSLATE_NOOP(
+    'FiberQRoutes', "{count} of the selected routes would not take the new type")
+_RETAG_UNSAVED = QT_TRANSLATE_NOOP(
+    'FiberQRoutes',
+    "The Route layer was already in edit mode, so this change is not saved yet. Use Layer > Save"
+    " Layer Edits when you are ready.")
+_CMD_RETAG = QT_TRANSLATE_NOOP('FiberQRoutes', "Change route type")
+
 _CMD_ADD = QT_TRANSLATE_NOOP('FiberQRoutes', "Add merged route")
 _CMD_REMOVE = QT_TRANSLATE_NOOP('FiberQRoutes', "Remove merged routes")
 
@@ -917,23 +931,59 @@ class RouteManager:
             return
         tip_trase = ROUTE_LABEL_TO_CODE.get(tip_label, ROUTE_TYPE_OPTIONS[0])
 
-        # Update all selected features
-        route_layer.startEditing()
-        count = 0
+        # The column has to exist before an edit session is worth opening.
+        # Measured on 3.22.16, 3.44.15 and 4.0.3: on a Route layer whose only
+        # columns are fid and naziv, indexFromName answers -1,
+        # changeAttributeValue(fid, -1, value) answers False for every feature,
+        # commitChanges() then SUCCEEDS because there is nothing to commit, and
+        # the user was told "Route type has been changed to 'Underground' for 2
+        # route(s)." Nothing had changed and nothing was said.
         idx_tip = route_layer.fields().indexFromName("tip_trase")
-        for feat in selected_feats:
-            route_layer.changeAttributeValue(feat.id(), idx_tip, tip_trase)
-            count += 1
+        if idx_tip < 0:
+            QMessageBox.warning(
+                self.iface.mainWindow(), "FiberQ",
+                safe_format(QCoreApplication.translate('FiberQRoutes', _RETAG_NONE),
+                            _RETAG_NONE, column="tip_trase"))
+            return
 
-        route_layer.commitChanges()
-        self.stylize_route_layer(route_layer)
+        with OperationErrors(QCoreApplication.translate('FiberQRoutes', _CMD_RETAG),
+                             self.iface) as errors:
+            was_editing = route_layer.isEditable()
+            if not was_editing and not route_layer.startEditing():
+                errors.add(route_layer.name(), QCoreApplication.translate(
+                    'FiberQRoutes', _NOT_EDITABLE))
+                return
 
-        tip_label_display = ROUTE_TYPE_LABELS.get(tip_trase, tip_trase)
-        QMessageBox.information(
-            self.iface.mainWindow(),
-            "Change route type",
-            f"Route type has been changed to '{tip_label_display}' for {count} route(s)."
-        )
+            route_layer.beginEditCommand(QCoreApplication.translate('FiberQRoutes', _CMD_RETAG))
+            count = 0
+            refused = 0
+            for feat in selected_feats:
+                if route_layer.changeAttributeValue(feat.id(), idx_tip, tip_trase):
+                    count += 1
+                else:
+                    refused += 1
+            route_layer.endEditCommand()
+            if refused:
+                errors.add(route_layer.name(), safe_format(
+                    QCoreApplication.translate('FiberQRoutes', _RETAG_REFUSED),
+                    _RETAG_REFUSED, count=refused))
+
+            saved = None
+            if not was_editing:
+                saved = check_commit(route_layer, errors)
+            self.stylize_route_layer(route_layer)
+
+            if saved is False or not count:
+                # Nothing reached the file, so there is nothing to announce.
+                # check_commit has already put the provider's reason on the bar.
+                return
+
+            tip_label_display = ROUTE_TYPE_LABELS.get(tip_trase, tip_trase)
+            lines = [safe_format(QCoreApplication.translate('FiberQRoutes', _RETAG_OK),
+                                 _RETAG_OK, type=tip_label_display, count=count)]
+            if saved is None:
+                lines.append(QCoreApplication.translate('FiberQRoutes', _RETAG_UNSAVED))
+            QMessageBox.information(self.iface.mainWindow(), "FiberQ", "\n".join(lines))
 
 
 # Export constants for backward compatibility

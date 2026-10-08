@@ -461,3 +461,120 @@ def test_a_route_layer_without_the_length_columns_is_reported_not_a_traceback(
     manager.merge_all_routes()  # must not raise
 
     assert manager.iface.bar.warnings, "a read-only Route layer produced no message at all"
+
+
+# ---------------------------------------------------------------------------
+# Change route type -- the same defect family, a quieter failure
+# ---------------------------------------------------------------------------
+
+def _retag(manager, monkeypatch, label="Underground"):
+    """Answer the route-type prompt and run Change route type."""
+    monkeypatch.setattr("fiberq.core.route_manager.QInputDialog.getItem",
+                        staticmethod(lambda *a, **k: (label, True)))
+    manager.change_route_type()
+
+
+def test_retagging_a_route_layer_without_the_column_is_refused_not_announced(
+        manager, project, tmp_path, monkeypatch, quiet_dialogs):
+    """Measured on all three legs, on a Route layer whose only columns are fid
+    and naziv: ``indexFromName`` answered -1, ``changeAttributeValue(fid, -1,
+    value)`` answered False for every feature, ``commitChanges()`` then
+    SUCCEEDED because there was nothing to commit, and the user was told
+    "Route type has been changed to 'Underground' for 2 route(s)."
+    """
+    path = str(tmp_path / "bare.gpkg")
+    mem = QgsVectorLayer("LineString?crs=EPSG:3857", "Route", "memory")
+    mem.dataProvider().addAttributes([QgsField("naziv", QVariant.String)])
+    mem.updateFields()
+    for wkt in ("LineString (0 0, 10 0)", "LineString (10 0, 20 0)"):
+        feature = QgsFeature(mem.fields())
+        feature.setGeometry(QgsGeometry.fromWkt(wkt))
+        feature.setAttribute("naziv", "bare")
+        assert mem.dataProvider().addFeatures([feature])[0]
+    options = QgsVectorFileWriter.SaveVectorOptions()
+    options.driverName = "GPKG"
+    options.layerName = "Route"
+    assert QgsVectorFileWriter.writeAsVectorFormatV3(
+        mem, path, QgsCoordinateTransformContext(), options)[0] == 0
+
+    layer = QgsVectorLayer(f"{path}|layername=Route", "Route", "ogr")
+    project.addMapLayer(layer)
+    _select_all(layer)
+
+    _retag(manager, monkeypatch)
+
+    said = " ".join(quiet_dialogs)
+    assert "has been changed" not in said, f"a change was announced that never happened: {said!r}"
+    assert "tip_trase" in said, f"the missing column is the useful part of the message: {said!r}"
+    # Refusing rather than adding the column is the deliberate choice: the user
+    # asked to re-tag routes, not to alter the layer's schema.
+    con = sqlite3.connect(path)
+    try:
+        columns = [row[1] for row in con.execute('PRAGMA table_info("Route")')]
+    finally:
+        con.close()
+    assert "tip_trase" not in columns, (
+        f"the layer's schema was changed behind the user's back: {columns}")
+
+
+def test_a_refused_retag_does_not_claim_the_type_changed(
+        manager, project, tmp_path, monkeypatch, quiet_dialogs):
+    path = str(tmp_path / "routes.gpkg")
+    layer = _gpkg_route_layer(path, ["LineString (0 0, 10 0)", "LineString (10 0, 20 0)"])
+    project.addMapLayer(layer)
+    _block(path, "update")
+    _select_all(layer)
+
+    _retag(manager, monkeypatch)
+
+    assert not any("has been changed" in text for text in quiet_dialogs), (
+        f"the retag was refused by the file and still announced: {quiet_dialogs}")
+    assert manager.iface.bar.warnings, "nothing was said about the refusal"
+
+    con = sqlite3.connect(path)
+    try:
+        types = [row[0] for row in con.execute('SELECT tip_trase FROM "Route" ORDER BY fid')]
+    finally:
+        con.close()
+    assert types == ["vazdusna", "vazdusna"], f"the file should be untouched, found {types}"
+
+
+def test_a_retag_that_works_reaches_the_file(
+        manager, project, tmp_path, monkeypatch, quiet_dialogs):
+    """Characterisation of the happy path: it worked before and must keep
+    working. It passes against the pre-fix code too."""
+    path = str(tmp_path / "routes.gpkg")
+    layer = _gpkg_route_layer(path, ["LineString (0 0, 10 0)", "LineString (10 0, 20 0)"])
+    project.addMapLayer(layer)
+    _select_all(layer)
+
+    _retag(manager, monkeypatch)
+
+    con = sqlite3.connect(path)
+    try:
+        types = [row[0] for row in con.execute('SELECT tip_trase FROM "Route" ORDER BY fid')]
+    finally:
+        con.close()
+    assert types == ["podzemna", "podzemna"], types
+    assert any("has been changed" in text for text in quiet_dialogs), quiet_dialogs
+
+
+def test_a_retag_does_not_save_the_user_s_other_unsaved_edits(
+        manager, project, tmp_path, monkeypatch):
+    path = str(tmp_path / "routes.gpkg")
+    layer = _gpkg_route_layer(path, ["LineString (0 0, 10 0)", "LineString (10 0, 20 0)"])
+    project.addMapLayer(layer)
+
+    layer.startEditing()
+    theirs = QgsFeature(layer.fields())
+    theirs.setGeometry(QgsGeometry.fromWkt("LineString (100 100, 110 100)"))
+    theirs.setAttribute("naziv", "the user's unsaved route")
+    assert layer.addFeature(theirs)
+
+    layer.selectByIds([1, 2])
+    _retag(manager, monkeypatch)
+
+    names = [name for _fid, name in _on_disk(path)]
+    assert "the user's unsaved route" not in names, (
+        f"the retag committed the user's own unsaved work: {names}")
+    assert layer.isEditable(), "the user's edit session was closed for them"
