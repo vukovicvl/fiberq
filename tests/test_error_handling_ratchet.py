@@ -138,15 +138,21 @@ CRITICAL = {
         "CanvasImageClickWatcher._show_picture_under",
         "CanvasImageClickWatcher.eventFilter",
     }),
-    # R5
+    # R5. save_color_catalogs held TWO swallows -- one on the delegation, one
+    # on the duplicate write it fell through to -- and the gate watched neither.
     "fiberq/core/color_manager.py": frozenset({
         "ColorManager.load_color_catalogs",
+        "ColorManager.save_color_catalogs",
     }),
-    # R5
+    # R5. save_latent and save_color_catalogs were never in here, so half the
+    # defect was never watched: the gate saw the relations save and neither of
+    # the other two, although all three had the identical swallow.
     "fiberq/core/data_manager.py": frozenset({
         "DataManager.load_color_catalogs",
         "DataManager.load_latent",
         "DataManager.load_relations",
+        "DataManager.save_color_catalogs",
+        "DataManager.save_latent",
         "DataManager.save_relations",
     }),
     # U6: the pure pre-flight and naming rules both export paths depend on
@@ -182,10 +188,23 @@ CRITICAL = {
         "_copy_attributes",
         "_copy_attributes_between_layers",
     }),
-    # R5
+    # R5: the one module in core/ that is allowed to touch QgsProject, because
+    # the store IS the project. It owns the whole read-parse-default policy that
+    # used to be written out four times, so a silent handler here would put the
+    # defect back in all twelve places at once.
+    "fiberq/core/project_store.py": frozenset({
+        "quarantine_unreadable",
+        "read_json_entry",
+        "write_json_entry",
+        "_report",
+        "_report_write",
+    }),
+    # R5. Same gap on the save side as data_manager's.
     "fiberq/core/relations_manager.py": frozenset({
         "RelationsManager.load_latent",
         "RelationsManager.load_relations",
+        "RelationsManager.save_latent",
+        "RelationsManager.save_relations",
     }),
     # R6, R7
     "fiberq/core/route_manager.py": frozenset({
@@ -293,16 +312,6 @@ ALLOWED_SILENT = {
      "FiberQPlugin.export_selected_features"): (1, "R3 Export active layer -- fix/wp4-write-paths"),
     ("fiberq/dialogs/bom_dialog.py",
      "_BOMDialog._build"): (2, "R4 BOM export -- fix/wp4-write-paths"),
-    ("fiberq/core/color_manager.py",
-     "ColorManager.load_color_catalogs"): (1, "R5 Relations, latent elements, colour catalogues -- fix/wp4-write-paths"),
-    ("fiberq/core/data_manager.py",
-     "DataManager.save_relations"): (1, "R5 Relations, latent elements, colour catalogues -- fix/wp4-write-paths"),
-    ("fiberq/core/relations_manager.py",
-     "RelationsManager.load_latent"): (1, "R5 Relations, latent elements, colour catalogues -- fix/wp4-write-paths"),
-    ("fiberq/core/relations_manager.py",
-     "RelationsManager.load_relations"): (1, "R5 Relations, latent elements, colour catalogues -- fix/wp4-write-paths"),
-    ("fiberq/main_plugin.py",
-     "FiberQPlugin._save_color_catalogs"): (1, "R5 Relations, latent elements, colour catalogues -- fix/wp4-write-paths"),
     ("fiberq/core/undo_manager.py",
      "FiberQUndoManager._add_feature"): (1, "R7 Merge, change type, delete selected, undo/redo -- fix/wp4-write-paths"),
     ("fiberq/main_plugin.py",
@@ -349,12 +358,16 @@ ALLOWED_WRITES = {
 #: a narrow rule would leave a free lane open. On the same two trees the wider
 #: rule gives 830 and 816, and this branch took it to 786:
 #: R1, R2 and U6 between them hardened nineteen and deleted twelve along with
-#: the two duplicate GeoPackage exports. Branch 9 then took it to 752, one at a
-#: time, each in the commit that hardened the handler. The fall of 14
+#: the two duplicate GeoPackage exports. Branch 9 then took it down one commit
+#: at a time, each in the commit that hardened the handler, and the figure is
+#: always read off this gate's own failure message rather than computed in
+#: advance -- six concurrent plans for this branch each predicted a number from
+#: the 753 baseline and all six were wrong by the time they were written. The
+#: fall of 14
 #: from v1.5.0 is what branches 3 and 4 left behind
 #: when they rewrote the placement tools: handlers deleted with the code around
 #: them, less the few that ``length_sync.py`` brought in.
-SILENCE_CEILING = 749
+SILENCE_CEILING = 733
 
 
 # ---------------------------------------------------------------------------
@@ -615,13 +628,19 @@ def test_d_package_wide_silence_does_not_grow():
 #: deleting a line from CRITICAL removes a whole operation from this gate with
 #: nothing in fiberq/ changing -- and that diff looks exactly like the one
 #: section 2.2 sanctions, where a branch deletes its own allowance rows.
-#: 100 after branch 9 split two hardened functions into smaller ones and named
-#: every piece: RouteManager._chain_selected_routes, ._set_merged_attributes and
-#: ._write_merged_route out of merge_all_routes, and layer_manager._copy_attributes
-#: out of _copy_attributes_between_layers. No R-row moved; the code those rows
-#: cover is simply in more functions than before, and all of them are above.
-HARDENED_FUNCTIONS = 100
-HARDENED_FILES = 19
+#: 110 in 20 files after branch 9, and every one of the fourteen is a WIDENING.
+#: Four came from splitting two hardened functions and naming every piece
+#: (RouteManager._chain_selected_routes, ._set_merged_attributes,
+#: ._write_merged_route; layer_manager._copy_attributes). Five are the new
+#: core/project_store.py, which owns the whole read-parse-default policy R5
+#: used to have written out four times -- a silent handler there would put the
+#: defect back in all twelve places at once. The other five close a hole this
+#: gate had from the start: DataManager.save_latent, .save_color_catalogs,
+#: RelationsManager.save_latent, .save_relations and
+#: ColorManager.save_color_catalogs were never named, although each held the
+#: same swallow as the one save the gate did watch. No R-row moved.
+HARDENED_FUNCTIONS = 110
+HARDENED_FILES = 20
 
 
 def test_the_hardened_set_is_not_quietly_narrowed():

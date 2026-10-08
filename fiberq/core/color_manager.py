@@ -8,16 +8,19 @@ This module provides color catalog management functionality:
 - Color catalog manager dialog
 """
 
-import json
 from typing import Optional, List, Dict, Any
 
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
 from qgis.PyQt.QtWidgets import QMessageBox
 
-from qgis.core import QgsProject
 
 # Phase 5.2: Logging
+from .project_store import read_json_entry, write_json_entry
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
+
+#: WP4 4.2 item R5. See fiberq.core.project_store.
+_CATALOGS = QT_TRANSLATE_NOOP('FiberQStore', "Colour catalogues")
 
 
 class ColorManager:
@@ -104,46 +107,38 @@ class ColorManager:
 
         Returns:
             Dict with 'catalogs' key containing list of color catalogs
+
+        WP4 4.2 item R5. This is the one of the three that was most dangerous
+        to lose, because the fallback is the built-in TIA-598-C list rather than
+        an empty one: the manager opened looking exactly like a correct fresh
+        install, so the user had nothing to suspect. Measured through this entry
+        point -- a truncated entry returned the built-in list with an empty
+        message bar, and the following save removed the user's 'MyShop-24' from
+        the project file.
         """
-        # Try DataManager first
         if self.data_manager:
-            try:
-                return self.data_manager.load_color_catalogs()
-            except Exception as e:
-                logger.debug(f"Error in ColorManager.load_color_catalogs: {e}")
+            return self.data_manager.load_color_catalogs()
+        return read_json_entry(
+            'StuboviPlugin', self.COLOR_CATALOGS_KEY,
+            {"catalogs": self.get_default_color_sets()},
+            QCoreApplication.translate('FiberQStore', _CATALOGS),
+            expect="catalogs", iface=self.iface)
 
-        # Fallback: direct project access
-        s = QgsProject.instance().readEntry('StuboviPlugin', self.COLOR_CATALOGS_KEY, '')[0]
-        if not s:
-            return {"catalogs": self.get_default_color_sets()}
-        try:
-            obj = json.loads(s)
-            if not isinstance(obj, dict) or "catalogs" not in obj:
-                obj = {"catalogs": self.get_default_color_sets()}
-            return obj
-        except Exception:
-            return {"catalogs": self.get_default_color_sets()}
-
-    def save_color_catalogs(self, data: Dict[str, Any]) -> None:
+    def save_color_catalogs(self, data: Dict[str, Any]) -> bool:
         """
-        Save color catalogs to project storage.
+        Save color catalogs to project storage. True when it got there.
+
+        The old shape swallowed a failed delegation and fell through to a
+        duplicate write on the same key, whose own failure was swallowed again.
 
         Args:
             data: Dict with 'catalogs' key containing list of color catalogs
         """
-        # Try DataManager first
         if self.data_manager:
-            try:
-                self.data_manager.save_color_catalogs(data)
-                return
-            except Exception as e:
-                logger.debug(f"Error in ColorManager.save_color_catalogs: {e}")
-
-        # Fallback: direct project access
-        try:
-            QgsProject.instance().writeEntry('StuboviPlugin', self.COLOR_CATALOGS_KEY, json.dumps(data))
-        except Exception as e:
-            logger.debug(f"Error in ColorManager.save_color_catalogs: {e}")
+            return self.data_manager.save_color_catalogs(data)
+        return write_json_entry(
+            'StuboviPlugin', self.COLOR_CATALOGS_KEY, data,
+            QCoreApplication.translate('FiberQStore', _CATALOGS), iface=self.iface)
 
     # -------------------------------------------------------------------------
     # Color code listing

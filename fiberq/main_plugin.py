@@ -2383,21 +2383,29 @@ class FiberQPlugin:
         return []
 
     def _load_color_catalogs(self):
-        """Load color catalogs."""
+        """Load color catalogs. See :mod:`fiberq.core.project_store` (R5).
+
+        The handler that used to be here had its own default of
+        ``{"catalogs": []}`` -- EMPTY, where the layer below falls back to the
+        built-in TIA-598-C list. So the two disagreed about what a failure looks
+        like, and this is the method the colour dialog actually calls: the
+        dialog opened with an empty list and its Save then wrote
+        ``{"catalogs": []}`` over whatever was there.
+        """
         if self.color_manager:
-            try:
-                return self.color_manager.load_color_catalogs()
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._load_color_catalogs: {e}")
+            return self.color_manager.load_color_catalogs()
         return {"catalogs": []}
 
     def _save_color_catalogs(self, data):
-        """Save color catalogs."""
+        """Save color catalogs. True when the entry reached the project.
+
+        The colour dialog calls this immediately before ``accept()``, so the
+        discarded result meant the dialog closed as though the catalogue the
+        user had just built were saved.
+        """
         if self.color_manager:
-            try:
-                self.color_manager.save_color_catalogs(data)
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._save_color_catalogs: {e}")
+            return self.color_manager.save_color_catalogs(data)
+        return False
 
     def _list_color_codes(self):
         """List color codes."""
@@ -2611,21 +2619,22 @@ class FiberQPlugin:
         return "Relacije/relations_v1"
 
     def _load_relations(self):
-        """Load relations."""
+        """Load relations. See :mod:`fiberq.core.project_store` (R5)."""
         if self.relations_manager:
-            try:
-                return self.relations_manager.load_relations()
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._load_relations: {e}")
+            return self.relations_manager.load_relations()
         return {"relations": []}
 
     def _save_relations(self, data):
-        """Save relations."""
+        """Save relations. True when the entry reached the project.
+
+        The relations dialog calls this from four separate user actions -- new
+        relation, deleted relation, cables assigned, cables removed -- and
+        refreshes from its own in-memory copy either way, so all four could
+        fail with no message and no sign in the dialog.
+        """
         if self.relations_manager:
-            try:
-                self.relations_manager.save_relations(data)
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._save_relations: {e}")
+            return self.relations_manager.save_relations(data)
+        return False
 
     def _relation_by_id(self, data, rid):
         """Get relation by ID."""
@@ -2655,21 +2664,16 @@ class FiberQPlugin:
         return "LatentElements/latent_v1"
 
     def _load_latent(self):
-        """Load latent elements."""
+        """Load latent elements. See :mod:`fiberq.core.project_store` (R5)."""
         if self.relations_manager:
-            try:
-                return self.relations_manager.load_latent()
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._load_latent: {e}")
+            return self.relations_manager.load_latent()
         return {"cables": {}}
 
     def _save_latent(self, data):
-        """Save latent elements."""
+        """Save latent elements. True when the entry reached the project."""
         if self.relations_manager:
-            try:
-                self.relations_manager.save_latent(data)
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin._save_latent: {e}")
+            return self.relations_manager.save_latent(data)
+        return False
 
     def _cable_key(self, layer_id, fid):
         """Generate cable key."""
