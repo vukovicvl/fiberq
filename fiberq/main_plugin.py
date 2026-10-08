@@ -3933,10 +3933,21 @@ class FiberQPlugin:
                         "ends could not be checked."))
             return
 
-        # Counted outside the block, because it is read outside it: a project
-        # whose Route or Poles layer is missing skips the whole body, and
-        # assigning this only inside was an UnboundLocalError on exactly those
-        # projects.
+        # Counted outside the block below, because it is read outside it. That
+        # was load-bearing when R10 wrote it: a project with no Route layer, or
+        # none of Poles and Manholes, skipped the whole body, and assigning this
+        # only inside raised UnboundLocalError on exactly those projects.
+        #
+        # U15's early returns above now answer both of those projects before
+        # this line is reached, so the guard below can no longer be false and
+        # this assignment is belt and braces -- kept because it costs nothing,
+        # and because it is what keeps the read at the end of this function safe
+        # if either early return is ever relaxed to warn-and-continue. It is NOT
+        # pinned by a test any more and cannot be: no reachable project makes
+        # the guard false. The two tests that claimed to pin it passed with the
+        # regression reinstated (proved by mutation) and duplicated the pair
+        # that checks the messages, so they were deleted rather than left to
+        # look like protection.
         without_geometry = 0
 
         if route_layer and (poles_layer or manholes_layer):

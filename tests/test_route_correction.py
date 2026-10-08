@@ -533,27 +533,6 @@ def test_a_clean_route_reports_no_errors(plugin, project, quiet_dialogs, shown):
     assert any("No errors found" in str(m) for m in quiet_dialogs)
 
 
-def test_a_project_with_no_route_layer_does_not_raise(plugin, project, quiet_dialogs, shown):
-    """The counter is read outside the block that fills it.
-
-    Assigning it only inside was an UnboundLocalError on exactly the projects
-    that skip the body -- no Route layer, or no Poles and no Manholes.
-    """
-    _points(project, "Poles", [(0, 0)])
-
-    plugin.check_consistency()
-
-    assert not shown
-
-
-def test_a_project_with_no_pole_or_manhole_layer_does_not_raise(plugin, project, quiet_dialogs, shown):
-    _route(project, [_straight(0, 0, 100, 0)])
-
-    plugin.check_consistency()
-
-    assert not shown
-
-
 # ---------------------------------------------------------------------------
 # U15: the logic
 # ---------------------------------------------------------------------------
