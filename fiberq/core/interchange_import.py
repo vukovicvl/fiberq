@@ -236,7 +236,9 @@ class InterchangeBundleReader:
             actual = fm.actual_field(target_fields.names(), stored) if stored else ""
             if not actual:
                 if value is not None and str(value) != "":
-                    extras[name] = value
+                    # U19 / FU-9. The raw provider value used to go in here and
+                    # json.dumps raised on a QDate, ending the import halfway.
+                    extras[name] = ic.json_safe(value)
                 continue
             attributes[actual] = fm.stored_value(roster, name, value)
         return attributes, extras
@@ -366,7 +368,13 @@ class InterchangeBundleReader:
             if canonical is None:
                 self._keep_unsupported(feature, fq_type, placement, passthrough, result)
                 continue
-            by_target.setdefault(canonical, []).append(feature)
+            # U19. layer_for_type falls back to the placement-less layer when it
+            # does not model this exact placement -- right, but the value is
+            # still the user's data (spec 6.1: placement is an attribute, not a
+            # type). Carried in the feature's extras so it survives the round
+            # trip instead of vanishing into a NULL column.
+            kept = None if ic.placement_is_modelled(fq_type, placement) else placement
+            by_target.setdefault(canonical, []).append((feature, kept))
 
         for canonical, features in by_target.items():
             target = self._ensure_layer(canonical, result)
@@ -394,7 +402,7 @@ class InterchangeBundleReader:
             pending = []
             extras_by_uuid = {}
             unreprojectable = 0
-            for feature in features:
+            for feature, kept_placement in features:
                 identity = self._text(feature, FIBERQ_UUID_FIELD)
                 if identity and identity in present:
                     result.already_present += 1
@@ -410,6 +418,9 @@ class InterchangeBundleReader:
                     unreprojectable += 1
                     continue
                 pending.append(built)
+                if kept_placement:
+                    extras = dict(extras or {})
+                    extras.setdefault("placement", kept_placement)
                 if extras and identity:
                     extras_by_uuid[identity] = extras
                 self._absorb_extra_json(feature, identity, extras_by_uuid)
@@ -478,8 +489,14 @@ class InterchangeBundleReader:
             value = feature.attribute(name)
             if value is None:
                 continue
-            attributes[name] = value if isinstance(
-                value, (str, int, float, bool)) else str(value)
+            # Was `str(value)` for anything non-primitive, which did not crash
+            # but wrote 'PyQt5.QtCore.QDate(2025, 3, 17)' into the payload --
+            # text no consumer of the format could read back. Same helper as
+            # the attribute path, so a type added later is handled in one place.
+            kept = ic.json_safe(value)
+            if kept is None:
+                continue
+            attributes[name] = kept
         geometry = feature.geometry()
         payload = {
             "fq_type": fq_type,

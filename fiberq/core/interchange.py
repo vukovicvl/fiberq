@@ -203,6 +203,71 @@ def can_read_format_version(value) -> bool:
     return theirs[0] == ours[0]
 
 
+#: ISO 8601 patterns for the Qt date/time classes, as format STRINGS.
+#:
+#: Not ``Qt.DateFormat.ISODate``: this module is deliberately free of QGIS and
+#: Qt imports (see the module docstring) and the enum would end that. The bare
+#: integer the enum carries is not portable either -- measured, PyQt5 accepts
+#: ``toString(1)`` and PyQt6 raises
+#: ``TypeError: argument 1 has unexpected type 'int'``. A format string works
+#: identically on 3.22.16, 3.40.15 and 4.2.3 and produces the same text the
+#: enum does.
+_ISO_PATTERNS = {
+    "QDate": "yyyy-MM-dd",
+    "QTime": "HH:mm:ss",
+    "QDateTime": "yyyy-MM-ddTHH:mm:ss",
+}
+
+
+def json_safe(value):
+    """``value`` as something :func:`json.dumps` accepts, losing nothing.
+
+    WP4 4.2 item U19, and the fix for FU-9. A bundle carrying a column this
+    plugin has no field for had its raw provider value put straight into the
+    passthrough extras and then ``json.dumps``-ed. For a date that is
+    ``TypeError: Object of type QDate is not JSON serializable`` -- raised
+    mid-import, so the project kept the tables read so far and lost the rest,
+    while the user saw only "Could not read the bundle: ...".
+
+    The coercion is by **type name**, not ``isinstance``, for the same reason
+    the patterns above are strings: naming ``QDate`` here would import Qt into a
+    module whose whole point is that the format rules can be checked without a
+    QGIS runtime. The names are exact, so nothing unrelated matches.
+
+    ``str(value)`` is not good enough for these: measured, it gives
+    ``'PyQt5.QtCore.QDate(2025, 3, 17)'``, which no consumer of the format could
+    read back. The ISO text round-trips.
+    """
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+
+    name = type(value).__name__
+
+    if name == "QVariant":
+        # The provider hands a NULL back as Python None on every supported
+        # version (measured), so this is for a QVariant built in code rather
+        # than read from a layer. Either way a null one is the format's None.
+        if value.isNull():
+            return None
+        inner = value.value()
+        return json_safe(inner) if inner is not value else str(value)
+
+    pattern = _ISO_PATTERNS.get(name)
+    if pattern is not None:
+        # A null QDate formats as the empty string, which would be
+        # indistinguishable from a real empty value. None says "absent".
+        return None if value.isNull() else value.toString(pattern)
+
+    if isinstance(value, (list, tuple)):
+        return [json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): json_safe(item) for key, item in value.items()}
+
+    # Anything else keeps its text rather than ending the import. Preserve,
+    # don't discard -- rule 1 of the format.
+    return str(value)
+
+
 def stable_uuid(*parts) -> str:
     """A deterministic identity derived from ``parts``.
 
@@ -240,6 +305,24 @@ def layer_for_type(fq_type: str, placement: Optional[str] = None) -> Optional[st
     if exact is not None:
         return exact
     return TYPE_TO_LAYER.get((fq_type, None))
+
+
+def placement_is_modelled(fq_type: str, placement: Optional[str]) -> bool:
+    """Does ``(fq_type, placement)`` name a layer of its own?
+
+    :func:`layer_for_type` deliberately falls back to the placement-less layer
+    so an ``otb`` from a tool that does not record placement still lands
+    somewhere sensible. That fallback is right, but it used to be *silent and
+    lossy*: measured, ``fq_type=otb`` with ``placement="wall"`` imported into
+    the plain OTB layer and re-exported with ``placement`` NULL and nothing in
+    ``fq_extra_json`` -- the value simply gone, with no warning.
+
+    Spec section 6.1 says placement is an attribute, not a type, so a value this
+    plugin has no separate layer for is still the user's data and travels in the
+    feature's extras. This answers the question the caller needs in order to
+    know that it must.
+    """
+    return placement is not None and (fq_type, placement) in TYPE_TO_LAYER
 
 
 def merge_metadata(existing: Dict[str, str], produced: Dict[str, str]) -> Dict[str, str]:
