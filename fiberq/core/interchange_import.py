@@ -41,6 +41,7 @@ from . import interchange as ic
 from . import interchange_fields as fm
 from .interchange_bundle import read_bundle_metadata
 from ..models import schema as fq_schema
+from ..utils.geometry import transformed
 from ..utils.logger import get_logger
 from ..utils.uuid_utils import FIBERQ_UUID_FIELD
 
@@ -241,14 +242,26 @@ class InterchangeBundleReader:
         return attributes, extras
 
     def _import_feature(self, bundle_feature, target, roster, transform):
-        """Copy one bundle feature into a FiberQ layer."""
+        """Copy one bundle feature into a FiberQ layer, or answer ``(None, None)``.
+
+        ``None`` means the feature could not be reprojected into the project's
+        CRS. U13: ``transform()`` does not raise for an out-of-domain
+        coordinate, it answers Success and leaves ``inf``, so the handler that
+        used to sit here caught nothing and the feature was imported with
+        infinite coordinates. The caller skips and counts those; importing a
+        feature nobody can draw, snap to or measure is worse than leaving it
+        out and saying so.
+        """
         feature = QgsFeature(target.fields())
         geometry = QgsGeometry(bundle_feature.geometry())
-        if transform is not None and not geometry.isNull():
-            try:
-                geometry.transform(transform)
-            except Exception as e:
-                logger.debug(f"Could not reproject an imported feature: {e}")
+        # isEmpty() as well as isNull() -- see the matching note in
+        # interchange_bundle._canonical_layer. A `Point EMPTY` is not null and
+        # has nothing to reproject.
+        if transform is not None and not geometry.isNull() and not geometry.isEmpty():
+            moved = transformed(geometry, transform)
+            if moved is None:
+                return None, None
+            geometry = moved
         feature.setGeometry(geometry)
 
         attributes, extras = self._restore_attributes(
@@ -380,6 +393,7 @@ class InterchangeBundleReader:
                 uuid_index.setdefault(identity, (target.id(), fid))
             pending = []
             extras_by_uuid = {}
+            unreprojectable = 0
             for feature in features:
                 identity = self._text(feature, FIBERQ_UUID_FIELD)
                 if identity and identity in present:
@@ -387,10 +401,24 @@ class InterchangeBundleReader:
                     continue
                 built, extras = self._import_feature(
                     feature, target, roster, transform)
+                if built is None:
+                    # Nothing is recorded for a skipped feature -- not its
+                    # extras, not its fq_extension rows. An fq_extension row
+                    # whose owner_uuid names a feature that is not in the
+                    # project would be re-emitted as an orphan by the next
+                    # export.
+                    unreprojectable += 1
+                    continue
                 pending.append(built)
                 if extras and identity:
                     extras_by_uuid[identity] = extras
                 self._absorb_extra_json(feature, identity, extras_by_uuid)
+
+            if unreprojectable:
+                result.warnings.append(
+                    f"{unreprojectable} {canonical} feature(s) could not be reprojected into the "
+                    "project CRS and were left out rather than imported with infinite coordinates."
+                )
 
             ok, added = self._add_features(target, pending)
             if not ok:
@@ -496,7 +524,11 @@ class InterchangeBundleReader:
                     f"'{layer.name()}' has no cable reference columns, so the "
                     f"imported {canonical} loops were left unattached to a cable.")
                 continue
-            wanted = self._bundle_cable_uuids(gpkg_path, canonical)
+            wanted, detached = self._bundle_cable_uuids(gpkg_path, canonical)
+            if detached:
+                result.warnings.append(
+                    f"{detached} {canonical} row(s) in the bundle carry no cable_uuid column, so "
+                    "they were imported without being attached to a cable.")
             if not wanted:
                 continue
             changes = {}
@@ -520,18 +552,29 @@ class InterchangeBundleReader:
                     "another cable.")
 
     def _bundle_cable_uuids(self, gpkg_path, table):
-        """``feature uuid -> cable_uuid`` as recorded in the bundle."""
+        """``(feature uuid -> cable_uuid, detached)`` as recorded in the bundle.
+
+        ``detached`` is how many rows the bundle holds that cannot be linked
+        because the table carries no ``cable_uuid`` column -- a bundle written
+        by a tool that models slack loops without a cable reference. It is
+        reported separately because an empty mapping has three very different
+        causes and only this one is worth telling the user about: a bundle with
+        no such table at all is ordinary, and so is a table with no rows.
+        """
         if _safe_table(table) is None:
-            return {}
+            return {}, 0
         with sqlite3.connect(gpkg_path) as conn:
             present = conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
                 (table,)).fetchone()
             if present is None:
-                return {}
+                return {}, 0
             columns = {row[1] for row in conn.execute(f'PRAGMA table_info("{table}")')}
             if not {FIBERQ_UUID_FIELD, fm.CABLE_REFERENCE_FIELD} <= columns:
-                return {}
+                # Both names are module constants; the table name is validated
+                # by _safe_table above and exists in sqlite_master.
+                rows = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()  # nosec B608
+                return {}, int(rows[0]) if rows else 0
             # Both column names are module constants; the table name is
             # validated by _safe_table above and exists in sqlite_master.
             sql = f'SELECT {FIBERQ_UUID_FIELD}, {fm.CABLE_REFERENCE_FIELD} FROM "{table}"'  # nosec B608
@@ -539,7 +582,7 @@ class InterchangeBundleReader:
                 str(identity): cable
                 for identity, cable in conn.execute(sql)
                 if identity and cable
-            }
+            }, 0
 
     def _restore_relations(self, gpkg_path, uuid_index, result):
         """Rebuild the project's relations from the uuid-keyed side-car."""
