@@ -51,14 +51,15 @@ def roster_of(layer_name):
 
 
 def field_facts():
-    """(roster, stored key) -> (field_type, units, has_value_map, options)."""
+    """(roster, stored key) -> (field_type, units, has_value_map, options, on_demand)."""
     facts = {}
     for layer_name, layer_schema in schema.LAYER_SCHEMAS.items():
         roster = roster_of(layer_name)
         for f in layer_schema.fields:
             facts.setdefault(
                 (roster, f.key),
-                (f.field_type, f.units, bool(f.value_map), tuple(f.options or ())))
+                (f.field_type, f.units, bool(f.value_map), tuple(f.options or ()),
+                 bool(getattr(f, "on_demand", False))))
     return facts
 
 
@@ -156,9 +157,12 @@ for roster, title in ROSTER_TITLES:
     w("| Canonical field | Plugin field (stored) | Type | Units | Notes |")
     w("|---|---|---|---|---|")
     for stored, canonical in mapping.items():
-        ftype, units, has_map, options = facts.get(
-            (roster, stored), ("text", "", False, ()))
+        ftype, units, has_map, options, on_demand = facts.get(
+            (roster, stored), ("text", "", False, (), False))
         notes = []
+        if on_demand:
+            notes.append("**on demand** — created only when a feature needs it, "
+                         "so a layer may not carry this column")
         if has_map:
             notes.append("controlled vocabulary — see below")
         elif options:
@@ -226,6 +230,26 @@ w("the feature's `fq_extra_json`, or carry the whole object in")
 w("[`fq_extension`](interchange-format.md#8-the-passthrough-store). What is never")
 w("acceptable is mapping it onto the nearest canonical field that nearly fits — that loses")
 w("information irreversibly while looking like it worked.")
+w("")
+w("### A column with no canonical name")
+w("")
+w("The two directions are not symmetrical, and a tool that assumes they are will lose data.")
+w("")
+w("**Writing.** A column FiberQ has no canonical name for is written to the bundle **under")
+w("the name it arrived with**, with its own type. It is not renamed and it is not moved into")
+w("`fq_extra_json`. A reader that does not know the column simply ignores it; a reader that")
+w("does — the tool that wrote it, most often — finds it exactly where it left it.")
+w("")
+w("**Reading.** A bundle column with no counterpart in the target layer is kept in that")
+w("feature\u2019s `fq_extra_json`, keyed by the identity of the feature it belongs to, and is")
+w("emitted again on the next write ([rule 1](interchange-format.md#2-the-four-rules),")
+w("[section 8](interchange-format.md#8-the-passthrough-store)). Nothing is dropped because")
+w("this implementation has no field for it.")
+w("")
+w("One field in the table above is marked **on demand**: the plugin creates that column only")
+w("when a feature needs it, so a freshly created layer does not carry it and a bundle written")
+w("from such a project will not contain it. It is published here because it exists in real")
+w("projects and a conformant tool must expect it.")
 w("")
 w("---")
 w("")

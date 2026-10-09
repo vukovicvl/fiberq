@@ -38,6 +38,7 @@ from qgis.core import (
 from . import interchange as ic
 from . import interchange_fields as fm
 from ..models.schema import SCHEMA_VERSION, canonical_layer_name
+from ..utils.geometry import transformed
 from ..utils.logger import get_logger
 from ..utils.uuid_utils import FIBERQ_UUID_FIELD
 
@@ -169,6 +170,7 @@ class InterchangeBundleWriter:
         self.project = project or QgsProject.instance()
         self.plugin_version = plugin_version or self._detect_version()
         self._unresolved_cable_refs = 0
+        self._unreprojectable = 0
 
     @staticmethod
     def _detect_version():
@@ -368,14 +370,30 @@ class InterchangeBundleWriter:
 
         built = []
         unresolved = 0
+        unreprojectable = 0
         for source_feature in layer.getFeatures():
             feature = QgsFeature(fields)
             geometry = QgsGeometry(source_feature.geometry())
-            if transform is not None and not geometry.isNull():
-                try:
-                    geometry.transform(transform)
-                except Exception as e:
-                    logger.debug(f"Could not reproject a feature of {canonical}: {e}")
+            # isEmpty() as well as isNull(): a `Point EMPTY` answers False to
+            # isNull() but has no coordinates to move, and `transformed()`
+            # rejects it like any other geometry it cannot measure. Guarding on
+            # isNull() alone dropped such a feature -- caught by
+            # test_sample_bundle.py against this repo's own published example,
+            # which carries one. A feature with no geometry is ordinary: QGIS
+            # makes one whenever a row is added without digitising.
+            if transform is not None and not geometry.isNull() and not geometry.isEmpty():
+                # U13. `transform()` does NOT raise for a coordinate outside the
+                # projection's domain: measured on 3.22.16, 3.44.15 and 4.2.3 it
+                # answers Success and leaves `inf`. For a point it does raise,
+                # but only after the geometry is already `Point (inf inf)`, so
+                # catching it changed nothing either. The old handler here could
+                # not have worked in either direction. `transformed()` checks the
+                # result as well as the call -- see utils.geometry.is_finite.
+                moved = transformed(geometry, transform)
+                if moved is None:
+                    unreprojectable += 1
+                    continue
+                geometry = moved
             feature.setGeometry(geometry)
 
             for src_index, dest_index, canonical_name in plan:
@@ -427,6 +445,7 @@ class InterchangeBundleWriter:
         if built and not clone.dataProvider().addFeatures(built):
             return None, f"could not fill the bundle copy of '{canonical}'"
         self._unresolved_cable_refs += unresolved
+        self._unreprojectable += unreprojectable
         return clone, None
 
     # -- side-car ----------------------------------------------------------
@@ -743,6 +762,7 @@ class InterchangeBundleWriter:
         # keys already in *this* file are read straight off it (above).
         existing = ic.merge_metadata(kept_metadata, existing)
         self._unresolved_cable_refs = 0
+        self._unreprojectable = 0
 
         file_exists = os.path.exists(gpkg_path)
         for lyr, canonical, fq_type, placement in mapped:
@@ -756,8 +776,21 @@ class InterchangeBundleWriter:
             if error:
                 result.errors.append(f"{lyr.name()}: {error}")
                 continue
-            result.layers[canonical] = lyr.featureCount()
+            # What reached the bundle, not what the project holds: a feature
+            # left out by the reprojection guard above must not be counted as
+            # exported. `clone` is the bundle copy, so its count is the truth.
+            result.layers[canonical] = clone.featureCount()
             result.types[canonical] = (fq_type, placement)
+
+        # U13. Said here rather than beside the reference warning below, which
+        # sits inside the side-car `try` and after the early return: a geometry
+        # left out of the bundle must be reported even when the side-car write
+        # fails, and even when no layer produced a side-car row at all.
+        if self._unreprojectable:
+            result.warnings.append(
+                f"{self._unreprojectable} feature(s) could not be reprojected to EPSG:4326 and were "
+                "left out of the bundle rather than written with infinite coordinates."
+            )
 
         if not result.layers:
             return result

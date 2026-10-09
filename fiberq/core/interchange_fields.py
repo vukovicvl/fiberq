@@ -199,6 +199,7 @@ CABLE_FIELDS: Dict[str, str] = {
     "fibers_per_tube": "fibers_per_tube",
     "total_fibers": "total_fibers",
     "color_standard": "color_standard",
+    "branch_index": "branch_index",
 }
 
 FIBER_BREAK_FIELDS: Dict[str, str] = {
