@@ -64,6 +64,13 @@ class FieldDefinition:
     options: Optional[List[str]] = None
     units: str = ""
     value_map: Optional[Dict[str, str]] = None
+    #: True for a column the plugin adds only when a feature needs it, rather
+    #: than when the layer is created. Such a field is part of the schema and
+    #: is published in the interchange mapping, but a freshly created layer
+    #: does not carry it and a fixture generator must not invent it. See
+    #: ``branch_index`` below, and tests/fixtures/make_city_project.py, whose
+    #: content digest identifies the published performance baseline.
+    on_demand: bool = False
 
 
 @dataclass
@@ -396,8 +403,15 @@ OBJECTS_FIELDS: List[FieldDefinition] = [
 ]
 
 # Underground and Aerial cables share this roster (created identically).
-# NOTE: branch_index (int) is added on demand when a cable is branched; it is not
-# part of the freshly-created roster and is intentionally omitted here.
+#
+# branch_index is in the roster but carries on_demand=True: cable_manager adds
+# the column the first time a cable is branched, so a freshly created layer does
+# not have it. It is listed here, rather than omitted as it used to be, because
+# the column exists in real user data and the interchange mapping has to publish
+# it -- D11. The flag is what keeps that honest in both directions: the mapping
+# generator and the drift gate see the field, while make_city_project.py skips
+# it, so the benchmark dataset's content digest does not move and the v1.5.0
+# performance baseline stays comparable.
 CABLE_FIELDS: List[FieldDefinition] = [
     FieldDefinition("tip", "Cable type", "text", "", value_map=CABLE_TYPE_VALUE_MAP),
     FieldDefinition("podtip", "Segment type", "text", "", value_map=CABLE_SUBTYPE_VALUE_MAP),
@@ -429,6 +443,7 @@ CABLE_FIELDS: List[FieldDefinition] = [
     FieldDefinition("fibers_per_tube", "Fibers per tube", "int", 0),
     FieldDefinition("total_fibers", "Total fibers", "int", 0),
     FieldDefinition("color_standard", "Color standard", "text", ""),
+    FieldDefinition("branch_index", "Branch index", "int", 0, on_demand=True),
     _uuid_field(),
 ]
 

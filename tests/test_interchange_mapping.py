@@ -114,3 +114,159 @@ def test_the_spec_and_the_mapping_link_to_each_other():
     """Two halves of one deliverable; either one alone is incomplete."""
     assert "interchange-mapping.md" in SPEC.read_text(encoding="utf-8")
     assert "interchange-format.md" in TEXT
+
+
+# ---------------------------------------------------------------------------
+# the gate, both ways round (WP4 4.2 item U21)
+# ---------------------------------------------------------------------------
+#
+# Everything above asks "is each thing in the code also on the page?". That
+# catches an ADDITION that was never republished, which is the common mistake,
+# and nothing else. A row deleted from the page, a type changed from integer to
+# text, a unit dropped, a vocabulary value remapped -- none of those make any
+# assertion above fail, because each one only ever looks for the presence of
+# something it already knows about.
+#
+# So the gate is closed the other way too: regenerate the page from the code in
+# a scratch copy of the tree, and require the result to equal the committed one
+# byte for byte. That is only worth doing because the generator is
+# deterministic -- measured: no timestamp, no absolute path, no unordered set
+# reaches the output.
+#
+# The gap, measured rather than argued. One field's units changed from metres to
+# kilometres in fiberq/models/schema.py, with the published page left exactly as
+# committed:
+#
+#     the nine tests above          9 passed
+#     test_the_published_page_...   1 failed
+#
+# The field's NAME did not move, and the name is all the nine ever looked for.
+# A consumer reading the published page would have written kilometres into a
+# column the plugin fills with metres, and nothing in CI would have said a word.
+
+import os            # noqa: E402
+import shutil        # noqa: E402
+import subprocess    # noqa: E402
+import sys           # noqa: E402
+
+import pytest        # noqa: E402
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+GENERATOR = ROOT / "tools" / "gen_interchange_mapping.py"
+
+#: Everything the generator reads. All four are pure-stdlib modules it loads by
+#: path, so a scratch copy of exactly these files regenerates the page -- the
+#: repo itself is mounted read-only in CI and must not be written to.
+GENERATOR_INPUTS = (
+    "tools/gen_interchange_mapping.py",
+    "fiberq/models/schema.py",
+    "fiberq/core/interchange.py",
+    "fiberq/core/interchange_fields.py",
+)
+
+
+def _scratch_tree(tmp_path):
+    for relative in GENERATOR_INPUTS:
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / relative, destination)
+    (tmp_path / "docs").mkdir(exist_ok=True)
+    return tmp_path
+
+
+def _regenerate(tree):
+    """Run the generator in ``tree`` and return its page text."""
+    done = subprocess.run(  # nosec B603 - fixed script path, no shell, no user input
+        [sys.executable, str(tree / "tools" / "gen_interchange_mapping.py")],
+        cwd=str(tree), env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"),
+        timeout=120, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    assert done.returncode == 0, done.stdout.decode("utf-8", "replace")
+    return (tree / "docs" / "interchange-mapping.md").read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def scratch(tmp_path):
+    return _scratch_tree(tmp_path)
+
+
+def test_the_published_page_is_what_the_code_generates(scratch):
+    """The two-way gate. Regenerate and compare, byte for byte.
+
+    If this fails, the page is stale: run ``make mapping-doc`` and commit the
+    result. It fails for a removal, a renamed canonical field, a changed type or
+    unit, and a remapped vocabulary value -- none of which any other test here
+    can see.
+    """
+    assert _regenerate(scratch) == TEXT, (
+        "docs/interchange-mapping.md is not what tools/gen_interchange_mapping.py produces "
+        "from the current code. Run `make mapping-doc` and commit the page.")
+
+
+def test_the_generator_is_deterministic(scratch, tmp_path):
+    """The comparison above is only meaningful if two runs agree.
+
+    A generator that emitted a timestamp, an absolute path or an unordered set
+    would make the gate fail at random, and the first reaction to a flaky gate
+    is to delete it.
+    """
+    first = _regenerate(scratch)
+    second = _regenerate(_scratch_tree(tmp_path / "again"))
+    assert first == second
+
+
+def test_a_row_removed_from_the_page_fails_the_gate(scratch):
+    """Seeded: the removal case, which is the whole reason for this gate."""
+    page = scratch / "docs" / "interchange-mapping.md"
+    lines = TEXT.splitlines()
+    rows = [i for i, line in enumerate(lines) if line.startswith("| `")]
+    assert rows, "no field rows on the page; this test is stale"
+    del lines[rows[len(rows) // 2]]
+    page.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    assert page.read_text(encoding="utf-8") != TEXT
+    assert _regenerate(scratch) == TEXT, (
+        "the generator did not restore the deleted row, so the comparison in "
+        "test_the_published_page_is_what_the_code_generates could not have caught it")
+
+
+def test_a_changed_unit_fails_the_gate(scratch):
+    """Seeded: a field that keeps its name and changes its meaning.
+
+    This is the quiet one. Every other test on this page looks for the field's
+    *name*, and the name does not move -- so the published units would say
+    metres while the code said kilometres, and nothing would fail.
+    """
+    source = scratch / "fiberq" / "models" / "schema.py"
+    text = source.read_text(encoding="utf-8")
+    assert 'units="m"' in text, "no metre-units field in the schema; this test is stale"
+    source.write_text(text.replace('units="m"', 'units="km"', 1), encoding="utf-8")
+
+    regenerated = _regenerate(scratch)
+    assert regenerated != TEXT, (
+        "a unit changed in the code and the regenerated page was identical; the gate "
+        "cannot see a field whose meaning changed while its name stayed")
+
+
+def test_a_changed_type_fails_the_gate(scratch):
+    """Seeded: integer becomes text. A consumer that trusted the published type
+    would write a column of the wrong kind."""
+    source = scratch / "fiberq" / "models" / "schema.py"
+    text = source.read_text(encoding="utf-8")
+    assert '"Fibers per tube", "int"' in text, "roster changed; this test is stale"
+    source.write_text(
+        text.replace('"Fibers per tube", "int"', '"Fibers per tube", "text"', 1),
+        encoding="utf-8")
+
+    assert _regenerate(scratch) != TEXT
+
+
+def test_a_field_removed_from_the_code_fails_the_gate(scratch):
+    """Seeded: the mirror of the first one. A field deleted from the schema must
+    make the committed page wrong, not silently shrink it."""
+    source = scratch / "fiberq" / "core" / "interchange_fields.py"
+    text = source.read_text(encoding="utf-8")
+    needle = '    "color_standard": "color_standard",\n'
+    assert needle in text, "roster changed; this test is stale"
+    source.write_text(text.replace(needle, "", 1), encoding="utf-8")
+
+    assert _regenerate(scratch) != TEXT

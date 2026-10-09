@@ -1257,7 +1257,12 @@ def dataset_digest(rows, names, legacy, entries):
     for canonical in sorted(rows):
         if not rows[canonical]:
             continue
-        keys = [field.key for field in schema.LAYER_SCHEMAS[canonical].fields]
+        # on_demand fields are skipped: the plugin adds such a column only when
+        # a feature needs it, so a generated project must not carry it, and --
+        # the part that matters here -- folding it into the digest would move
+        # the identifier that every published "before" number was measured on.
+        keys = [field.key for field in schema.LAYER_SCHEMAS[canonical].fields
+                if not getattr(field, "on_demand", False)]
         columns = ",".join(field_key(key, legacy) for key in keys)
         digest.update(f"{table_name(names[canonical])}|{columns}\n".encode())
         for fid, wkt, attrs in rows[canonical]:
@@ -1322,6 +1327,8 @@ def build_gpkg(path, rows, names, legacy=False):
             table_name(names[canonical]), srs,
             getattr(ogr, _OGR_GEOM[layer_schema.geometry]))
         for field in layer_schema.fields:
+            if getattr(field, "on_demand", False):
+                continue  # see the note beside the digest above
             layer.CreateField(ogr.FieldDefn(
                 field_key(field.key, legacy),
                 getattr(ogr, _OGR_TYPE.get(field.field_type, "OFTString"))))

@@ -190,6 +190,7 @@ Element types: `cable.aerial`, `cable.underground`
 | `fibers_per_tube` | `fibers_per_tube` | integer | — | same name on both sides |
 | `total_fibers` | `total_fibers` | integer | — | same name on both sides |
 | `color_standard` | `color_standard` | text | — | same name on both sides |
+| `branch_index` | `branch_index` | integer | — | **on demand** — created only when a feature needs it, so a layer may not carry this column; same name on both sides |
 | `fiberq_uuid` | `fiberq_uuid` | text | — | identity, never renamed |
 
 ### Ducts — PE and transition
@@ -346,6 +347,26 @@ the feature's `fq_extra_json`, or carry the whole object in
 [`fq_extension`](interchange-format.md#8-the-passthrough-store). What is never
 acceptable is mapping it onto the nearest canonical field that nearly fits — that loses
 information irreversibly while looking like it worked.
+
+### A column with no canonical name
+
+The two directions are not symmetrical, and a tool that assumes they are will lose data.
+
+**Writing.** A column FiberQ has no canonical name for is written to the bundle **under
+the name it arrived with**, with its own type. It is not renamed and it is not moved into
+`fq_extra_json`. A reader that does not know the column simply ignores it; a reader that
+does — the tool that wrote it, most often — finds it exactly where it left it.
+
+**Reading.** A bundle column with no counterpart in the target layer is kept in that
+feature’s `fq_extra_json`, keyed by the identity of the feature it belongs to, and is
+emitted again on the next write ([rule 1](interchange-format.md#2-the-four-rules),
+[section 8](interchange-format.md#8-the-passthrough-store)). Nothing is dropped because
+this implementation has no field for it.
+
+One field in the table above is marked **on demand**: the plugin creates that column only
+when a feature needs it, so a freshly created layer does not carry it and a bundle written
+from such a project will not contain it. It is published here because it exists in real
+projects and a conformant tool must expect it.
 
 ---
 
