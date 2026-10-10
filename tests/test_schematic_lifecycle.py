@@ -136,7 +136,8 @@ cables = layer("LineString?crs=EPSG:3857&field=od:string&field=do:string"
                [(QgsGeometry.fromPolylineXY([pt(0, 0), pt(300, 0)]),
                  {{"od": "ODF-1", "do": "TB-1", "podtip": "glavni", "kapacitet": "24"}})])
 spare = layer("Point?crs=EPSG:3857&field=naziv:string", "Poles", [])
-project.addMapLayers([nodes, cables, spare])
+ghost = layer("Point?crs=EPSG:3857&field=naziv:string", "Ghost", [])
+project.addMapLayers([nodes, cables, spare, ghost])
 
 from fiberq.dialogs.schematic_dialog import OpticalSchematicDialog
 from fiberq.main_plugin import FiberQPlugin
@@ -163,10 +164,14 @@ plugin = FiberQPlugin(Iface())
 plugin.initGui()
 out = {{}}
 
-# A. teardown() on its own, on a view that stays alive -- after one of the
-# layers it followed has been removed (and so deleted) from the project.
+# A. teardown() on its own, on a view that stays alive -- after one layer it
+# followed was removed from the project (and unwired while still alive), and
+# another was deleted while still registered, which sends no removal signal:
+# teardown() then meets a deleted layer in its registry.
 view = OpticalSchematicDialog(plugin)
 project.removeMapLayer(spare.id())
+from qgis.PyQt import sip
+sip.delete(ghost)
 pump(0.8)
 try:
     view.teardown()
@@ -251,7 +256,8 @@ def _ok(child):
 
 
 def test_teardown_disconnects_a_view_that_stays_alive(child):
-    """``teardown()`` alone silences the view, even with a followed layer deleted."""
+    """``teardown()`` alone silences the view, even with a followed layer deleted
+    while still registered, and is safe to call twice."""
     result, output = _ok(child)
     assert result["teardown"] == "ok", output
     assert result["after_teardown"] == [], (
@@ -421,3 +427,149 @@ def test_an_unsaved_cable_is_drawn(follow_child):
     """The view reads through the edit buffer, as the per-item scans did."""
     result, output = _ok(follow_child)
     assert "12 / 218.5 m" in result["edit_buffer"], result["edit_buffer"]
+
+
+# ---------------------------------------------------------------------------
+# Layers that arrive after the view opened
+# ---------------------------------------------------------------------------
+
+LATE_DRIVER = '''
+import json, os, sys, time
+sys.path.insert(0, {repo!r})
+os.environ["FIBERQ_LOG_FILE"] = "false"
+from qgis.core import (QgsApplication, QgsFeature, QgsGeometry, QgsPointXY,
+                       QgsProject, QgsVectorLayer)
+QgsApplication.setPrefixPath("/usr", True)
+APP = QgsApplication([], True)
+APP.initQgis()
+from qgis.PyQt.QtWidgets import QGraphicsTextItem
+
+#: Anything escaping a slot lands here instead of killing the interpreter.
+ERRORS = []
+sys.excepthook = lambda kind, value, tb: ERRORS.append("%s: %s" % (kind.__name__, value))
+
+from fiberq.core.data_manager import DataManager
+from fiberq.dialogs.schematic_dialog import OpticalSchematicDialog
+
+REBUILDS = []
+_rebuild = OpticalSchematicDialog.rebuild
+
+
+def rebuild(self):
+    REBUILDS.append(1)
+    _rebuild(self)
+
+
+OpticalSchematicDialog.rebuild = rebuild
+
+
+def pump(seconds):
+    end = time.perf_counter() + seconds
+    while time.perf_counter() < end:
+        APP.processEvents()
+        time.sleep(0.01)
+
+
+def pt(x, y):
+    return QgsGeometry.fromPointXY(QgsPointXY(2437000.0 + x, 5365000.0 + y))
+
+
+def layer(uri, name, rows):
+    lyr = QgsVectorLayer(uri, name, "memory")
+    feats = []
+    for geom, attrs in rows:
+        feat = QgsFeature(lyr.fields())
+        feat.setGeometry(geom)
+        for key, value in attrs.items():
+            feat.setAttribute(key, value)
+        feats.append(feat)
+    assert lyr.dataProvider().addFeatures(feats)[0]
+    return lyr
+
+
+def add_named(lyr, name, x):
+    feat = QgsFeature(lyr.fields())
+    feat.setGeometry(pt(x, 0))
+    feat.setAttribute("naziv", name)
+    assert lyr.startEditing() and lyr.addFeature(feat)
+    assert lyr.commitChanges(), lyr.commitErrors()
+
+
+def labels(view):
+    return [i.toPlainText() for i in view.scene.items() if isinstance(i, QGraphicsTextItem)]
+
+
+project = QgsProject.instance()
+project.addMapLayer(layer("Point?crs=EPSG:3857&field=naziv:string", "ODF",
+                          [(pt(0, 0), {{"naziv": "ODF-1"}})]))
+data = DataManager()
+core = type("Core", (), {{}})()
+core.iface = type("Iface", (), {{"mainWindow": lambda self: None}})()
+core.list_all_cables = data.list_all_cables
+core.list_all_pipes = data.list_all_pipes
+view = OpticalSchematicDialog(core)
+view.show()
+pump(0.8)
+out = {{}}
+
+# A layer created after the view opened, then an element committed on it.
+late = layer("Point?crs=EPSG:3857&field=naziv:string", "TB", [])
+project.addMapLayer(late)
+pump(0.8)
+mark = len(REBUILDS)
+add_named(late, "TB-9", 300)
+pump(0.8)
+out["late_commit_rebuilds"] = len(REBUILDS) - mark
+out["late_label_shown"] = "TB-9" in labels(view)
+
+# The same project written and read back: the layers come back under the
+# same ids, so ids remembered from before must not count as followed.
+path = os.path.join(os.getcwd(), "reread.qgs")
+assert project.write(path)
+assert project.read(path)
+pump(0.8)
+again = project.mapLayersByName("ODF")[0]
+mark = len(REBUILDS)
+add_named(again, "ODF-2", 600)
+pump(0.8)
+out["reread_commit_rebuilds"] = len(REBUILDS) - mark
+out["errors"] = ERRORS
+print("RESULT " + json.dumps(out), flush=True)
+os._exit(0)
+'''
+
+
+@pytest.fixture(scope="module")
+def late_child(tmp_path_factory):
+    """The view open while layers arrive: ``(returncode, result, output)``."""
+    folder = tmp_path_factory.mktemp("schematic_late_layers")
+    script = folder / "schematic_late_layers.py"
+    script.write_text(LATE_DRIVER.format(repo=REPO_ROOT), encoding="utf-8")
+    environment = dict(os.environ, QT_QPA_PLATFORM="offscreen",
+                       TMPDIR=str(folder), FIBERQ_LOG_FILE="false")
+    done = subprocess.run([sys.executable, str(script)], cwd=str(folder),
+                          env=environment, timeout=TIMEOUT_S,
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    output = done.stdout.decode("utf-8", "replace")
+    lines = [ln for ln in output.splitlines() if ln.startswith("RESULT ")]
+    result = json.loads(lines[-1][len("RESULT "):]) if lines else None
+    return done.returncode, result, output
+
+
+def test_a_layer_added_after_the_view_opened_is_followed(late_child):
+    """Only the layers present at opening were wired: an element committed on
+    a layer created later -- the first of its type -- never reached the view
+    until a manual Refresh (v1.5.0, measured on 3.22 through 4.2)."""
+    result, output = _ok(late_child)
+    assert result["errors"] == [], output
+    assert result["late_commit_rebuilds"] >= 1, output
+    assert result["late_label_shown"], output
+
+
+def test_a_project_read_back_in_is_followed(late_child):
+    """The read-back layers keep their ids. Remembered ids that were never
+    forgotten made every one of them look followed already (v1.5.0: 24 stale
+    ids on the XS city), so the view went deaf to the whole project."""
+    result, output = _ok(late_child)
+    assert result["errors"] == [], output
+    assert result["reread_commit_rebuilds"] >= 1, output

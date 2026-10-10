@@ -1035,10 +1035,20 @@ class OpticalSchematicDialog(QDialog):
         for lyr in QgsProject.instance().mapLayers().values():
             self._wire_layer(lyr)
 
-    def _on_layers_added(self, *args):
+    def _on_layers_added(self, layers):
+        # A layer created after the view opened -- the first cable, a new
+        # element type, every layer of a project read in -- is followed like
+        # the ones that were there. Only the layers present at opening were.
+        for lyr in layers:
+            self._wire_layer(lyr)
         self._schedule_rebuild()
 
-    def _on_layer_will_be_removed(self, *args):
+    def _on_layer_will_be_removed(self, layer_id):
+        # Forgotten, or the same id read back from the project file would be
+        # taken as followed already and never wired again.
+        lyr = self._wired_layers.pop(layer_id, None)
+        if lyr is not None:
+            self._unwire_layer(lyr)
         self._schedule_rebuild()
 
     def _layer_committed(self, *args, **kwargs):
@@ -1083,10 +1093,13 @@ class OpticalSchematicDialog(QDialog):
             self._unwire_layer(lyr)
 
     def _unwire_layer(self, lyr):
-        # A layer removed from the project is deleted at once, and its
-        # connections with it. Touching its signals then is a RuntimeError,
-        # and disconnecting a signal object fetched before the deletion is a
-        # SIGSEGV (both measured), so it is checked first and never cached.
+        # A layer removed from the project is unwired while it is still alive,
+        # by _on_layer_will_be_removed. But a layer can also be deleted while
+        # still registered -- the project's store then drops it without
+        # layerWillBeRemoved -- and touching a deleted layer's signals is a
+        # RuntimeError, disconnecting through a signal object fetched before
+        # the deletion a SIGSEGV (both measured). So it is checked first, and
+        # the signal objects are never cached.
         if sip.isdeleted(lyr):
             return
         for name in _LAYER_SIGNALS:
