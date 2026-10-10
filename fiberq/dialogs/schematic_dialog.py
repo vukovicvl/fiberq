@@ -35,6 +35,7 @@ from qgis.core import (
 
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
+from ..utils.batch import features_by_id
 from ..utils.measure import ground_length
 logger = get_logger(__name__)
 
@@ -389,16 +390,16 @@ class OpticalSchematicDialog(QDialog):
     def _collect_edges(self):
         """List all cables + read attributes from layer; returns list of dicts."""
         items = self.core.list_all_cables() + self.core.list_all_pipes()
+        # WP4 PF-1: one read per layer. Each item used to be found by reading
+        # its layer from the top until the fid came up -- 2,156,690 features
+        # read to find 3,919 at size S, ~73% of the time the view took to open.
+        by_id = features_by_id((it.get('layer_id'), it.get('fid')) for it in items)
         edges = []
         for it in items:
             lyr = QgsProject.instance().mapLayer(it.get('layer_id'))
             if not lyr or not isinstance(lyr, QgsVectorLayer):
                 continue
-            feat = None
-            for _f in lyr.getFeatures():
-                if int(_f.id()) == int(it.get('fid')):
-                    feat = _f
-                    break
+            feat = by_id.get(it.get('layer_id'), {}).get(int(it.get('fid')))
             if not feat:
                 continue
 
@@ -561,11 +562,14 @@ class OpticalSchematicDialog(QDialog):
             # Prepare node positions from centroids/points
             pos = {}
             world_points = []
+            # WP4 PF-1: one read per layer here too, not a scan per node --
+            # 1,471,859 features read to place 3,304 nodes at size S.
+            by_id = features_by_id((info.get('layer_id'), info.get('fid')) for info in nodes.values())
             for name, info in nodes.items():
                 try:
                     lyr = QgsProject.instance().mapLayer(info.get('layer_id'))
                     fid = int(info.get('fid'))
-                    feat = next((f for f in lyr.getFeatures() if int(f.id()) == fid), None)
+                    feat = by_id.get(info.get('layer_id'), {}).get(fid)
                     if not feat:
                         continue
                     g = feat.geometry()
