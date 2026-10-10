@@ -268,6 +268,8 @@ class OpticalSchematicDialog(QDialog):
         self._rebuild_timer.setInterval(400)  # ms
         self._rebuild_timer.timeout.connect(self._do_rebuild_if_needed)
         self._rebuild_pending = False
+        #: Something changed while the view was hidden: showEvent catches up.
+        self._stale = False
 
         # Auto-refresh
         self._wired_layers = set()
@@ -946,8 +948,17 @@ class OpticalSchematicDialog(QDialog):
         p.end()
 
     def _schedule_rebuild(self):
-        """Debounced rebuild – used for automatic layer changes."""
+        """Debounced rebuild – used for automatic layer changes.
+
+        A hidden view only notes that it is out of date, and showEvent()
+        rebuilds it when it is shown again. It used to rebuild after every
+        commit anywhere in the project, open or not: once opened and closed,
+        the view cost 22.5 s per commit at size S (v1.5.0, QGIS 3.44.15).
+        """
         try:
+            if not self.isVisible():
+                self._stale = True
+                return
             self._rebuild_pending = True
             if getattr(self, "_rebuild_timer", None) is not None:
                 # restart timer – multiple changes in short time -> one rebuild
@@ -966,7 +977,35 @@ class OpticalSchematicDialog(QDialog):
         if not getattr(self, "_rebuild_pending", False):
             return
         self._rebuild_pending = False
+        if not self.isVisible():
+            # Closed while the timer ran: catch up when shown again instead.
+            self._stale = True
+            return
         self.rebuild()
+
+    def showEvent(self, event):
+        """Catch up, before the first paint, on what changed while hidden.
+
+        Synchronously, not through the timer. v1.5.0 rebuilt the hidden view
+        after every change it is wired to, so it reappeared showing the last
+        of those; a debounced catch-up would paint the old lengths and labels
+        first, with Search, Center and Export acting on them until the timer
+        fired (measured). Rebuilding at show time is at least as current, and
+        more so when such a change was followed, while hidden, by one no
+        signal reports -- a layer renamed or filtered, the project CRS changed
+        under Match map styling -- which v1.5.0 kept showing stale until the
+        next Refresh (measured on 3.22, 3.44 and 4.2).
+
+        Only when something did change: Qt6 sends showEvent again whenever
+        show() is called on a visible dialog, which open_optical_schematic()
+        does on every click.
+        """
+        super().showEvent(event)
+        if getattr(self, "_stale", False):
+            self._stale = False
+            self._rebuild_pending = False
+            self._rebuild_timer.stop()
+            self.rebuild()
 
     # ---------- SIGNALS ----------
     def _wire_all_layers(self):
