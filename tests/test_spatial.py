@@ -27,8 +27,9 @@ import subprocess
 import sys
 
 from qgis.core import QgsPointXY, QgsRectangle, QgsSpatialIndex
+from qgis.PyQt.QtCore import QRectF
 
-from fiberq.utils.spatial import ScanOrderIndex, box_around, indexable_box
+from fiberq.utils.spatial import RectGrid, ScanOrderIndex, box_around, indexable_box
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -229,3 +230,113 @@ def test_a_huge_but_finite_box_never_reaches_the_index(tmp_path):
     output = done.stdout.decode("utf-8", "replace")
     assert done.returncode == 0, f"returncode {done.returncode}\n{output[-3000:]}"
     assert "SURVIVED" in output, output[-3000:]
+
+
+# ---------------------------------------------------------------------------
+# RectGrid: the schematic view's labels ask only "does anything overlap?"
+# ---------------------------------------------------------------------------
+
+def _box(rect):
+    return QgsRectangle(rect.left(), rect.top(), rect.right(), rect.bottom())
+
+
+def test_the_grid_answers_what_a_scan_answers(qgis_app):
+    """The place_text() flow on 3,000 labels, every answer compared with the scan.
+
+    Label-sized rects on the schematic's own spacings, so many share cells,
+    touch along an edge (not an overlap for ``QRectF.intersects``) or overlap
+    by one ulp (an overlap). A single wrong "free" would move every label
+    placed after it, so every answer is compared, not only the end state.
+    """
+    rnd = random.Random(20261011)
+    grid, placed = RectGrid(64.0), []
+    answers = hits = 0
+    for _ in range(3000):
+        x = rnd.randint(0, 40) * 26.0 + rnd.choice([0.0, 35.0, 190.0, 0.5, 64.0])
+        y = -rnd.randint(0, 20) * 140.0 + rnd.choice([0.0, 70.0, -64.0])
+        w, h = rnd.choice([30.0, 31.5625, 45.25, 58.0, 64.0]), rnd.choice([18.0, 21.0, 25.0])
+        rect = None
+        for dx, dy in ((8, -8), (10, 10), (-22, -10), (-22, 12), (8, 12), (12, 0)):
+            rect = QRectF(x + dx, y + dy, w, h)
+            scan = any(rect.intersects(r) for r in placed)
+            assert grid.any_passes(_box(rect), rect.intersects) == scan, (rect, len(placed))
+            answers += 1
+            hits += scan
+            if not scan:
+                rect = rect.adjusted(-2, -1, 2, 2)
+                break
+        grid.add(rect, _box(rect))
+        placed.append(rect)
+    assert hits > 1000 and answers - hits > 500, "premise: both answers were exercised"
+
+
+def test_touching_is_not_overlapping_and_one_ulp_is(qgis_app):
+    """Rects that share an edge share a cell but do not intersect; one ulp more and they do."""
+    grid = RectGrid(64.0)
+    placed = QRectF(0, 0, 64, 10)                 # its right edge is a cell boundary
+    grid.add(placed, _box(placed))
+    touching = QRectF(64, 0, 5, 5)
+    assert not grid.any_passes(_box(touching), touching.intersects)
+    overlapping = QRectF(63.99999999999999, 0, 5, 5)          # the double below 64
+    assert overlapping.intersects(placed)
+    assert grid.any_passes(_box(overlapping), overlapping.intersects)
+
+
+def test_the_grid_stops_at_the_first_hit(qgis_app):
+    """A pile of a thousand labels on one spot: one overlap answers, so one test runs.
+
+    This is what keeps the "Match map styling" layout linear, where labels
+    pile up in a fixed scene: a QgsSpatialIndex query would hand over the
+    whole pile each time.
+    """
+    grid = RectGrid(64.0)
+    pile = [QRectF(100, 100, 60, 25) for _ in range(1000)]
+    for rect in pile:
+        grid.add(rect, _box(rect))
+    query = QRectF(110, 105, 60, 25)
+    calls = []
+
+    def test(item):
+        calls.append(item)
+        return query.intersects(item)
+
+    assert grid.any_passes(_box(query), test)
+    assert len(calls) == 1
+
+
+def test_the_grid_offers_what_it_cannot_place_to_every_query(qgis_app):
+    """NaN, infinite, huge, and too wide to grid: tested by every query, as the scan tested them."""
+    grid = RectGrid(64.0)
+    unplaceable = [QRectF(5, NAN, 15, 15), QRectF(INF, 5, 30, 15), QRectF(1e200, 5, 30, 15),
+                   QRectF(-20000, -20000, 40000, 40000)]          # 626 x 626 cells
+    for rect in unplaceable:
+        grid.add(rect, _box(rect))
+    seen = []
+    assert not grid.any_passes(_box(QRectF(9000, 9000, 10, 10)), lambda item: seen.append(item) or False)
+    assert seen == unplaceable
+    # and a query box no cell can hold is offered every item
+    seen.clear()
+    grid.add(QRectF(0, 0, 10, 10), _box(QRectF(0, 0, 10, 10)))
+    assert not grid.any_passes(_box(QRectF(NAN, 0, 10, 10)), lambda item: seen.append(item) or False)
+    assert len(seen) == len(grid) == 5
+
+
+def test_an_inverted_box_is_still_placed(qgis_app):
+    """A box whose bounds come in the wrong order still covers its cells.
+
+    On 3.22 ``QgsRectangle`` does not normalise a box all of whose bounds lie
+    within ~4e-16 of zero, so a negative-width rect there arrives inverted --
+    and a grid that took its bounds as given put it in no cell, losing it in
+    both roles (measured; 3.40 and later normalise it).
+    """
+    big = QRectF(-10, -10, 20, 20)
+    tiny = QRectF(1e-16, 0, -2e-16, 1e-16)
+    inverted = QgsRectangle(1e-16, 0, -1e-16, 1e-16, False)
+    assert big.intersects(tiny), "premise: QRectF counts the negative width"
+
+    placed = RectGrid(64.0)
+    placed.add(tiny, inverted)
+    assert placed.any_passes(_box(big), big.intersects), "the placed tiny rect was lost"
+    queried = RectGrid(64.0)
+    queried.add(big, _box(big))
+    assert queried.any_passes(inverted, tiny.intersects), "the tiny query looked in no cell"

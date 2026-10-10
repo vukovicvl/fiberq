@@ -31,13 +31,33 @@ from qgis.core import (
     QgsWkbTypes,
     QgsPointXY,
     QgsCoordinateTransform,
+    QgsRectangle,
 )
 
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
 from ..utils.batch import features_by_id
 from ..utils.measure import ground_length
+from ..utils.spatial import RectGrid
 logger = get_logger(__name__)
+
+#: The label grid's cell, in scene units: about one label wide (a 9 pt label
+#: measures about 60 x 25).
+_LABEL_CELL = 64.0
+
+
+def _scene_box(rect):
+    """A scene ``QRectF`` as the ``QgsRectangle`` the label grid places.
+
+    The bounds in order, so a negative width or height counts the way
+    ``QRectF.intersects`` counts it. Ordered here rather than left to the
+    constructor: on 3.22 ``QgsRectangle`` skips normalising a box it considers
+    null, one whose four bounds all lie within ~4e-16 of zero (measured). The
+    bounds themselves are copied exactly: 0 differences over 5,428 label rects
+    (measured on QGIS 3.22.16, 3.40.15, 3.44.15, 4.0.3 and 4.2.3).
+    """
+    left, right, top, bottom = rect.left(), rect.right(), rect.top(), rect.bottom()
+    return QgsRectangle(min(left, right), min(top, bottom), max(left, right), max(top, bottom))
 
 
 class SchematicView(QGraphicsView):
@@ -818,7 +838,14 @@ class OpticalSchematicDialog(QDialog):
             return QColor(60, 60, 60)
 
         # label collision avoidance
-        occupied = []
+        #
+        # WP4 PF-1: through a spatial index, a uniform grid (see RectGrid for
+        # why not a QgsSpatialIndex). Every label used to be compared with
+        # every label already placed -- 17,229,707 intersects() calls for 5,345
+        # labels at size S. The test is unchanged and still decides; the grid
+        # only offers it the placed rects in the cells this one covers, which
+        # are all it could find overlapping, and stops at the first it does.
+        occupied = RectGrid(_LABEL_CELL)
 
         def place_text(x, y, txt, color):
             if not txt:
@@ -829,12 +856,13 @@ class OpticalSchematicDialog(QDialog):
             for dx, dy in offsets:
                 ti.setPos(x + dx, y + dy)
                 rect = ti.mapRectToScene(ti.boundingRect())
-                if not any(rect.intersects(r) for r in occupied):
+                if not occupied.any_passes(_scene_box(rect), rect.intersects):
                     bg = rect.adjusted(-2, -1, 2, 2)
                     self.scene.addRect(bg, QPen(Qt.PenStyle.NoPen), QColor(255, 255, 255, 210)).setZValue(ti.zValue() - 1)
-                    occupied.append(bg)
+                    occupied.add(bg, _scene_box(bg))
                     return
-            occupied.append(ti.mapRectToScene(ti.boundingRect()))
+            last = ti.mapRectToScene(ti.boundingRect())
+            occupied.add(last, _scene_box(last))
 
         # branches + labels
         for e, path in lines:
