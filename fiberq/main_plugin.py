@@ -39,6 +39,7 @@ from .core import feature_links
 from .core import interchange_fields as fm
 from .utils import file_filters
 from .utils.geometry import geometry_point, line_endpoint, line_part_count, transformed
+from .utils.spatial import ScanOrderIndex, box_around
 from .models.schema import canonical_layer_name
 from .utils.errors import OperationErrors, check_commit, describe, report_error
 
@@ -3844,7 +3845,13 @@ class FiberQPlugin:
             # (measured on both stacks), and QGIS creates one whenever a row is
             # added without digitising. One such pole used to end the whole
             # check, so the user got a traceback instead of their route errors.
-            pole_points = []
+            #
+            # WP4 PF-3: indexed, because every route end below used to be
+            # measured against every one of these points -- 5.1 million
+            # distances at size S, growing with the square of the project. The
+            # test itself is unchanged and still decides; the index only hands
+            # it the points inside a 1 cm box, which are all it could accept.
+            pole_points = ScanOrderIndex()
             for source in (poles_layer, manholes_layer):
                 if source is None:
                     continue
@@ -3853,7 +3860,7 @@ class FiberQPlugin:
                     if point is None:
                         without_geometry += 1
                         continue
-                    pole_points.append(point)
+                    pole_points.add(point, box_around(point, 0.0))
 
             for feat in route_layer.getFeatures():
                 # R10: and asPolyline() RAISES on a multipart route rather than
@@ -3892,7 +3899,8 @@ class FiberQPlugin:
                         'layer': route_layer,
                     })
                 # Start
-                if not any(QgsPointXY(sp).distance(start) < 1e-2 for sp in pole_points):
+                near_start = pole_points.candidates(box_around(start, 1e-2))
+                if not any(QgsPointXY(sp).distance(start) < 1e-2 for sp in near_start):
                     greska = {
                         'msg': f"Start of route (ID {feat.id()}) is NOT on a pole.",
                         'feat': feat,
@@ -3906,7 +3914,8 @@ class FiberQPlugin:
                     }
                     self.popravljive_greske.append(greska)
                 # Kraj
-                if not any(QgsPointXY(sp).distance(end) < 1e-2 for sp in pole_points):
+                near_end = pole_points.candidates(box_around(end, 1e-2))
+                if not any(QgsPointXY(sp).distance(end) < 1e-2 for sp in near_end):
                     greska = {
                         'msg': f"End of route (ID {feat.id()}) is NOT on a pole.",
                         'feat': feat,
