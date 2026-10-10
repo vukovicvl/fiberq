@@ -388,8 +388,10 @@ ALLOWED_WRITES = {
 #: fall of 14
 #: from v1.5.0 is what branches 3 and 4 left behind
 #: when they rewrote the placement tools: handlers deleted with the code around
-#: them, less the few that ``length_sync.py`` brought in.
-SILENCE_CEILING = 715
+#: them, less the few that ``length_sync.py`` brought in. U17 took one more:
+#: ``unload()``'s schematic block logged its failures at debug level and now
+#: names them at warning.
+SILENCE_CEILING = 714
 
 
 # ---------------------------------------------------------------------------

@@ -3017,12 +3017,19 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Error removing translator: {e}")
         self.translator = None
-        try:
-            if hasattr(self, '_schematic_dlg') and self._schematic_dlg:
-                self._schematic_dlg.close()
-                self._schematic_dlg = None
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin.unload: {e}")
+        # U17: take the schematic view down with the plugin. close() only hides
+        # it, and it is parented to the main window, so dropping the reference
+        # left it -- and this whole plugin, through dlg.core -- connected and
+        # rebuilding for the rest of the session, one more copy per reload.
+        dlg = getattr(self, '_schematic_dlg', None)
+        self._schematic_dlg = None
+        if dlg is not None and not sip.isdeleted(dlg):
+            try:
+                dlg.teardown()
+            except (RuntimeError, TypeError) as e:
+                logger.warning(f"Could not disconnect the schematic view: {e}")
+            dlg.close()
+            dlg.deleteLater()
 
     def _apply_poles_field_aliases(self, layer):
         """Apply English field aliases to the poles layer.

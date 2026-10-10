@@ -5,6 +5,7 @@ This module contains the optical schematic view dialog for visualizing
 fiber network topology with filtering, search, and export capabilities.
 """
 
+from qgis.PyQt import sip
 from qgis.PyQt.QtCore import Qt, QStringListModel, QTimer, QSize, QRect
 from qgis.PyQt.QtGui import QBrush, QPen, QColor, QPainterPath, QFont
 from qgis.PyQt.QtWidgets import (
@@ -44,6 +45,16 @@ logger = get_logger(__name__)
 #: The label grid's cell, in scene units: about one label wide (a 9 pt label
 #: measures about 60 x 25).
 _LABEL_CELL = 64.0
+
+#: The layer signals the view refreshes on. One tuple, so that wiring a layer
+#: and unwiring it again cannot drift apart.
+_LAYER_SIGNALS = (
+    "committedFeaturesAdded",
+    "committedFeaturesRemoved",
+    "committedAttributeValuesChanges",
+    "committedGeometriesChanges",
+    "layerModified",
+)
 
 
 def _scene_box(rect):
@@ -271,8 +282,9 @@ class OpticalSchematicDialog(QDialog):
         #: Something changed while the view was hidden: showEvent catches up.
         self._stale = False
 
-        # Auto-refresh
-        self._wired_layers = set()
+        # Auto-refresh. teardown() undoes all of it.
+        self._wired_layers = {}
+        self._project_wired = False
         self._wire_all_layers()
 
         self.rebuild()
@@ -1011,12 +1023,23 @@ class OpticalSchematicDialog(QDialog):
     def _wire_all_layers(self):
         prj = QgsProject.instance()
         try:
-            prj.layersAdded.connect(lambda *_: self._schedule_rebuild())
-            prj.layerWillBeRemoved.connect(lambda *_: self._schedule_rebuild())
+            # U17: bound methods, not lambdas. The lambdas were not kept, so
+            # nothing could name them to disconnect them, and unlike a bound
+            # method they are not dropped when the view is deleted: a closed
+            # view went on rebuilding after the plugin was unloaded.
+            prj.layersAdded.connect(self._on_layers_added)
+            prj.layerWillBeRemoved.connect(self._on_layer_will_be_removed)
+            self._project_wired = True
         except Exception as e:
             logger.debug(f"Error in OpticalSchematicDialog._wire_all_layers: {e}")
         for lyr in QgsProject.instance().mapLayers().values():
             self._wire_layer(lyr)
+
+    def _on_layers_added(self, *args):
+        self._schedule_rebuild()
+
+    def _on_layer_will_be_removed(self, *args):
+        self._schedule_rebuild()
 
     def _layer_committed(self, *args, **kwargs):
         # instead of direct rebuild, do debounce
@@ -1025,17 +1048,52 @@ class OpticalSchematicDialog(QDialog):
     def _wire_layer(self, lyr):
         if not isinstance(lyr, QgsVectorLayer):
             return
-        if lyr.id() in getattr(self, "_wired_layers", set()):
+        if lyr.id() in getattr(self, "_wired_layers", {}):
             return
-        self._wired_layers.add(lyr.id())
+        self._wired_layers[lyr.id()] = lyr
         try:
-            lyr.committedFeaturesAdded.connect(self._layer_committed)
-            lyr.committedFeaturesRemoved.connect(self._layer_committed)
-            lyr.committedAttributeValuesChanges.connect(self._layer_committed)
-            lyr.committedGeometriesChanges.connect(self._layer_committed)
-            lyr.layerModified.connect(self._layer_committed)
+            for name in _LAYER_SIGNALS:
+                getattr(lyr, name).connect(self._layer_committed)
         except Exception as e:
             logger.debug(f"Error in OpticalSchematicDialog._wire_layer: {e}")
+
+    def teardown(self):
+        """Disconnect everything _wire_all_layers() connected. Safe to call twice.
+
+        U17. close() only hides the view, and the view is parented to the QGIS
+        main window, so dropping the plugin's reference to it changed nothing:
+        it stayed connected -- rebuilding on every layer added or removed and
+        every commit -- for the rest of the session, keeping the unloaded
+        plugin alive through ``self.core``, one more copy per plugin reload
+        (measured on 3.22.16 through 4.2.3).
+
+        QgsProject's signals are disconnected by naming the slot, never with a
+        bare disconnect(), which would cut QGIS's own connections and every
+        other plugin's.
+        """
+        self._rebuild_timer.stop()
+        self._rebuild_pending = False
+        if self._project_wired:
+            prj = QgsProject.instance()
+            prj.layersAdded.disconnect(self._on_layers_added)
+            prj.layerWillBeRemoved.disconnect(self._on_layer_will_be_removed)
+            self._project_wired = False
+        wired, self._wired_layers = self._wired_layers, {}
+        for lyr in wired.values():
+            self._unwire_layer(lyr)
+
+    def _unwire_layer(self, lyr):
+        # A layer removed from the project is deleted at once, and its
+        # connections with it. Touching its signals then is a RuntimeError,
+        # and disconnecting a signal object fetched before the deletion is a
+        # SIGSEGV (both measured), so it is checked first and never cached.
+        if sip.isdeleted(lyr):
+            return
+        for name in _LAYER_SIGNALS:
+            try:
+                getattr(lyr, name).disconnect(self._layer_committed)
+            except TypeError as e:
+                logger.warning(f"Schematic view: {name} of layer {lyr.id()} was not connected: {e}")
 
 
 __all__ = ['SchematicView', 'OpticalSchematicDialog']
