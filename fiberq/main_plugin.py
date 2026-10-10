@@ -2745,11 +2745,13 @@ class FiberQPlugin:
                 logger.debug(f"Error in FiberQPlugin.list_all_pipes: {e}")
         return []
 
-    def _find_candidate_elements_for_cable(self, cable_layer, cable_feature, tol=5.0):
-        """Find candidate elements for cable."""
+    def _find_candidate_elements_for_cable(self, cable_layer, cable_feature, tol=5.0,
+                                           elements=None, first=False):
+        """Find candidate elements for cable. See DataManager.find_candidate_elements_for_cable."""
         if self.relations_manager:
             try:
-                return self.relations_manager.find_candidate_elements_for_cable(cable_layer, cable_feature, tol)
+                return self.relations_manager.find_candidate_elements_for_cable(
+                    cable_layer, cable_feature, tol, elements=elements, first=first)
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin._find_candidate_elements_for_cable: {e}")
         return []
