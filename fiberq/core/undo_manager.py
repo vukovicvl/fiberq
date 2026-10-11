@@ -23,13 +23,14 @@ from collections import deque
 from enum import Enum
 
 from qgis.core import (
-    QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry
+    QgsExpression, QgsFeatureRequest, QgsProject, QgsRectangle, QgsVectorLayer, QgsFeature, QgsGeometry
 )
 from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
 
 from ..i18n import safe_format
 from ..utils.errors import OperationErrors, check_commit
 from ..utils.logger import get_logger
+from ..utils.spatial import indexable_box
 logger = get_logger(__name__)
 
 #: WP4 4.2 item R7, the undo/redo half. Strings in the FiberQUndo context, with
@@ -691,6 +692,10 @@ class FiberQUndoManager:
         if not target_geom or target_geom.isEmpty():
             return None
 
+        newest = _newest_match_near(layer, target_geom)
+        if newest is not None:
+            return newest
+
         best_fid = None
         best_dist = float('inf')
 
@@ -707,6 +712,72 @@ class FiberQUndoManager:
                         best_dist = d  # noqa: F841
 
         return best_fid
+
+
+def _newest_match_near(layer, target_geom):
+    """``_find_committed_fid``'s answer, read near the target, or None (WP4 4.1, PF-6).
+
+    The scan keeps the highest fid among the features within 1 mm of the
+    target, wherever they are. This reads only the features whose box meets
+    the target's box grown by 2 mm, takes the highest of them that passes the
+    scan's own test, W, and then asks the layer once whether it holds any
+    feature at all above W. When it holds none, no match can be above W
+    either, so W is the scan's answer -- whatever lies outside the box: a
+    one-vertex line GEOS measures as -1 from everywhere, a NaN row an R-tree
+    leaves out, a curve. Right after a placement, the new feature is both the
+    near match and the newest feature, so that is the usual outcome.
+
+    None sends the caller to the whole scan, as before: no match near, a
+    feature above W (an undo of a delete on a GeoPackage re-adds the row at
+    its OLD fid), a layer being edited (its buffered adds carry temporary
+    negative ids), a provider other than memory or a GeoPackage, a memory
+    layer with a filter, or a box no provider can be asked for (NaN,
+    infinite, huge). On a GeoPackage both reads are index lookups, the
+    R-tree and the primary key; a memory layer has neither in v1.6.0, and
+    both reads are C++ passes there, without the GEOS distance per feature.
+    A filter on a memory layer is evaluated feature by feature in the second
+    pass, as in the scan itself, which made the two passes slower than the
+    one scan (design review, 3.22.16 to 4.2.3).
+    """
+    if layer.isEditable():
+        return None
+    provider = layer.dataProvider()
+    if provider is None or not (provider.name() == "memory" or (
+            provider.name() == "ogr" and provider.storageType() == "GPKG")):
+        return None
+    if provider.name() == "memory" and layer.subsetString():
+        return None
+    bounds = target_geom.boundingBox()
+    box = QgsRectangle(bounds.xMinimum() - 0.002, bounds.yMinimum() - 0.002,
+                       bounds.xMaximum() + 0.002, bounds.yMaximum() + 0.002)
+    if not indexable_box(box):
+        return None
+    near = layer.getFeatures(QgsFeatureRequest().setFilterRect(box).setNoAttributes())
+    for f in sorted(near, key=lambda feature: feature.id(), reverse=True):
+        fg = f.geometry()
+        # The scan's own test, so W is one of the scan's matches.
+        if fg and not fg.isEmpty() and target_geom.distance(fg) < 0.001:
+            return None if _holds_a_feature_above(layer, f.id()) else f.id()
+    return None
+
+
+def _holds_a_feature_above(layer, fid):
+    """True when ``layer`` holds a feature whose id is above ``fid``.
+
+    On a GeoPackage it is one query on the primary key, the ``fid`` column,
+    which SQLite answers from the key; ``$id`` does not compile there and
+    reads every row (0.14 ms against 1.5 ms for 1,579 points, 3.44.15). A
+    memory layer has no key column and would evaluate ``$id > fid`` feature
+    by feature, so its ids are listed in C++ instead (10.8 ms against 16 ms
+    for 25,249 points).
+    """
+    keys = layer.dataProvider().pkAttributeIndexes()
+    if layer.dataProvider().name() == "ogr" and len(keys) == 1:
+        column = QgsExpression.quotedColumnRef(layer.fields().at(keys[0]).name())
+        request = (QgsFeatureRequest().setFilterExpression(f"{column} > {int(fid)}")
+                   .setFlags(QgsFeatureRequest.Flag.NoGeometry).setNoAttributes().setLimit(1))
+        return any(True for _feature in layer.getFeatures(request))
+    return max(layer.allFeatureIds(), default=fid) > fid
 
 
 __all__ = ['FiberQUndoManager', 'OpType']
