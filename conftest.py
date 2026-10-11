@@ -26,8 +26,8 @@ def fiberq_dir():
 def city_xs_dataset(qgis_app, tmp_path_factory):
     """The WP4 benchmark's XS city project, generated once for the whole session.
 
-    Two test modules want it (`test_city_fixture.py`, `test_bench_harness.py`)
-    and it costs a second and a half, so it is built once. Nothing is committed:
+    Several test modules want it and it costs a second and a half, so it is
+    built once. Nothing is committed:
     `tests/fixtures/` holds the generator, not its output -- `.gitignore` matches
     neither `*.gpkg` nor `*.qgz`, so a generated dataset would sit in
     `git status` waiting to be added.
@@ -56,6 +56,21 @@ def city_xs_dataset(qgis_app, tmp_path_factory):
 
     folder = tmp_path_factory.mktemp("city_xs")
     return make_city_project.generate(size="XS", out=str(folder / "city_XS.gpkg"))
+
+
+@pytest.fixture(scope="session")
+def city_xs4_dataset(city_xs_dataset, tmp_path_factory):
+    """Size XS4, the ratio partner of XS: 7,707 features against 1,895 (x4.07).
+
+    WP4 plan 1.6: work that grows with the square of the project grows ~16x
+    between the two, linear work ~4x. Generated once per session (~2.5 s on
+    3.44.15). It depends on ``city_xs_dataset`` for that fixture's skip below
+    QGIS 3.36 and for its ``sys.path`` setup.
+    """
+    import make_city_project
+
+    folder = tmp_path_factory.mktemp("city_xs4")
+    return make_city_project.generate(size="XS4", out=str(folder / "city_XS4.gpkg"))
 
 
 @pytest.fixture(scope="session")

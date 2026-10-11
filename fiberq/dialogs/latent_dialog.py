@@ -20,6 +20,9 @@ from qgis.PyQt.QtWidgets import (
 
 from qgis.core import QgsVectorLayer, QgsProject
 
+from ..core.data_manager import PlacingElementIndex
+from ..utils.batch import features_by_id
+
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
@@ -54,9 +57,19 @@ class LatentElementsDialog(QDialog):
     def _load_cables(self):
         self.cables = self.core.list_all_cables()
         self.tbl.setRowCount(len(self.cables))
+        # WP4 PF-2: one read per cable layer and one index of the elements,
+        # instead of a scan of the cable's layer and a search of every element
+        # for each row -- 61 s to open at size S, ~6 min at M (v1.5.0).
+        cables = features_by_id((c["layer_id"], c["fid"]) for c in self.cables)
+        # Building the index costs 2.0-2.6 searches (by QGIS version), and a
+        # cable whose box spans every element still costs ~0.3 of a search
+        # through it, so three such cables were slower than v1.5.0's three
+        # searches (measured). From four cables the index never is; a shorter
+        # list is searched cable by cable, as before.
+        elements = PlacingElementIndex() if len(self.cables) > 3 else None
         for row, c in enumerate(self.cables):
             layer = QgsProject.instance().mapLayer(c["layer_id"])
-            feat = None
+            feat = cables.get(c["layer_id"], {}).get(int(c["fid"]))
             # Select checkbox
             chk = QCheckBox()
 
@@ -90,14 +103,9 @@ class LatentElementsDialog(QDialog):
             # Edit button enable if there are >0 candidates
             btn = QPushButton("Edit")
             can_edit = False
-            if layer and feat is None:
-                # fetch feature by scanning (fallback)
-                for f in layer.getFeatures():
-                    if int(f.id()) == int(c["fid"]):
-                        feat = f
-                        break
             if layer and feat:
-                cands = self.core._find_candidate_elements_for_cable(layer, feat)
+                cands = self.core._find_candidate_elements_for_cable(
+                    layer, feat, elements=elements, first=True)
                 can_edit = len(cands) > 0
             btn.setEnabled(can_edit)
 

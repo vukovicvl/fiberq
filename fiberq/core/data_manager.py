@@ -13,7 +13,8 @@ Phase 8 of the modular refactoring.
 
 import json
 import os
-from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes
+from qgis.core import (QgsGeometry, QgsPointXY, QgsProject, QgsRectangle,
+                       QgsVectorLayer, QgsWkbTypes)
 from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
 
 # WP1a: schema version marker
@@ -22,6 +23,7 @@ from .schema_version import write_project_schema_version
 
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
+from ..utils.spatial import ScanOrderIndex, indexable_box
 logger = get_logger(__name__)
 
 #: WP4 4.2 item R5. What each entry is called when something goes wrong with
@@ -29,6 +31,96 @@ logger = get_logger(__name__)
 _RELATIONS = QT_TRANSLATE_NOOP('FiberQStore', "Optical relations")
 _LATENT = QT_TRANSLATE_NOOP('FiberQStore', "Pass-through elements")
 _CATALOGS = QT_TRANSLATE_NOOP('FiberQStore', "Colour catalogues")
+
+#: Issue #5: the "Placing elements" layers (passive optical elements) a cable's
+#: latent-element candidates come from -- not poles, manholes or other
+#: infrastructure elements.
+PLACING_ELEMENT_LAYERS = {
+    # English names
+    'Joint Closures', 'ODF', 'TB', 'Patch panel', 'Patch Panel',
+    'OTB', 'Indoor OTB', 'Outdoor OTB', 'Pole OTB',
+    'TO', 'Indoor TO', 'Outdoor TO', 'Pole TO', 'Joint Closure TO',
+    # Serbian names (backward compatibility)
+    'Nastavci', 'Optički razdelnik', 'Završna optička kutija',
+}
+
+
+def _placing_layers():
+    """``(layer, has_naziv, features)`` for each placing-element layer, in scan order.
+
+    Lazy: each layer's features are read only when its turn comes, one layer
+    at a time, as the per-cable search always read them.
+    """
+    for lyr in QgsProject.instance().mapLayers().values():
+        # Only a vector layer has geometryType(). The loop this came from
+        # caught the AttributeError a raster basemap raises instead.
+        if not isinstance(lyr, QgsVectorLayer):
+            continue
+        if lyr.geometryType() != QgsWkbTypes.GeometryType.PointGeometry:
+            continue
+        # Issue #5: Only include layers from "Placing elements"
+        if lyr.name() not in PLACING_ELEMENT_LAYERS:
+            continue
+        yield lyr, lyr.fields().indexFromName('naziv') != -1, lyr.getFeatures()
+
+
+class PlacingElementIndex:
+    """Every placing-element point in the project, read once and indexed.
+
+    WP4 PF-2. Opening the list of latent elements searched every placing layer
+    again for every cable, one GEOS distance per cable per element: 4,531,020
+    calls at size S, ~78% of the 61 s the list took to open (v1.5.0, QGIS
+    3.44.15). Built once per opening, this hands each cable only the elements
+    its bounding box can reach.
+
+    The elements keep the order the search met them in -- ``mapLayers()``
+    order, then each layer's ``getFeatures()`` order -- because the candidate
+    list is a stable sort by ``m``: elements at the same ``m`` stay in that
+    order, which is not fid order once a layer has unsaved additions
+    (measured: -2, -3, -4, 1000, 1001, ...).
+    """
+
+    def __init__(self):
+        self._elements = ScanOrderIndex()
+        for lyr, has_naziv, features in _placing_layers():
+            for f in features:
+                pgeom = f.geometry()
+                if pgeom is None or pgeom.isEmpty():
+                    continue
+                self._elements.add((lyr, has_naziv, f), pgeom.boundingBox())
+
+    def near(self, geom, tol):
+        """The elements that can lie within ``tol`` of ``geom``, grouped as ``_placing_layers()`` yields them.
+
+        In scan order. The line's box is grown by twice ``tol``: GEOS rounding
+        put an element it measured exactly ``tol`` away just outside a box
+        grown by ``tol`` itself (65 of 89,623 near the origin; none outside
+        twice that, measured), and the distance test still decides. Every
+        element comes back when that box cannot be trusted. ``distance()``
+        answers -1 when GEOS cannot read the line (a one-vertex cable), and
+        ``-1 > tol`` is false, so the search accepted them all. And a curve's
+        own box need not hold the segmentized line GEOS measures: a collinear
+        arc's box comes from a circle centre it does not have, on every
+        version, and 3.22 leaves an arc's start out of the box when it lies at
+        0,0 -- (0 0, 50 30, 100 0) boxes as 50,0 : 100,30 there (measured) --
+        so curved cables are searched in full.
+        """
+        box = geom.boundingBox()
+        corner = QgsGeometry.fromPointXY(QgsPointXY(box.xMinimum(), box.yMinimum()))
+        boxed = indexable_box(box) and not QgsWkbTypes.isCurvedType(geom.wkbType())
+        if boxed and geom.distance(corner) >= 0:
+            reach = 2 * tol
+            found = self._elements.candidates(QgsRectangle(
+                box.xMinimum() - reach, box.yMinimum() - reach,
+                box.xMaximum() + reach, box.yMaximum() + reach))
+        else:
+            found = self._elements.everything()
+        groups = []
+        for lyr, has_naziv, f in found:
+            if not groups or groups[-1][0] is not lyr:
+                groups.append((lyr, has_naziv, []))
+            groups[-1][2].append(f)
+        return groups
 
 
 class DataManager:
@@ -518,7 +610,8 @@ class DataManager:
 
         return items
 
-    def find_candidate_elements_for_cable(self, cable_layer, cable_feature, tol=5.0):
+    def find_candidate_elements_for_cable(self, cable_layer, cable_feature, tol=5.0,
+                                          elements=None, first=False):
         """
         Find point elements near a cable route.
 
@@ -529,22 +622,15 @@ class DataManager:
             cable_layer: Cable layer
             cable_feature: Cable feature
             tol: Tolerance distance
+            elements: A :class:`PlacingElementIndex` shared by many cables -- the
+                latent-elements list builds one per opening (WP4 PF-2). Without
+                one, the layers are searched as they are now, as before.
+            first: Stop at the first candidate. The list then holds at most one
+                and answers only "is there any", which is all the Edit button asks.
 
         Returns:
             list: Candidate elements sorted by distance along cable
         """
-        from qgis.core import QgsGeometry, QgsPointXY
-
-        # Issue #5: Only include "Placing elements" layer names (passive optical elements)
-        PLACING_ELEMENT_LAYERS = {
-            # English names
-            'Joint Closures', 'ODF', 'TB', 'Patch panel', 'Patch Panel',
-            'OTB', 'Indoor OTB', 'Outdoor OTB', 'Pole OTB',
-            'TO', 'Indoor TO', 'Outdoor TO', 'Pole TO', 'Joint Closure TO',
-            # Serbian names (backward compatibility)
-            'Nastavci', 'Optički razdelnik', 'Završna optička kutija',
-        }
-
         geom = cable_feature.geometry()
         if geom is None or geom.isEmpty():
             return []
@@ -557,20 +643,11 @@ class DataManager:
             od = ''
             do = ''
 
+        layers = elements.near(geom, tol) if elements is not None else _placing_layers()
         cands = []
-        for lyr in QgsProject.instance().mapLayers().values():
+        for lyr, has_naziv, features in layers:
             try:
-                if lyr.geometryType() != QgsWkbTypes.GeometryType.PointGeometry:
-                    continue
-
-                # Issue #5: Only include layers from "Placing elements"
-                if lyr.name() not in PLACING_ELEMENT_LAYERS:
-                    continue
-
-                fields = lyr.fields()
-                has_naziv = fields.indexFromName('naziv') != -1
-
-                for f in lyr.getFeatures():
+                for f in features:
                     pgeom = f.geometry()
                     if pgeom is None or pgeom.isEmpty():
                         continue
@@ -604,6 +681,8 @@ class DataManager:
                         "m": m,
                         "distance": float(d),
                     })
+                    if first:
+                        return cands
             except Exception as e:
                 logger.debug(f"Skipping layer while finding candidate elements: {e}")
                 continue

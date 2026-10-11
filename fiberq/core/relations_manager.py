@@ -334,7 +334,9 @@ class RelationsManager:
 
     def find_candidate_elements_for_cable(self, cable_layer: QgsVectorLayer,
                                           cable_feature: QgsFeature,
-                                          tol: float = 5.0) -> List[Dict[str, Any]]:
+                                          tol: float = 5.0,
+                                          elements=None,
+                                          first: bool = False) -> List[Dict[str, Any]]:
         """
         Find candidate elements (points) along a cable within tolerance.
 
@@ -342,6 +344,9 @@ class RelationsManager:
             cable_layer: The cable layer
             cable_feature: The cable feature
             tol: Tolerance in map units (default 5.0)
+            elements, first: see DataManager.find_candidate_elements_for_cable.
+                The fallback below ignores both: it searches, and a full list
+                answers "is there any" just as well.
 
         Returns:
             List of candidate dicts sorted by distance along cable (m)
@@ -349,7 +354,8 @@ class RelationsManager:
         # Try DataManager first
         if self.data_manager:
             try:
-                return self.data_manager.find_candidate_elements_for_cable(cable_layer, cable_feature, tol)
+                return self.data_manager.find_candidate_elements_for_cable(
+                    cable_layer, cable_feature, tol, elements=elements, first=first)
             except Exception as e:
                 logger.debug(f"Error in RelationsManager.find_candidate_elements_for_cable: {e}")
 

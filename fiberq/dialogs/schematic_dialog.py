@@ -5,6 +5,7 @@ This module contains the optical schematic view dialog for visualizing
 fiber network topology with filtering, search, and export capabilities.
 """
 
+from qgis.PyQt import sip
 from qgis.PyQt.QtCore import Qt, QStringListModel, QTimer, QSize, QRect
 from qgis.PyQt.QtGui import QBrush, QPen, QColor, QPainterPath, QFont
 from qgis.PyQt.QtWidgets import (
@@ -31,12 +32,43 @@ from qgis.core import (
     QgsWkbTypes,
     QgsPointXY,
     QgsCoordinateTransform,
+    QgsRectangle,
 )
 
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
+from ..utils.batch import features_by_id
 from ..utils.measure import ground_length
+from ..utils.spatial import RectGrid
 logger = get_logger(__name__)
+
+#: The label grid's cell, in scene units: about one label wide (a 9 pt label
+#: measures about 60 x 25).
+_LABEL_CELL = 64.0
+
+#: The layer signals the view refreshes on. One tuple, so that wiring a layer
+#: and unwiring it again cannot drift apart.
+_LAYER_SIGNALS = (
+    "committedFeaturesAdded",
+    "committedFeaturesRemoved",
+    "committedAttributeValuesChanges",
+    "committedGeometriesChanges",
+    "layerModified",
+)
+
+
+def _scene_box(rect):
+    """A scene ``QRectF`` as the ``QgsRectangle`` the label grid places.
+
+    The bounds in order, so a negative width or height counts the way
+    ``QRectF.intersects`` counts it. Ordered here rather than left to the
+    constructor: on 3.22 ``QgsRectangle`` skips normalising a box it considers
+    null, one whose four bounds all lie within ~4e-16 of zero (measured). The
+    bounds themselves are copied exactly: 0 differences over 5,428 label rects
+    (measured on QGIS 3.22.16, 3.40.15, 3.44.15, 4.0.3 and 4.2.3).
+    """
+    left, right, top, bottom = rect.left(), rect.right(), rect.top(), rect.bottom()
+    return QgsRectangle(min(left, right), min(top, bottom), max(left, right), max(top, bottom))
 
 
 class SchematicView(QGraphicsView):
@@ -247,9 +279,12 @@ class OpticalSchematicDialog(QDialog):
         self._rebuild_timer.setInterval(400)  # ms
         self._rebuild_timer.timeout.connect(self._do_rebuild_if_needed)
         self._rebuild_pending = False
+        #: Something changed while the view was hidden: showEvent catches up.
+        self._stale = False
 
-        # Auto-refresh
-        self._wired_layers = set()
+        # Auto-refresh. teardown() undoes all of it.
+        self._wired_layers = {}
+        self._project_wired = False
         self._wire_all_layers()
 
         self.rebuild()
@@ -389,16 +424,16 @@ class OpticalSchematicDialog(QDialog):
     def _collect_edges(self):
         """List all cables + read attributes from layer; returns list of dicts."""
         items = self.core.list_all_cables() + self.core.list_all_pipes()
+        # WP4 PF-1: one read per layer. Each item used to be found by reading
+        # its layer from the top until the fid came up -- 2,156,690 features
+        # read to find 3,919 at size S, ~73% of the time the view took to open.
+        by_id = features_by_id((it.get('layer_id'), it.get('fid')) for it in items)
         edges = []
         for it in items:
             lyr = QgsProject.instance().mapLayer(it.get('layer_id'))
             if not lyr or not isinstance(lyr, QgsVectorLayer):
                 continue
-            feat = None
-            for _f in lyr.getFeatures():
-                if int(_f.id()) == int(it.get('fid')):
-                    feat = _f
-                    break
+            feat = by_id.get(it.get('layer_id'), {}).get(int(it.get('fid')))
             if not feat:
                 continue
 
@@ -561,11 +596,14 @@ class OpticalSchematicDialog(QDialog):
             # Prepare node positions from centroids/points
             pos = {}
             world_points = []
+            # WP4 PF-1: one read per layer here too, not a scan per node --
+            # 1,471,859 features read to place 3,304 nodes at size S.
+            by_id = features_by_id((info.get('layer_id'), info.get('fid')) for info in nodes.values())
             for name, info in nodes.items():
                 try:
                     lyr = QgsProject.instance().mapLayer(info.get('layer_id'))
                     fid = int(info.get('fid'))
-                    feat = next((f for f in lyr.getFeatures() if int(f.id()) == fid), None)
+                    feat = by_id.get(info.get('layer_id'), {}).get(fid)
                     if not feat:
                         continue
                     g = feat.geometry()
@@ -814,7 +852,14 @@ class OpticalSchematicDialog(QDialog):
             return QColor(60, 60, 60)
 
         # label collision avoidance
-        occupied = []
+        #
+        # WP4 PF-1: through a spatial index, a uniform grid (see RectGrid for
+        # why not a QgsSpatialIndex). Every label used to be compared with
+        # every label already placed -- 17,229,707 intersects() calls for 5,345
+        # labels at size S. The test is unchanged and still decides; the grid
+        # only offers it the placed rects in the cells this one covers, which
+        # are all it could find overlapping, and stops at the first it does.
+        occupied = RectGrid(_LABEL_CELL)
 
         def place_text(x, y, txt, color):
             if not txt:
@@ -825,12 +870,13 @@ class OpticalSchematicDialog(QDialog):
             for dx, dy in offsets:
                 ti.setPos(x + dx, y + dy)
                 rect = ti.mapRectToScene(ti.boundingRect())
-                if not any(rect.intersects(r) for r in occupied):
+                if not occupied.any_passes(_scene_box(rect), rect.intersects):
                     bg = rect.adjusted(-2, -1, 2, 2)
                     self.scene.addRect(bg, QPen(Qt.PenStyle.NoPen), QColor(255, 255, 255, 210)).setZValue(ti.zValue() - 1)
-                    occupied.append(bg)
+                    occupied.add(bg, _scene_box(bg))
                     return
-            occupied.append(ti.mapRectToScene(ti.boundingRect()))
+            last = ti.mapRectToScene(ti.boundingRect())
+            occupied.add(last, _scene_box(last))
 
         # branches + labels
         for e, path in lines:
@@ -914,8 +960,17 @@ class OpticalSchematicDialog(QDialog):
         p.end()
 
     def _schedule_rebuild(self):
-        """Debounced rebuild – used for automatic layer changes."""
+        """Debounced rebuild – used for automatic layer changes.
+
+        A hidden view only notes that it is out of date, and showEvent()
+        rebuilds it when it is shown again. It used to rebuild after every
+        commit anywhere in the project, open or not: once opened and closed,
+        the view cost 22.5 s per commit at size S (v1.5.0, QGIS 3.44.15).
+        """
         try:
+            if not self.isVisible():
+                self._stale = True
+                return
             self._rebuild_pending = True
             if getattr(self, "_rebuild_timer", None) is not None:
                 # restart timer – multiple changes in short time -> one rebuild
@@ -934,18 +989,67 @@ class OpticalSchematicDialog(QDialog):
         if not getattr(self, "_rebuild_pending", False):
             return
         self._rebuild_pending = False
+        if not self.isVisible():
+            # Closed while the timer ran: catch up when shown again instead.
+            self._stale = True
+            return
         self.rebuild()
+
+    def showEvent(self, event):
+        """Catch up, before the first paint, on what changed while hidden.
+
+        Synchronously, not through the timer. v1.5.0 rebuilt the hidden view
+        after every change it is wired to, so it reappeared showing the last
+        of those; a debounced catch-up would paint the old lengths and labels
+        first, with Search, Center and Export acting on them until the timer
+        fired (measured). Rebuilding at show time is at least as current, and
+        more so when such a change was followed, while hidden, by one no
+        signal reports -- a layer renamed or filtered, the project CRS changed
+        under Match map styling -- which v1.5.0 kept showing stale until the
+        next Refresh (measured on 3.22, 3.44 and 4.2).
+
+        Only when something did change: Qt6 sends showEvent again whenever
+        show() is called on a visible dialog, which open_optical_schematic()
+        does on every click.
+        """
+        super().showEvent(event)
+        if getattr(self, "_stale", False):
+            self._stale = False
+            self._rebuild_pending = False
+            self._rebuild_timer.stop()
+            self.rebuild()
 
     # ---------- SIGNALS ----------
     def _wire_all_layers(self):
         prj = QgsProject.instance()
         try:
-            prj.layersAdded.connect(lambda *_: self._schedule_rebuild())
-            prj.layerWillBeRemoved.connect(lambda *_: self._schedule_rebuild())
+            # U17: bound methods, not lambdas. The lambdas were not kept, so
+            # nothing could name them to disconnect them, and unlike a bound
+            # method they are not dropped when the view is deleted: a closed
+            # view went on rebuilding after the plugin was unloaded.
+            prj.layersAdded.connect(self._on_layers_added)
+            prj.layerWillBeRemoved.connect(self._on_layer_will_be_removed)
+            self._project_wired = True
         except Exception as e:
             logger.debug(f"Error in OpticalSchematicDialog._wire_all_layers: {e}")
         for lyr in QgsProject.instance().mapLayers().values():
             self._wire_layer(lyr)
+
+    def _on_layers_added(self, layers):
+        # A layer created after the view opened -- the first cable, a new
+        # element type, every layer of a project read in -- is followed like
+        # the ones that were there. Only the layers present at opening were.
+        for lyr in layers:
+            self._wire_layer(lyr)
+        self._schedule_rebuild()
+
+    def _on_layer_will_be_removed(self, layer_id):
+        # Forgotten, or the same id read back from the project file would be
+        # taken as followed already and never wired again.
+        lyr = self._wired_layers.pop(layer_id, None)
+        if lyr is not None:
+            self._unwire_layer(lyr)
+        self._schedule_rebuild()
 
     def _layer_committed(self, *args, **kwargs):
         # instead of direct rebuild, do debounce
@@ -954,17 +1058,55 @@ class OpticalSchematicDialog(QDialog):
     def _wire_layer(self, lyr):
         if not isinstance(lyr, QgsVectorLayer):
             return
-        if lyr.id() in getattr(self, "_wired_layers", set()):
+        if lyr.id() in getattr(self, "_wired_layers", {}):
             return
-        self._wired_layers.add(lyr.id())
+        self._wired_layers[lyr.id()] = lyr
         try:
-            lyr.committedFeaturesAdded.connect(self._layer_committed)
-            lyr.committedFeaturesRemoved.connect(self._layer_committed)
-            lyr.committedAttributeValuesChanges.connect(self._layer_committed)
-            lyr.committedGeometriesChanges.connect(self._layer_committed)
-            lyr.layerModified.connect(self._layer_committed)
+            for name in _LAYER_SIGNALS:
+                getattr(lyr, name).connect(self._layer_committed)
         except Exception as e:
             logger.debug(f"Error in OpticalSchematicDialog._wire_layer: {e}")
+
+    def teardown(self):
+        """Disconnect everything _wire_all_layers() connected. Safe to call twice.
+
+        U17. close() only hides the view, and the view is parented to the QGIS
+        main window, so dropping the plugin's reference to it changed nothing:
+        it stayed connected -- rebuilding on every layer added or removed and
+        every commit -- for the rest of the session, keeping the unloaded
+        plugin alive through ``self.core``, one more copy per plugin reload
+        (measured on 3.22.16 through 4.2.3).
+
+        QgsProject's signals are disconnected by naming the slot, never with a
+        bare disconnect(), which would cut QGIS's own connections and every
+        other plugin's.
+        """
+        self._rebuild_timer.stop()
+        self._rebuild_pending = False
+        if self._project_wired:
+            prj = QgsProject.instance()
+            prj.layersAdded.disconnect(self._on_layers_added)
+            prj.layerWillBeRemoved.disconnect(self._on_layer_will_be_removed)
+            self._project_wired = False
+        wired, self._wired_layers = self._wired_layers, {}
+        for lyr in wired.values():
+            self._unwire_layer(lyr)
+
+    def _unwire_layer(self, lyr):
+        # A layer removed from the project is unwired while it is still alive,
+        # by _on_layer_will_be_removed. But a layer can also be deleted while
+        # still registered -- the project's store then drops it without
+        # layerWillBeRemoved -- and touching a deleted layer's signals is a
+        # RuntimeError, disconnecting through a signal object fetched before
+        # the deletion a SIGSEGV (both measured). So it is checked first, and
+        # the signal objects are never cached.
+        if sip.isdeleted(lyr):
+            return
+        for name in _LAYER_SIGNALS:
+            try:
+                getattr(lyr, name).disconnect(self._layer_committed)
+            except TypeError as e:
+                logger.warning(f"Schematic view: {name} of layer {lyr.id()} was not connected: {e}")
 
 
 __all__ = ['SchematicView', 'OpticalSchematicDialog']
