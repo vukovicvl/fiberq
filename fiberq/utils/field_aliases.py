@@ -9,7 +9,7 @@ backward compatibility with existing Serbian database schemas.
 """
 
 from typing import Dict
-from qgis.core import QgsVectorLayer, QgsEditorWidgetSetup
+from qgis.core import QgsEditorWidgetSetup, QgsExpression, QgsFeatureRequest, QgsVectorLayer
 
 # Phase 5.2: Logging
 from .logger import get_logger
@@ -377,7 +377,9 @@ def _migrate_cable_type_values(layer: QgsVectorLayer) -> None:
     3.26+) ``rollBack()`` rolls back the whole project, so the restyle after
     the first Lay cable, which creates the cable layer while the user is
     editing, threw away every unsaved edit in the project and ended the
-    session (measured on 3.40.15, 3.44.15 and 4.2.3).
+    session (measured on 3.40.15, 3.44.15 and 4.2.3). Where the provider can
+    be asked for the old values directly, only those rows are read
+    (``_old_cable_types_can_be_queried``).
 
     Args:
         layer: Cable layer to migrate
@@ -387,8 +389,17 @@ def _migrate_cable_type_values(layer: QgsVectorLayer) -> None:
         if tip_idx < 0:
             return
 
+        prefiltered = _old_cable_types_can_be_queried(layer)
+        if prefiltered:
+            # Flags first: setFlags() replaces them all, SubsetOfAttributes too.
+            rows = layer.getFeatures(QgsFeatureRequest().setFlags(
+                QgsFeatureRequest.Flag.NoGeometry).setSubsetOfAttributes([tip_idx]).setFilterExpression(
+                f"{QgsExpression.quotedColumnRef('tip')} IN ('opticki', 'bakarnI')"))
+        else:
+            rows = layer.getFeatures()
+
         todo = []
-        for feature in layer.getFeatures():
+        for feature in rows:
             val = feature["tip"]
             new_val = None
 
@@ -401,6 +412,10 @@ def _migrate_cable_type_values(layer: QgsVectorLayer) -> None:
                 todo.append((feature.id(), new_val))
         if not todo:
             return
+        if prefiltered:
+            # The provider's own order is fid order, the order the whole read
+            # met them; an attribute index on "tip" may hand them back by value.
+            todo.sort()
 
         started_edit = False
         if not layer.isEditable():
@@ -415,6 +430,36 @@ def _migrate_cable_type_values(layer: QgsVectorLayer) -> None:
 
     except Exception as e:
         logger.debug(f"Error in _migrate_cable_type_values: {e}")
+
+
+def _old_cable_types_can_be_queried(layer: QgsVectorLayer) -> bool:
+    """True when the provider can be asked for the old values directly (WP4 4.1, PF-s).
+
+    Most restyles find nothing to migrate: every project made since the
+    English rename. Reading only the rows whose ``tip`` is an old value, and
+    only that column, saves reading every cable whole each time. The
+    ``==`` tests stay, so a looser match (a GeoPackage column declared
+    NOCASE, say) still changes only what it always changed.
+
+    Only on a layer that is not being edited, from a memory layer or a
+    GeoPackage without a filter, because the query answers differently
+    anywhere else (measured on 3.22.16, 3.44.15 and 4.2.3 in the design and
+    code reviews): with an edit buffer it hands back changed rows first, so
+    the user's undo stack gets the changes in another order; with a field
+    added or deleted in the buffer it returns rows without "tip", or none; a
+    shapefile's own attribute index is not updated by QGIS edits, so a value
+    re-picked and saved is not found; and a GeoPackage filter SQLite answers
+    through an attribute index reads in that index's order, which the sort
+    below would not keep. There the whole layer is read exactly as before.
+    """
+    if layer.isEditable():
+        return False
+    provider = layer.dataProvider()
+    if provider is None:
+        return False
+    if provider.name() == "memory":
+        return True
+    return provider.name() == "ogr" and provider.storageType() == "GPKG" and not layer.subsetString()
 
 
 def apply_manhole_field_aliases(layer: QgsVectorLayer) -> None:
