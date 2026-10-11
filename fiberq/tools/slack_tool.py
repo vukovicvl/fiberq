@@ -4,6 +4,8 @@ FiberQ v2 - Slack Tool
 Tool for placing optical slack (reserve) points on cables.
 """
 
+import math
+
 from .base import (
     Qt, QMessageBox,
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
@@ -12,6 +14,7 @@ from .base import (
     PlacementSnapper, snap_match
 )
 
+from qgis.core import QgsGeometryUtils
 from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
 
 from ..core import interchange_fields as fm
@@ -20,8 +23,77 @@ from ..i18n import safe_format
 from ..models.schema import canonical_layer_name
 # Phase 5.2: Logging
 from ..utils.errors import OperationErrors, check_commit, describe
+from ..utils.geometry import line_parts
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
+
+
+def _cable_lines(geom, tolerance):
+    """The lines of a cable a slack can go on, or ``[]`` when it is not one.
+
+    Every part with a vertex has to be a line -- two or more of them -- and
+    every vertex a real number. Anything else is invalid geometry that GEOS
+    cannot measure consistently: -1 for a one-vertex line, 0.0 from
+    everywhere for a cable whose only part has one vertex, and NaN or
+    infinity wherever a vertex is not a number. Each of those made one broken
+    cable the cable of every click. A GeoPackage does not even return such a cable to a box query: a
+    one-vertex part fails OGR's own intersection test, and a NaN first vertex
+    leaves its R-tree entry at 0,0,0,0 (measured on 3.22.16, 3.44.15 and
+    4.2.3). So both cable searches skip it, which also lets a search that
+    reads only the cables near the click answer what the whole scan does.
+
+    A curve also has to be one QGIS can box. QGIS boxes an arc from the
+    circle through its three points, and three points in a row have none:
+    ``circleCenterRadius`` answers radius -1 and never sets the centre the
+    box is then built from. ``CircularString (0 0, 200 0, 100 0)`` got the
+    box (-1, -1, 100, 0) in one run and one holding its whole line in
+    another, while GEOS measures it out to x = 200; so such an arc is not a
+    cable. Every other arc has to lie in its own box, give or take half the
+    snap ``tolerance``: a box holds its arc to within 2e-6 of the arc's size
+    (20,000 random arcs, 3.22.16 to 4.2.3), except on 3.22 for an arc that
+    starts exactly at (0, 0): 3.22 takes the rectangle (0, 0, 0, 0) its box
+    is grown from for an empty one, and drops that point. A memory layer
+    keeps a curve digitised on it as a curve, whatever its declared type.
+
+    An empty part is no part at all: GEOS and every box leave it out.
+    """
+    lines = line_parts(geom)
+    if not lines or _has_a_one_vertex_part(geom):
+        return []
+    if not all(math.isfinite(c) for line in lines for p in line for c in (p.x(), p.y())):
+        return []
+    if QgsWkbTypes.isCurvedType(geom.wkbType()):
+        if _has_an_arc_without_a_circle(geom.constGet()):
+            return []
+        box = geom.boundingBox()
+        slack = tolerance / 2
+        low_x, high_x = box.xMinimum() - slack, box.xMaximum() + slack
+        low_y, high_y = box.yMinimum() - slack, box.yMaximum() + slack
+        if not all(low_x <= p.x() <= high_x and low_y <= p.y() <= high_y for line in lines for p in line):
+            return []
+    return lines
+
+
+def _has_a_one_vertex_part(geom):
+    """True when a part of ``geom`` has exactly one vertex (see ``_cable_lines``)."""
+    shape = geom.constGet()
+    if QgsWkbTypes.isMultiType(geom.wkbType()):
+        return any(shape.geometryN(i).nCoordinates() == 1 for i in range(shape.numGeometries()))
+    return shape.nCoordinates() == 1
+
+
+def _has_an_arc_without_a_circle(curve):
+    """True when an arc of ``curve`` has its three points in a row (see ``_cable_lines``)."""
+    kind = QgsWkbTypes.displayString(QgsWkbTypes.flatType(curve.wkbType()))
+    if kind == "CircularString":
+        points = curve.points()
+        return any(QgsGeometryUtils.circleCenterRadius(*points[i:i + 3])[0] < 0
+                   for i in range(0, len(points) - 2, 2))
+    if kind == "CompoundCurve":
+        return any(_has_an_arc_without_a_circle(curve.curveAt(i)) for i in range(curve.nCurves()))
+    if kind.startswith("Multi"):
+        return any(_has_an_arc_without_a_circle(curve.geometryN(i)) for i in range(curve.numGeometries()))
+    return False
 
 
 class SlackPlaceTool(QgsMapTool):
@@ -81,6 +153,10 @@ class SlackPlaceTool(QgsMapTool):
         """
         Find the nearest node (pole/manhole) to a point.
 
+        A node whose point is not finite is not a node to measure from. A NaN
+        one met first used to make ``best`` NaN, and ``d < NaN`` is never true,
+        so that one node decided "Pole" or "Manhole" for every slack.
+
         Returns:
             Tuple of (layer, feature, distance) or (None, None, None)
         """
@@ -89,6 +165,8 @@ class SlackPlaceTool(QgsMapTool):
             for f in nl.getFeatures():
                 try:
                     p = f.geometry().asPoint()
+                    if not (math.isfinite(p.x()) and math.isfinite(p.y())):
+                        continue
                     d = QgsPointXY(p).distance(pt)
                     if best[2] is None or d < best[2]:
                         best = (nl, f, d)
@@ -100,6 +178,13 @@ class SlackPlaceTool(QgsMapTool):
         """
         Find the nearest cable endpoint to a point.
 
+        Each part of a multipart cable offers its own two ends. The vertices
+        come from ``line_parts`` because ``asPolyline()`` raises ``TypeError``
+        on a MultiLineString rather than answering an empty list (FU-10), and
+        ``ValueError`` on a cable with no geometry: one such cable anywhere in
+        the project used to stop this search for every other cable. A cable
+        that is not a valid line offers no ends (``_cable_lines``).
+
         Returns:
             Tuple of (layer, feature, side, endpoint, distance)
             side is 'od' (FROM) or 'do' (TO)
@@ -108,28 +193,26 @@ class SlackPlaceTool(QgsMapTool):
 
         for kl in self._iter_cable_layers():
             for f in kl.getFeatures():
-                geom = f.geometry()
-                line = geom.asPolyline()
-                if not line:
-                    parts = geom.asMultiPolyline()
-                    if parts:
-                        line = parts[0]
-                if not line:
-                    continue
+                for line in _cable_lines(f.geometry(), tolerance):
+                    ends = [QgsPointXY(line[0]), QgsPointXY(line[-1])]
+                    labels = ["od", "do"]  # FROM, TO in Serbian
 
-                ends = [QgsPointXY(line[0]), QgsPointXY(line[-1])]
-                labels = ["od", "do"]  # FROM, TO in Serbian
-
-                for lbl, ep in zip(labels, ends):
-                    d = QgsPointXY(ep).distance(pt)
-                    if (best[4] is None or d < best[4]) and d <= tolerance:
-                        best = (kl, f, lbl, ep, d)
+                    for lbl, ep in zip(labels, ends):
+                        d = QgsPointXY(ep).distance(pt)
+                        if (best[4] is None or d < best[4]) and d <= tolerance:
+                            best = (kl, f, lbl, ep, d)
 
         return best
 
     def _nearest_cable_on_line(self, pt, tolerance):
         """
         Find the nearest cable to a point (anywhere on the line).
+
+        A cable that is not a valid line is skipped (``_cable_lines``). GEOS
+        measures an empty line, or one whose only part has one vertex, as 0.0
+        from everything and cannot measure a one-vertex line at all (-1), and
+        either of those is "within the tolerance" of every click, so such a
+        cable used to become the cable of every mid-span slack.
 
         Returns:
             Tuple of (layer, feature, distance) or (None, None, None)
@@ -138,7 +221,12 @@ class SlackPlaceTool(QgsMapTool):
 
         for kl in self._iter_cable_layers():
             for f in kl.getFeatures():
-                d = f.geometry().distance(QgsGeometry.fromPointXY(pt))
+                geom = f.geometry()
+                if not _cable_lines(geom, tolerance):
+                    continue
+                d = geom.distance(QgsGeometry.fromPointXY(pt))
+                if d < 0:
+                    continue
                 if d <= tolerance and (best[2] is None or d < best[2]):
                     best = (kl, f, d)
 
