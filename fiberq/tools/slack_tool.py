@@ -25,7 +25,13 @@ from ..models.schema import canonical_layer_name
 from ..utils.errors import OperationErrors, check_commit, describe
 from ..utils.geometry import line_parts
 from ..utils.logger import get_logger
+from ..utils.spatial import features_near
 logger = get_logger(__name__)
+
+#: How many times the nearest-node box may grow, fourfold each time, before
+#: the whole layer is read instead: 4**11 times even 10 m is past the
+#: circumference of the Earth.
+_NODE_SEARCH_STEPS = 12
 
 
 def _cable_lines(geom, tolerance):
@@ -162,17 +168,101 @@ class SlackPlaceTool(QgsMapTool):
         """
         best = (None, None, None)
         for nl in self._iter_node_layers():
-            for f in nl.getFeatures():
-                try:
-                    p = f.geometry().asPoint()
-                    if not (math.isfinite(p.x()) and math.isfinite(p.y())):
-                        continue
-                    d = QgsPointXY(p).distance(pt)
-                    if best[2] is None or d < best[2]:
-                        best = (nl, f, d)
-                except Exception as e:
-                    logger.debug(f"Error in SlackPlaceTool._nearest_node: {e}")
+            for f in self._nodes_to_measure(nl, pt):
+                p = self._node_point(f)
+                if p is None:
+                    continue
+                d = p.distance(pt)
+                if best[2] is None or d < best[2]:
+                    best = (nl, f, d)
         return best
+
+    @staticmethod
+    def _node_point(feature):
+        """The node's point as the scan has always read it, or None when it has none.
+
+        ``asPoint()`` is still the call, so each QGIS keeps its own answer: a
+        single-part MultiPoint reads on 3.44 and 4.2 but raises on 3.22.
+        """
+        p = None
+        try:
+            p = feature.geometry().asPoint()
+        except Exception as e:
+            logger.debug(f"Error in SlackPlaceTool._nearest_node: {e}")
+        if p is None or not (math.isfinite(p.x()) and math.isfinite(p.y())):
+            return None
+        return QgsPointXY(p)
+
+    def _nodes_to_measure(self, layer, pt):
+        """The nodes of one layer the nearest-node scan has to measure (WP4 PF-4).
+
+        Every node the whole layer could offer as its nearest, in the whole
+        scan's order -- usually a handful near ``pt`` rather than every pole in
+        the project. The box reaches twice the reach on each side and grows
+        until it holds a node within the reach: every node that near or
+        nearer lies inside it then, so the nearest and every tie with it are
+        among the nodes returned. Only the nearest node's layer and its
+        presence are ever used (Stub, OKNO or Objekat), and a strict ``<``
+        across layers in the scan's layer order keeps the layer the whole scan
+        picked. When a box cannot answer exactly, or no node turns up, the
+        whole layer is read, as before -- and also as soon as a box holds
+        nodes but none whose point can be read (on 3.22 ``asPoint()`` reads no
+        MultiPoint): the boxes would only grow round them, each a read.
+
+        A count of 0 is not taken at its word, because QGIS keeps it from the
+        last time it looked: it stays 0 when another layer on the same table,
+        or another program, adds poles, and it drifts in transaction groups
+        when a delete is undone (code review, 3.22.16 to 4.2.3). The whole
+        layer is read then, which costs nothing if it really is empty.
+        """
+        count = layer.featureCount()
+        if count == 0:
+            return layer.getFeatures()
+        reach = self._first_reach(layer, count)
+        for _ in range(_NODE_SEARCH_STEPS):
+            found = features_near(layer, pt, 2.0 * reach)
+            if found is None:
+                break
+            points = [self._node_point(f) for f in found]
+            if any(p is not None and p.distance(pt) <= reach for p in points):
+                return found
+            if found and all(p is None for p in points):
+                break
+            reach *= 4.0
+        return layer.getFeatures()
+
+    def _first_reach(self, layer, count):
+        """Where the nearest-node box starts: the layer's own spacing, or the snap reach.
+
+        Only a starting guess -- the box grows until it is right -- so it costs
+        nothing in correctness. The square root of the area per node is about
+        twice the distance to the nearest of randomly placed nodes, so most
+        searches end at the first box, whatever the canvas zoom.
+        """
+        extent = layer.extent()
+        area = extent.width() * extent.height()
+        if count > 0 and math.isfinite(area) and area > 0:
+            return math.sqrt(area / count)
+        return self._tolerance()
+
+    def _tolerance(self):
+        """The snap reach, 20 px in map units: what a click is allowed to miss by."""
+        canvas = getattr(self, "canvas", None)
+        if canvas is None:
+            return 1.0
+        return canvas.mapUnitsPerPixel() * 20
+
+    def _cables_near(self, layer, pt, tolerance):
+        """The cables of one layer a search within ``tolerance`` of ``pt`` must test (PF-4).
+
+        Every valid cable (``_cable_lines``) with an end, or a GEOS distance,
+        within the tolerance has its box within twice it, the margin covering
+        GEOS's rounding (PF-2); a cable that is not a valid line is skipped by
+        both searches, so whether a box finds it does not matter. In the whole
+        scan's order, or the whole layer when a box cannot answer exactly.
+        """
+        found = features_near(layer, pt, 2.0 * tolerance)
+        return layer.getFeatures() if found is None else found
 
     def _nearest_cable_endpoint(self, pt, tolerance):
         """
@@ -192,7 +282,7 @@ class SlackPlaceTool(QgsMapTool):
         best = (None, None, None, None, None)
 
         for kl in self._iter_cable_layers():
-            for f in kl.getFeatures():
+            for f in self._cables_near(kl, pt, tolerance):
                 for line in _cable_lines(f.geometry(), tolerance):
                     ends = [QgsPointXY(line[0]), QgsPointXY(line[-1])]
                     labels = ["od", "do"]  # FROM, TO in Serbian
@@ -218,13 +308,14 @@ class SlackPlaceTool(QgsMapTool):
             Tuple of (layer, feature, distance) or (None, None, None)
         """
         best = (None, None, None)
+        probe = QgsGeometry.fromPointXY(pt)
 
         for kl in self._iter_cable_layers():
-            for f in kl.getFeatures():
+            for f in self._cables_near(kl, pt, tolerance):
                 geom = f.geometry()
                 if not _cable_lines(geom, tolerance):
                     continue
-                d = geom.distance(QgsGeometry.fromPointXY(pt))
+                d = geom.distance(probe)
                 if d < 0:
                     continue
                 if d <= tolerance and (best[2] is None or d < best[2]):

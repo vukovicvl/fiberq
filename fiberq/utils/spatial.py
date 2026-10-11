@@ -40,7 +40,9 @@ Three facts shape ``ScanOrderIndex``, each measured on QGIS 3.22.16, 3.40.15,
 """
 import math
 
-from qgis.core import QgsRectangle, QgsSpatialIndex
+from qgis.core import QgsFeatureRequest, QgsRectangle, QgsSpatialIndex, QgsWkbTypes
+
+from .geopackage import table_facts
 
 
 #: The largest bound a box may have and still go into the index. Overflow starts
@@ -66,6 +68,88 @@ def box_around(point, radius):
     """
     return QgsRectangle(point.x() - radius, point.y() - radius,
                         point.x() + radius, point.y() + radius)
+
+
+def _box_answers_exactly(layer):
+    """True when a box query on ``layer``, sorted by ``_scan_position``, is its whole scan inside the box.
+
+    The order first. A search that reads only part of a layer needs the
+    whole scan's order to settle a tie the way the scan did. Measured on
+    3.22.16, 3.44.15 and 4.2.3, for a memory layer with and without a spatial
+    index and for a GeoPackage table: ``getFeatures()`` yields the edit
+    buffer's added features first, in the order they were added (temporary
+    ids -2, -3, ...), then the provider's by fid, a changed geometry keeping
+    its fid's place. A rect-filtered request yields the features whose
+    geometry was changed in the buffer first, so it has to be sorted back.
+    What does not read by fid is left to the whole scan (design and code
+    reviews, 3.22.16 to 4.2.3): other OGR formats (a GeoJSON file with its
+    own ids reads in file order), a GeoPackage layer with a filter (SQLite
+    may answer it through an attribute index, in that index's order), and a
+    GeoPackage view (it has an order of its own).
+
+    Then the geometry. QGIS's box of a curve can miss part of the line GEOS
+    measures (PF-2, branch 11), so only point and line types are boxed, and a
+    GeoPackage line table that registers a ``gpkg_geom_`` curve extension is
+    read whole: GDAL writes arcs into a LINESTRING column, QGIS reads them
+    back as arcs, and OGR's box filter tests its own straightening of them,
+    which missed 57 of 600 clicks at a 0.1 m reach (3.44.15, 4.2.3). An arc
+    a memory layer keeps is boxed by QGIS itself; the slack tool's
+    ``_cable_lines`` turns away the ones that box cannot hold.
+    """
+    if QgsWkbTypes.displayString(QgsWkbTypes.flatType(layer.wkbType())) not in _BOXED_TYPES:
+        return False
+    provider = layer.dataProvider()
+    if provider is None:
+        return False
+    if provider.name() == "memory":
+        return True
+    if provider.name() != "ogr" or provider.storageType() != "GPKG" or layer.subsetString():
+        return False
+    facts = table_facts(layer)
+    if facts is None or facts.view:
+        return False
+    return not (facts.curves and layer.geometryType() == QgsWkbTypes.GeometryType.LineGeometry)
+
+
+#: The geometry types a box query answers exactly. See ``_box_answers_exactly``.
+_BOXED_TYPES = ("Point", "MultiPoint", "LineString", "MultiLineString")
+
+
+def _scan_position(feature):
+    """Where ``feature`` comes in a whole-layer scan. See ``_box_answers_exactly``."""
+    fid = feature.id()
+    return (0, -fid) if fid < 0 else (1, fid)
+
+
+def features_near(layer, point, reach):
+    """The layer's features whose box comes within ``reach`` of ``point``, in scan order.
+
+    For a search that used to read the whole layer (WP4 PF-4): it keeps its own
+    test and runs it over these instead, in the order the whole scan met them,
+    so a first match or a strict ``<`` settles a tie as it always did.
+
+    None when that cannot be had exactly (``_box_answers_exactly``, a box no
+    provider can be asked for -- NaN, infinite, huge -- or a stored row with a
+    negative fid, which ``_scan_position`` would take for an unsaved one), and
+    then the caller reads the whole layer, as it did before. The answer reads
+    through the edit buffer, as a scan does.
+
+    On a GeoPackage the box is an R-tree lookup. A memory layer has no
+    spatial index in v1.6.0 (PF-5 adds one), so there it is a C++ pass over
+    the layer's boxes: what it saves is the Python loop and the GEOS
+    distance per feature, not the pass itself.
+    """
+    box = box_around(point, reach)
+    if not indexable_box(box) or not _box_answers_exactly(layer):
+        return None
+    found = list(layer.getFeatures(QgsFeatureRequest().setFilterRect(box)))
+    if any(f.id() < 0 for f in found):
+        buffer = layer.editBuffer() if layer.isEditable() else None
+        unsaved = buffer.addedFeatures() if buffer is not None else {}
+        if any(f.id() < 0 and f.id() not in unsaved for f in found):
+            return None
+    found.sort(key=_scan_position)
+    return found
 
 
 class ScanOrderIndex:
@@ -195,4 +279,4 @@ class RectGrid:
         return [(column, row) for column in range(left, right + 1) for row in range(low, high + 1)]
 
 
-__all__ = ['RectGrid', 'ScanOrderIndex', 'box_around', 'indexable_box']
+__all__ = ['RectGrid', 'ScanOrderIndex', 'box_around', 'features_near', 'indexable_box']
