@@ -369,6 +369,16 @@ def _migrate_cable_type_values(layer: QgsVectorLayer) -> None:
     - 'opticki' -> 'Optical'
     - 'bakarnI' -> 'Copper'
 
+    The rows are found first, and an edit session is opened only when one of
+    them needs changing. This runs on every cable restyle -- after every Lay
+    cable, after every slack recompute, twice per cable layer at project open
+    -- and used to open a session and roll it back whenever there was nothing
+    to change. In a project whose transaction mode is "Buffered groups" (QGIS
+    3.26+) ``rollBack()`` rolls back the whole project, so the restyle after
+    the first Lay cable, which creates the cable layer while the user is
+    editing, threw away every unsaved edit in the project and ended the
+    session (measured on 3.40.15, 3.44.15 and 4.2.3).
+
     Args:
         layer: Cable layer to migrate
     """
@@ -377,12 +387,7 @@ def _migrate_cable_type_values(layer: QgsVectorLayer) -> None:
         if tip_idx < 0:
             return
 
-        started_edit = False
-        if not layer.isEditable():
-            layer.startEditing()
-            started_edit = True
-
-        changed = False
+        todo = []
         for feature in layer.getFeatures():
             val = feature["tip"]
             new_val = None
@@ -393,14 +398,20 @@ def _migrate_cable_type_values(layer: QgsVectorLayer) -> None:
                 new_val = "Copper"
 
             if new_val:
-                layer.changeAttributeValue(feature.id(), tip_idx, new_val)
-                changed = True
+                todo.append((feature.id(), new_val))
+        if not todo:
+            return
+
+        started_edit = False
+        if not layer.isEditable():
+            layer.startEditing()
+            started_edit = True
+
+        for fid, new_val in todo:
+            layer.changeAttributeValue(fid, tip_idx, new_val)
 
         if started_edit:
-            if changed:
-                layer.commitChanges()
-            else:
-                layer.rollBack()
+            layer.commitChanges()
 
     except Exception as e:
         logger.debug(f"Error in _migrate_cable_type_values: {e}")
