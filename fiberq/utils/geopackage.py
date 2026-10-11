@@ -2,10 +2,11 @@
 
 WP4 task 4.1, item PF-4. QGIS reports a GeoPackage layer's declared geometry
 type and fields, not what the file holds beyond them: whether a LINESTRING
-table holds arcs, or whether the "table" is a view. Both decide whether a box
-query answers exactly as the whole-layer scan it replaces (see
-``utils.spatial.features_near``), so they are read straight from the file,
-read-only.
+table holds arcs, whether the "table" is a view, or what the database does on
+its own when a row is written. These decide whether a box query answers
+exactly as the whole-layer scan it replaces (``utils.spatial.features_near``),
+and whether one commit can stand in for many (the slack batch), so they are
+read straight from the file, read-only.
 
 Anything in doubt answers "cannot tell", and the caller then does what it
 did before: a source QGIS reads through an archive or another GDAL virtual
@@ -13,6 +14,7 @@ file system, a path the platform cannot stat or turn into a file URI, a file
 SQLite cannot open. A finer answer is not worth a guess.
 """
 import os
+import re
 import sqlite3
 from collections import namedtuple
 from contextlib import closing
@@ -94,4 +96,45 @@ def table_facts(layer):
     return TableFacts(view=kind == "view", curves=table.lower() in curved)
 
 
-__all__ = ['TableFacts', 'table_facts']
+#: GDAL's own triggers on a feature table: its R-tree's and its feature count's.
+_GDAL_TRIGGERS = ("rtree_", "trigger_insert_feature_count_", "trigger_delete_feature_count_")
+
+
+def database_answers_writes(layer):
+    """True unless the file shows nothing of its own that refuses or follows a write to the table.
+
+    A trigger other than GDAL's own, a UNIQUE index besides the key, a CHECK,
+    a foreign key, or a NOT NULL column besides the key and the geometry; or
+    a file that cannot tell. Any of them can refuse one row of a batch, or
+    count writes the batch makes fewer of.
+    """
+    source = _source(layer)
+    if source is None:
+        return True
+    path, table = source
+    try:
+        with closing(sqlite3.connect(Path(path).as_uri() + "?mode=ro", uri=True, timeout=0.1)) as db:
+            row = db.execute("SELECT type, sql FROM sqlite_master WHERE type IN ('table', 'view') "
+                             "AND name = ? COLLATE NOCASE", (table,)).fetchone()
+            if row is None or row[0] != "table" or re.search(r"\b(CHECK|REFERENCES)\b", (row[1] or "").upper()):
+                return True
+            for (name,) in db.execute("SELECT name FROM sqlite_master WHERE type = 'trigger' "
+                                      "AND tbl_name = ? COLLATE NOCASE", (table,)):
+                if not name.lower().startswith(_GDAL_TRIGGERS):
+                    return True
+            if any(unique and origin != "pk" for unique, origin in db.execute(
+                    'SELECT "unique", origin FROM pragma_index_list(?)', (table,))):
+                return True
+            geometry = {name.lower() for (name,) in db.execute(
+                "SELECT column_name FROM gpkg_geometry_columns WHERE table_name = ? COLLATE NOCASE", (table,))}
+            if any(notnull and not key and name.lower() not in geometry for name, notnull, key in db.execute(
+                    'SELECT name, "notnull", pk FROM pragma_table_info(?)', (table,))):
+                return True
+            if db.execute("SELECT 1 FROM pragma_foreign_key_list(?)", (table,)).fetchone() is not None:
+                return True
+    except (OSError, ValueError, sqlite3.Error):
+        return True
+    return False
+
+
+__all__ = ['TableFacts', 'database_answers_writes', 'table_facts']

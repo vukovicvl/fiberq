@@ -234,14 +234,19 @@ CRITICAL = {
     # R9
     "fiberq/core/slack_manager.py": frozenset({
         "SlackManager._add_one_terminal_slack",
+        "SlackManager._batch_allowed",
         "SlackManager._endpoints_of",
+        "SlackManager._generate_in_one_session",
         "SlackManager._generate_terminal_slacks",
         "SlackManager._ground_length",
         "SlackManager._location_at",
+        "SlackManager._recompute_in_one_session",
         "SlackManager._record_slack_undo",
         "SlackManager._say_slacks_created",
         "SlackManager._slack_total",
         "SlackManager._stamp_uuid",
+        "SlackManager._take_saved_ids",
+        "SlackManager._terminal_slack",
         "SlackManager._total_slack_onto_cable",
         "SlackManager.generate_terminal_slack_for_selected",
         "SlackManager.recompute_slack_for_cable",
@@ -674,8 +679,11 @@ def test_d_package_wide_silence_does_not_grow():
 #: where R4's counting and reporting now live. The last two are
 #: ExportManager.export_active_layer and ._do_export, which R3 made THE
 #: export path by deleting main_plugin's duplicate -- the one that actually
-#: ran was the one this gate did not watch. No R-row moved.
-HARDENED_FUNCTIONS = 125
+#: ran was the one this gate did not watch. No R-row moved. The last five are
+#: SlackManager's _batch_allowed, _generate_in_one_session, _take_saved_ids,
+#: _recompute_in_one_session and _terminal_slack: WP4 4.1's PF-4 moved part of
+#: R9's Generate terminal slacks into them, so R9 widens with them.
+HARDENED_FUNCTIONS = 130
 HARDENED_FILES = 21
 
 
