@@ -4,6 +4,8 @@ FiberQ v2 - Route Tool
 Tool for manually drawing routes by clicking points on the map.
 """
 
+import math
+
 from .base import (
     Qt, QVariant, QColor, QMessageBox, QInputDialog,
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
@@ -13,6 +15,7 @@ from .base import (
 )
 
 # Phase 5.2: Logging
+from ..utils.geometry import polylines
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
 logger = get_logger(__name__)
@@ -76,6 +79,15 @@ class ManualRouteTool(QgsMapTool):
         """
         Find the nearest snap point for a given map point.
 
+        A distance that is not a number -- a vertex at NaN -- is passed over.
+        Met first, it used to become the best so far, and since ``d < nan`` is
+        never true nothing after it could replace it: one such vertex switched
+        the snap off for the whole project.
+
+        So is a route that is not a line at all, a point or a polygon stored in
+        the Route layer: ``asPolyline()`` raised TypeError for it inside the
+        ``try`` around the whole layer, and no route after it was snapped to.
+
         Args:
             point: QgsPointXY to snap
 
@@ -106,6 +118,8 @@ class ManualRouteTool(QgsMapTool):
                 try:
                     pt = geom.asPoint()
                     d = QgsPointXY(point).distance(QgsPointXY(pt))
+                    if math.isnan(d):
+                        continue
                     if min_dist is None or d < min_dist:
                         min_dist = d
                         snap_point = QgsPointXY(pt)
@@ -126,10 +140,9 @@ class ManualRouteTool(QgsMapTool):
                             if not geom or geom.isEmpty():
                                 continue
 
-                            if geom.isMultipart():
-                                lines = geom.asMultiPolyline()
-                            else:
-                                lines = [geom.asPolyline()]
+                            # A point or polygon in the layer is passed over:
+                            # its TypeError used to end the whole layer's search.
+                            lines = polylines(geom)
 
                             for line in lines:
                                 if not line:
@@ -138,6 +151,8 @@ class ManualRouteTool(QgsMapTool):
                                 # All vertices
                                 for pt in line:
                                     d = QgsPointXY(point).distance(QgsPointXY(pt))
+                                    if math.isnan(d):
+                                        continue
                                     if min_dist is None or d < min_dist:
                                         min_dist = d
                                         snap_point = QgsPointXY(pt)
@@ -149,6 +164,8 @@ class ManualRouteTool(QgsMapTool):
                                         (line[i].y() + line[i + 1].y()) / 2.0
                                     )
                                     d = QgsPointXY(point).distance(mid)
+                                    if math.isnan(d):
+                                        continue
                                     if min_dist is None or d < min_dist:
                                         min_dist = d
                                         snap_point = mid

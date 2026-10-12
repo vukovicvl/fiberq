@@ -6,6 +6,8 @@ Tool for drawing PE ducts and transition pipes on the route network.
 Phase 5.2: Added logging infrastructure
 """
 
+import math
+
 from .base import (
     Qt, QVariant, QColor,
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
@@ -14,9 +16,22 @@ from .base import (
 )
 
 # Phase 5.2: Logging
+from ..utils.geometry import polylines
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
 logger = get_logger(__name__)
+
+
+def _point_of(geom):
+    """``geom.asPoint()``, or None where that raises.
+
+    It raises ValueError for a feature with no geometry and TypeError for a
+    multi-part point (and, on QGIS 3.22, for a one-part MultiPoint too).
+    """
+    try:
+        return geom.asPoint()
+    except (TypeError, ValueError):
+        return None
 
 
 class PipePlaceTool(QgsMapTool):
@@ -90,7 +105,17 @@ class PipePlaceTool(QgsMapTool):
         return None
 
     def _snap_point(self, qpt):
-        """Snap to nodes and route vertices/midpoints."""
+        """Snap to nodes and route vertices/midpoints.
+
+        A pole or route without a geometry, and a pole ``asPoint()`` cannot
+        read (a multi-part point), are passed over. They used to raise inside
+        the ``try`` around the whole layer's loop, so no pole or route after
+        them was ever snapped to -- and QGIS makes a feature without a geometry
+        whenever a row is added in the attribute table. A point or polygon
+        stored in the Route layer did the same to the routes after it. A distance that is not
+        a number is passed over too: met first, it became the best so far, and
+        since ``d < nan`` is never true it switched the snap off.
+        """
         point = QgsPointXY(qpt)
         snap_point = None
         min_dist = None
@@ -103,8 +128,12 @@ class PipePlaceTool(QgsMapTool):
                     lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and  # noqa: W504
                         lyr.name() in node_names):
                     for f in lyr.getFeatures():
-                        p = f.geometry().asPoint()
+                        p = _point_of(f.geometry())
+                        if p is None:
+                            continue
                         d = QgsPointXY(point).distance(QgsPointXY(p))
+                        if math.isnan(d):
+                            continue
                         if min_dist is None or d < min_dist:
                             min_dist = d
                             snap_point = QgsPointXY(p)
@@ -120,11 +149,11 @@ class PipePlaceTool(QgsMapTool):
 
                     for g in lyr.getFeatures():
                         geom = g.geometry()
-                        if geom.isMultipart():
-                            lines = geom.asMultiPolyline()
-                        else:
-                            line = geom.asPolyline()
-                            lines = [line] if line else []
+                        if not geom or geom.isEmpty():
+                            continue
+                        # A point or polygon in the layer is passed over: its
+                        # TypeError used to end the whole layer's search.
+                        lines = polylines(geom)
 
                         for line in lines:
                             if not line:
@@ -133,6 +162,8 @@ class PipePlaceTool(QgsMapTool):
                             # Vertices
                             for p in line:
                                 d = QgsPointXY(point).distance(QgsPointXY(p))
+                                if math.isnan(d):
+                                    continue
                                 if min_dist is None or d < min_dist:
                                     min_dist = d
                                     snap_point = QgsPointXY(p)
@@ -144,6 +175,8 @@ class PipePlaceTool(QgsMapTool):
                                     (line[i].y() + line[i + 1].y()) / 2
                                 )
                                 d = QgsPointXY(point).distance(mid)
+                                if math.isnan(d):
+                                    continue
                                 if min_dist is None or d < min_dist:
                                     min_dist = d
                                     snap_point = mid

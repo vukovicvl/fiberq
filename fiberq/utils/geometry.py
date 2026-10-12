@@ -270,6 +270,24 @@ def line_parts(geom: QgsGeometry) -> List[List[QgsPointXY]]:
     return [part for part in parts if len(part) >= 2]
 
 
+def polylines(geom: QgsGeometry) -> List[List[QgsPointXY]]:
+    """``asMultiPolyline()`` of a multi-part line, ``[asPolyline()]`` of a single one, ``[]`` for anything else.
+
+    The point lists exactly as those two calls give them -- one-vertex and empty
+    parts included, unlike :func:`line_parts` -- for a search that measures
+    every vertex. Both calls raise TypeError for a point or a polygon: a Route
+    table can hold one (GDAL stores a point in a LINESTRING GeoPackage table,
+    with a warning, and an edit buffer takes one too), and a search that let the
+    TypeError end its whole loop never saw the routes after it.
+    """
+    try:
+        if geom.isMultipart():
+            return geom.asMultiPolyline()
+        return [geom.asPolyline()]
+    except TypeError:
+        return []
+
+
 def is_finite(geom: QgsGeometry) -> bool:
     """True when every coordinate of ``geom`` is a real number.
 
