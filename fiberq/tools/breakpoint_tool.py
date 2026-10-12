@@ -13,6 +13,7 @@ from .base import (
     QgsMapToolEmitPoint
 )
 
+from ..utils.geometry import held_by_its_box
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
@@ -79,6 +80,7 @@ class BreakpointTool(QgsMapToolEmitPoint):
             self.snap_info = None
             return
 
+        tolerance = self.canvas.mapUnitsPerPixel() * 10
         min_dist = None
         snapped_point = None
         min_feat = None
@@ -97,13 +99,18 @@ class BreakpointTool(QgsMapToolEmitPoint):
             # sqrt(10 / mapUnitsPerPixel) pixels instead of the 10 it reads as.
             dist = math.sqrt(squared)
             if min_dist is None or dist < min_dist:
+                # A route a box query can miss -- a coordinate that is not a
+                # finite number, a one-vertex part, an arc QGIS cannot box -- is
+                # skipped (utils.geometry.held_by_its_box). Asked only of a route
+                # that would win within the tolerance: one beyond it is never used.
+                if not dist >= tolerance and not held_by_its_box(geom, tolerance / 2):
+                    continue
                 min_dist = dist
                 snapped_point = snap
                 min_feat = feat
                 min_geom = geom
                 min_seg_idx = seg_idx
 
-        tolerance = self.canvas.mapUnitsPerPixel() * 10
         if snapped_point and min_dist < tolerance:
             self.rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
             self.rubber.addPoint(snapped_point)

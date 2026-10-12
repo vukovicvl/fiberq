@@ -16,7 +16,7 @@ from .base import (
 )
 
 # Phase 5.2: Logging
-from ..utils.geometry import polylines
+from ..utils.geometry import held_by_its_box, polylines
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
 logger = get_logger(__name__)
@@ -115,8 +115,15 @@ class PipePlaceTool(QgsMapTool):
         stored in the Route layer did the same to the routes after it. A distance that is not
         a number is passed over too: met first, it became the best so far, and
         since ``d < nan`` is never true it switched the snap off.
+
+        A node or route a box query can miss -- a line with a coordinate that is
+        not a finite number, a one-vertex part, an arc QGIS cannot box -- is
+        skipped (``utils.geometry.held_by_its_box``). The check is asked only of
+        one that would win within the tolerance, the only answer used.
         """
         point = QgsPointXY(qpt)
+        tolerance = self.canvas.mapUnitsPerPixel() * 20
+        slack = tolerance / 2
         snap_point = None
         min_dist = None
 
@@ -135,6 +142,8 @@ class PipePlaceTool(QgsMapTool):
                         if math.isnan(d):
                             continue
                         if min_dist is None or d < min_dist:
+                            if not d >= tolerance and not held_by_its_box(f.geometry(), slack):
+                                continue
                             min_dist = d
                             snap_point = QgsPointXY(p)
             except Exception as e:
@@ -155,6 +164,10 @@ class PipePlaceTool(QgsMapTool):
                         # TypeError used to end the whole layer's search.
                         lines = polylines(geom)
 
+                        # The route's own nearest vertex or midpoint, the first
+                        # of a tie; it replaces the best so far only if it is
+                        # nearer, as each point did one by one.
+                        nearest = None
                         for line in lines:
                             if not line:
                                 continue
@@ -164,9 +177,8 @@ class PipePlaceTool(QgsMapTool):
                                 d = QgsPointXY(point).distance(QgsPointXY(p))
                                 if math.isnan(d):
                                     continue
-                                if min_dist is None or d < min_dist:
-                                    min_dist = d
-                                    snap_point = QgsPointXY(p)
+                                if nearest is None or d < nearest[0]:
+                                    nearest = (d, QgsPointXY(p))
 
                             # Segment midpoints
                             for i in range(len(line) - 1):
@@ -177,13 +189,16 @@ class PipePlaceTool(QgsMapTool):
                                 d = QgsPointXY(point).distance(mid)
                                 if math.isnan(d):
                                     continue
-                                if min_dist is None or d < min_dist:
-                                    min_dist = d
-                                    snap_point = mid
+                                if nearest is None or d < nearest[0]:
+                                    nearest = (d, mid)
+                        if nearest is None or not (min_dist is None or nearest[0] < min_dist):
+                            continue
+                        if not nearest[0] >= tolerance and not held_by_its_box(geom, slack):
+                            continue
+                        min_dist, snap_point = nearest
             except Exception as e:
                 logger.debug(f"Error in PipePlaceTool._snap_point: {e}")
 
-        tolerance = self.canvas.mapUnitsPerPixel() * 20
         if snap_point is not None and min_dist is not None and min_dist < tolerance:
             return snap_point
         return point

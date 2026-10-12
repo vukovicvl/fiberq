@@ -6,8 +6,11 @@ snapping, distance calculations, and coordinate transformations.
 """
 
 import math
+import sys
+from array import array
 from typing import Optional, Tuple, List, Dict
-from qgis.core import QgsPointXY, QgsGeometry, QgsVectorLayer, QgsWkbTypes
+from qgis.core import (QgsCurvePolygon, QgsGeometry, QgsGeometryCollection, QgsGeometryUtils, QgsPointXY,
+                       QgsVectorLayer, QgsWkbTypes)
 
 # Phase 5.2: Logging
 from .logger import get_logger
@@ -286,6 +289,211 @@ def polylines(geom: QgsGeometry) -> List[List[QgsPointXY]]:
         return [geom.asPolyline()]
     except TypeError:
         return []
+
+
+def _pieces(shape):
+    """The non-empty simple curves -- LineStrings, CircularStrings, ... -- a line shape is made of.
+
+    Walks a multi-part shape part by part and a CompoundCurve component by
+    component, and never asks a CompoundCurve for its own coordinates: with an
+    empty component its ``nCoordinates()`` is a SIGSEGV on QGIS 4.0.3 and
+    4.2.3, and its ``vertices()`` walks one vertex fewer per empty component,
+    so it stops short, and never ends once that count is below zero -- one
+    vertex and two empty arcs -- on 3.22.16, 3.44.15 and 4.2.3 alike, while
+    each component answers safely (code reviews of branch 13). QGIS's own
+    calls on such a curve -- its box, ``asPolyline()``, the closest vertex and
+    segment -- are safe, and the scans the snaps keep made only those.
+    """
+    kind = QgsWkbTypes.displayString(QgsWkbTypes.flatType(shape.wkbType()))
+    if kind.startswith("Multi") or kind == "GeometryCollection":
+        for i in range(shape.numGeometries()):
+            yield from _pieces(shape.geometryN(i))
+    elif kind == "CompoundCurve":
+        for i in range(shape.nCurves()):
+            curve = shape.curveAt(i)
+            if not curve.isEmpty():
+                yield curve
+    elif not shape.isEmpty():
+        yield shape
+
+
+def has_a_one_vertex_part(geom: QgsGeometry) -> bool:
+    """True when a part of the line ``geom`` has exactly one vertex.
+
+    Invalid geometry GEOS cannot test: on QGIS 3.22 a GeoPackage or shapefile
+    box query drops a MultiLineString with such a part, because OGR's own
+    intersection test fails on it (3.44.15 and 4.2.3 return it). Counted one
+    component at a time (``_pieces``); an empty part counts as none. False for
+    null geometry and for anything that is not a line.
+    """
+    if geom is None or geom.isNull() or geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
+        return False
+    shape = geom.constGet()
+    if QgsWkbTypes.isMultiType(geom.wkbType()):
+        parts = [shape.geometryN(i) for i in range(shape.numGeometries())]
+    else:
+        parts = [shape]
+    return any(sum(piece.numPoints() for piece in _pieces(part)) == 1 for part in parts)
+
+
+def _xy_of(line):
+    """The x and y coordinates of the LineString ``line`` as two arrays of doubles, read from its WKB.
+
+    A QgsPoint per vertex costs 1.4-2.9 us on QGIS 3.44, which made the check
+    below take 37 ms on a 20,000-vertex route that QGIS measures in 0.65 ms
+    (code review); the WKB is read at C speed instead. None when it is not laid
+    out as expected, and the caller then walks the points.
+    """
+    data = bytes(line.asWkb())
+    stride = 2 + int(QgsWkbTypes.hasZ(line.wkbType())) + int(QgsWkbTypes.hasM(line.wkbType()))
+    size = 8 * stride * line.numPoints()
+    if len(data) != 9 + size or data[0] not in (0, 1):
+        return None
+    values = array("d")
+    values.frombytes(data[9:])
+    if data[0] != (1 if sys.byteorder == "little" else 0):
+        values.byteswap()
+    return values[0::stride], values[1::stride]
+
+
+def has_an_arc_without_a_circle(curve) -> bool:
+    """True when an arc of the curve geometry ``curve`` has its three points in a row.
+
+    QGIS boxes an arc from the circle through its three points, and three
+    points in a row have none: ``circleCenterRadius`` answers radius -1 and
+    never sets the centre the box is then built from, so the box is whatever
+    that memory held -- (-1e130, -1, 1020, 2000) for one arc on 3.22.16.
+    """
+    kind = QgsWkbTypes.displayString(QgsWkbTypes.flatType(curve.wkbType()))
+    if kind == "CircularString":
+        points = curve.points()
+        return any(QgsGeometryUtils.circleCenterRadius(*points[i:i + 3])[0] < 0
+                   for i in range(0, len(points) - 2, 2))
+    if kind == "CompoundCurve":
+        return any(has_an_arc_without_a_circle(curve.curveAt(i)) for i in range(curve.nCurves()))
+    if kind.startswith("Multi"):
+        return any(has_an_arc_without_a_circle(curve.geometryN(i)) for i in range(curve.numGeometries()))
+    return False
+
+
+def held_by_its_box(geom: QgsGeometry, slack: float = 0.0) -> bool:
+    """False for a line, or a MultiPoint, a box query can miss where a scan measuring it would not.
+
+    For the searches that read only the features whose box comes near a point
+    (``utils.spatial.features_near``) instead of every feature: they skip what
+    this turns away, read whole or narrowed alike, so the two answer the same.
+    Measured on QGIS 3.22.16, 3.44.15 and 4.2.3 with a box of half-side 1 m
+    around a point 0.3 m from a good vertex, a box query misses:
+
+    * a line with a coordinate that is not a finite number, on a GeoPackage
+      when it is the first vertex or sits in a part of a multi-part line
+      (GDAL boxes a part from its first vertex, so a NaN there leaves that
+      bound NaN -- stored as 0 -- and the row's box can miss its good
+      vertices), on a memory layer with a spatial index of its own wherever
+      it is. A shapefile cannot hold one: GDAL refuses to write it;
+    * a MultiLineString with a one-vertex part, on 3.22 (GeoPackage,
+      shapefile): OGR's own intersection test fails on it;
+    * an arc whose three points are in a row (QGIS's box of it is garbage),
+      and on 3.22 an arc starting exactly at (0, 0), whose box leaves that start
+      out. Both are caught by holding every vertex, and every point of the
+      segmentized line, to the box;
+    * a MultiPoint with a part QGIS reads as empty -- one with a coordinate that
+      is not a number -- on a GeoPackage, where a part whose other coordinate
+      lies far away left the whole feature out of the box query (3.22.16 and
+      4.2.3, round-5 review), and in an edit buffer, whose GEOS test dropped one
+      with a NaN y first;
+    * a GeometryCollection or a polygon with such a part or ring -- an empty
+      point, a one-vertex line, a coordinate that is not a number -- which GDAL
+      boxes the same way (round-6 review, 3.22.16 to 4.2.3): a collection is
+      judged by its parts and a polygon by its rings, with the rules above.
+
+    QGIS's own snapping misses the lines starting or ending at NaN or infinity
+    too, and the arcs in a row wherever their box does; it finds a line whose
+    NaN sits in the middle and leaves its box finite, and the one-vertex parts.
+    So does FiberQ's whole-layer scan, and turning those away is a behaviour
+    change (agreed 2026-10-12, the MultiPoints the same day after round 5, the
+    collections and polygons on 2026-10-13 after round 6), not a fix: it is
+    what lets the box query answer what the scan does.
+
+    Everything else is held: points (a point that is not a number reads back as
+    an empty one, which no scan measures), a MultiPoint whose parts are all
+    points, a one-vertex line on its own, a line's empty parts and empty
+    components. Null and empty geometry is not, as no scan measures it either.
+    ``slack`` is how far outside its box an arc's segmentized points may lie: a
+    correct box holds its arc to within 2e-6 of the arc's size (20,000 random
+    arcs, branch 12), so half the search's tolerance is ample and still inside
+    a query of twice it.
+    """
+    if geom is None or geom.isNull() or geom.isEmpty():
+        return False
+    if geom.type() == QgsWkbTypes.GeometryType.PointGeometry:
+        if not QgsWkbTypes.isMultiType(geom.wkbType()):
+            return True
+        shape = geom.constGet()
+        return not any(shape.geometryN(i).isEmpty() for i in range(shape.numGeometries()))
+    if geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
+        return _parts_held(geom.constGet(), slack)
+    if QgsWkbTypes.isMultiType(geom.wkbType()) and has_a_one_vertex_part(geom):
+        return False
+    box = geom.boundingBox()
+    low_x, low_y = box.xMinimum() - slack, box.yMinimum() - slack
+    high_x, high_y = box.xMaximum() + slack, box.yMaximum() + slack
+    if not all(math.isfinite(value) for value in (low_x, low_y, high_x, high_y)):
+        return False
+    for piece in _pieces(geom.constGet()):
+        coordinates = None
+        if QgsWkbTypes.displayString(QgsWkbTypes.flatType(piece.wkbType())) == "LineString":
+            coordinates = _xy_of(piece)
+        if coordinates is not None:
+            xs, ys = coordinates
+            if not (all(map(math.isfinite, xs)) and all(map(math.isfinite, ys))):
+                return False
+            if xs and not (low_x <= min(xs) and max(xs) <= high_x and low_y <= min(ys) and max(ys) <= high_y):
+                return False
+        # NaN fails both comparisons, so a vertex that is not a number is outside too.
+        elif not all(low_x <= point.x() <= high_x and low_y <= point.y() <= high_y for point in piece.points()):
+            return False
+    if QgsWkbTypes.isCurvedType(geom.wkbType()):
+        if has_an_arc_without_a_circle(geom.constGet()):
+            return False
+        return all(low_x <= point.x() <= high_x and low_y <= point.y() <= high_y
+                   for line in line_parts(geom) for point in line)
+    return True
+
+
+def _parts_held(shape, slack: float) -> bool:
+    """``held_by_its_box`` for a shape that is neither a point nor a line: a polygon ring by ring, a collection part by part.
+
+    An empty point part (a coordinate that is not a number reads back so) and
+    a one-vertex line, ring or part are turned away outright, as in a multi-part
+    shape; another empty part is no part at all; every other part or ring is
+    held to the point and line rules. A curve is counted through its pieces
+    (``_pieces``), never by its own coordinates. Any other shape is held.
+    """
+    if isinstance(shape, QgsCurvePolygon):
+        parts = [shape.exteriorRing()] + [shape.interiorRing(i) for i in range(shape.numInteriorRings())]
+    elif isinstance(shape, QgsGeometryCollection):
+        parts = [shape.geometryN(i) for i in range(shape.numGeometries())]
+    else:
+        return True
+    for part in parts:
+        if part is None:
+            continue
+        kind = QgsWkbTypes.geometryType(part.wkbType())
+        if kind == QgsWkbTypes.GeometryType.PointGeometry:
+            if part.isEmpty():
+                return False
+        elif kind == QgsWkbTypes.GeometryType.LineGeometry:
+            vertices = sum(piece.numPoints() for piece in _pieces(part))
+            if vertices == 0:
+                continue
+            if vertices == 1:
+                return False
+        elif part.isEmpty():
+            continue
+        if not held_by_its_box(QgsGeometry(part.clone()), slack):
+            return False
+    return True
 
 
 def is_finite(geom: QgsGeometry) -> bool:
