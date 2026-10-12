@@ -219,8 +219,18 @@ class SlackPlaceTool(QgsMapTool):
         nothing in correctness. The square root of the area per node is about
         twice the distance to the nearest of randomly placed nodes, so most
         searches end at the first box, whatever the canvas zoom.
+
+        QGIS raises a bare "unknown" exception from ``extent()`` while the
+        layer holds an infinite coordinate -- saved in a memory layer, on 3.22
+        to 4.2, or in its edit buffer, on 3.44 at every call and on 4.2 at the
+        first one after the change; not for a layer in EPSG:4326 -- and the
+        click then placed nothing (round-5 and round-6 reviews; v1.5.0 never
+        asked). The snap reach is then the guess.
         """
-        extent = layer.extent()
+        try:
+            extent = layer.extent()
+        except Exception:  # QGIS raises a plain Exception("unknown") here
+            return self._tolerance()
         area = extent.width() * extent.height()
         if count > 0 and math.isfinite(area) and area > 0:
             return math.sqrt(area / count)

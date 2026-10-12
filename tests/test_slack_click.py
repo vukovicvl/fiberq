@@ -39,6 +39,7 @@ from qgis.core import (
     QgsCoordinateTransformContext,
     QgsFeature,
     QgsGeometry,
+    QgsPoint,
     QgsPointXY,
     QgsProject,
     QgsVectorFileWriter,
@@ -651,3 +652,29 @@ def test_nodes_whose_point_cannot_be_read_are_not_boxed_again_and_again(project,
     tool = _tool()
     assert _node(tool, QgsPointXY(503, 2)) == _reference_node(tool, QgsPointXY(503, 2))
     assert boxes.count("Poles") == 1
+
+
+@pytest.mark.parametrize("storage, where", [("memory", "edit buffer"), ("gpkg", "edit buffer"), ("memory", "saved")])
+def test_an_infinite_pole_does_not_stop_the_click(project, tmp_path, storage, where):
+    """QGIS raises from a node layer's extent() while it holds an infinite
+    coordinate -- saved in a memory layer on 3.22 to 4.2, in its edit buffer on
+    3.44 and 4.2: the node search's first box asked for it, and the click
+    reported an error instead of placing the slack (round-5 and round-6
+    reviews). v1.5.0's scan answered."""
+    _street(project, 40)
+    if storage == "gpkg":
+        _to_gpkg(project, tmp_path / "infinite.gpkg")
+    poles = project.mapLayersByName("Poles")[0]
+    target = sorted(f.id() for f in poles.getFeatures())[5]
+    if where == "saved":
+        assert poles.dataProvider().changeGeometryValues({target: QgsGeometry(QgsPoint(5, math.inf))})
+    else:
+        assert poles.startEditing()
+        assert poles.changeGeometry(target, QgsGeometry(QgsPoint(5, math.inf)))
+    try:
+        tool = _tool()
+        for point in (QgsPointXY(1000 + 40, 1), QgsPointXY(3, 0)):
+            assert _node(tool, point) == _reference_node(tool, point), point.asWkt()
+    finally:
+        if poles.isEditable():
+            poles.rollBack()
