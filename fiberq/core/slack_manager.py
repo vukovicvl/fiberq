@@ -14,6 +14,7 @@ from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, QVariant
 from qgis.PyQt.QtWidgets import QDialog, QMessageBox
 
 from qgis.core import (
+    Qgis,
     QgsProject,
     QgsVectorLayer,
     QgsExpression,
@@ -36,6 +37,7 @@ from ..i18n import safe_format
 from . import interchange_fields as fm
 # Phase 5.2: Logging
 from ..utils.errors import OperationErrors, check_commit, describe
+from ..utils.geopackage import database_answers_writes
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
 logger = get_logger(__name__)
@@ -51,6 +53,70 @@ def slack_operation() -> str:
     """
     src = QT_TRANSLATE_NOOP('FiberQSlack', "Optical slacks")
     return QCoreApplication.translate('FiberQSlack', src)
+
+
+class _HeldErrors:
+    """What a batch attempt found wrong, kept for the attempt and not logged.
+
+    When the attempt is abandoned, v1.5.0's per-slack sequence runs instead and
+    reports its own problems in its own order; logging the attempt's as well
+    would put warnings in the log that v1.5.0 never wrote.
+    """
+
+    def __init__(self):
+        self.problems = []
+
+    def add(self, what, problem) -> None:
+        self.problems.append((what, problem))
+
+    @property
+    def failed(self) -> bool:
+        return bool(self.problems)
+
+
+def _plain_edit_mode() -> bool:
+    """True when the project's layers are edited and saved one by one.
+
+    In "Automatic transaction groups" a layer's session reaches every layer in
+    its GeoPackage, and in "Buffered transaction groups" (QGIS 3.26+) a commit
+    or a roll-back reaches the whole project. One session cannot stand in for
+    many there: measured on 3.22.16, 3.44.15 and 4.2.3 in the design review,
+    the per-slack commits saved other layers' edits as they went.
+    """
+    project = QgsProject.instance()
+    if hasattr(project, "transactionMode"):
+        return project.transactionMode() == Qgis.TransactionMode.Disabled
+    return not project.autoTransaction()
+
+
+def _saves_all_or_nothing(layer) -> bool:
+    """A memory layer or a GeoPackage: a refused commit has saved nothing.
+
+    That is what lets a refused batch be put back and redone slack by slack.
+    A GeoPackage commits in one SQLite transaction, and a memory layer that
+    refuses one feature keeps none of the session's: four points, one with a
+    value its integer column cannot take, left 0 rows (3.22.16, 3.44.15 and
+    4.2.3). Other providers may keep the rows before the refused one.
+    """
+    provider = layer.dataProvider()
+    if provider is None:
+        return False
+    return provider.name() == "memory" or (
+        provider.name() == "ogr" and provider.storageType() == "GPKG")
+
+
+def _database_answers_writes(layer) -> bool:
+    """A GeoPackage table whose database refuses or follows writes itself (``utils.geopackage``)."""
+    return layer.dataProvider().name() == "ogr" and database_answers_writes(layer)
+
+
+def _holds_old_cable_types(layer) -> bool:
+    """True when a cable restyle would migrate one of the layer's rows (``_migrate_cable_type_values``)."""
+    if layer.fields().indexOf("tip") < 0:
+        return False
+    request = QgsFeatureRequest().setFlags(QgsFeatureRequest.Flag.NoGeometry).setNoAttributes().setLimit(1)
+    request.setFilterExpression(f"{QgsExpression.quotedColumnRef('tip')} IN ('opticki', 'bakarnI')")
+    return any(True for _feature in layer.getFeatures(request))
 
 
 class SlackManager:
@@ -175,7 +241,7 @@ class SlackManager:
             logger.debug(f"Error in SlackManager.stylize_slack_layer: {e}")
 
     def recompute_slack_for_cable(self, cable_layer_id: str, cable_fid: int,
-                                  errors=None) -> bool:
+                                  errors=None, excluding=()) -> bool:
         """Re-total the slack recorded against one cable and write it back.
 
         Args:
@@ -185,6 +251,10 @@ class SlackManager:
                 into. One gesture often touches several cables -- a single
                 Delete selected can touch a dozen -- so the caller owns the
                 collector and the user reads one line instead of a dozen.
+            excluding: Slack feature ids to leave out of the total. Only the
+                batch's replay passes any (``_generate_in_one_session``): its
+                slacks are all saved by then, and each recompute must total
+                what the per-slack loop saw when it ran.
 
         Returns:
             True when the cable's ``slack_m`` / ``total_len_m`` were updated.
@@ -204,7 +274,7 @@ class SlackManager:
         updated = False
         try:
             updated = self._total_slack_onto_cable(
-                cable_layer_id, cable_fid, reporting)
+                cable_layer_id, cable_fid, reporting, excluding)
         except (ArithmeticError, AttributeError, KeyError, RuntimeError,
                 TypeError, ValueError) as exc:
             reporting.add(None, exc)
@@ -212,7 +282,7 @@ class SlackManager:
             reporting.report()
         return updated
 
-    def _total_slack_onto_cable(self, cable_layer_id, cable_fid, errors) -> bool:
+    def _total_slack_onto_cable(self, cable_layer_id, cable_fid, errors, excluding=()) -> bool:
         """The body of :meth:`recompute_slack_for_cable`, free to raise.
 
         Split out so the public method is only error plumbing and this is only
@@ -248,7 +318,7 @@ class SlackManager:
 
         slack = self._slack_total(
             slack_layer, layer_id_field, fid_field, length_field,
-            cable_layer_id, cable_fid, errors)
+            cable_layer_id, cable_fid, errors, excluding)
 
         cable_layer = QgsProject.instance().mapLayer(cable_layer_id)
         if cable_layer is None:
@@ -315,7 +385,7 @@ class SlackManager:
         return True
 
     def _slack_total(self, slack_layer, layer_id_field, fid_field, length_field,
-                     cable_layer_id, cable_fid, errors) -> float:
+                     cable_layer_id, cable_fid, errors, excluding=()) -> float:
         """Sum the slack lengths stored against one cable.
 
         The filter expression is the fast path; every row it returns is checked
@@ -336,6 +406,8 @@ class SlackManager:
 
         slack = 0.0
         for feat in slack_layer.getFeatures(request):
+            if feat.id() in excluding:
+                continue
             if str(feat[layer_id_field] or "") != str(cable_layer_id):
                 continue
             raw_fid = feat[fid_field]
@@ -423,6 +495,12 @@ class SlackManager:
             ):
                 cable_layers.append(lyr)
 
+        batched = self._generate_in_one_session(
+            vl, cable_layers, layer_id_field, fid_field, SlackPlaceTool, errors)
+        if batched is not None:
+            vl.triggerRepaint()
+            return batched
+
         count = 0
         for cable_layer in cable_layers:
             for cable_f in cable_layer.selectedFeatures():
@@ -465,18 +543,8 @@ class SlackManager:
     def _add_one_terminal_slack(self, vl, cable_layer, cable_f, side, point,
                                 layer_id_field, fid_field, tool_class, errors) -> bool:
         """One slack point at one cable end. True when it reached the layer."""
-        f = QgsFeature(vl.fields())
-        f.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(point)))
-        f["tip"] = "Terminal"
-        f["duzina_m"] = 20
-        f["lokacija"] = self._location_at(point, tool_class, errors)
-        # Through the resolved names: on a pre-1.0 project these are
-        # kabl_layer_id / kabl_fid, and writing the modern name there raises
-        # KeyError and takes the whole operation down with it.
-        f[layer_id_field] = cable_layer.id()
-        f[fid_field] = int(cable_f.id())
-        f["strana"] = side
-        self._stamp_uuid(f, errors)
+        f = self._terminal_slack(vl, cable_layer, cable_f, side, point,
+                                 layer_id_field, fid_field, tool_class, errors)
 
         vl.startEditing()
         if not vl.addFeature(f):
@@ -489,6 +557,219 @@ class SlackManager:
         self._record_slack_undo(vl, f, errors)
         self.recompute_slack_for_cable(cable_layer.id(), int(cable_f.id()), errors)
         return True
+
+    def _batch_allowed(self, vl, cable_layers) -> bool:
+        """True when one edit session per layer can stand in for v1.5.0's many (WP4 4.1, PF-4).
+
+        v1.5.0 commits the slack layer once per cable end and the cable layer
+        once per recompute, two recomputes per cable. One session per layer
+        gives the same result only when nothing else rides on those sessions:
+        layers edited and saved one by one (``_plain_edit_mode``), no session
+        of the user's on a layer the batch writes (it would join it), layers
+        that save all or nothing (``_saves_all_or_nothing``), no cable field
+        whose default is applied again on every update (it would count one
+        update where v1.5.0 made two), and no legacy ``Opticke_rezerve``
+        layer, which ``addons/reserve_hook.py`` rewrites cables from after
+        every slack commit.
+
+        The code review found four more, each measured: a filter on the
+        slack layer (v1.5.0's Undo lookup reads through it and records
+        another slack, or none), a filter on a memory cable layer (a cable
+        its first total moves out of the filter is not found again, so
+        v1.5.0 kept that first total), a GeoPackage table whose database
+        refuses or follows writes itself (a refused trial commit shows its
+        own errors, and a trigger counts one update instead of two), and old
+        cable type values (the restyle between v1.5.0's recomputes migrates
+        them, and a refused migration leaves the totals after it unsaved).
+        Otherwise v1.5.0's loop runs unchanged.
+        """
+        if not _plain_edit_mode():
+            return False
+        if vl.isEditable() or not _saves_all_or_nothing(vl) or vl.subsetString():
+            return False
+        if vl.name().lower().startswith("opticke_rezerve") or _database_answers_writes(vl):
+            return False
+        for layer in cable_layers:
+            if layer.selectedFeatureCount() == 0:
+                continue
+            if layer.isEditable() or not _saves_all_or_nothing(layer) or layer.subsetString():
+                return False
+            if any(layer.defaultValueDefinition(i).applyOnUpdate() for i in range(layer.fields().count())):
+                return False
+            if _database_answers_writes(layer) or _holds_old_cable_types(layer):
+                return False
+        return True
+
+    def _generate_in_one_session(self, vl, cable_layers, layer_id_field, fid_field,
+                                 tool_class, errors):
+        """Both end slacks of every selected cable in one session (WP4 4.1, PF-4).
+
+        Returns the number of slacks created, as v1.5.0's loop counts them, or
+        None when the loop has to run instead -- and then nothing has been
+        written.
+
+        The slacks are built as the loop builds them, added in its order and
+        committed once. If any is refused, the session is put back, so nothing
+        reached the layer, and the loop runs and fails as it always failed:
+        slack by slack, saving the ones before the refused one. Each new slack
+        is then recorded for Undo under the fid its commit gave it, which is
+        the fid the loop recorded. Then each cable is recomputed once, in one
+        session per cable layer, and each layer restyled once. A cable layer
+        that refuses anything is put back and recomputed as the loop did it,
+        once per slack, each total leaving out the slacks the loop had not
+        created yet at that point -- so every figure and every message is the
+        loop's.
+
+        What the batch does not repeat is the loop's in-between writes: the
+        first of a cable's two totals, overwritten by the second, and the
+        commits and signals that came with it. And when a write is refused
+        for a reason the file does not show beforehand (a locked or full
+        disk), QGIS also reports the abandoned attempt's own provider errors.
+        """
+        if not self._batch_allowed(vl, cable_layers):
+            return None
+        held = _HeldErrors()
+        try:
+            ends = []
+            for cable_layer in cable_layers:
+                for cable_f in cable_layer.selectedFeatures():
+                    line = self._endpoints_of(cable_f)
+                    if line:
+                        ends += [(cable_layer, cable_f, "od", line[0]), (cable_layer, cable_f, "do", line[-1])]
+            slacks = [self._terminal_slack(vl, cable_layer, cable_f, side, point,
+                                           layer_id_field, fid_field, tool_class, held)
+                      for cable_layer, cable_f, side, point in ends]
+        except (AttributeError, KeyError, RuntimeError, TypeError, ValueError):
+            # The loop meets the same problem part-way, after saving the
+            # slacks before it; only the loop can say so in its own words.
+            return None
+        if not ends:
+            return 0
+        if held.failed or not vl.startEditing():
+            return None
+        if not all(vl.addFeature(f) for f in slacks):
+            vl.rollBack()
+            return None
+        saved = []
+
+        def took(_layer_id, features):
+            saved.extend(features)
+
+        vl.committedFeaturesAdded.connect(took)
+        try:
+            committed = vl.commitChanges()
+        finally:
+            vl.committedFeaturesAdded.disconnect(took)
+        if not committed:
+            vl.rollBack()
+            return None
+        self._take_saved_ids(vl, slacks, saved)
+        for f in slacks:
+            self._record_slack_undo(vl, f, errors)
+
+        for cable_layer in cable_layers:
+            mine = [i for i, end in enumerate(ends) if end[0] is cable_layer]
+            if not mine or self._recompute_in_one_session(
+                    cable_layer, list(dict.fromkeys(int(ends[i][1].id()) for i in mine))):
+                continue
+            for i in mine:
+                later = {f.id() for f in slacks[i + 1:]}
+                self.recompute_slack_for_cable(cable_layer.id(), int(ends[i][1].id()), errors, excluding=later)
+        return len(slacks)
+
+    @staticmethod
+    def _take_saved_ids(vl, slacks, saved) -> None:
+        """Give each new slack the fid its commit saved it under.
+
+        ``committedFeaturesAdded`` lists the session's adds in the order they
+        were added, with their new fids (measured on 3.22.16, 3.44.15 and
+        4.2.3), and the session held nothing else. Each is checked against its
+        slack -- the same uuid, or the same point on a layer without a uuid
+        column -- and a list that does not match changes nothing: the slacks
+        keep their temporary ids and ``record_add`` finds each by its point.
+        """
+        if len(saved) != len(slacks):
+            return
+        has_uuid = vl.fields().indexOf("fiberq_uuid") != -1
+        for f, row in zip(slacks, saved):
+            same = f["fiberq_uuid"] == row["fiberq_uuid"] if has_uuid else f.geometry().equals(row.geometry())
+            if not same:
+                return
+        for f, row in zip(slacks, saved):
+            f.setId(row.id())
+
+    def _recompute_in_one_session(self, cable_layer, cable_fids) -> bool:
+        """Each cable re-totalled once, in one session, as ``_total_slack_onto_cable`` does it.
+
+        True when every cable took its total and the layer saved them, or
+        there was nothing to write. False when anything went wrong, with the
+        layer as it was: the caller then recomputes as v1.5.0 did, which says
+        what went wrong in v1.5.0's words and order.
+        """
+        held = _HeldErrors()
+        slack_layer = self.ensure_slack_layer()
+        if slack_layer is None:
+            return False
+        names = slack_layer.fields().names()
+        layer_id_field, fid_field = fm.cable_link_fields(names)
+        length_field = fm.actual_field(names, "duzina_m")
+        if not layer_id_field or not length_field:
+            return False
+        fld_slack = next((name for name in ("slack_m", "slack", "slacks_m")
+                          if cable_layer.fields().indexOf(name) != -1), None)
+        has_total = cable_layer.fields().indexOf("total_len_m") != -1
+        opened = False
+        updated = False
+        for cable_fid in cable_fids:
+            slack = self._slack_total(slack_layer, layer_id_field, fid_field, length_field,
+                                      cable_layer.id(), cable_fid, held)
+            cable_f = next(iter(cable_layer.getFeatures(QgsFeatureRequest(int(cable_fid)))), None)
+            if cable_f is None or (fld_slack is None and not has_total):
+                continue
+            if not opened:
+                if not cable_layer.startEditing():
+                    return False
+                opened = True
+            if fld_slack:
+                cable_f[fld_slack] = float(slack)
+            if has_total:
+                cable_f["total_len_m"] = self._ground_length(cable_f, cable_layer, held) + float(slack)
+            if not cable_layer.updateFeature(cable_f):
+                cable_layer.rollBack()
+                return False
+            updated = True
+        if held.failed:
+            if opened:
+                cable_layer.rollBack()
+            return False
+        if opened and not cable_layer.commitChanges():
+            cable_layer.rollBack()
+            return False
+        if updated:
+            if self._stylize_cable_layer_callback:
+                try:
+                    self._stylize_cable_layer_callback(cable_layer)
+                except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
+                    logger.warning(f"Could not restyle {cable_layer.name()!r} after a slack update: {exc}")
+            cable_layer.triggerRepaint()
+        return True
+
+    def _terminal_slack(self, vl, cable_layer, cable_f, side, point,
+                        layer_id_field, fid_field, tool_class, errors):
+        """The slack point for one cable end, not yet added to the layer."""
+        f = QgsFeature(vl.fields())
+        f.setGeometry(QgsGeometry.fromPointXY(QgsPointXY(point)))
+        f["tip"] = "Terminal"
+        f["duzina_m"] = 20
+        f["lokacija"] = self._location_at(point, tool_class, errors)
+        # Through the resolved names: on a pre-1.0 project these are
+        # kabl_layer_id / kabl_fid, and writing the modern name there raises
+        # KeyError and takes the whole operation down with it.
+        f[layer_id_field] = cable_layer.id()
+        f[fid_field] = int(cable_f.id())
+        f["strana"] = side
+        self._stamp_uuid(f, errors)
+        return f
 
     def _location_at(self, point, tool_class, errors) -> str:
         """``Stub`` / ``OKNO`` / ``Objekat`` for whatever is nearest the point."""
