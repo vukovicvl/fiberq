@@ -16,6 +16,8 @@ SQLite cannot open. A finer answer is not worth a guess.
 import os
 import re
 import sqlite3
+import string
+import time
 from collections import namedtuple
 from contextlib import closing
 from pathlib import Path
@@ -24,14 +26,25 @@ from qgis.core import QgsProviderRegistry
 
 #: ``view``: the layer reads a view, whose order is its own. ``curves``: the
 #: file registers a ``gpkg_geom_<TYPE>`` extension for the table, which the
-#: GeoPackage standard requires of a writer that stores arcs in it.
-TableFacts = namedtuple("TableFacts", "view curves")
+#: GeoPackage standard requires of a writer that stores arcs in it. ``keyed``:
+#: the table's key is SQLite's rowid, so its fid order is the order GDAL reads
+#: it in (``_rowid_key``).
+TableFacts = namedtuple("TableFacts", "view curves keyed")
 
-#: ``path -> (stamp, {table, lower case: kind}, {tables with curves})``.
+#: ``path -> (stamp, {table, lower case: kind}, {tables with curves}, {tables keyed by the rowid})``.
 #: Opening the file costs ~3 ms on the benchmark's 24-table GeoPackage, and one
 #: click asks for several layers. Any write changes the file or its WAL, and
 #: the stamp with it, so a stale answer is never used.
 _SCHEMAS = {}
+
+#: ``path -> (stamp, monotonic seconds)`` of a read that failed: tried again a
+#: second later, or once the file changes. With a busy timeout, a file another
+#: program held locked made every mouse move wait 0.1 s for each GeoPackage
+#: layer it searched -- 1.4 s a move for the route tool's 14 (code review,
+#: 3.44.15 and 4.2.3). The read now gives up at once: a locked file only means
+#: "cannot tell", and the caller reads the layer whole, as before.
+_FAILED = {}
+_RETRY_AFTER_S = 1.0
 
 
 def _source(layer):
@@ -58,26 +71,75 @@ def _stamp(path):
     return tuple(stamp)
 
 
+def _rowid_key(db, table):
+    """The name of ``table``'s key column when it is SQLite's rowid itself, else None.
+
+    The GeoPackage standard's key, ``INTEGER PRIMARY KEY``: GDAL reads a table
+    in rowid order and takes such a key for the fid, so fid order is the
+    order of a whole read. Any other key -- ``INT``, ``INTEGER ... DESC``,
+    TEXT, two columns -- has an index of its own (origin 'pk'), and then
+    GDAL reads in rowid order while its fid is the key, or takes the rowid
+    for the fid while the key is something else (round-4 review: sorted by
+    fid, a snap's tie went to another route). GDAL opens such tables without
+    a word.
+    """
+    try:
+        keys = [(name, kind) for name, kind, primary in db.execute(
+            "SELECT name, type, pk FROM pragma_table_info(?)", (table,)) if primary]
+        if len(keys) != 1 or (keys[0][1] or "").strip().upper() != "INTEGER":
+            return None
+        if db.execute("SELECT 1 FROM pragma_index_list(?) WHERE origin = 'pk'", (table,)).fetchone() is not None:
+            return None
+    except sqlite3.Error:
+        # Whatever SQLite cannot describe here is not a key it can vouch for.
+        return None
+    return keys[0][0]
+
+
+#: Folds a name as SQLite folds identifiers: ASCII letters only. ``str.lower()``
+#: also folds "Č" into "č", making two of SQLite's tables one key (round-6 review).
+_ASCII_LOWER = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+
+
+def _folded(name):
+    """``name`` in the case SQLite compares it in."""
+    return name.translate(_ASCII_LOWER)
+
+
 def _schema(path):
-    """``(kinds, curved)`` for the file, or None when it cannot be read."""
+    """``(kinds, curved, keyed)`` for the file, table names folded by ``_folded``; None when it cannot be read."""
     stamp = _stamp(path)
     known = _SCHEMAS.get(path)
     if stamp is not None and known is not None and known[0] == stamp:
-        return known[1], known[2]
+        return known[1:]
+    failed = _FAILED.get(path)
+    if failed is not None and failed[0] == stamp and time.monotonic() - failed[1] < _RETRY_AFTER_S:
+        return None
     try:
-        with closing(sqlite3.connect(Path(path).as_uri() + "?mode=ro", uri=True, timeout=0.1)) as db:
-            kinds = {name.lower(): kind for kind, name in db.execute(
+        with closing(sqlite3.connect(Path(path).as_uri() + "?mode=ro", uri=True, timeout=0)) as db:
+            kinds = {_folded(name): kind for kind, name in db.execute(
                 "SELECT type, name FROM sqlite_master WHERE type IN ('table', 'view')")}
             curved = set()
             if "gpkg_extensions" in kinds:
-                curved = {name.lower() for (name,) in db.execute(
+                curved = {_folded(name) for (name,) in db.execute(
                     "SELECT table_name FROM gpkg_extensions "
                     "WHERE extension_name LIKE 'gpkg_geom_%' AND table_name IS NOT NULL")}
+            keyed = set()
+            if "gpkg_geometry_columns" in kinds:
+                # Tables only: SQLite compiles a view to describe it, and a view
+                # calling one of GDAL's SQL functions, or reading a table that
+                # is gone, fails to compile here and took the whole file down
+                # with it (round-5 review). A view is read whole anyway.
+                keyed = {_folded(name) for (name,) in db.execute(
+                    "SELECT table_name FROM gpkg_geometry_columns WHERE table_name IS NOT NULL").fetchall()
+                    if kinds.get(_folded(name)) == "table" and _rowid_key(db, name) is not None}
     except (OSError, ValueError, sqlite3.Error):
+        _FAILED[path] = (stamp, time.monotonic())
         return None
+    _FAILED.pop(path, None)
     if stamp is not None:
-        _SCHEMAS[path] = (stamp, kinds, curved)
-    return kinds, curved
+        _SCHEMAS[path] = (stamp, kinds, curved, keyed)
+    return kinds, curved, keyed
 
 
 def table_facts(layer):
@@ -89,11 +151,12 @@ def table_facts(layer):
     schema = _schema(path)
     if schema is None:
         return None
-    kinds, curved = schema
-    kind = kinds.get(table.lower())
+    kinds, curved, keyed = schema
+    name = _folded(table)
+    kind = kinds.get(name)
     if kind is None:
         return None
-    return TableFacts(view=kind == "view", curves=table.lower() in curved)
+    return TableFacts(view=kind == "view", curves=name in curved, keyed=name in keyed)
 
 
 #: GDAL's own triggers on a feature table: its R-tree's and its feature count's.

@@ -145,6 +145,9 @@ def test_a_thing_without_a_finite_box_is_offered_to_every_query(qgis_app):
     assert not indexable_box(QgsRectangle(-INF, 0, 1, 1))
     assert not indexable_box(QgsRectangle(-1e200, -1e200, -1e200, -1e200))
     assert indexable_box(QgsRectangle(-2e7, -2e7, 2e7, 2e7))
+    # Nor one a GeoPackage's float32 R-tree cannot hold (branch 13, round-4 review).
+    assert not indexable_box(QgsRectangle(1e39, 0, 1e39, 20))
+    assert indexable_box(QgsRectangle(-9e37, -9e37, 9e37, 9e37))
 
 
 NON_FINITE_DRIVER = '''

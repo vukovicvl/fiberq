@@ -20,9 +20,11 @@ one to a box query at all; so the box search and the scan skip the same ones.
 
 **Counted, not timed**, as branch 11 did: features read and GEOS distances
 measured per click are deterministic, and a ratio of them fails on the parent
-with its own numbers. On a GeoPackage the box is an R-tree lookup; a memory
-layer has no index in v1.6.0 (PF-5 adds one), so there the counts are what
-reaches Python only. The equivalence tests run the parent's own loops, read
+with its own numbers. On a GeoPackage the box is an R-tree lookup (and since
+branch 13 a shapefile is boxed too, through its .qix where it has one); a
+memory layer has no index in v1.6.0 -- giving FiberQ's one was dropped in
+PF-5, as it crashes QGIS on coordinates beyond +/-2e154 -- so there the counts
+are what reaches Python only. The equivalence tests run the parent's own loops, read
 from the whole layer, next to the tool -- on the benchmark's XS city, and on
 the states the design review found.
 """
@@ -300,6 +302,51 @@ def _shared_end(layer):
     # A changed geometry is handed out FIRST by a rect-filtered request.
     assert layer.changeGeometry(first + 1, _line((90, 0), (50, 0)))
     return added
+
+
+@pytest.mark.parametrize("storage", ["memory", "gpkg"])
+@pytest.mark.parametrize("change", ["deleted vertex", "point", "polygon"])
+def test_an_unsaved_change_to_no_line_at_all_reads_the_same(project, tmp_path, storage, change):
+    """A cable cleared by deleting one of its two vertices, or a point or a
+    polygon put in its place, made every slack click and move raise while the
+    edit was unsaved (code review of PF-5's shared search)."""
+    _street(project, 40)
+    if storage == "gpkg":
+        _to_gpkg(project, tmp_path / "odd.gpkg")
+    layer = project.mapLayersByName("Underground cables")[0]
+    assert layer.startEditing()
+    try:
+        target = sorted(f.id() for f in layer.getFeatures())[10]          # cable 10, by the clicks
+        if change == "deleted vertex":
+            layer.deleteVertex(target, 0)
+        else:
+            wkt = "Point (1020 3)" if change == "point" else "Polygon ((1015 2, 1025 2, 1025 6, 1015 2))"
+            assert layer.changeGeometry(target, QgsGeometry.fromWkt(wkt))
+        tool = _tool()
+        for point in (QgsPointXY(1000 + 40, 1), QgsPointXY(1000 + 20, 3), QgsPointXY(1100, 1), QgsPointXY(990, 0)):
+            assert _resolved(tool, point) == _reference_resolve(tool, point), point.asWkt()
+        assert _resolved(tool, QgsPointXY(1100, 1)) is not None, "the case is not vacuous"
+    finally:
+        layer.rollBack()
+
+
+def test_a_memory_layer_with_an_index_of_its_own_is_still_read_near_the_click(project):
+    """The placement snaps read such a layer whole (its index drops a
+    MultiPoint with an infinite part, which they measure through its finite
+    part); the click's searches never measure one, and reading the layers
+    whole made each click ~400 times slower than main (round-5 review). They
+    narrow it, as on main."""
+    _street(project, 40)
+    for layer in project.mapLayers().values():
+        assert layer.dataProvider().createSpatialIndex()
+    tool = _tool()
+    with pytest.MonkeyPatch.context() as patch:
+        counts = _counting(patch)
+        at_end = _resolved(tool, QgsPointXY(1000 + 40, 1))
+        node = _node(tool, QgsPointXY(1000 + 40, 1))
+    assert counts["features"] < 20, counts
+    assert at_end == _reference_resolve(tool, QgsPointXY(1000 + 40, 1))
+    assert node == _reference_node(tool, QgsPointXY(1000 + 40, 1))
 
 
 @pytest.mark.parametrize("storage", ["memory", "gpkg"])

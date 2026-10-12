@@ -38,17 +38,24 @@ Three facts shape ``ScanOrderIndex``, each measured on QGIS 3.22.16, 3.40.15,
   scan did. No coordinate system comes within a hundred orders of magnitude
   of the limit, so this costs real projects nothing.
 """
+import itertools
 import math
+import uuid
 
-from qgis.core import QgsFeatureRequest, QgsRectangle, QgsSpatialIndex, QgsWkbTypes
+from qgis.core import (QgsFeatureRequest, QgsLineString, QgsMultiLineString, QgsMultiPoint, QgsPoint, QgsRectangle,
+                       QgsSpatialIndex, QgsWkbTypes)
 
 from .geopackage import table_facts
 
 
-#: The largest bound a box may have and still go into the index. Overflow starts
-#: near 2e154 (measured: 2e154 crashed, 1e154 did not, on 3.22.16, 3.44.15 and
-#: 4.2.3); this leaves a wide margin below that and a wider one above any map.
-_LARGEST_BOUND = 1e150
+#: The largest bound a box may have and still go into the index, or be asked
+#: of a file's. A QgsSpatialIndex overflows near 2e154 (measured: 2e154
+#: crashed, 1e154 did not, on 3.22.16, 3.44.15 and 4.2.3), and a GeoPackage's
+#: R-tree keeps float32 bounds: one beyond +/-3.4e38 is stored as an infinity
+#: on the inside of its box, so a row lying wholly out there is never found
+#: (round-4 review). Below 1e38 a query only reaches rows whose near bound
+#: float32 holds, rounded outward. No map comes near either.
+_LARGEST_BOUND = 1e38
 
 
 def indexable_box(box):
@@ -84,8 +91,14 @@ def _box_answers_exactly(layer):
     What does not read by fid is left to the whole scan (design and code
     reviews, 3.22.16 to 4.2.3): other OGR formats (a GeoJSON file with its
     own ids reads in file order), a GeoPackage layer with a filter (SQLite
-    may answer it through an attribute index, in that index's order), and a
-    GeoPackage view (it has an order of its own).
+    may answer it through an attribute index, in that index's order), a
+    GeoPackage view (it has an order of its own), and a GeoPackage table whose
+    key is not SQLite's rowid (GDAL reads it in rowid order, round-4 review;
+    ``utils.geopackage._rowid_key``). An ESRI Shapefile reads by
+    fid, its record number, and its box query is complete, with or without a
+    ``.qix`` index (branch 13: 400 random boxes each over 3,000 points, 3,000
+    lines and 2,000 two-part lines, 3.22.16, 3.44.15 and 4.2.3); it holds no
+    curves.
 
     Then the geometry. QGIS's box of a curve can miss part of the line GEOS
     measures (PF-2, branch 11), so only point and line types are boxed, and a
@@ -94,7 +107,12 @@ def _box_answers_exactly(layer):
     back as arcs, and OGR's box filter tests its own straightening of them,
     which missed 57 of 600 clicks at a 0.1 m reach (3.44.15, 4.2.3). An arc
     a memory layer keeps is boxed by QGIS itself; the slack tool's
-    ``_cable_lines`` turns away the ones that box cannot hold.
+    ``_cable_lines`` and the placement snaps' ``held_by_its_box`` turn away the
+    ones that box cannot hold.
+
+    A memory layer answers through a spatial index of its own where someone
+    gave it one (Layer Properties, Processing; FiberQ never does), as on main;
+    the placement snaps read such a layer whole (``features_within``).
     """
     if QgsWkbTypes.displayString(QgsWkbTypes.flatType(layer.wkbType())) not in _BOXED_TYPES:
         return False
@@ -103,10 +121,14 @@ def _box_answers_exactly(layer):
         return False
     if provider.name() == "memory":
         return True
-    if provider.name() != "ogr" or provider.storageType() != "GPKG" or layer.subsetString():
+    if provider.name() != "ogr" or layer.subsetString():
+        return False
+    if provider.storageType() == "ESRI Shapefile":
+        return True
+    if provider.storageType() != "GPKG":
         return False
     facts = table_facts(layer)
-    if facts is None or facts.view:
+    if facts is None or facts.view or not facts.keyed:
         return False
     return not (facts.curves and layer.geometryType() == QgsWkbTypes.GeometryType.LineGeometry)
 
@@ -124,7 +146,7 @@ def _scan_position(feature):
 def features_near(layer, point, reach):
     """The layer's features whose box comes within ``reach`` of ``point``, in scan order.
 
-    For a search that used to read the whole layer (WP4 PF-4): it keeps its own
+    For a search that used to read the whole layer (WP4 PF-4, PF-5): it keeps its own
     test and runs it over these instead, in the order the whole scan met them,
     so a first match or a strict ``<`` settles a tie as it always did.
 
@@ -134,22 +156,144 @@ def features_near(layer, point, reach):
     then the caller reads the whole layer, as it did before. The answer reads
     through the edit buffer, as a scan does.
 
-    On a GeoPackage the box is an R-tree lookup. A memory layer has no
-    spatial index in v1.6.0 (PF-5 adds one), so there it is a C++ pass over
-    the layer's boxes: what it saves is the Python loop and the GEOS
-    distance per feature, not the pass itself.
+    On a GeoPackage the box is an R-tree lookup, on a shapefile its ``.qix``
+    where it has one. A memory layer has no spatial index -- giving FiberQ's
+    an index was measured to crash QGIS on coordinates beyond +/-2e154 (WP4
+    plan, PF-5) -- so there it is a C++ pass over the layer's boxes: what it
+    saves is the Python loop and the measuring per feature, not the pass.
+
+    A geometry changed in the edit buffer is tested differently by QGIS: not
+    its box but the exact GEOS intersection of QGIS's segmentization with the
+    box. That drops geometry a search still measures, so it is handed out as
+    well (``_changes_a_box_may_drop``).
     """
     box = box_around(point, reach)
     if not indexable_box(box) or not _box_answers_exactly(layer):
         return None
     found = list(layer.getFeatures(QgsFeatureRequest().setFilterRect(box)))
+    if layer.isEditable():
+        have = {feature.id() for feature in found}
+        missing = [fid for fid, vertex in _changes_a_box_may_drop(layer)
+                   if fid not in have and (vertex is None or _holds(box, vertex))]
+        if missing:
+            found += list(layer.getFeatures(QgsFeatureRequest().setFilterFids(missing)))
     if any(f.id() < 0 for f in found):
         buffer = layer.editBuffer() if layer.isEditable() else None
-        unsaved = buffer.addedFeatures() if buffer is not None else {}
-        if any(f.id() < 0 and f.id() not in unsaved for f in found):
+        if buffer is None or any(f.id() < 0 and not buffer.isFeatureAdded(f.id()) for f in found):
             return None
     found.sort(key=_scan_position)
     return found
+
+
+def _holds(box, vertex):
+    """True when the ``QgsRectangle`` ``box``, edges included, holds the point ``(x, y)``; never for a NaN."""
+    x, y = vertex
+    return box.xMinimum() <= x <= box.xMaximum() and box.yMinimum() <= y <= box.yMaximum()
+
+
+def features_within(layer, point, tolerance):
+    """``features_near`` sized for a search that uses only answers within ``tolerance`` of ``point``.
+
+    For the placement snaps (WP4 PF-5). Every vertex, segment point or
+    midpoint such a search can accept lies within ``tolerance`` -- give or take
+    the rounding of its own arithmetic, which a millionth of it covers -- and
+    inside the box of its feature, so that is all the reach a layer of points
+    or of straight lines needs: the box v1.5.0's joint-closure tool asked for.
+    A line layer that can hold an arc ``held_by_its_box`` lets through -- a
+    memory layer, or any layer while it is being edited, whose unsaved arcs
+    QGIS boxes itself -- gets twice the tolerance, because that check allows
+    an arc's points half the tolerance outside its box (code review: a
+    tolerance-sized reach missed a held 3.22 arc starting at the origin).
+
+    None for a memory layer someone gave a spatial index of its own (Layer
+    Properties, Processing; FiberQ never does): that index drops a MultiPoint
+    with an infinite part, on 3.22 and 4.2, which the fallback snap measures
+    through its finite part -- U30 holds it, an infinite point not being an
+    empty one (round-6 review; on 3.22 it also dropped a MultiPoint whose first
+    part is empty, which U30 turns away). Only the snaps: the slack click's
+    searches never measure a MultiPoint of two parts or a point that is not
+    finite, and keep main's narrowed read there (round-5 review: reading it
+    whole made the click ~400 times slower).
+    """
+    provider = layer.dataProvider()
+    # SpatialIndexPresent is 2 on QGIS 3.22 to 4.2, whatever the enum is called.
+    if provider is not None and provider.name() == "memory" and int(provider.hasSpatialIndex()) == 2:
+        return None
+    lines = layer.geometryType() == QgsWkbTypes.GeometryType.LineGeometry
+    arcs = lines and (layer.isEditable() or (provider is not None and provider.name() == "memory"))
+    return features_near(layer, point, tolerance * (2.0 if arcs else 1.000001))
+
+
+#: ``key -> (generation, [(fid, (x, y) or None), ...])``: per layer object,
+#: the changed geometries a box query may drop, as of the edit it last saw.
+_DROPPED_CHANGES = {}
+#: ``key -> generation``, bumped whenever the layer's edit buffer changes.
+_GENERATIONS = {}
+_KEYS = itertools.count()
+#: The layer property holding the key: one name per import of this module. A
+#: plugin reload imports it afresh, and a key the old import minted is bumped
+#: only in the old import's counts, so taking it up froze the cache for good
+#: (code review: undo, redo and a new edit session left it stale).
+_KEY_PROPERTY = "fiberq_edit_generation_%s" % uuid.uuid4().hex
+#: The shapes QGIS's own test of a changed geometry answers for exactly. See
+#: ``_changes_a_box_may_drop``; a QgsLineString is told apart by its count.
+_TESTED_BY_QGIS = (QgsPoint, QgsMultiPoint, QgsMultiLineString)
+
+
+def _changes_a_box_may_drop(layer):
+    """``(fid, vertex)`` for the unsaved geometry changes a box request may leave out; vertex None: hand it out always.
+
+    QGIS tests a changed geometry with GEOS against the query box (design and
+    code reviews, 3.22.16 to 4.2.3). That answers exactly for a point, a
+    MultiPoint, a LineString of two vertices or more and a MultiLineString --
+    a line with a coordinate that is not finite or a one-vertex part, and a
+    MultiPoint with a part that is not a number, which GEOS may drop, the
+    searches skip too (``utils.geometry.held_by_its_box``) -- but leaves out
+    what the searches still measure: a lone vertex, which
+    GEOS cannot build into a line and which is handed out when it lies in the
+    query box; and a curve, whose segmentization -- the chord of a
+    near-straight arc, the control polygon of a NURBS curve -- can lie farther
+    from the cursor than the curve, which is handed out wherever it is, as is
+    any other shape, such as a collection whose only part near the cursor is
+    a lone vertex. A null geometry -- what deleting a two-vertex line's vertex
+    or a single part leaves -- is measured by no search.
+
+    Any layer's buffer can hold any of these: ``changeGeometry()`` does not
+    check the type, and the fallback snap measures a lone vertex changed into
+    a point layer (round-4 review). The shape's own class tells them apart, so
+    the buffer is read without measuring a geometry, once per edit rather than
+    once per mouse move: 24 ms with every route of the L city changed, against
+    0.27 s for the Python pass over each geometry the code review measured
+    (3.22.16, 3.44.15 and 4.2.3 alike).
+    """
+    buffer = layer.editBuffer()
+    if buffer is None:
+        return []
+    key = layer.property(_KEY_PROPERTY)
+    if not key:
+        key = "%s#%d" % (layer.id(), next(_KEYS))
+        layer.setProperty(_KEY_PROPERTY, key)
+
+        def bump(*_args, key=key):
+            _GENERATIONS[key] = _GENERATIONS.get(key, 0) + 1
+        for signal in (layer.layerModified, layer.editingStarted, layer.editingStopped, layer.afterRollBack):
+            signal.connect(bump)
+    generation = _GENERATIONS.get(key, 0)
+    cached = _DROPPED_CHANGES.get(key)
+    if cached is not None and cached[0] == generation:
+        return cached[1]
+    dropped = []
+    for fid, geometry in buffer.changedGeometries().items():
+        shape = geometry.constGet()
+        if shape is None or type(shape) in _TESTED_BY_QGIS:
+            continue
+        if type(shape) is QgsLineString:
+            if shape.numPoints() == 1:
+                dropped.append((fid, (shape.xAt(0), shape.yAt(0))))
+            continue
+        dropped.append((fid, None))
+    _DROPPED_CHANGES[key] = (generation, dropped)
+    return dropped
 
 
 class ScanOrderIndex:
@@ -279,4 +423,4 @@ class RectGrid:
         return [(column, row) for column in range(left, right + 1) for row in range(low, high + 1)]
 
 
-__all__ = ['RectGrid', 'ScanOrderIndex', 'box_around', 'features_near', 'indexable_box']
+__all__ = ['RectGrid', 'ScanOrderIndex', 'box_around', 'features_near', 'features_within', 'indexable_box']

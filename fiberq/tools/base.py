@@ -33,6 +33,7 @@ from qgis.gui import (
 )
 
 from ..utils.geometry import held_by_its_box
+from ..utils.spatial import features_within
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
@@ -283,6 +284,14 @@ class PlacementSnapper:
         feature that would win within the tolerance: one beyond it is never
         returned, so it changes nothing which feature that was.
 
+        Each layer is asked only for the features whose box comes within the
+        tolerance of the cursor (``utils.spatial.features_within``, WP4 4.1 item
+        PF-5), in the order the whole layer hands them out: nothing farther can
+        be within the tolerance, and only within it is an answer returned, so
+        the first of a tie is still the scan's. Where a box cannot answer
+        exactly -- another provider, a filter, a view -- the whole layer is
+        read, as before.
+
         Returns:
             A QgsPointLocator.Match, invalid when nothing is within tolerance.
         """
@@ -293,7 +302,8 @@ class PlacementSnapper:
 
         for layer, is_line, name in self._candidate_layers():
             try:
-                features = layer.getFeatures()
+                near = features_within(layer, point, tolerance)
+                features = layer.getFeatures() if near is None else near
             except RuntimeError as exc:
                 # A layer pulled out from under a live mouse move. One bad layer
                 # must not take the tool down with it -- which is why the name

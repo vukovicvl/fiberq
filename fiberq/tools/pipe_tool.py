@@ -19,6 +19,7 @@ from .base import (
 from ..utils.geometry import held_by_its_box, polylines
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
+from ..utils.spatial import features_within
 logger = get_logger(__name__)
 
 
@@ -120,6 +121,12 @@ class PipePlaceTool(QgsMapTool):
         not a finite number, a one-vertex part, an arc QGIS cannot box -- is
         skipped (``utils.geometry.held_by_its_box``). The check is asked only of
         one that would win within the tolerance, the only answer used.
+
+        Each layer is asked only for the features whose box comes within the
+        tolerance of the cursor (``utils.spatial.features_within``, WP4 4.1 item
+        PF-5), in the order the whole layer hands them out, or read whole
+        where a box cannot answer exactly. Every point within the tolerance is
+        among them, so the answer is the scan's.
         """
         point = QgsPointXY(qpt)
         tolerance = self.canvas.mapUnitsPerPixel() * 20
@@ -134,7 +141,8 @@ class PipePlaceTool(QgsMapTool):
                 if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
                     lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and  # noqa: W504
                         lyr.name() in node_names):
-                    for f in lyr.getFeatures():
+                    near = features_within(lyr, point, tolerance)
+                    for f in (lyr.getFeatures() if near is None else near):
                         p = _point_of(f.geometry())
                         if p is None:
                             continue
@@ -156,7 +164,8 @@ class PipePlaceTool(QgsMapTool):
                     lyr.name() in ('Route', 'Trasa') and  # noqa: W504
                         lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry):
 
-                    for g in lyr.getFeatures():
+                    near = features_within(lyr, point, tolerance)
+                    for g in (lyr.getFeatures() if near is None else near):
                         geom = g.geometry()
                         if not geom or geom.isEmpty():
                             continue

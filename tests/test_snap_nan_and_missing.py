@@ -19,7 +19,12 @@ raised TypeError out of ``asPolyline()`` and ended both tools' route search the
 same way.
 
 Each test puts the odd feature first in its layer and a good one in reach after
-it. On the parent every one of them snaps to nothing.
+it. On the parent every one of them snaps to nothing. Since PF-5 the tools read
+only the features near the cursor, where no odd feature here is, so each
+odd-feature test also reads every feature: the path a layer no box answers
+for takes, filtered, GeoJSON or PostGIS (code review). The NaN tests pin the
+answer rather than the NaN checks: since U30 the held-by-its-box check turns
+a NaN candidate away before they see it (round-4 review).
 """
 import pytest
 from qgis.core import (
@@ -39,6 +44,7 @@ from qgis.gui import QgsMapCanvas
 
 from fiberq.tools.pipe_tool import PipePlaceTool
 from fiberq.tools.route_tool import ManualRouteTool
+import fiberq.utils.spatial as spatial
 
 NAN = float("nan")
 #: Where every test puts the cursor, at one map unit per pixel: the good
@@ -96,6 +102,13 @@ def iface(qgis_app):
     assert view.mapUnitsPerPixel() == pytest.approx(1.0, abs=0.01)
     yield _Iface(view)
     view.hide()
+
+
+@pytest.fixture(params=["near the cursor", "every feature"])
+def reads(request, monkeypatch):
+    if request.param == "every feature":
+        monkeypatch.setattr(spatial, "features_near", lambda *args, **kwargs: None)
+    return request.param
 
 
 def _layer(project, tmp_path, storage, uri, name, geometries):
@@ -163,12 +176,12 @@ def test_a_pole_at_nan_no_longer_switches_the_pipe_snap_off(project, tmp_path, i
 
 
 @pytest.mark.parametrize("storage", ["memory", "gpkg"])
-def test_a_pole_without_a_geometry_no_longer_hides_the_poles_after_it(project, tmp_path, iface, storage):
+def test_a_pole_without_a_geometry_no_longer_hides_the_poles_after_it(project, tmp_path, iface, storage, reads):
     _layer(project, tmp_path, storage, "Point", "Poles", [None, QgsGeometry.fromPointXY(QgsPointXY(101, 100))])
     assert _xy(PipePlaceTool(iface, None, "PE", {})._snap_point(CURSOR)) == (101.0, 100.0)
 
 
-def test_a_multipart_pole_no_longer_hides_the_poles_after_it(project, tmp_path, iface):
+def test_a_multipart_pole_no_longer_hides_the_poles_after_it(project, tmp_path, iface, reads):
     """``asPoint()`` raises TypeError for a MultiPoint of two points, on every version."""
     _layer(project, tmp_path, "memory", "MultiPoint", "Poles", [
         QgsGeometry.fromWkt("MultiPoint ((500 500),(600 600))"), QgsGeometry.fromWkt("MultiPoint ((101 100))")])
@@ -179,7 +192,7 @@ def test_a_multipart_pole_no_longer_hides_the_poles_after_it(project, tmp_path, 
     assert found == ((101.0, 100.0) if Qgis.QGIS_VERSION_INT >= 32400 else _xy(CURSOR))
 
 
-def test_a_route_without_a_geometry_no_longer_hides_the_routes_after_it(project, tmp_path, iface):
+def test_a_route_without_a_geometry_no_longer_hides_the_routes_after_it(project, tmp_path, iface, reads):
     _layer(project, tmp_path, "memory", "LineString", "Route", [None, _line((103, 100), (120, 100))])
     assert _xy(PipePlaceTool(iface, None, "PE", {})._snap_point(CURSOR)) == (103.0, 100.0)
 
@@ -229,7 +242,7 @@ def _point_first_in_routes(project, tmp_path, storage):
 
 
 @pytest.mark.parametrize("storage", ["memory", "gpkg"])
-def test_a_point_in_the_route_layer_no_longer_hides_the_routes_after_it(project, tmp_path, iface, storage):
+def test_a_point_in_the_route_layer_no_longer_hides_the_routes_after_it(project, tmp_path, iface, storage, reads):
     layer = _point_first_in_routes(project, tmp_path, storage)
     try:
         point, distance = ManualRouteTool(iface, None)._find_snap_point(CURSOR)
@@ -240,7 +253,7 @@ def test_a_point_in_the_route_layer_no_longer_hides_the_routes_after_it(project,
             layer.rollBack()
 
 
-def test_a_multipart_pole_in_a_point_layer_no_longer_hides_the_poles_after_it(project, tmp_path, iface):
+def test_a_multipart_pole_in_a_point_layer_no_longer_hides_the_poles_after_it(project, tmp_path, iface, reads):
     """A Point layer takes a MultiPoint too -- the memory provider and a
     GeoPackage POINT table check only the dimension -- and asPoint() raises
     TypeError for it on every version, 3.22 included (round-4 review)."""

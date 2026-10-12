@@ -18,6 +18,7 @@ from .base import (
 from ..utils.geometry import held_by_its_box, polylines
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
+from ..utils.spatial import features_within
 logger = get_logger(__name__)
 
 #: How near, in screen pixels, a click or a move must come to a node or a
@@ -98,11 +99,18 @@ class ManualRouteTool(QgsMapTool):
         one that would win within the snap distance, the only answer the callers
         use.
 
+        Each layer is asked only for the features whose box comes within the
+        snap distance of ``point`` (``utils.spatial.features_within``, WP4 4.1
+        item PF-5), in the order the whole layer hands them out, or read whole
+        where a box cannot answer exactly. Every vertex or midpoint within the
+        snap distance is among them, so that answer is the scan's.
+
         Args:
             point: QgsPointXY to snap
 
         Returns:
-            Tuple of (snap_point, min_distance) or (None, None)
+            Tuple of (snap_point, min_distance) or (None, None). Beyond the snap
+            distance: the nearest of what was read, which no caller uses.
         """
         tolerance = self.canvas.mapUnitsPerPixel() * SNAP_PIXELS
         slack = tolerance / 2
@@ -123,7 +131,8 @@ class ManualRouteTool(QgsMapTool):
 
         # Snap to node layers
         for nl in node_layers:
-            for feature in nl.getFeatures():
+            near = features_within(nl, point, tolerance)
+            for feature in (nl.getFeatures() if near is None else near):
                 geom = feature.geometry()
                 if not geom or geom.isEmpty():
                     continue
@@ -149,7 +158,8 @@ class ManualRouteTool(QgsMapTool):
                         lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry and  # noqa: W504
                             lyr.name() in ('Route', 'Trasa')):
 
-                        for feat in lyr.getFeatures():
+                        near = features_within(lyr, point, tolerance)
+                        for feat in (lyr.getFeatures() if near is None else near):
                             geom = feat.geometry()
                             if not geom or geom.isEmpty():
                                 continue

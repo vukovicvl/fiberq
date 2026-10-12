@@ -14,6 +14,7 @@ from .base import (
 )
 
 from ..utils.geometry import held_by_its_box
+from ..utils.spatial import features_within
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
@@ -87,8 +88,13 @@ class BreakpointTool(QgsMapToolEmitPoint):
         min_geom = None
         min_seg_idx = None
 
-        # Find closest point on any route feature
-        for feat in route_layer.getFeatures():
+        # Find closest point on any route feature: those whose box comes within
+        # the tolerance of the cursor, in the order the whole layer hands them
+        # out (utils.spatial.features_within, WP4 4.1 item PF-5), or the whole
+        # layer where a box cannot answer exactly. Only a route within the
+        # tolerance is used, and every such route is among them.
+        near = features_within(route_layer, point, tolerance)
+        for feat in (route_layer.getFeatures() if near is None else near):
             geom = feat.geometry()
             squared, snap, vertex_after, seg_idx = geom.closestSegmentWithContext(point)
             if squared < 0:
