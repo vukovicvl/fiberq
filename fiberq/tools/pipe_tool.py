@@ -43,7 +43,14 @@ class PipePlaceTool(QgsMapTool):
         self.rb = QgsRubberBand(self.canvas, QgsWkbTypes.GeometryType.LineGeometry)
         self.rb.setLineStyle(Qt.PenStyle.SolidLine)
         self.rb.show()
-        self.rb.setWidth(1.5)
+        try:
+            self.rb.setWidth(1.5)
+        except TypeError:
+            # QgsRubberBand.setWidth() took an int until QGIS 3.40, and with sip 6
+            # a float is a TypeError there: on QGIS 3.22.16 (Python 3.10) neither
+            # duct tool could be opened. From 3.40 it takes a float and draws
+            # 1.5 px, which is kept wherever it is accepted.
+            self.rb.setWidth(2)
         self.rb.setColor(QColor(0, 255, 0, 180))
 
         # Snap indicator
