@@ -39,6 +39,7 @@ from qgis.core import (
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtWidgets import QMessageBox
 
+from fiberq.core.interchange_fields import cable_link_fields
 from fiberq.core.slack_manager import SlackManager
 from fiberq.core.undo_manager import FiberQUndoManager
 from fiberq.utils.field_aliases import _migrate_cable_type_values
@@ -48,6 +49,10 @@ SLACK_FIELDS = [("tip", STRING), ("duzina_m", DOUBLE), ("lokacija", STRING), ("c
                 ("cable_fid", INT), ("strana", STRING), ("napomena", STRING), ("fiberq_uuid", STRING)]
 CABLE_FIELDS = [("naziv", STRING), ("tip", STRING), ("duzina_m", DOUBLE), ("slack_m", DOUBLE),
                 ("total_len_m", DOUBLE), ("fiberq_uuid", STRING)]
+#: A pre-1.0 project: the cable reference under its Serbian names, as
+#: core/interchange_fields.LEGACY_FIELD_NAMES records them.
+LEGACY_SLACK_FIELDS = [({"cable_layer_id": "kabl_layer_id", "cable_fid": "kabl_fid"}.get(name, name), kind)
+                       for name, kind in SLACK_FIELDS]
 #: UG1/UG2 and AE1/AE2 share an end, so two slacks land on one point there.
 UG = [("UG1", [(0, 0), (100, 0)]), ("UG2", [(100, 0), (200, 0)]), ("UG3", [(300, 0), (400, 50)])]
 AE = [("AE1", [(0, 100), (100, 100)]), ("AE2", [(100, 100), (100, 200)])]
@@ -123,8 +128,8 @@ def _memory(geometry, fields, name):
     return layer
 
 
-def _tables(ug=UG, ae=AE):
-    tables = [("slacks", _memory("Point", SLACK_FIELDS, "slacks"))]
+def _tables(ug=UG, ae=AE, slack_fields=SLACK_FIELDS):
+    tables = [("slacks", _memory("Point", slack_fields, "slacks"))]
     for table, rows in (("ug", ug), ("ae", ae)):
         layer = _memory("LineString", CABLE_FIELDS, table)
         features = []
@@ -149,11 +154,13 @@ def _tables(ug=UG, ae=AE):
 
 NAMES = {"slacks": "Optical slacks", "ug": "Underground cables", "ae": "Aerial cables",
          "poles": "Poles", "manholes": "Manholes"}
+LEGACY_NAMES = {"slacks": "Opticke_rezerve", "ug": "Kablovi_podzemni", "ae": "Kablovi_vazdusni",
+                "poles": "Stubovi", "manholes": "OKNA"}
 
 
-def _load(project, tmp_path, storage, ug=UG, ae=AE, names=NAMES):
+def _load(project, tmp_path, storage, ug=UG, ae=AE, names=NAMES, slack_fields=SLACK_FIELDS):
     """Every layer in one GeoPackage (or in memory), selected cables and all, and a manager."""
-    tables = _tables(ug, ae)
+    tables = _tables(ug, ae, slack_fields)
     layers = {}
     if storage == "memory":
         for table, layer in tables:
@@ -252,12 +259,17 @@ def _rows(path, table, columns):
         return con.execute(f'SELECT fid, {", ".join(columns)} FROM "{table}" ORDER BY fid').fetchall()
 
 
+def _link_columns(slacks):
+    """The slack layer's cable reference pair: ``kabl_*`` on a pre-1.0 project."""
+    return cable_link_fields(slacks.fields().names())
+
+
 def _outcome(project, layers, manager, iface):
     path = layers["path"]
     names = {layers[key].id(): key for key in ("ug", "ae")}
     cables = {(key, f.id()): f["naziv"] for key in ("ug", "ae") for f in layers[key].getFeatures()}
     slacks = {row[0]: (names.get(row[1]), cables.get((names.get(row[1]), row[2])), row[3], row[4], row[5])
-              for row in _rows(path, "slacks", ["cable_layer_id", "cable_fid", "strana", "lokacija", "duzina_m"])}
+              for row in _rows(path, "slacks", [*_link_columns(layers["slacks"]), "strana", "lokacija", "duzina_m"])}
     columns = ["naziv", "slack_m", "total_len_m"]
     totals = {key: [(row[1], row[2], round(row[3] or 0, 9)) for row in _rows(path, key, columns)]
               for key in ("ug", "ae") if "slack_m" in layers[key].fields().names()}
@@ -297,8 +309,9 @@ SCENARIOS = {
 def _run(project, tmp_path, scenario, loop, setup=None):
     project.clear()
     project.dialogs.clear()
-    names = dict(NAMES, slacks="Opticke_rezerve") if scenario == "legacy slack layer" else NAMES
-    layers, manager, iface, _restyled = _load(project, tmp_path, "gpkg", names=names)
+    legacy = scenario == "legacy slack layer"
+    layers, manager, iface, _restyled = _load(project, tmp_path, "gpkg", names=LEGACY_NAMES if legacy else NAMES,
+                                              slack_fields=LEGACY_SLACK_FIELDS if legacy else SLACK_FIELDS)
     statements = [sql.format(ug=layers["ug"].id()) for sql in SCENARIOS.get(scenario, [])]
     if statements:
         with closing(sqlite3.connect(layers["path"])) as con, con:
@@ -332,15 +345,6 @@ def _revision_on_every_update(layers):
     ug.setDefaultValueDefinition(ug.fields().indexOf("rev"), QgsDefaultValue('coalesce("rev", 0) + 1', True))
 
 
-def _the_reserve_hook_watching(layers):
-    """A legacy Opticke_rezerve layer: addons/reserve_hook.py rewrites cables after every slack commit."""
-    from fiberq.addons.reserve_hook import ReserveHook
-    hook = ReserveHook(_Iface())
-    hook.ensure_connected()
-    assert hook._layer is layers["slacks"], "premise: the hook is watching the slack layer"
-    return hook
-
-
 def _slack_layer_filtered(layers):
     """v1.5.0's Undo lookup reads through the filter: it records no slack, or a visible one."""
     assert layers["slacks"].setSubsetString("\"tip\" <> 'Terminal'")
@@ -369,7 +373,8 @@ CASES = [(name, SETUPS.get(name)) for name in SCENARIOS] + [
     ("read-only cable layer", _read_only_underground),
     ("cable layer without totals", _aerial_without_totals),
     ("revision on every update", _revision_on_every_update),
-    ("legacy slack layer", _the_reserve_hook_watching),
+    # A pre-1.0 project: Serbian layer names and the kabl_* reference columns.
+    ("legacy slack layer", None),
 ]
 
 

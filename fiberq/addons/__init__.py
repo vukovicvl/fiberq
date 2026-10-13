@@ -9,7 +9,6 @@ Modules:
 - hotkeys.py: Keyboard shortcuts
 - infrastructure_cut.py: Infrastructure cut tool
 - publish_pg.py: PostgreSQL publishing
-- reserve_hook.py: Reserve/slack hook functionality
 """
 
 # Import addon modules for easy access
@@ -18,7 +17,6 @@ from . import fiberq_preview
 from . import hotkeys
 from . import infrastructure_cut
 from . import publish_pg
-from . import reserve_hook
 
 __all__ = [
     'fiber_break',
@@ -26,5 +24,4 @@ __all__ = [
     'hotkeys',
     'infrastructure_cut',
     'publish_pg',
-    'reserve_hook',
 ]

@@ -2252,14 +2252,6 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.initGui: {e}")
 
-        # --- Reserve hook ---
-        try:
-            from .addons.reserve_hook import ReserveHook
-            self._reserve_hook = ReserveHook(self.iface)
-            self._reserve_hook.ensure_connected()
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin.initGui: {e}")
-
         # --- Stored lengths follow geometry edits (core/length_sync.py) ---
         # Idempotent re-init: an initGui() that ran without a clean unload must
         # not leave a second LengthSync connected, or one vertex move would be
