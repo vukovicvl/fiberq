@@ -4,10 +4,10 @@ from qgis.PyQt.QtWidgets import (
     QLineEdit, QCheckBox, QPushButton, QMessageBox
 )
 from qgis.core import (
+    QgsFeatureRequest,
     QgsProject,
     QgsVectorLayer,
     QgsVectorLayerExporter,
-    QgsField,
 )
 import os
 import re
@@ -75,79 +75,64 @@ def _sanitize_table_name(name: str) -> str:
     return base.lower()
 
 
-def _ensure_pk_field(layer: QgsVectorLayer) -> str:
-    """
-    Osiguraj da sloj ima neku integer kolonu koja se može koristiti kao primarni ključ
-    za export u PostGIS.
+#: Names an integer key column usually goes by. Such a field becomes the table's
+#: primary key only when every feature holds a different whole number in it.
+_KEY_NAMES = ("id", "pk", "gid")
 
-    Strategija:
-      1) Ako postoji integer polje sa imenom 'id', 'pk' ili 'gid' → koristi njega.
-      2) Inače, ako postoji bilo koje integer polje → koristi prvo takvo.
-      3) Ako NIŠTA od toga ne postoji → automatski kreiraj novu kolonu 'id'
-         (ili 'id_1', 'id_2', ... ako već postoji), popuni je 1..N i vrati ime te kolone.
+
+def _holds_distinct_integers(layer: QgsVectorLayer, index: int) -> bool:
+    """True when every feature of ``layer`` holds a different integer in field ``index``.
+
+    The features are read through the layer, edit buffer included, because that
+    is what the export writes. A NULL fails -- None on QGIS 4, a null QVariant
+    on QGIS 3 -- and so does a GeoPackage feature still in the edit buffer,
+    whose fid reads 'Autogenerate' until it is saved.
+    """
+    request = QgsFeatureRequest().setFlags(QgsFeatureRequest.Flag.NoGeometry).setSubsetOfAttributes([index])
+    seen = set()
+    for feature in layer.getFeatures(request):
+        value = feature.attribute(index)
+        if not isinstance(value, int) or value in seen:
+            return False
+        seen.add(value)
+    return True
+
+
+def _choose_pk_field(layer: QgsVectorLayer):
+    """The column the PostGIS table gets as its primary key: ``(name, made_by_postgis)``.
+
+    1) An integer field named id, pk or gid (in any case), or else the
+       provider's own key such as a GeoPackage fid -- either one only when
+       every feature holds a different whole number in it.
+    2) Otherwise a name no field of the layer has: id, id_1, id_2, ...
+       compared without case, because the export asks QGIS to lowercase field
+       names and a field 'ID' would then land on the key column. The postgres
+       provider creates that column itself, as a serial primary key numbered
+       1 to N.
+
+    The layer is never changed. Any other integer field -- a count, a year, a
+    reference to another layer -- is not a key: taking the first one made
+    every unsaved FiberQ Cables, Manholes and Optical slacks layer publish 0
+    rows, because two of its features held the same value.
     """
     if layer is None or not isinstance(layer, QgsVectorLayer):
         raise RuntimeError("Invalid vector layer provided.")
 
     fields = layer.fields()
-    int_fields = []
-    pref_candidates = []
+    candidates = [i for i, f in enumerate(fields) if f.name().lower() in _KEY_NAMES]
+    own_key = list(layer.primaryKeyAttributes())
+    if len(own_key) == 1:
+        candidates.append(own_key[0])
+    for index in dict.fromkeys(candidates):
+        if fields.at(index).type() in (QVariant.Int, QVariant.LongLong) and _holds_distinct_integers(layer, index):
+            return fields.at(index).name(), False
 
-    for f in fields:
-        if f.type() in (QVariant.Int, QVariant.LongLong):
-            int_fields.append(f)
-            name_low = f.name().lower()
-            if name_low in ("id", "pk", "gid"):
-                pref_candidates.append(f)
-
-    # 1) Preferirani integer PK (id/pk/gid)
-    if pref_candidates:
-        return pref_candidates[0].name()
-
-    # 2) Bilo koji integer field
-    if int_fields:
-        return int_fields[0].name()
-
-    # 3) Nema integer polja → automatski dodaj novo 'id' polje
-    existing_names = {f.name().lower() for f in fields}
-    base_name = "id"
-    new_name = base_name
-    i = 1
-    while new_name.lower() in existing_names:
-        new_name = f"{base_name}_{i}"
-        i += 1
-
-    # Try to add field and populate it
-    was_editing = layer.isEditable()
-    if not was_editing:
-        if not layer.startEditing():
-            raise RuntimeError("I can't start editing the layer to add the ID column.")
-
-    try:
-        pr = layer.dataProvider()
-        fld = QgsField(new_name, QVariant.Int)
-        if not pr.addAttributes([fld]):
-            raise RuntimeError("I can't add the ID column to the layer.")
-        layer.updateFields()
-
-        idx = layer.fields().indexFromName(new_name)
-        if idx < 0:
-            raise RuntimeError("I can't find the newly added ID column.")
-
-        # Popuni vrednosti 1..N
-        value = 1
-        for feat in layer.getFeatures():
-            layer.changeAttributeValue(feat.id(), idx, value)
-            value += 1
-
-        if not was_editing:
-            if not layer.commitChanges():
-                raise RuntimeError("Failed to commit the ID column to the layer.")
-    finally:
-        # If layer was in edit mode before, leave it - user decides when to save.
-        pass
-
-    return new_name
+    taken = {f.name().lower() for f in fields}
+    name, number = "id", 0
+    while name in taken:
+        number += 1
+        name = f"id_{number}"
+    return name, True
 
 
 class PublishDialog(QDialog):
@@ -278,9 +263,9 @@ class PublishDialog(QDialog):
         if not table:
             table = "layer_export"
 
-        # Ensure layer has integer primary key
+        # The table's primary key. The layer itself is never edited for it.
         try:
-            pk_field = _ensure_pk_field(layer)
+            pk_field, pk_is_new = _choose_pk_field(layer)
         except Exception as e:
             QMessageBox.critical(
                 self.iface.mainWindow(),
@@ -344,11 +329,12 @@ class PublishDialog(QDialog):
             return
 
         # Ako nismo dobili exception, tretiramo kao uspeh.
+        key_note = " (new, created and numbered by PostGIS)" if pk_is_new else ""
         QMessageBox.information(
             self.iface.mainWindow(),
             "PostGIS",
             f"Layer '{layer.name()}' has been published to PostGIS as {schema}.{table}.\n"
-            f"Used PK column: {pk_field}\n"
+            f"Used PK column: {pk_field}{key_note}\n"
             "Check in pgAdmin if the table is visible.",
         )
         self.accept()
