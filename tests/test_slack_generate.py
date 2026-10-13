@@ -201,10 +201,11 @@ def _load(project, tmp_path, storage, ug=UG, ae=AE, names=NAMES, slack_fields=SL
 # The work per batch
 # ---------------------------------------------------------------------------
 
-def _sessions(project, tmp_path, storage, cables):
+def _sessions(project, tmp_path, storage, cables, names=NAMES, slack_fields=SLACK_FIELDS):
     project.clear()
     street = [(f"UG{i}", [(i * 100.0, 0), (i * 100.0 + 40, 0)]) for i in range(16)]
-    layers, manager, _iface, restyled = _load(project, tmp_path / f"{storage}{cables}", storage, ug=street, ae=AE)
+    layers, manager, _iface, restyled = _load(project, tmp_path / f"{storage}{cables}", storage, ug=street, ae=AE,
+                                              names=names, slack_fields=slack_fields)
     layers["ug"].selectByIds(sorted(f.id() for f in layers["ug"].getFeatures())[:cables])
     layers["ae"].removeSelection()
     counts = {}
@@ -241,6 +242,22 @@ def test_generating_opens_one_session_per_layer_not_two_per_slack(project, tmp_p
     assert few == {("Optical slacks", "sessions"): 1, ("Optical slacks", "commits"): 1,
                    ("Underground cables", "sessions"): 1, ("Underground cables", "commits"): 1}
     assert few_restyles == many_restyles == ["Underground cables"]
+
+
+@pytest.mark.parametrize("storage", ["memory", "gpkg"])
+def test_a_pre_1_0_project_is_generated_in_one_session_too(project, tmp_path, storage):
+    """``Opticke_rezerve`` with ``kabl_layer_id`` / ``kabl_fid``, as a pre-1.0 project stores it.
+
+    The batch used to step aside for any slack layer named ``opticke_rezerve*``,
+    because ``addons/reserve_hook.py`` could rewrite cables after a slack commit
+    there. The hook is retired (WP4 U12), so nothing rides on those commits any
+    more, and the parent's 8 sessions for 4 cables become one per layer here too.
+    """
+    (tmp_path / f"{storage}4").mkdir()
+    counts, restyled = _sessions(project, tmp_path, storage, 4, names=LEGACY_NAMES, slack_fields=LEGACY_SLACK_FIELDS)
+    assert counts == {("Opticke_rezerve", "sessions"): 1, ("Opticke_rezerve", "commits"): 1,
+                      ("Kablovi_podzemni", "sessions"): 1, ("Kablovi_podzemni", "commits"): 1}
+    assert restyled == ["Kablovi_podzemni"]
 
 
 # ---------------------------------------------------------------------------
@@ -318,9 +335,17 @@ def _run(project, tmp_path, scenario, loop, setup=None):
             for sql in statements:
                 con.execute(sql)
     kept = setup(layers) if setup else None
+    ran = []
     if loop:
         manager._batch_allowed = lambda *args: False
+    elif legacy:
+        batch = manager._generate_in_one_session
+        manager._generate_in_one_session = lambda *args, **kwargs: ran.append(batch(*args, **kwargs)) or ran[-1]
     manager.generate_terminal_slack_for_selected()
+    if legacy and not loop:
+        # The pre-1.0 schema's batch must run to its end: one that hands back to
+        # the loop (answering None) would make loop == batch hold trivially.
+        assert ran and ran[-1] is not None, "premise: the batch ran on the pre-1.0 schema: " + repr(ran)
     del kept
     return _outcome(project, layers, manager, iface)
 
