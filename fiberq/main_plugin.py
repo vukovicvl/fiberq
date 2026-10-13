@@ -1007,72 +1007,6 @@ class FiberQPlugin:
             except Exception as e2:
                 logger.error(f"Could not show error dialog: {e2}")
 
-    # --- Health check (toolbar action) ---
-    def run_health_check(self):
-        try:
-            from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes
-            from qgis.PyQt.QtWidgets import QMessageBox
-
-            msgs = []
-
-            project = QgsProject.instance()
-            layers = {
-                lyr.name(): lyr
-                for lyr in project.mapLayers().values()
-                if isinstance(lyr, QgsVectorLayer)
-            }
-
-            # Key layers (accept both Serbian and English names if present)
-            route_layer = layers.get("Route") or layers.get("Route")
-            poles_layer = layers.get("Poles") or layers.get("Poles")
-            manholes_layer = layers.get("Manholes") or layers.get("OKNA")
-
-            # Route – line
-            if route_layer and route_layer.geometryType() == QgsWkbTypes.GeometryType.LineGeometry:
-                msgs.append("Routes: OK")
-            else:
-                msgs.append("Routes: MISSING or wrong type")
-
-            # Poles – point
-            if poles_layer and poles_layer.geometryType() == QgsWkbTypes.GeometryType.PointGeometry:
-                msgs.append("Poles: OK")
-            else:
-                msgs.append("Poles: MISSING or wrong type")
-
-            # Manholes – optional
-            if manholes_layer:
-                msgs.append("Manholes: OK")
-            else:
-                msgs.append("Manholes: MISSING")
-
-            # 1) short summary
-            try:
-                self.iface.messageBar().pushInfo("Health check", " | ".join(msgs))
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin.run_health_check: {e}")
-
-            # 2) detailed route consistency (if available)
-            try:
-                if hasattr(self, "check_consistency"):
-                    self.check_consistency()
-            except Exception as e:
-                try:
-                    QMessageBox.warning(
-                        self.iface.mainWindow(),
-                        #: Dialog title. "Health check" = a validation pass over
-                        #: the QGIS PROJECT's data (are the Route/Poles/Manholes layers
-                        #: present, of the right geometry type, and internally
-                        #: consistent). It is a data-integrity check, NOT a measurement
-                        #: of optical/network health and not hardware diagnostics.
-                        self.tr("Health check"),
-                        self.tr("Error while running detailed route check:\n{details}").format(details=e),
-                    )
-                except Exception as e:
-                    logger.debug(f"Error in FiberQPlugin.run_health_check: {e}")
-
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin.run_health_check: {e}")
-
     # --- Change element type ---
     def _change_element_type(self, src_layer, src_fid, new_name: str):
         """Move feature from src_layer to target layer `new_name`.
@@ -2132,47 +2066,17 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.initGui: {e}")
 
-        # --- Health check action ---
-        try:
-            #: Toolbar action running the project data-integrity check (are
-            #: the expected FiberQ layers present, right geometry type, routes
-            #: consistent). Imperative verb + the feature's name in brackets; it is
-            #: NOT optical/network health. Same feature as the "Health check"
-            #: dialog title - keep the bracketed term identical to that one.
-            self.action_health_check = QAction(self.tr('Check (health check)'), self.iface.mainWindow())
-            try:
-                self.action_health_check.setIcon(_load_icon('ic_health.svg'))
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
-            self.action_health_check.triggered.connect(self.run_health_check)
-            try:
-                self.actions.append(self.action_health_check)
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
-            try:
-                self.toolbar.addAction(self.action_health_check)
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
-            try:
-                self.iface.addPluginToMenu('FiberQ', self.action_health_check)
-            except Exception as e:
-                logger.debug(f"Error in FiberQPlugin.initGui: {e}")
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin.initGui: {e}")
-
         # --- Validate project (WP2) ---
         try:
             #: Toolbar action running the WP2 validation engine (topology,
             #: referential integrity, required attributes, value domains,
             #: geometry health) and opening the results panel. Imperative verb;
-            #: this is the data-quality audit, distinct from the "Check (health
-            #: check)" action above, which only checks that layers exist.
+            #: this is the plugin's data-quality audit.
             self.action_validate = QAction(
                 self.tr('Validate project'), self.iface.mainWindow())
             try:
-                #: Its own icon, not ic_health.svg: sharing one with the health
-                #: check put two different actions on the toolbar as identical
-                #: buttons, which is indistinguishable from a duplicate.
+                # Its own icon: no two toolbar buttons may share one
+                # (tests/test_toolbar_icons.py).
                 self.action_validate.setIcon(_load_icon('ic_validate.svg'))
             except Exception as e:
                 logger.debug(f"Error in FiberQPlugin.initGui: {e}")

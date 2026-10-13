@@ -397,8 +397,9 @@ ALLOWED_WRITES = {
 #: ``unload()``'s schematic block logged its failures at debug level and now
 #: names them at warning. U12 took nineteen, none of them hardened: the
 #: eighteen in ``addons/reserve_hook.py`` went with the module, and the one
-#: around its wiring with the wiring.
-SILENCE_CEILING = 695
+#: around its wiring with the wiring. U3 took eight, deleted with the health
+#: check: ``run_health_check``'s three and its toolbar action's five.
+SILENCE_CEILING = 687
 
 
 # ---------------------------------------------------------------------------

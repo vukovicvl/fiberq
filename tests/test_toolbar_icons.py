@@ -48,9 +48,8 @@ def test_every_named_icon_exists():
 def test_the_scan_found_the_actions():
     """Guards the two tests above from passing on an empty match."""
     found = _icon_by_action()
-    assert len(found) >= 5, found
+    assert len(found) >= 4, found
     assert found.get("action_validate") == "ic_validate.svg"
-    assert found.get("action_health_check") == "ic_health.svg"
 
 
 def test_shipped_icons_are_valid_svg():
