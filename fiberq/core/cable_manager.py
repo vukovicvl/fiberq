@@ -21,6 +21,7 @@ from qgis.core import (
     QgsVectorLayer,
     QgsField,
     QgsFeature,
+    QgsFeatureRequest,
     QgsGeometry,
     QgsPointXY,
     QgsWkbTypes,
@@ -44,6 +45,8 @@ from ..utils.errors import OperationErrors, check_commit, describe
 from ..utils.geometry import line_parts
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
+from ..utils.geopackage import rows_near, table_facts
+from ..utils.spatial import box_around, indexable_box
 logger = get_logger(__name__)
 
 #: WP4 4.2 item R8. The cable-laying strings, in the FiberQCables context.
@@ -887,23 +890,7 @@ class CableManager:
         # is now searched on its own, which is also what `multi[0]` got wrong
         # even when it was reachable: a cable could only ever be found along the
         # first piece of a route. See utils.geometry.line_parts.
-        cable_geom = None
-        for feat in route_layer.getFeatures():
-            for line in line_parts(feat.geometry()):
-                dists1 = [QgsPointXY(point1).distance(QgsPointXY(p)) for p in line]
-                dists2 = [QgsPointXY(point2).distance(QgsPointXY(p)) for p in line]
-                min_dist1 = min(dists1)
-                min_dist2 = min(dists2)
-                idx1 = dists1.index(min_dist1)
-                idx2 = dists2.index(min_dist2)
-                if min_dist1 < 1 and min_dist2 < 1 and idx1 != idx2:
-                    if idx1 < idx2:
-                        cable_geom = QgsGeometry.fromPolylineXY(line[idx1:idx2 + 1])
-                    else:
-                        cable_geom = QgsGeometry.fromPolylineXY(list(reversed(line[idx2:idx1 + 1])))
-                    break
-            if cable_geom is not None:
-                break
+        cable_geom = _along_one_route(route_layer, point1, point2)
 
         if cable_geom is None:
             # Try through joined route segments (virtual merge)
@@ -1039,6 +1026,120 @@ class CableManager:
             if was_editing:
                 message += "\n" + QCoreApplication.translate('FiberQCables', _LAID_UNSAVED)
             QMessageBox.information(self.iface.mainWindow(), "FiberQ", message)
+
+
+#: Below this many routes the whole read costs about what the narrowed read's
+#: fixed work does -- the schema read after each write to the file, the R-tree
+#: query and the pass over the table's rows: on the XS city's 250 routes the
+#: narrowed search was slower than the whole read for every pair (round-5
+#: review). The count is QGIS's, which can lag the file: it only picks the read.
+_FEWEST_ROUTES = 500
+
+
+def _routes_near(route_layer, point):
+    """The routes that can pass within 2 of ``point``, read from the GeoPackage, in scan order; None: read every route.
+
+    WP4 4.1 item PF-7. Only a GeoPackage layer nobody is editing is asked:
+    for the rows its own R-tree stores within 2 of the point, and every row
+    that is not one line (``utils.geopackage.rows_near``, read-only SQL). OGR's
+    box request would drop rows ``_along_one_route`` can still lay a cable
+    along, and GDAL's box of a multi-part row with a NaN starting a part can
+    leave out the part the cable runs along (code reviews, 3.22.16 to 4.2.3);
+    a table declared LINESTRING can hold such rows -- ogr2ogr writes a
+    shapefile's multi-part lines into one -- so the declared type proves
+    nothing. A row of one line is boxed in full: every vertex after a finite
+    first one is in its box, and the search never takes a line starting at
+    NaN (its ``min()`` is NaN).
+
+    The routes come in fid order, which is the order of a whole read only
+    where the key is SQLite's rowid (``_in_fid_order``). Where the rows to
+    read -- those near the point and every row that is not one line -- would
+    be more than a quarter of the table, every route is read instead
+    (``rows_near``). The fixed work -- about 4 ms to read the file's schema
+    again after each write to it, 15-21 ms for the R-tree query and the pass
+    over the rows at the L city's 11,619 routes (round-5 review) -- makes the
+    search slower than the whole read, which stops at its route, for a pair
+    on one of the first several hundred routes in fid order (about #800 at L)
+    of a table of single lines, and on a table of multi-part routes for a pair
+    within a block of them read regardless, or for an early pair where a
+    quarter is passed and the whole read follows the fixed work (round-6
+    review: up to about 4 times on the first routes). Every later pair on a
+    table of single lines is faster, the last ones about ten times.
+
+    Read whole, as before: a layer being edited (its buffer is QGIS's, not the
+    file's), a filter, a view, a table with arcs or another key, fewer than
+    ``_FEWEST_ROUTES`` routes, any other provider.
+    """
+    if route_layer.isEditable() or route_layer.subsetString():
+        return None
+    provider = route_layer.dataProvider()
+    if provider is None or provider.name() != "ogr" or provider.storageType() != "GPKG":
+        return None
+    if route_layer.featureCount() < _FEWEST_ROUTES:
+        return None
+    facts = table_facts(route_layer)
+    if facts is None or facts.view or facts.curves or not facts.keyed:
+        return None
+    box = box_around(QgsPointXY(point), 2.0)
+    if not indexable_box(box):
+        return None
+    near = rows_near(route_layer, box)
+    if near is None or any(fid < 0 for fid in near.ids):
+        return None
+    return _in_fid_order(route_layer, sorted(near.ids), near.first)
+
+
+def _in_fid_order(layer, fids, first):
+    """The features ``fids`` (sorted) of ``layer``, in that order, so a search stops reading at the route it takes.
+
+    Read by fid, 64 at first and twice as many each time after; but once they
+    crowd the table's start -- more than a quarter of the fids from the table's
+    lowest, ``first``, to the next chunk's last -- by a plain read of the layer
+    from there, which costs a third to a quarter as much a row (round-5 review:
+    a table whose first rows were all multi-part made a pair after them up to
+    1.7 times slower than the whole read; round 6: measured from fid 1, a table
+    written again, its fids counting on from the old ones, never switched).
+    The plain read runs in fid order, as a table keyed by SQLite's rowid is
+    read.
+    """
+    size, done = 64, 0
+    while done < len(fids):
+        chunk = fids[done:done + size]
+        if 4 * (done + len(chunk)) > chunk[-1] - first + 1:
+            wanted = set(fids[done:])
+            yield from (feature for feature in layer.getFeatures() if feature.id() in wanted)
+            return
+        found = list(layer.getFeatures(QgsFeatureRequest().setFilterFids(chunk)))
+        found.sort(key=lambda feature: feature.id())
+        yield from found
+        done += len(chunk)
+        size = min(size * 2, 4096)
+
+
+def _along_one_route(route_layer, point1, point2):
+    """The cable between two points that one route passes within 1 of, or None.
+
+    The first route, in the order the layer hands them out, with a part whose
+    nearest vertex to each point is under 1 away and at a different index:
+    the stretch of that part between the two, turned to run from ``point1``.
+    A route nearer than 1 to ``point1`` has its box within 2 of it, so the
+    routes ``_routes_near`` hands out hold every one that can be taken, in the
+    same order (WP4 4.1 item PF-7); elsewhere every route is read, as before.
+    """
+    near = _routes_near(route_layer, point1)
+    for feat in (route_layer.getFeatures() if near is None else near):
+        for line in line_parts(feat.geometry()):
+            dists1 = [QgsPointXY(point1).distance(QgsPointXY(p)) for p in line]
+            dists2 = [QgsPointXY(point2).distance(QgsPointXY(p)) for p in line]
+            min_dist1 = min(dists1)
+            min_dist2 = min(dists2)
+            idx1 = dists1.index(min_dist1)
+            idx2 = dists2.index(min_dist2)
+            if min_dist1 < 1 and min_dist2 < 1 and idx1 != idx2:
+                if idx1 < idx2:
+                    return QgsGeometry.fromPolylineXY(line[idx1:idx2 + 1])
+                return QgsGeometry.fromPolylineXY(list(reversed(line[idx2:idx1 + 1])))
+    return None
 
 
 __all__ = ['CableManager']

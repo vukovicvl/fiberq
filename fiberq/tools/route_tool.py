@@ -4,6 +4,8 @@ FiberQ v2 - Route Tool
 Tool for manually drawing routes by clicking points on the map.
 """
 
+import math
+
 from .base import (
     Qt, QVariant, QColor, QMessageBox, QInputDialog,
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
@@ -13,9 +15,15 @@ from .base import (
 )
 
 # Phase 5.2: Logging
+from ..utils.geometry import held_by_its_box, polylines
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
+from ..utils.spatial import features_within
 logger = get_logger(__name__)
+
+#: How near, in screen pixels, a click or a move must come to a node or a
+#: route to snap to it.
+SNAP_PIXELS = 15
 
 
 class ManualRouteTool(QgsMapTool):
@@ -76,12 +84,36 @@ class ManualRouteTool(QgsMapTool):
         """
         Find the nearest snap point for a given map point.
 
+        A distance that is not a number -- a vertex at NaN -- is passed over.
+        Met first, it used to become the best so far, and since ``d < nan`` is
+        never true nothing after it could replace it: one such vertex switched
+        the snap off for the whole project.
+
+        So is a route that is not a line at all, a point or a polygon stored in
+        the Route layer: ``asPolyline()`` raised TypeError for it inside the
+        ``try`` around the whole layer, and no route after it was snapped to.
+
+        A node or route a box query can miss -- a line with a coordinate that is
+        not a finite number, a one-vertex part, an arc QGIS cannot box -- is
+        skipped (``utils.geometry.held_by_its_box``). The check is asked only of
+        one that would win within the snap distance, the only answer the callers
+        use.
+
+        Each layer is asked only for the features whose box comes within the
+        snap distance of ``point`` (``utils.spatial.features_within``, WP4 4.1
+        item PF-5), in the order the whole layer hands them out, or read whole
+        where a box cannot answer exactly. Every vertex or midpoint within the
+        snap distance is among them, so that answer is the scan's.
+
         Args:
             point: QgsPointXY to snap
 
         Returns:
-            Tuple of (snap_point, min_distance) or (None, None)
+            Tuple of (snap_point, min_distance) or (None, None). Beyond the snap
+            distance: the nearest of what was read, which no caller uses.
         """
+        tolerance = self.canvas.mapUnitsPerPixel() * SNAP_PIXELS
+        slack = tolerance / 2
         min_dist = None
         snap_point = None
 
@@ -99,14 +131,19 @@ class ManualRouteTool(QgsMapTool):
 
         # Snap to node layers
         for nl in node_layers:
-            for feature in nl.getFeatures():
+            near = features_within(nl, point, tolerance)
+            for feature in (nl.getFeatures() if near is None else near):
                 geom = feature.geometry()
                 if not geom or geom.isEmpty():
                     continue
                 try:
                     pt = geom.asPoint()
                     d = QgsPointXY(point).distance(QgsPointXY(pt))
+                    if math.isnan(d):
+                        continue
                     if min_dist is None or d < min_dist:
+                        if not d >= tolerance and not held_by_its_box(geom, slack):
+                            continue
                         min_dist = d
                         snap_point = QgsPointXY(pt)
                 except Exception as e:
@@ -121,16 +158,20 @@ class ManualRouteTool(QgsMapTool):
                         lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry and  # noqa: W504
                             lyr.name() in ('Route', 'Trasa')):
 
-                        for feat in lyr.getFeatures():
+                        near = features_within(lyr, point, tolerance)
+                        for feat in (lyr.getFeatures() if near is None else near):
                             geom = feat.geometry()
                             if not geom or geom.isEmpty():
                                 continue
 
-                            if geom.isMultipart():
-                                lines = geom.asMultiPolyline()
-                            else:
-                                lines = [geom.asPolyline()]
+                            # A point or polygon in the layer is passed over:
+                            # its TypeError used to end the whole layer's search.
+                            lines = polylines(geom)
 
+                            # The route's own nearest vertex or midpoint, the
+                            # first of a tie; it replaces the best so far only
+                            # if it is nearer, as each point did one by one.
+                            nearest = None
                             for line in lines:
                                 if not line:
                                     continue
@@ -138,9 +179,10 @@ class ManualRouteTool(QgsMapTool):
                                 # All vertices
                                 for pt in line:
                                     d = QgsPointXY(point).distance(QgsPointXY(pt))
-                                    if min_dist is None or d < min_dist:
-                                        min_dist = d
-                                        snap_point = QgsPointXY(pt)
+                                    if math.isnan(d):
+                                        continue
+                                    if nearest is None or d < nearest[0]:
+                                        nearest = (d, QgsPointXY(pt))
 
                                 # Segment midpoints
                                 for i in range(len(line) - 1):
@@ -149,9 +191,15 @@ class ManualRouteTool(QgsMapTool):
                                         (line[i].y() + line[i + 1].y()) / 2.0
                                     )
                                     d = QgsPointXY(point).distance(mid)
-                                    if min_dist is None or d < min_dist:
-                                        min_dist = d
-                                        snap_point = mid
+                                    if math.isnan(d):
+                                        continue
+                                    if nearest is None or d < nearest[0]:
+                                        nearest = (d, mid)
+                            if nearest is None or not (min_dist is None or nearest[0] < min_dist):
+                                continue
+                            if not nearest[0] >= tolerance and not held_by_its_box(geom, slack):
+                                continue
+                            min_dist, snap_point = nearest
                 except Exception as e:
                     logger.debug(f"Error in ManualRouteTool._find_snap_point: {e}")
         except Exception as e:
@@ -169,7 +217,7 @@ class ManualRouteTool(QgsMapTool):
 
         # Try to snap
         snap_point, min_dist = self._find_snap_point(point)
-        snap_tolerance = self.canvas.mapUnitsPerPixel() * 15
+        snap_tolerance = self.canvas.mapUnitsPerPixel() * SNAP_PIXELS
 
         if min_dist is not None and min_dist < snap_tolerance and snap_point is not None:
             point = snap_point
@@ -187,7 +235,7 @@ class ManualRouteTool(QgsMapTool):
 
         # Try to snap
         snap_point, min_dist = self._find_snap_point(point)
-        snap_tolerance = self.canvas.mapUnitsPerPixel() * 15
+        snap_tolerance = self.canvas.mapUnitsPerPixel() * SNAP_PIXELS
 
         if snap_point is not None and min_dist is not None and min_dist < snap_tolerance:
             self.snap_rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)

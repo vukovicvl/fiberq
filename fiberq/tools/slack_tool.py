@@ -14,7 +14,6 @@ from .base import (
     PlacementSnapper, snap_match
 )
 
-from qgis.core import QgsGeometryUtils
 from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
 
 from ..core import interchange_fields as fm
@@ -23,7 +22,11 @@ from ..i18n import safe_format
 from ..models.schema import canonical_layer_name
 # Phase 5.2: Logging
 from ..utils.errors import OperationErrors, check_commit, describe
-from ..utils.geometry import line_parts
+from ..utils.geometry import (
+    has_a_one_vertex_part as _has_a_one_vertex_part,
+    has_an_arc_without_a_circle as _has_an_arc_without_a_circle,
+    line_parts,
+)
 from ..utils.logger import get_logger
 from ..utils.spatial import features_near
 logger = get_logger(__name__)
@@ -78,28 +81,6 @@ def _cable_lines(geom, tolerance):
         if not all(low_x <= p.x() <= high_x and low_y <= p.y() <= high_y for line in lines for p in line):
             return []
     return lines
-
-
-def _has_a_one_vertex_part(geom):
-    """True when a part of ``geom`` has exactly one vertex (see ``_cable_lines``)."""
-    shape = geom.constGet()
-    if QgsWkbTypes.isMultiType(geom.wkbType()):
-        return any(shape.geometryN(i).nCoordinates() == 1 for i in range(shape.numGeometries()))
-    return shape.nCoordinates() == 1
-
-
-def _has_an_arc_without_a_circle(curve):
-    """True when an arc of ``curve`` has its three points in a row (see ``_cable_lines``)."""
-    kind = QgsWkbTypes.displayString(QgsWkbTypes.flatType(curve.wkbType()))
-    if kind == "CircularString":
-        points = curve.points()
-        return any(QgsGeometryUtils.circleCenterRadius(*points[i:i + 3])[0] < 0
-                   for i in range(0, len(points) - 2, 2))
-    if kind == "CompoundCurve":
-        return any(_has_an_arc_without_a_circle(curve.curveAt(i)) for i in range(curve.nCurves()))
-    if kind.startswith("Multi"):
-        return any(_has_an_arc_without_a_circle(curve.geometryN(i)) for i in range(curve.numGeometries()))
-    return False
 
 
 class SlackPlaceTool(QgsMapTool):
@@ -238,8 +219,18 @@ class SlackPlaceTool(QgsMapTool):
         nothing in correctness. The square root of the area per node is about
         twice the distance to the nearest of randomly placed nodes, so most
         searches end at the first box, whatever the canvas zoom.
+
+        QGIS raises a bare "unknown" exception from ``extent()`` while the
+        layer holds an infinite coordinate -- saved in a memory layer, on 3.22
+        to 4.2, or in its edit buffer, on 3.44 at every call and on 4.2 at the
+        first one after the change; not for a layer in EPSG:4326 -- and the
+        click then placed nothing (round-5 and round-6 reviews; v1.5.0 never
+        asked). The snap reach is then the guess.
         """
-        extent = layer.extent()
+        try:
+            extent = layer.extent()
+        except Exception:  # QGIS raises a plain Exception("unknown") here
+            return self._tolerance()
         area = extent.width() * extent.height()
         if count > 0 and math.isfinite(area) and area > 0:
             return math.sqrt(area / count)

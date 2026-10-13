@@ -50,6 +50,7 @@ from qgis.core import (
     QgsCoordinateTransformContext,
     QgsFeature,
     QgsGeometry,
+    QgsPointXY,
     QgsVectorFileWriter,
     QgsVectorLayer,
     QgsWkbTypes,
@@ -152,6 +153,65 @@ def test_a_part_with_one_point_is_dropped():
     parts = line_parts(_geom("MultiLineString ((0 0),(20 0, 30 0))"))
     assert len(parts) == 1
     assert [(p.x(), p.y()) for p in parts[0]] == [(20, 0), (30, 0)]
+
+
+def _line_parts_before_branch_13(geom):
+    """``line_parts`` as branch 9 wrote it, kept to hold the faster one to the same answers."""
+    if geom is None or geom.isNull() or geom.isEmpty():
+        return []
+    if geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
+        return []
+    if QgsWkbTypes.isMultiType(geom.wkbType()):
+        parts = geom.asMultiPolyline() or []
+    else:
+        parts = [geom.asPolyline()]
+    return [[QgsPointXY(point) for point in part] for part in parts if part and len(part) >= 2]
+
+
+@pytest.mark.parametrize("wkt", [
+    "LineString (0 0, 10 0, 20 5)",
+    "LineString Z (0 0 1, 10 0 2)",
+    "LineString M (0 0 1, 10 0 2)",
+    "LineString (0 0)",
+    "LineString EMPTY",
+    "MultiLineString ((0 0, 10 0))",
+    "MultiLineString ((0 0, 10 0),(20 0, 30 0, 40 0))",
+    "MultiLineString ((0 0),(20 0, 30 0))",
+    "MultiLineString Z ((0 0 5, 10 0 5),(20 0 5, 30 0 5))",
+    "MultiLineString EMPTY",
+    "CircularString (0 0, 5 5, 10 0)",
+    "CompoundCurve (CircularString (0 0, 5 5, 10 0), (10 0, 20 0))",
+    "MultiCurve (CircularString (0 0, 5 5, 10 0), LineString (20 0, 30 0))",
+    "Point (1 1)",
+    "Point Z (1 1 1)",
+    "MultiPoint ((1 1),(2 2))",
+    "Polygon ((0 0, 10 0, 10 10, 0 0))",
+    "MultiPolygon (((0 0, 10 0, 10 10, 0 0)))",
+    "CurvePolygon (CircularString (0 0, 10 0, 0 0))",
+    "GeometryCollection (LineString (0 0, 10 0), Point (5 5))",
+])
+def test_line_parts_answers_what_it_answered_before_it_stopped_copying(wkt):
+    """Branch 13 made ``line_parts`` hand over the lists QGIS builds instead of
+    copying every point, and tell a line apart by the ``TypeError`` QGIS raises
+    for anything else (the routing graph was a third slower than v1.5.0's). Same
+    parts, same points, same order, for every shape a layer can hold."""
+    geom = QgsGeometry.fromWkt(wkt)
+    before = _line_parts_before_branch_13(geom)
+    now = line_parts(geom)
+    assert [[(p.x(), p.y()) for p in part] for part in now] == \
+        [[(p.x(), p.y()) for p in part] for part in before]
+    assert all(type(p) is QgsPointXY for part in now for p in part)
+
+
+def test_line_parts_hands_each_caller_lists_of_its_own():
+    """No copy is needed because QGIS builds new lists on every call: changing
+    what one caller got leaves the next caller's answer alone."""
+    geom = _geom("MultiLineString ((0 0, 10 0),(20 0, 30 0))")
+    first = line_parts(geom)
+    first[0].reverse()
+    first[1][0].setX(99)
+    second = line_parts(geom)
+    assert [[(p.x(), p.y()) for p in part] for part in second] == [[(0, 0), (10, 0)], [(20, 0), (30, 0)]]
 
 
 def test_the_three_line_helpers_agree_about_one_geometry():

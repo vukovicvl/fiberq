@@ -10,6 +10,7 @@ The algorithms support:
 - Handling of both simple and multi-part geometries
 """
 
+import math
 from typing import Optional, List, Dict, Tuple, Set
 from collections import defaultdict, deque
 
@@ -174,6 +175,73 @@ def find_path_bfs(
     return path_keys
 
 
+#: The cells either side of a query's own that ``_nearest_key`` reads.
+_KEY_WINDOW = 5
+
+#: Beyond this many cells from the origin the grid's rounding is no longer
+#: trusted to keep a nearby point within the window: a coordinate divided by
+#: the tolerance carries an error of up to 2**-53 times itself, ~1e-4 cell here.
+_LARGEST_CELL = 2 ** 40
+
+#: Below this tolerance (5 * tol)**2 is no longer a normal float: dx * dx
+#: underflows to 0.0 and the linear search accepts a vertex the window never
+#: reads (design review: from tol ~3e-163). The plugin passes 6 x the canvas's
+#: map units per pixel, ~145 orders of magnitude above it.
+_SMALLEST_TOLERANCE = 1e-150
+
+
+def _nearest_key(point: QgsPointXY, key_to_point: Dict[Tuple[int, int], QgsPointXY],
+                 tolerance: float) -> Optional[Tuple[int, int]]:
+    """What ``find_nearest_vertex(point, key_to_point, tolerance)`` answers, read from the graph's grid.
+
+    WP4 4.1 item PF-7. ``build_network_graph`` keys every vertex by
+    ``fuzzy_key(point, tolerance)``, its cell in a grid ``tolerance`` wide,
+    and ``find_nearest_vertex`` measured every key in the graph -- twice per
+    lay cable -- to accept the nearest within ``3 * tolerance``. A point that
+    near the query has a key within 4 cells of the query's own (half a cell of
+    rounding each side, and 3 between), so the 11 x 11 cells around it hold
+    every key that can be accepted. They are read with the same arithmetic and
+    the same strict ``<``, and accepted by the same expression.
+
+    The linear search answers instead when the grid cannot say what it would:
+    two keys tied at the best distance (it keeps the first in the graph's
+    order, which the cells do not carry), a tolerance that is not a number, not
+    positive or small enough to underflow, and a query too far from the origin
+    in cells for the rounding to be trusted. A query that is not a finite
+    point answers None, as the linear search does: every distance to it is NaN
+    or infinite, and neither is less than infinity.
+    """
+    x, y = point.x(), point.y()
+    if not (math.isfinite(x) and math.isfinite(y)):
+        return None
+    if not (math.isfinite(tolerance) and tolerance >= _SMALLEST_TOLERANCE):
+        return find_nearest_vertex(point, key_to_point, tolerance)
+    column, row = x / tolerance, y / tolerance
+    if abs(column) > _LARGEST_CELL or abs(row) > _LARGEST_CELL:
+        return find_nearest_vertex(point, key_to_point, tolerance)
+    column, row = int(round(column)), int(round(row))
+    best_key = None
+    best_dist_sq = float('inf')
+    tied = False
+    for i in range(column - _KEY_WINDOW, column + _KEY_WINDOW + 1):
+        for j in range(row - _KEY_WINDOW, row + _KEY_WINDOW + 1):
+            pt = key_to_point.get((i, j))
+            if pt is None:
+                continue
+            dx = pt.x() - point.x()
+            dy = pt.y() - point.y()
+            dist_sq = dx * dx + dy * dy
+            if dist_sq < best_dist_sq:
+                best_dist_sq, best_key, tied = dist_sq, (i, j), False
+            elif dist_sq == best_dist_sq:
+                tied = True
+    if tied:
+        return find_nearest_vertex(point, key_to_point, tolerance)
+    if best_key and math.sqrt(best_dist_sq) <= tolerance * 3.0:
+        return best_key
+    return None
+
+
 def build_path_across_network(
     layer: QgsVectorLayer,
     start_pt: QgsPointXY,
@@ -203,8 +271,8 @@ def build_path_across_network(
             return None
 
         # Find nearest vertices to start and end
-        start_key = find_nearest_vertex(start_pt, key_to_point, tolerance)
-        end_key = find_nearest_vertex(end_pt, key_to_point, tolerance)
+        start_key = _nearest_key(start_pt, key_to_point, tolerance)
+        end_key = _nearest_key(end_pt, key_to_point, tolerance)
 
         if start_key is None or end_key is None:
             return None

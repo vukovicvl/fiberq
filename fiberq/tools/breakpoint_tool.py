@@ -13,6 +13,8 @@ from .base import (
     QgsMapToolEmitPoint
 )
 
+from ..utils.geometry import held_by_its_box
+from ..utils.spatial import features_within
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
@@ -79,14 +81,20 @@ class BreakpointTool(QgsMapToolEmitPoint):
             self.snap_info = None
             return
 
+        tolerance = self.canvas.mapUnitsPerPixel() * 10
         min_dist = None
         snapped_point = None
         min_feat = None
         min_geom = None
         min_seg_idx = None
 
-        # Find closest point on any route feature
-        for feat in route_layer.getFeatures():
+        # Find closest point on any route feature: those whose box comes within
+        # the tolerance of the cursor, in the order the whole layer hands them
+        # out (utils.spatial.features_within, WP4 4.1 item PF-5), or the whole
+        # layer where a box cannot answer exactly. Only a route within the
+        # tolerance is used, and every such route is among them.
+        near = features_within(route_layer, point, tolerance)
+        for feat in (route_layer.getFeatures() if near is None else near):
             geom = feat.geometry()
             squared, snap, vertex_after, seg_idx = geom.closestSegmentWithContext(point)
             if squared < 0:
@@ -97,13 +105,18 @@ class BreakpointTool(QgsMapToolEmitPoint):
             # sqrt(10 / mapUnitsPerPixel) pixels instead of the 10 it reads as.
             dist = math.sqrt(squared)
             if min_dist is None or dist < min_dist:
+                # A route a box query can miss -- a coordinate that is not a
+                # finite number, a one-vertex part, an arc QGIS cannot box -- is
+                # skipped (utils.geometry.held_by_its_box). Asked only of a route
+                # that would win within the tolerance: one beyond it is never used.
+                if not dist >= tolerance and not held_by_its_box(geom, tolerance / 2):
+                    continue
                 min_dist = dist
                 snapped_point = snap
                 min_feat = feat
                 min_geom = geom
                 min_seg_idx = seg_idx
 
-        tolerance = self.canvas.mapUnitsPerPixel() * 10
         if snapped_point and min_dist < tolerance:
             self.rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
             self.rubber.addPoint(snapped_point)

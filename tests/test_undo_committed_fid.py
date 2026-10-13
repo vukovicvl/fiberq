@@ -21,8 +21,8 @@ kept there too, whatever it is: changing it is not a performance change.
 
 **Counted, not timed**, as branch 11 did. On a GeoPackage the two reads are
 the R-tree and the primary key. A memory layer has neither index in v1.6.0
-(PF-5 adds the spatial one), so there the counts are the features handed to
-Python only: the C++ passes behind them still read every feature, without
+(PF-5 dropped the spatial one: it crashes QGIS on coordinates beyond
++/-2e154), so there the counts are the features handed to Python only: the C++ passes behind them still read every feature, without
 the GEOS distance each.
 """
 import random

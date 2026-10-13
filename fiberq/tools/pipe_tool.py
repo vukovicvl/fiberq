@@ -6,6 +6,8 @@ Tool for drawing PE ducts and transition pipes on the route network.
 Phase 5.2: Added logging infrastructure
 """
 
+import math
+
 from .base import (
     Qt, QVariant, QColor,
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
@@ -14,9 +16,23 @@ from .base import (
 )
 
 # Phase 5.2: Logging
+from ..utils.geometry import held_by_its_box, polylines
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
+from ..utils.spatial import features_within
 logger = get_logger(__name__)
+
+
+def _point_of(geom):
+    """``geom.asPoint()``, or None where that raises.
+
+    It raises ValueError for a feature with no geometry and TypeError for a
+    multi-part point (and, on QGIS 3.22, for a one-part MultiPoint too).
+    """
+    try:
+        return geom.asPoint()
+    except (TypeError, ValueError):
+        return None
 
 
 class PipePlaceTool(QgsMapTool):
@@ -43,7 +59,14 @@ class PipePlaceTool(QgsMapTool):
         self.rb = QgsRubberBand(self.canvas, QgsWkbTypes.GeometryType.LineGeometry)
         self.rb.setLineStyle(Qt.PenStyle.SolidLine)
         self.rb.show()
-        self.rb.setWidth(1.5)
+        try:
+            self.rb.setWidth(1.5)
+        except TypeError:
+            # QgsRubberBand.setWidth() took an int until QGIS 3.40, and with sip 6
+            # a float is a TypeError there: on QGIS 3.22.16 (Python 3.10) neither
+            # duct tool could be opened. From 3.40 it takes a float and draws
+            # 1.5 px, which is kept wherever it is accepted.
+            self.rb.setWidth(2)
         self.rb.setColor(QColor(0, 255, 0, 180))
 
         # Snap indicator
@@ -83,8 +106,31 @@ class PipePlaceTool(QgsMapTool):
         return None
 
     def _snap_point(self, qpt):
-        """Snap to nodes and route vertices/midpoints."""
+        """Snap to nodes and route vertices/midpoints.
+
+        A pole or route without a geometry, and a pole ``asPoint()`` cannot
+        read (a multi-part point), are passed over. They used to raise inside
+        the ``try`` around the whole layer's loop, so no pole or route after
+        them was ever snapped to -- and QGIS makes a feature without a geometry
+        whenever a row is added in the attribute table. A point or polygon
+        stored in the Route layer did the same to the routes after it. A distance that is not
+        a number is passed over too: met first, it became the best so far, and
+        since ``d < nan`` is never true it switched the snap off.
+
+        A node or route a box query can miss -- a line with a coordinate that is
+        not a finite number, a one-vertex part, an arc QGIS cannot box -- is
+        skipped (``utils.geometry.held_by_its_box``). The check is asked only of
+        one that would win within the tolerance, the only answer used.
+
+        Each layer is asked only for the features whose box comes within the
+        tolerance of the cursor (``utils.spatial.features_within``, WP4 4.1 item
+        PF-5), in the order the whole layer hands them out, or read whole
+        where a box cannot answer exactly. Every point within the tolerance is
+        among them, so the answer is the scan's.
+        """
         point = QgsPointXY(qpt)
+        tolerance = self.canvas.mapUnitsPerPixel() * 20
+        slack = tolerance / 2
         snap_point = None
         min_dist = None
 
@@ -95,10 +141,17 @@ class PipePlaceTool(QgsMapTool):
                 if (isinstance(lyr, QgsVectorLayer) and  # noqa: W504
                     lyr.geometryType() == QgsWkbTypes.GeometryType.PointGeometry and  # noqa: W504
                         lyr.name() in node_names):
-                    for f in lyr.getFeatures():
-                        p = f.geometry().asPoint()
+                    near = features_within(lyr, point, tolerance)
+                    for f in (lyr.getFeatures() if near is None else near):
+                        p = _point_of(f.geometry())
+                        if p is None:
+                            continue
                         d = QgsPointXY(point).distance(QgsPointXY(p))
+                        if math.isnan(d):
+                            continue
                         if min_dist is None or d < min_dist:
+                            if not d >= tolerance and not held_by_its_box(f.geometry(), slack):
+                                continue
                             min_dist = d
                             snap_point = QgsPointXY(p)
             except Exception as e:
@@ -111,14 +164,19 @@ class PipePlaceTool(QgsMapTool):
                     lyr.name() in ('Route', 'Trasa') and  # noqa: W504
                         lyr.geometryType() == QgsWkbTypes.GeometryType.LineGeometry):
 
-                    for g in lyr.getFeatures():
+                    near = features_within(lyr, point, tolerance)
+                    for g in (lyr.getFeatures() if near is None else near):
                         geom = g.geometry()
-                        if geom.isMultipart():
-                            lines = geom.asMultiPolyline()
-                        else:
-                            line = geom.asPolyline()
-                            lines = [line] if line else []
+                        if not geom or geom.isEmpty():
+                            continue
+                        # A point or polygon in the layer is passed over: its
+                        # TypeError used to end the whole layer's search.
+                        lines = polylines(geom)
 
+                        # The route's own nearest vertex or midpoint, the first
+                        # of a tie; it replaces the best so far only if it is
+                        # nearer, as each point did one by one.
+                        nearest = None
                         for line in lines:
                             if not line:
                                 continue
@@ -126,9 +184,10 @@ class PipePlaceTool(QgsMapTool):
                             # Vertices
                             for p in line:
                                 d = QgsPointXY(point).distance(QgsPointXY(p))
-                                if min_dist is None or d < min_dist:
-                                    min_dist = d
-                                    snap_point = QgsPointXY(p)
+                                if math.isnan(d):
+                                    continue
+                                if nearest is None or d < nearest[0]:
+                                    nearest = (d, QgsPointXY(p))
 
                             # Segment midpoints
                             for i in range(len(line) - 1):
@@ -137,13 +196,18 @@ class PipePlaceTool(QgsMapTool):
                                     (line[i].y() + line[i + 1].y()) / 2
                                 )
                                 d = QgsPointXY(point).distance(mid)
-                                if min_dist is None or d < min_dist:
-                                    min_dist = d
-                                    snap_point = mid
+                                if math.isnan(d):
+                                    continue
+                                if nearest is None or d < nearest[0]:
+                                    nearest = (d, mid)
+                        if nearest is None or not (min_dist is None or nearest[0] < min_dist):
+                            continue
+                        if not nearest[0] >= tolerance and not held_by_its_box(geom, slack):
+                            continue
+                        min_dist, snap_point = nearest
             except Exception as e:
                 logger.debug(f"Error in PipePlaceTool._snap_point: {e}")
 
-        tolerance = self.canvas.mapUnitsPerPixel() * 20
         if snap_point is not None and min_dist is not None and min_dist < tolerance:
             return snap_point
         return point

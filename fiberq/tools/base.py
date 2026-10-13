@@ -32,6 +32,8 @@ from qgis.gui import (
     QgsVertexMarker, QgsRubberBand, QgsSnapIndicator
 )
 
+from ..utils.geometry import held_by_its_box
+from ..utils.spatial import features_within
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
@@ -276,16 +278,32 @@ class PlacementSnapper:
         written into the same variable as a linear node distance, so a nearby
         line beat a nearer node. Every distance here is linear.
 
+        A line a box query can miss -- a coordinate that is not a finite
+        number, a one-vertex part, an arc QGIS cannot box -- is skipped whole
+        (``utils.geometry.held_by_its_box``). The check is asked only of a
+        feature that would win within the tolerance: one beyond it is never
+        returned, so it changes nothing which feature that was.
+
+        Each layer is asked only for the features whose box comes within the
+        tolerance of the cursor (``utils.spatial.features_within``, WP4 4.1 item
+        PF-5), in the order the whole layer hands them out: nothing farther can
+        be within the tolerance, and only within it is an answer returned, so
+        the first of a tie is still the scan's. Where a box cannot answer
+        exactly -- another provider, a filter, a view -- the whole layer is
+        read, as before.
+
         Returns:
             A QgsPointLocator.Match, invalid when nothing is within tolerance.
         """
         tolerance = self.tolerance()
+        slack = tolerance / 2
         best_vertex = None
         best_edge = None
 
         for layer, is_line, name in self._candidate_layers():
             try:
-                features = layer.getFeatures()
+                near = features_within(layer, point, tolerance)
+                features = layer.getFeatures() if near is None else near
             except RuntimeError as exc:
                 # A layer pulled out from under a live mouse move. One bad layer
                 # must not take the tool down with it -- which is why the name
@@ -299,11 +317,16 @@ class PlacementSnapper:
                 if geometry.isEmpty():
                     continue
                 fid = feature.id()
+                held = None
 
                 squared, index = geometry.closestVertexWithContext(point)
                 if squared >= 0:
                     distance = math.sqrt(squared)
                     if best_vertex is None or distance < best_vertex[0]:
+                        if not distance > tolerance:
+                            held = held_by_its_box(geometry, slack)
+                            if not held:
+                                continue
                         vertex = QgsPointXY(geometry.vertexAt(index))
                         best_vertex = (distance, vertex, layer, fid, index)
 
@@ -315,6 +338,11 @@ class PlacementSnapper:
                 if squared >= 0:
                     distance = math.sqrt(squared)
                     if best_edge is None or distance < best_edge[0]:
+                        if not distance > tolerance:
+                            if held is None:
+                                held = held_by_its_box(geometry, slack)
+                            if not held:
+                                continue
                         # ``after`` is the vertex *ending* the segment, while an
                         # edge match records the one starting it -- measured
                         # against QgsPointLocator.nearestEdge() on 3.22, 3.44 and
