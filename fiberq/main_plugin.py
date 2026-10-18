@@ -2199,7 +2199,7 @@ class FiberQPlugin:
         # --- Change element type (toolbar) ---
         try:
             if not hasattr(self, 'action_change_element_type'):
-                icon = _load_icon('ic_selection.svg')
+                icon = _load_icon('ic_change_element_type.svg')
                 self.action_change_element_type = QAction(icon, self.tr('Change element type'), self.iface.mainWindow())
                 self.action_change_element_type.setToolTip(self.tr('Smart selection + change element type (visual style)'))
                 self.action_change_element_type.triggered.connect(self.activate_change_element_type_tool)
@@ -2233,7 +2233,7 @@ class FiberQPlugin:
             self.action_import_image.triggered.connect(self.ui_import_image)
 
             # Clear picture
-            self.action_clear_image = QAction(_load_icon('ic_import_picture.svg'), self.tr('Clear picture from element'), self.iface.mainWindow())
+            self.action_clear_image = QAction(_load_icon('ic_clear_picture.svg'), self.tr('Clear picture from element'), self.iface.mainWindow())
             #: Toolbar tooltip. "Unlink" = detach the picture reference from
             #: the element; the image file on disk is NOT deleted. Static text, so
             #: "(s)" just means "one or more" - no count is substituted.
