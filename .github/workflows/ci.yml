@@ -25,11 +25,11 @@ jobs:
         # Pin to tags that exist on https://hub.docker.com/r/qgis/qgis/tags .
         # Two images cover both binding stacks the plugin supports:
         #   3.44-trixie -> QGIS 3 line (Qt5)
-        #   4.0-trixie  -> QGIS 4 (Qt6)
+        #   4.2-trixie  -> QGIS 4 (Qt6)
         # Re-pin these as the LTR/stable lines advance.
         qgis:
           - "3.44-trixie"
-          - "4.0-trixie"
+          - "4.2-trixie"
     steps:
       - uses: actions/checkout@v4
 
