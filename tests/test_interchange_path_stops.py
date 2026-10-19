@@ -221,6 +221,57 @@ def test_saving_the_editor_keeps_what_it_does_not_list(plugin):
     assert saved[0]["extra"] == {"vendor_ref": "v-1"}
 
 
+def test_an_unchanged_save_keeps_the_order_and_a_stop_the_cable_passes_twice(plugin):
+    """Found in the final review of the 1.6.0 branch. Save wrote the listed rows
+    first and everything it did not list after them, order stripped: an
+    unchanged Save moved the manhole to the end of the cable, and kept one row
+    of the closure the cable passes twice."""
+    from fiberq.core.interchange import latent_records
+    from fiberq.dialogs.latent_dialog import CablePitstopsDialog
+
+    project = QgsProject.instance()
+    cables, cable, closures, near, far, manholes, mh = _closures_and_manholes(project)
+    key = f"{cables.id()}:{cable}"
+    stored = [(manholes.id(), mh, True), (closures.id(), near, False),
+              (closures.id(), far, True), (closures.id(), near, True)]
+    store = {"cables": {key: {"elements": [
+        {"layer_id": layer, "fid": fid, "naziv": "", "latent": latent, "order_index": order}
+        for order, (layer, fid, latent) in enumerate(stored)]}}}
+    project.writeEntry(*ENTRY, json.dumps(store))
+    feature = next(cables.getFeatures())
+    editor = CablePitstopsDialog(plugin, cables, feature, {"layer_id": cables.id(), "fid": cable},
+                                 store)
+    editor._on_save()
+
+    saved = latent_records(json.loads(project.readEntry(*ENTRY, "")[0]))[key]
+    assert [(e["layer_id"], e["fid"], e["latent"]) for e in saved] == stored
+
+
+def _row(layer, fid, latent=False):
+    return {"layer_id": layer, "fid": fid, "naziv": f"{layer}:{fid}", "latent": latent}
+
+
+def test_a_toggled_row_marks_every_place_of_its_element():
+    from fiberq.dialogs.latent_dialog import merged_record
+
+    saved = [_row("jc", 1, False), _row("mh", 7, True), _row("jc", 1, True)]
+    merged = merged_record(saved, [_row("jc", 1, True)], {("jc", 1): False})
+    assert [(e["layer_id"], e["fid"], e["latent"]) for e in merged] == [
+        ("jc", 1, True), ("mh", 7, True), ("jc", 1, True)]
+
+
+def test_an_element_new_to_the_record_goes_where_it_is_along_the_cable():
+    from fiberq.dialogs.latent_dialog import merged_record
+
+    saved = [_row("jc", 1), _row("mh", 7, True), _row("jc", 3)]
+    rows = [_row("jc", 0), _row("jc", 1), _row("jc", 2), _row("jc", 3)]   # along the cable
+    merged = merged_record(saved, rows, {("jc", 1): False, ("jc", 3): False})
+    assert [(e["layer_id"], e["fid"]) for e in merged] == [
+        ("jc", 0), ("jc", 1), ("jc", 2), ("mh", 7), ("jc", 3)]
+    assert merged_record([], rows, {}) == [
+        {**_row(r["layer_id"], r["fid"]), "latent": False} for r in rows]
+
+
 def test_opening_the_list_reads_the_store_once(plugin, monkeypatch):
     """WP4 PF-2 made the list linear; asking latent_records for the whole store
     once per row made it quadratic again (30 s at 5,048 records, measured)."""

@@ -186,17 +186,18 @@ class CablePitstopsDialog(QDialog):
             ident = _element_key(element)
             if ident is not None:
                 by_element.setdefault(ident, element)
-        listed = {(it["layer_id"], int(it["fid"])) for it in cands}
-        # What the store holds but this list does not show -- an element more
-        # than the search distance from the line, a manhole or pole (never a
-        # candidate), one a bundle import kept by identity only. Save used to
-        # rewrite the record from the candidates alone and drop all of them.
-        self._unlisted = [e for e in saved if _element_key(e) not in listed]
+        # The stored sequence, which Save keeps: it holds what this list does
+        # not show -- an element more than the search distance from the line, a
+        # manhole or pole (never a candidate), one a bundle import kept by
+        # identity only -- and an element the cable passes twice.
+        self._saved = saved
+        self._initial = {}
         self.elements = []
         self.tbl.setRowCount(len(cands))
         for i, it in enumerate(cands, start=1):
             before = by_element.get((it["layer_id"], int(it["fid"])), {})
             latent = before.get("latent", False)
+            self._initial[(it["layer_id"], int(it["fid"]))] = latent
             # Keep what the stored element carried beyond the four keys
             # (an import's "extra", say); position now gives the order.
             self.elements.append({**_carried(before), **it, "latent": latent})
@@ -213,11 +214,8 @@ class CablePitstopsDialog(QDialog):
     def _on_save(self):
         # save to store and project
         key = self.core._cable_key(self.cable_dict["layer_id"], self.cable_dict["fid"])
-        rec = {"elements": [
-            {**_carried(e), "layer_id": e["layer_id"], "fid": int(e["fid"]),
-             "naziv": e.get("naziv", ""), "latent": bool(e.get("latent"))}
-            for e in self.elements
-        ] + [_unordered(e) for e in getattr(self, "_unlisted", [])]}
+        rec = {"elements": merged_record(getattr(self, "_saved", []), self.elements,
+                                         getattr(self, "_initial", {}))}
         data = dict(self.store)
         data.setdefault("cables", {})[key] = rec
         self.core._save_latent(data)
@@ -237,6 +235,69 @@ def _carried(element):
     return {k: v for k, v in (element or {}).items() if k not in _ROW_KEYS}
 
 
+def merged_record(saved, rows, initial):
+    """A cable's elements after a Save: the stored sequence kept, the rows' marks applied.
+
+    ``saved`` is the stored record, in order; ``rows`` the elements the editor
+    listed, in order along the cable, each with the mark it shows now;
+    ``initial`` the mark each row showed when the editor opened.
+
+    Save used to write the listed rows first, renumbered by position, and every
+    element it did not list after them with its order stripped -- so an
+    unchanged Save moved a cable's manholes to its end, and kept only one row of
+    an element the cable passes twice. Now the stored sequence stays as it is:
+    a listed element takes its row's mark only where the user changed it, an
+    element the cable passes twice keeps each of its places, and a row new to
+    the record goes in after the element listed before it. Position gives the
+    order from here on, so the keys that ordered a stored element go.
+    """
+    by_key = {}
+    for row in rows:
+        key = _element_key(row)
+        if key is not None:
+            by_key.setdefault(key, row)
+    changed = {key for key, row in by_key.items()
+               if bool(row.get("latent")) != bool(initial.get(key, False))}
+    merged, placed = [], set()
+    for element in saved:
+        key = _element_key(element)
+        row = by_key.get(key) if key is not None else None
+        if row is None:
+            merged.append(_unordered(element))
+            continue
+        latent = row.get("latent") if key in changed else element.get("latent")
+        merged.append({**_carried(element), "layer_id": row["layer_id"], "fid": int(row["fid"]),
+                       "naziv": row.get("naziv") or element.get("naziv", ""),
+                       "latent": bool(latent)})
+        placed.add(key)
+    previous = None
+    for row in rows:
+        key = _element_key(row)
+        if key is None or key in placed:
+            previous = key if key is not None else previous
+            continue
+        entry = {**_carried(row), "layer_id": row["layer_id"], "fid": int(row["fid"]),
+                 "naziv": row.get("naziv", ""), "latent": bool(row.get("latent"))}
+        merged.insert(_slot(merged, previous, by_key), entry)
+        placed.add(key)
+        previous = key
+    return merged
+
+
+def _slot(merged, previous, listed):
+    """Where a row new to the record goes: after the listed element before it.
+
+    With none before it, ahead of the first listed element -- or at the end of
+    a record that lists none.
+    """
+    if previous is not None:
+        after = [i for i, e in enumerate(merged) if _element_key(e) == previous]
+        if after:
+            return after[-1] + 1
+    first = next((i for i, e in enumerate(merged) if _element_key(e) in listed), None)
+    return len(merged) if first is None else first
+
+
 def _unordered(element):
     """An element the editor does not list, kept as it is, minus what ordered it."""
     return {k: v for k, v in element.items() if k not in _ORDER_KEYS}
@@ -250,4 +311,4 @@ def _element_key(element):
         return None
 
 
-__all__ = ['LatentElementsDialog', 'CablePitstopsDialog']
+__all__ = ['LatentElementsDialog', 'CablePitstopsDialog', 'merged_record']
