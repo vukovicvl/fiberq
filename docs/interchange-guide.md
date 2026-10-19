@@ -45,25 +45,74 @@ export that had nothing to drop read identically from a bare "done", so the
 summary counts what happened: how many metadata keys belonging to another tool
 were carried forward, and how many layers were left out. It gives the number, not
 the names. A vector layer is left out when FiberQ does not recognise its name as
-one of its own (a layer of your own, or a FiberQ layer you renamed) or when QGIS
-cannot open its data source (a missing file, an unreachable database). Layers that are not vector layers, such as a raster
+one of its own (a layer of your own, or a FiberQ layer you renamed), when QGIS
+cannot open its data source (a missing file, an unreachable database), or when it
+is empty and another layer with the same FiberQ name holds features (an empty
+`Poles` beside your `Stubovi`). Layers that are not vector layers, such as a raster
 basemap, are never part of a bundle and are not counted. Which layers were left
 out, and why, goes only to FiberQ's debug log, which is off by default: start QGIS
 with the environment variable `FIBERQ_LOG_LEVEL=DEBUG` and they are listed in
 **View → Panels → Log Messages**, on the *FiberQ* tab.
+
+Three things are reported in a warning as well, by name:
+
+- **A FiberQ layer whose data QGIS cannot open** is left out, and its table in an
+  existing bundle is kept as it was. So are the relations and pass-through
+  elements FiberQ wrote there before: with a layer unread, the project cannot
+  say which of them it no longer has.
+- **A layer whose coordinates cannot be converted to EPSG:4326** is left out: it
+  has no CRS, or one with no transformation to EPSG:4326, and its features would
+  otherwise land in the bundle unmoved, in the wrong place. Set the CRS its
+  coordinates are in (**Layer Properties → Source**) and export again. Its table
+  in an existing bundle is kept, as for a layer QGIS cannot open.
+- **A column whose name FiberQ writes** is moved. A GeoPackage compares column names
+  regardless of letter case, so a column of your own called `Name` or `name`
+  beside FiberQ's `naziv`, say, cannot be a column of the bundle. Its values go
+  into the feature's `fq_extra_json` under the column's own name, and the warning
+  lists the columns. Nothing is merged or dropped. Where the feature's own
+  `fq_extra_json` already has a key of that name, the column's value replaces it,
+  and the export says so. The
+  [field mapping](interchange-mapping.md#a-column-with-no-canonical-name) lists
+  the names this applies to.
+
+**Two layers that are one FiberQ layer.** A bundle holds one table per element
+type, so `Poles` and the pre-1.0 `Stubovi` in one project would both become the
+table `Poles`. When both hold features, FiberQ writes nothing, and says which
+layers they are and where each one's data lives: merge them into one layer, or
+remove or rename all but one, then export again. An existing bundle is left
+exactly as it was. The same table loaded twice is one layer, and is exported once.
 
 ### Overwriting an existing bundle
 
 If the file already exists, FiberQ asks first, and says what replacing it does:
 
 > **Replace the bundle design.gpkg?**
-> Its FiberQ layers are rewritten from this project. Anything another tool
-> stored in the file — its own metadata keys and relational tables — is kept,
-> not discarded.
+> Its FiberQ layers, and the members and pass-through elements of FiberQ's own
+> relations and cables, are rewritten from this project — import the file first
+> to keep what another tool added to them — and what FiberQ wrote there for a
+> layer, relation or cable the project no longer has is removed. Everything else
+> another tool stored in the file — its own metadata keys, tables and rows — is
+> kept.
 
 That is the honest description of the operation, and it is worth reading once.
 Exporting over a file a colleague's tool also writes to does **not** wipe their
-half of it.
+half of it, with one exception: what their tool added to FiberQ's own relations
+and cables (a member, a stop) is rewritten from your project with the rest of
+them. Import their file first, and it is in your project and in the next bundle.
+FiberQ's own half is brought up to date: the rows it wrote there last time for a
+relation, a relation member or a pass-through element the project no longer has
+are removed, and so is the table it wrote for a layer the project no longer has —
+one you deleted or renamed. A layer still in the project keeps its table even
+when it could not be exported this time, as above. A warning names each table
+removed. A bundle written before FiberQ 1.6.0 does not record which tables
+FiberQ wrote, so the first export over it removes none.
+
+**A project saved in QGIS 4 and opened in QGIS 3** cannot have its relations,
+pass-through elements or what an import kept read there (QGIS 3 does not
+understand how QGIS 4 stores them). A bundle exported from it to a new file has
+none of them, and the export says so. Over an existing bundle the export is
+refused, because it would remove them from it. Export from QGIS 4 for a complete
+bundle.
 
 ---
 
@@ -84,8 +133,10 @@ Not the row number — row numbers change every time anything is rewritten, and 
 reference built on one breaks silently.
 
 **Relationships as side-car tables.** `fq_relation`, `fq_relation_member` and
-`fq_path_stop` record the named cable groupings and the elements a cable passes
-through, all by `fiberq_uuid`. A slack loop or fibre break carries
+`fq_path_stop` record the named cable groupings and the elements a cable passes,
+all by `fiberq_uuid`. `fq_path_stop` holds, for each cable whose list was saved in
+the pass-through dialog, the elements along it in order, each marked as passed
+through (`is_latent` 1) or not (0). A slack loop or fibre break carries
 `cable_uuid` instead of a project-local layer id and feature id.
 
 **A metadata table.** `_fiberq_metadata` records the format and its version, the
@@ -106,16 +157,27 @@ not model. See §5.
 Features land in FiberQ's own layers, with FiberQ's own field names and values.
 Your data model does not change to accommodate a file.
 
+A FiberQ layer the import has to create is a temporary layer, like every layer
+FiberQ creates, until it is saved. With **Auto save to GeoPackage** on, it goes into
+the project's GeoPackage as it is made. Otherwise use **Save all layers to
+GeoPackage** before you close the project: a temporary layer is empty when the
+project is opened again, and the features the import added with it are gone. What
+the import kept for other tools is in the project file itself, and survives either
+way.
+
 ```
 FiberQ: Imported design.gpkg — 23 layer(s), 46 feature(s)
 ```
 
-Three behaviours are worth knowing before you rely on it.
+Four behaviours are worth knowing before you rely on it.
 
 **Importing the same bundle twice changes nothing.** Identity is permanent, so a
 feature whose `fiberq_uuid` is already in the project is the *same* feature, not
-a second one. The second import reports `0 feature(s)` — it does not duplicate
-your design, and it does not disturb the relationships the first one restored.
+a second one. The second import reports `0 feature(s), 46 already in the
+project, left as they are` — it does not duplicate your design, and it does not
+disturb the relationships the first one restored. The one exception is a feature
+with no `fiberq_uuid` at all: nothing says it is one already imported, so it is
+added again, and the import warns about it every time.
 
 **Into an empty project, the authoring CRS comes back.** Import into a project
 you have just created and it switches to the CRS the design was drawn in. Import
@@ -124,6 +186,17 @@ import adds to your work, it does not reproject it. Only ordinary vector layers
 count: a project holding nothing but rasters (an XYZ or WMS basemap, say), vector
 tiles, meshes or point clouds is treated as empty, and its CRS switches too. A
 basemap loaded as a vector layer counts as your work.
+
+**An import adds; it never replaces.** A relation the project already has keeps
+its own members, and a cable the project already records pass-through elements for
+keeps its own; a warning counts those where the bundle's has members or elements
+the project's lacks. A relation or a
+cable the project does not have yet gets the bundle's, with the relation's own
+identity, category, member roles and order. A feature already in the project is not
+updated either — not even a slack loop's cable, which stays as you left it. A row
+of a side-car table FiberQ keeps for other tools, with the key of a row an earlier
+import kept, does not replace it; a warning counts those that differ. To see a
+colleague's version exactly as they sent it, import it into a new project.
 
 **A bundle it cannot read is refused before anything is imported.** A bundle
 declaring a newer *major* version of the format stops with an explanation.
@@ -164,6 +237,11 @@ Files are named for the *element type*, not the layer, so a receiving tool reads
 feature still carries `fq_type` and `placement`, so nothing depends on the
 filename. Coordinates are WGS84 longitude/latitude, as RFC 7946 requires.
 
+Writing into a folder that already holds a bundle works like writing over a
+GeoPackage one: `_fiberq_metadata.json` is rewritten, and the keys another tool
+stored in it are kept. A `.geojson` file FiberQ wrote there last time for an
+element type this export has no layer for is removed, and the warning names it.
+
 **GeoJSON cannot express the relational side-car.** If your project has
 relationships to lose, the export says so, and stamps the bundle
 `"profile": "geojson-lite"` so a reader can tell:
@@ -197,13 +275,36 @@ You are told it is there:
 It is never reclassified to the nearest familiar type. Filing a splitter as an
 OTB cannot be undone, and the import would look like it worked.
 
+**The colour standard a bundle was drawn to** travels with it. A bundle made to a
+standard other than TIA-598-C, with the catalogue that defines it, comes back out
+of FiberQ saying so for as long as your project has no colour catalogue of its own.
+Once it has one, the project's own standard is written instead. Import bundles drawn
+to two different standards and the later one wins, and the import says so; a
+bundle that names only TIA-598-C does not replace one that named something else.
+
 **An attribute with no column** is kept against the feature it belongs to and
-restored on export.
+restored on export, an empty value included. So is a `cable_uuid` on an element
+FiberQ does not link to a cable, and a slack loop's or fibre break's `cable_uuid`
+that names a cable the project does not have. A feature with no `fiberq_uuid` has
+nothing to keep them against, so they are not kept for it; the import says how many.
+
+**Feature tables are read whatever their name or language.** The element type comes
+from each feature's `fq_type`, not from the table name, so a bundle that keeps its
+loops in a table called "Slack loops", or its cables in "Optički kablovi", imports
+like any other. A name QGIS cannot open (one with `|` or a control character) is
+named in a warning instead.
 
 **Relational data FiberQ does not implement** — fibre splices, trays, duct
 occupancy — is kept as the rows it arrived as, and written back into the real
 table on the way out, so it reaches a tool that *does* model it still
-queryable, not as an opaque blob.
+queryable, not as an opaque blob. That includes a table or a column a later
+version of the format adds, and the rows several imported bundles brought: a
+second import adds to what the first kept.
+
+**A pass-through element or a relation member FiberQ does not draw** — a stop on
+a splitter it keeps only in the passthrough store, a stop on a cable that is not in
+the project, a relation member it cannot place — is kept and written out again,
+though the dialogs do not list it.
 
 **Metadata keys another tool wrote** are merged into the next bundle, never
 replaced.
@@ -227,9 +328,12 @@ GeoPackage, and the conformance list is ten items.
 
 *Or bring the data in by hand.* An ordinary GeoPackage, Shapefile or DXF can be
 added to QGIS the usual way (**Layer → Add Layer → Add Vector Layer**), and any
-layer you rename to a FiberQ layer name is exported as that type from then on.
+layer you rename to a FiberQ layer name is exported as that type from then on —
+a name the project does not already use. If it does, copy the features into the
+existing layer instead: two layers with one FiberQ name stop the export (§1).
 It is manual, and it is honest: you decide what each layer is, rather than the
-plugin guessing.
+plugin guessing. Its columns go into the bundle under their own names, except one
+whose name FiberQ writes on that layer, which travels in `fq_extra_json` (§1).
 
 A guided importer that maps a foreign file's columns onto FiberQ's fields is a
 sensible future feature, and is not part of this release.
@@ -251,6 +355,10 @@ the next tool detached from its cable.
 
 Your project is not renamed by any of this. Open a 2019 project, export a
 bundle, and the project still says `Stubovi` afterwards.
+
+If the project also has a layer under the modern name — an empty `Poles` beside
+`Stubovi` — the empty one is left out. If both hold features, the export stops
+and says so (§1).
 
 ---
 

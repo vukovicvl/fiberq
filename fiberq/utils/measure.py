@@ -114,6 +114,26 @@ def ground_length(geom, layer=None, crs=None, project=None) -> float:
     Falls back to the planar length rather than raising -- a slightly wrong number
     beats losing the attribute -- and says so in the log.
     """
+    return _measure(geom, layer, crs, project, "measureLength", "length")
+
+
+def ground_area(geom, layer=None, crs=None, project=None) -> float:
+    """Area of a polygon ``geom`` in square metres on the ground.
+
+    Measured exactly as :func:`ground_length` measures a line: on the project's
+    ellipsoid, else on the one the CRS names. In Web Mercator a planar area is
+    inflated by 1/cos(latitude) **squared** -- twice at 45 degrees north.
+    """
+    return _measure(geom, layer, crs, project, "measureArea", "area")
+
+
+def ground_perimeter(geom, layer=None, crs=None, project=None) -> float:
+    """Perimeter of a polygon ``geom`` in metres on the ground (see :func:`ground_area`)."""
+    return _measure(geom, layer, crs, project, "measurePerimeter", "length")
+
+
+def _measure(geom, layer, crs, project, measurer, planar):
+    """``distance_area(...).<measurer>(geom)``, falling back to the planar figure."""
     if geom is None:
         return 0.0
     try:
@@ -129,11 +149,14 @@ def ground_length(geom, layer=None, crs=None, project=None) -> float:
             crs = None
 
     try:
-        return float(distance_area(crs, project).measureLength(geom))
+        return float(getattr(distance_area(crs, project), measurer)(geom))
     except Exception as e:
-        logger.debug(f"Ellipsoidal measurement failed, using planar length: {e}")
+        # At warning: the planar figure is in map units, which is the very thing
+        # these measurements exist to avoid, so it must be visible in the log.
+        logger.warning(f"Ellipsoidal measurement failed, using the planar {planar} "
+                       f"(map units): {e}")
         try:
-            return float(geom.length())
+            return float(getattr(geom, planar)())
         except Exception:
             return 0.0
 

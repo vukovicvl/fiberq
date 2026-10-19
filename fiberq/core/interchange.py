@@ -18,6 +18,9 @@ Three rules from the spec drive the code here:
   ``_fiberq_metadata`` from scratch destroys whatever another tool recorded.
   This is not hypothetical -- it is the defect this module exists to not repeat.
 """
+import base64
+import binascii
+import json
 import uuid as _uuid
 from typing import Dict, Optional, Tuple
 
@@ -41,15 +44,65 @@ UUID_NAMESPACE = _uuid.UUID("1f5b9c4e-3a76-5d0b-9c21-7e4a8d6f0b32")
 #: separately as ``crs_epsg`` and restored on import (spec section 5).
 STORAGE_EPSG = 4326
 
+#: FiberQ's own record, in a bundle it wrote, of what it wrote there: the
+#: relations and cables whose side-car rows it wrote and the feature tables, or,
+#: in the GeoJSON profile, the files. Exporting over the same bundle again
+#: removes what it wrote last time for something the project no longer has (and
+#: nobody else's). Trusted only while its ``produced_at`` is the file's own: a
+#: tool that copies the key into another file, as section 7 asks it to, does not
+#: make it true there.
+WRITTEN_KEY = "fiberq_written"
+
 #: Metadata keys this implementation owns and may overwrite on export. Any key
 #: NOT in this set was written by another tool and must survive untouched.
 OWNED_METADATA_KEYS = frozenset({
     "format", "format_version", "schema_version", "produced_by", "produced_at",
-    "crs_epsg", "color_standard", "color_catalog_json", "profile",
+    "crs_epsg", "color_standard", "color_catalog_json", "profile", WRITTEN_KEY,
     # Legacy keys this plugin has always written; kept for backward compat.
     "project_version", "export_timestamp", "relations_json",
     "latent_elements_json", "plugin_settings_json",
 })
+
+#: Keys FiberQ's project export to GeoPackage writes (core/export_manager.py)
+#: and a bundle never does. Found in a bundle, they are left over from an
+#: earlier export to the same file and describe the project as it was then, so
+#: the bundle writer removes them rather than carrying them forward.
+RETIRED_METADATA_KEYS = ("project_version", "export_timestamp", "relations_json",
+                         "latent_elements_json", "plugin_settings_json")
+
+#: The fibre colour standard a bundle's colours are derived from (section 6.2),
+#: and the catalogue that defines it when it is not a published one. They
+#: travel together.
+COLOUR_METADATA_KEYS = ("color_standard", "color_catalog_json")
+
+#: What a writer says when it has no colour catalogue of its own.
+DEFAULT_COLOR_STANDARD = "TIA-598-C"
+
+
+def colour_pair(*sources):
+    """The colour standard and catalogue from the first source that has either, as one.
+
+    Never one key from one source and the other from another: a TIA-598-C
+    standard beside a catalogue defining ACME-24 tells a reader the wrong
+    colours for every fibre.
+    """
+    for source in sources:
+        pair = {key: source[key] for key in COLOUR_METADATA_KEYS if (source or {}).get(key)}
+        if pair:
+            return pair
+    return {}
+
+
+def json_object(value):
+    """``value`` -- a dict or JSON text -- as a dict, or None if it is not one."""
+    if isinstance(value, dict):
+        return value
+    try:
+        parsed = json.loads(value) if isinstance(value, str) else None
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
 
 #: Canonical FiberQ layer name -> (fq_type, placement).
 #:
@@ -212,11 +265,46 @@ def can_read_format_version(value) -> bool:
 #: ``TypeError: argument 1 has unexpected type 'int'``. A format string works
 #: identically on 3.22.16, 3.40.15 and 4.2.3 and produces the same text the
 #: enum does.
+#:
+#: A date-time keeps its milliseconds and its offset from UTC (see
+#: :func:`_utc_suffix`): a GeoPackage DATETIME is stored as
+#: ``YYYY-MM-DDTHH:MM:SS.SSSZ``, and QGIS reads it back as a UTC QDateTime with
+#: the milliseconds, so this reproduces the stored text exactly. The pattern
+#: ``yyyy-MM-ddTHH:mm:ss`` it replaces dropped both -- the WP3 known limit "a
+#: date or time value is re-emitted as text rather than byte-for-byte".
 _ISO_PATTERNS = {
     "QDate": "yyyy-MM-dd",
     "QTime": "HH:mm:ss",
-    "QDateTime": "yyyy-MM-ddTHH:mm:ss",
+    "QDateTime": "yyyy-MM-ddTHH:mm:ss.zzz",
 }
+
+#: How a binary value travels in JSON: ``{"$blob": "<base64>"}``, turned back
+#: into bytes by :func:`from_json_safe` when it is written into SQLite again.
+BLOB_KEY = "$blob"
+
+#: Qt.TimeSpec values, compared as integers: PyQt5 hands back an int-like enum,
+#: PyQt6 a Python enum whose ``.value`` is the same number.
+_LOCAL_TIME, _UTC = 0, 1
+
+
+def _utc_suffix(value):
+    """``Z``, ``+HH:MM`` or nothing: where a QDateTime stands against UTC.
+
+    A local time carries no offset of its own, so it gets none -- inventing one
+    from the machine running the export would move the value. A UTC time is
+    ``Z``, as GeoPackage writes it; any other (an offset or a time zone) is
+    written as the offset it has at that instant.
+    """
+    spec = value.timeSpec()
+    spec = int(getattr(spec, "value", spec))
+    if spec == _LOCAL_TIME:
+        return ""
+    if spec == _UTC:
+        return "Z"
+    seconds = int(value.offsetFromUtc())
+    sign = "-" if seconds < 0 else "+"
+    hours, minutes = divmod(abs(seconds) // 60, 60)
+    return f"{sign}{hours:02d}:{minutes:02d}"
 
 
 def json_safe(value):
@@ -240,13 +328,19 @@ def json_safe(value):
     """
     if value is None or isinstance(value, (str, bool, int, float)):
         return value
+    if isinstance(value, (bytes, bytearray)):
+        # A BLOB in a kept side-car row, or a binary attribute. json.dumps
+        # raised on it -- in the middle of an import, after features had been
+        # added and before the passthrough store was saved.
+        return {BLOB_KEY: base64.b64encode(bytes(value)).decode("ascii")}
 
     name = type(value).__name__
+    if name == "QByteArray":
+        return json_safe(bytes(value.data()))
 
     if name == "QVariant":
-        # The provider hands a NULL back as Python None on every supported
-        # version (measured), so this is for a QVariant built in code rather
-        # than read from a layer. Either way a null one is the format's None.
+        # QGIS 4 hands a NULL back as Python None; QGIS 3 as a NULL QVariant
+        # (measured on 3.22, 3.40 and 3.44). Either way it is the format's None.
         if value.isNull():
             return None
         inner = value.value()
@@ -255,8 +349,15 @@ def json_safe(value):
     pattern = _ISO_PATTERNS.get(name)
     if pattern is not None:
         # A null QDate formats as the empty string, which would be
-        # indistinguishable from a real empty value. None says "absent".
-        return None if value.isNull() else value.toString(pattern)
+        # indistinguishable from a real empty value. None says "absent". So
+        # does an invalid one (31 February), which formats as "" too.
+        if value.isNull() or not value.isValid():
+            return None
+        if name == "QDateTime":
+            return value.toString(pattern) + _utc_suffix(value)
+        if name == "QTime" and value.msec():
+            return value.toString("HH:mm:ss.zzz")
+        return value.toString(pattern)
 
     if isinstance(value, (list, tuple)):
         return [json_safe(item) for item in value]
@@ -368,5 +469,162 @@ def build_metadata(schema_version: str, crs_epsg, plugin_version: str,
         "produced_by": f"FiberQ QGIS plugin {plugin_version}",
         "produced_at": timestamp,
         "crs_epsg": str(crs_epsg) if crs_epsg not in (None, "") else "",
-        "color_standard": color_standard or "TIA-598-C",
+        "color_standard": color_standard or DEFAULT_COLOR_STANDARD,
     }
+
+
+# ---------------------------------------------------------------------------
+# Pass-through elements: the two shapes the project entry comes in
+# ---------------------------------------------------------------------------
+
+def _distance_along(element) -> float:
+    try:
+        return float(element.get("m") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def latent_records(data) -> Dict[str, list]:
+    """Every cable's pass-through elements, in order, whichever shape stores them.
+
+    ``StuboviPlugin/LatentElements/latent_v1`` comes in two shapes, and until
+    FiberQ 1.6.0 each side read only one of them -- so a bundle export of a
+    project edited in the dialog raised, and the dialog raised on a project a
+    bundle import had written:
+
+    * the dialog's (``dialogs/latent_dialog.py``, the only place a user edits
+      them): ``{"cables": {"<layer_id>:<fid>": {"elements": [{"layer_id",
+      "fid", "naziv", "latent"}, ...]}}}`` -- every element found along the
+      cable, in order, each marked latent (passed through) or not;
+    * the one a v1.5.0 bundle import wrote: ``{"cables": {"<layer_id>:<fid>":
+      [{"layer_id", "fid", "m"}, ...]}}``, ordered by ``m``, all latent.
+
+    Answers ``{cable key: [element dicts]}``: copies, each with ``latent`` as a
+    bool and every other key it had. Anything malformed is skipped rather than
+    raised, because this runs inside an export.
+    """
+    cables = data.get("cables") if isinstance(data, dict) else None
+    if not isinstance(cables, dict):
+        return {}
+    out = {}
+    for key, record in cables.items():
+        if isinstance(record, dict):
+            listed = record.get("elements")
+            if not isinstance(listed, list):
+                continue  # {"elements": 5} raised here, inside an export
+            elements = [dict(e) for e in listed if isinstance(e, dict)]
+            for element in elements:
+                element["latent"] = bool(element.get("latent"))
+        elif isinstance(record, list):
+            elements = sorted((dict(e) for e in record if isinstance(e, dict)),
+                              key=_distance_along)
+            for element in elements:
+                element["latent"] = bool(element.get("latent", True))
+        else:
+            continue
+        out[str(key)] = elements
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Kept side-car rows
+# ---------------------------------------------------------------------------
+
+def from_json_safe(value):
+    """A kept value as SQLite should get it back: a tagged blob becomes bytes."""
+    if isinstance(value, dict) and len(value) == 1 and isinstance(value.get(BLOB_KEY), str):
+        try:
+            return base64.b64decode(value[BLOB_KEY].encode("ascii"), validate=True)
+        except (binascii.Error, ValueError):
+            return value
+    return value
+
+
+def _row_key(row, key_columns):
+    if key_columns:
+        key = tuple(row.get(column) for column in key_columns)
+        if all(part is not None for part in key):
+            return ("key",) + key
+    # No primary key, or a NULL in it (SQLite lets a TEXT PRIMARY KEY be NULL):
+    # the whole row is the identity, so equal rows still collapse into one.
+    return ("row", json.dumps(row, sort_keys=True, ensure_ascii=False, default=str))
+
+
+def merge_kept_rows(existing, incoming, key_columns=()):
+    """One kept side-car table's rows from several imports, added together."""
+    return merge_kept_rows_counted(existing, incoming, key_columns)[0]
+
+
+def merge_kept_rows_counted(existing, incoming, key_columns=()):
+    """``(rows, added, differing)``: one kept table's rows from several imports.
+
+    Every import used to replace the table's whole store row, so importing a
+    second bundle dropped the fibre splices the first one had brought. Rows are
+    keyed by the table's primary key (whole rows when it has none). On an equal
+    key the row already kept stays: an import adds, it never updates, as for
+    features, relations and pass-through elements. *added* counts the incoming
+    rows with a key not kept before, *differing* those whose key was kept with
+    other values -- which the caller reports rather than letting a later
+    bundle, older or newer, silently overwrite an earlier one's row.
+    """
+    merged, where = [], {}
+    for row in existing or []:
+        if isinstance(row, dict):
+            key = _row_key(row, key_columns)
+            if key not in where:
+                where[key] = len(merged)
+                merged.append(row)
+    added = differing = 0
+    for row in incoming or []:
+        if not isinstance(row, dict):
+            continue
+        key = _row_key(row, key_columns)
+        if key not in where:
+            where[key] = len(merged)
+            merged.append(row)
+            added += 1
+        elif merged[where[key]] != row:
+            differing += 1
+    return merged, added, differing
+
+
+# ---------------------------------------------------------------------------
+# Relations: identity
+# ---------------------------------------------------------------------------
+
+def is_uuid(value) -> bool:
+    try:
+        _uuid.UUID(str(value))
+        return True
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+
+def relation_identity(relation, project_key: str = "") -> str:
+    """The ``fiberq_uuid`` a project relation is written under.
+
+    Its own ``uuid`` when it has one (FiberQ 1.6.0 stores it on import); else its
+    ``id`` when that is a UUID, which every relation the Relations dialog makes
+    is; else, for an integer id (a FiberQ 1.5.0 import), the identity derived
+    from the project file, the relation's id and its name -- what every bundle
+    before 1.6.0 carried, so a re-import still matches it. Only that last one
+    changes when the project is saved under another name.
+    """
+    own = relation.get("uuid")
+    if own and str(own).strip():
+        return str(own).strip()
+    rid = relation.get("id")
+    if is_uuid(rid):
+        return str(rid)
+    return legacy_relation_uuid(relation, project_key)
+
+
+def legacy_relation_uuid(relation, project_key: str = "") -> str:
+    """The identity every FiberQ before 1.6.0 wrote a relation under.
+
+    Derived from the project file, the relation's id and its name, for every
+    relation -- including those the Relations dialog made with a uuid of their
+    own. An export over such a bundle removes the rows under it once the
+    relation is written under its real identity, or the bundle holds it twice.
+    """
+    return stable_uuid("relation", project_key, relation.get("id"), relation.get("name", "") or "")

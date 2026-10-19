@@ -363,6 +363,9 @@ i18n-normalize:
 # Compile .ts -> .qm. lrelease ships with the Qt tools, NOT with PyQt, so it can
 # be missing even when pylupdate6 is present; fail loudly instead of silently
 # shipping stale/absent .qm files. lrelease-qt6/-qt5 are the Debian alt names.
+# -nounfinished: only translations a translator marked done ship. Plain lrelease
+# also compiles entries still marked "unfinished" -- a volunteer's half-done
+# draft -- and docs/TRANSLATING.md promises those are not shipped.
 i18n-compile:
 	@lr=""; \
 	for cand in $(LRELEASE) lrelease-qt6 lrelease6 lrelease-qt5; do \
@@ -388,7 +391,7 @@ i18n-compile:
 		echo "No .ts catalogs in $(I18N_DIR) - run 'make i18n-update' first."; \
 		exit 1; \
 	fi; \
-	"$$lr" "$$@" || exit 1; \
+	"$$lr" -nounfinished "$$@" || exit 1; \
 	echo "Compiled .qm in $(I18N_DIR) - remember to 'git add' them (see package)."
 
 # Translation progress, straight out of the .ts XML. Pure stdlib, no extra deps.

@@ -28,8 +28,11 @@ from .utils.helpers import (
 # =============================================================================
 from .i18n import (
     available_languages,
+    effective_language,
+    forget_unpicked_language,
     install_translator,
     language_name,
+    mark_language_picked,
     remove_translator,
     safe_format,
 )
@@ -201,17 +204,15 @@ class FiberQPlugin:
         # French relabelled the toolbar in Serbian. Rewriting live also fought the
         # QTranslator for ownership of the same strings.
 
-        # 1) Update the language selector check-states and caption
+        # Update the language selector check-states and caption. Nothing is
+        # stored here: this also runs at every start, and storing what was
+        # merely shown wrote "English" on the first start, after which FiberQ's
+        # own choice outranked QGIS's language for good (i18n.current_locale).
+        # Only an explicit pick, _fiberq_set_language, stores a choice.
         try:
             self._fiberq_sync_language_selector(lang)
         except Exception as e:
             logger.warning(f"Could not update language selector: {e}")
-
-        # 2) Store preference
-        try:
-            _set_lang(lang)
-        except Exception as e:
-            logger.debug(f"Could not store language preference: {e}")
 
     def _fiberq_sync_language_selector(self, lang):
         """Reflect ``lang`` in the toolbar language button and its menu."""
@@ -239,6 +240,7 @@ class FiberQPlugin:
         if not code:
             return
         _set_lang(code)
+        mark_language_picked()
         self._fiberq_apply_language(code)
         QMessageBox.information(
             self.iface.mainWindow(),
@@ -383,6 +385,14 @@ class FiberQPlugin:
         panel.show()
         panel.raise_()
 
+        if result.config_problems:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                "Some of this project's validation settings could not be used, and the "
+                "defaults stood in for them: {details}")
+            self.iface.messageBar().pushWarning('FiberQ', safe_format(
+                self.tr(src), src, details='; '.join(result.config_problems)))
+
         counts = result.counts_by_severity()
         summary = ', '.join([
             self.tr('%n error(s)', '', counts['error']),
@@ -481,6 +491,14 @@ class FiberQPlugin:
             src = QT_TRANSLATE_NOOP('FiberQPlugin', 'Could not check lengths: {details}')
             bar.pushWarning('FiberQ', safe_format(self.tr(src), src, details=e))
             return
+
+        if plan.config_problems:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                "Some of this project's validation settings could not be used, and the "
+                "defaults stood in for them: {details}")
+            bar.pushWarning('FiberQ', safe_format(
+                self.tr(src), src, details='; '.join(plan.config_problems)))
 
         if plan.skipped_layers:
             src = QT_TRANSLATE_NOOP(
@@ -670,8 +688,11 @@ class FiberQPlugin:
             question = QT_TRANSLATE_NOOP(
                 'FiberQPlugin', 'The folder {name} already exists. Write the bundle into it?')
             detail = self.tr(
-                'Existing GeoJSON files for the same element types are replaced. '
-                'Other files in the folder are left alone.')
+                'The GeoJSON files of the element types this export writes are replaced, '
+                'whoever wrote them, and one FiberQ wrote there before for an element type '
+                'the project no longer has is removed. _fiberq_metadata.json is rewritten, '
+                'keeping the keys other tools stored in it. Other files in the folder are '
+                'left alone.')
         else:
             target = path if path.lower().endswith('.gpkg') else path + '.gpkg'
             if not os.path.isfile(target):
@@ -679,9 +700,12 @@ class FiberQPlugin:
             question = QT_TRANSLATE_NOOP(
                 'FiberQPlugin', 'Replace the bundle {name}?')
             detail = self.tr(
-                'Its FiberQ layers are rewritten from this project. Anything another '
-                'tool stored in the file -- its own metadata keys and relational '
-                'tables -- is kept, not discarded.')
+                "Its FiberQ layers, and the members and pass-through elements of FiberQ's "
+                'own relations and cables, are rewritten from this project -- import the '
+                'file first to keep what another tool added to them -- and what FiberQ wrote '
+                'there for a layer, relation or cable the project no longer has is removed. '
+                'Everything else another tool stored in the file -- its own metadata keys, '
+                'tables and rows -- is kept.')
 
         confirm = QMessageBox(self.iface.mainWindow())
         confirm.setIcon(QMessageBox.Icon.Question)
@@ -851,6 +875,9 @@ class FiberQPlugin:
         # translating without any error being raised.
         self.translator = None
         try:
+            # Before the lookup: an "en" that a pre-1.6.0 start stored, rather
+            # than the user, would otherwise outrank QGIS's language for good.
+            forget_unpicked_language()
             self.translator = install_translator(self.plugin_dir)
         except (OSError, RuntimeError) as e:
             logger.warning(f"Could not install FiberQ translator: {e}")
@@ -1492,7 +1519,9 @@ class FiberQPlugin:
         # --- Language selector (one entry per shipped .qm catalogue) ---
         from qgis.PyQt.QtWidgets import QToolButton, QMenu
 
-        current_lang = _get_lang()
+        # The language the interface is actually in: FiberQ's own choice if one
+        # was made, otherwise QGIS's, and English when no catalogue exists for it.
+        current_lang = effective_language(self.plugin_dir)
 
         self.menu_language = QMenu(self.tr("Interface language"), self.iface.mainWindow())
         self._fiberq_lang_actions = {}
@@ -2694,8 +2723,9 @@ class FiberQPlugin:
         QGIS 4 serialises project properties in a form QGIS 3 does not
         understand, so opening a QGIS 4 project here loses **every** FiberQ
         project entry -- relations, colour catalogues, latent elements, picture
-        and drawing links, the auto-save path, and WP3's interchange
-        passthrough store. Two of those fail quietly: the colour catalogues
+        and drawing links, the auto-save path, the validation settings, and
+        WP3's interchange passthrough store, which the warning did not name
+        before 1.6.0. Two of them fail quietly: the colour catalogues
         fall back to built-in defaults, so the user sees plausible colours
         rather than an absence, and the passthrough store holds another tool's
         data carried through an import.
@@ -2726,8 +2756,10 @@ class FiberQPlugin:
         src = QT_TRANSLATE_NOOP(
             'FiberQPlugin',
             "This project was saved in QGIS 4. Its FiberQ settings -- relations, colour "
-            "catalogues, latent elements, picture and drawing links, the auto-save path -- "
-            "cannot be read in QGIS 3. Do not save it here: that removes them permanently.")
+            "catalogues, pass-through elements, picture and drawing links, the auto-save "
+            "path, validation settings, and what an interchange import kept for other "
+            "tools -- cannot be read in QGIS 3. Do not save it here: that removes them "
+            "permanently.")
         # No placeholders, so no safe_format: there is nothing for a renamed
         # one to break.
         self.iface.messageBar().pushWarning(

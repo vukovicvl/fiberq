@@ -290,7 +290,8 @@ The `_fiberq_metadata` table is `key TEXT PRIMARY KEY, value TEXT`.
 
 A writer **must not** delete metadata keys it did not write. Rebuilding this table from
 scratch on every export silently discards whatever another tool recorded. Merge; do not
-replace.
+replace. A key outside the table above belongs to the writer that recorded it, and
+every other writer carries it unchanged; the FiberQ plugin's own is described in §12.
 
 ## 8. The passthrough store
 
@@ -334,7 +335,8 @@ A **conformant writer** must:
 
 A **conformant round trip** is the real test: import a bundle, change nothing, export it,
 and every object, attribute and relation is still present — *including everything the
-tool does not support*. The FiberQ plugin asserts exactly this in CI.
+tool does not support*. The FiberQ plugin runs this round trip in CI for the data
+listed in §12.
 
 ## 10. What v1 deliberately does not cover
 
@@ -391,7 +393,9 @@ plugin** and exports it again, then checks that all of the following survived:
 | `fq_splice_point`, `fq_fiber_connection` | Kept verbatim and written back **as rows**, so they are still queryable |
 | A passthrough row from a third tool | Untouched |
 | A `_fiberq_metadata` key FiberQ did not write | Carried through the project into the next bundle |
-| Relations and path stops | Out as `fiberq_uuid` references, back as project data, out again |
+| Relations | Out under their own uuid with their category, member roles and order, back as project data, out again unchanged |
+| Path stops | Out with `is_latent` 1 or 0 in the cable's order, back into the project, out again with the same order and marks |
+| A side-car table this version does not define, and a column a defined table lacks | Re-created as they arrived and written back as rows |
 
 It runs on **QGIS 3 / Qt5 and QGIS 4 / Qt6** in CI. Import is also idempotent: importing
 the same bundle twice is a no-op, because identity is permanent and a feature with a
@@ -407,22 +411,56 @@ In the FiberQ QGIS plugin: **Plugins → FiberQ → Export interchange bundle…
 | Feature layers, canonical names, `fq_type` + `placement` | written |
 | Canonical field names and values (§6.3) | written |
 | Storage CRS (§5), `crs_epsg` restore target | written |
-| Identity preserved, never regenerated (§4) | written |
+| Identity preserved, never regenerated (§4) | written; a relation that a FiberQ 1.5.0 import brought in keeps an identity derived from the project file until its bundle is imported again |
 | Metadata merged, foreign keys preserved (§7) | written |
-| `fq_relation` / `fq_relation_member` from project relations | written |
+| `fq_relation` / `fq_relation_member` from project relations | written, with the category, member roles and order they came with |
 | `fq_path_stop` from recorded pass-through elements | written |
 | `fq_extension` passthrough store (§8) | written |
 | GeoJSON profile (§3) | written |
 | All other side-car tables | created, populated by other tools |
 | Reading a bundle back, adapting it into FiberQ's own layers | written |
-| Carrying through types, attributes and side-car tables the plugin does not model | written |
+| Carrying through types, attributes and side-car tables the plugin does not model, including tables and columns a later 1.x version adds | written |
 | Round trip asserted in CI, on both Qt generations | written |
 
 Two notes on what "written" means for the relational tables. The plugin stores relations
 and pass-through elements against `(layer_id, feature_id)` — identifiers local to one
 QGIS project, which are meaningless in any other tool and do not survive a round trip.
-The writer resolves them to `fiberq_uuid` on the way out. A reference it cannot resolve
-is **reported and left out**, never mapped to the nearest plausible object.
+The writer resolves them to `fiberq_uuid` on the way out. A project-local reference it
+cannot resolve is **reported and left out**, never mapped to the nearest plausible
+object. A `fiberq_uuid` that arrived in a bundle is different: a path stop naming a cable
+or an element the plugin does not draw is kept as it came and written out again.
+
+An export over a bundle the plugin wrote before replaces the `fq_relation`,
+`fq_relation_member` and `fq_path_stop` rows of the relations and cables it writes,
+whichever tool added them, and removes the rows of a relation or a cable it wrote there
+last time that the project no longer has, and the feature table it wrote for a layer
+the project no longer has. While a FiberQ layer of the project cannot be read (QGIS
+cannot open its data, or its coordinates do not convert to EPSG:4326), or the
+project's relations or pass-through elements cannot be read, it removes none of those
+rows, and that layer's table stays. In the GeoJSON profile it removes the files it
+wrote last time in the same way. It records what it wrote in the metadata key
+`fiberq_written`, its own (§7), tied to that export's `produced_at`: a copy of the key
+in another file is not trusted. Every other row, table and file stays, and a bundle
+written before FiberQ 1.6.0, which has no such record, loses nothing -- except the
+copy of a relation FiberQ wrote there under the identity derived from the project file,
+which goes once the relation is written under its own.
+
+`color_standard` is the name of the project's own colour catalogue when it has one, and
+an arrived `color_catalog_json` is then removed, since it defines another standard.
+While the project has none, the standard and catalogue the bundle arrived with are
+written again, or TIA-598-C when it arrived with none. The two are taken together from
+one place, never one from each: what the last import naming another standard than
+TIA-598-C brought, else the file being written over, else the GeoJSON folder. A bundle
+that names only TIA-598-C, with no catalogue, does not replace a pair an earlier import
+kept. Writing over a file also removes
+keys that describe only an earlier write to it: `profile`, which only the GeoJSON
+profile sets, and the five FiberQ's project export to GeoPackage writes
+(`relations_json`, `latent_elements_json`, `plugin_settings_json`, `export_timestamp`,
+`project_version`).
+
+In FiberQ, `is_latent` 0 means an element the pass-through dialog lists along the cable
+but the user has not marked as passed through, which is every element's default there.
+It does not record that the cable terminates at that element.
 
 The other side-car tables are always created, even though the plugin never writes rows
 of its own into them: what they hold is what it carried through from a bundle it
@@ -431,10 +469,33 @@ which are kept. That is intentional: a reader finds the table whether or not thi
 particular writer had anything to put in it, and a tool that does model splicing can
 write into a bundle the plugin produced.
 
+A side-car table this version does not define, and a column a defined table lacks, are
+carried too, as rule 4 asks of a 1.0 reader: re-created as they arrived, with their
+columns, their declared types (an unusual type is written as the plain type with the
+same SQLite affinity) and their primary key. Rows that several imported bundles brought
+for the same table are kept side by side; for one key the row an earlier import brought
+is kept, and a later bundle's different one is reported. Text that is not UTF-8 is kept
+byte for byte. Views, indexes and triggers are not carried.
+
 The plugin has separate layers per placement only for `otb` and `to` mounted indoors,
 outdoors and on a pole, and for `to` in a joint closure (§6.1). Any other placement it
 reads is kept in the feature's `fq_extra_json`, so the feature's `placement` column is
 empty when the plugin writes it again.
+
+A column of the plugin's own whose name, compared regardless of letter case as SQLite
+compares column names, is one the writer fills on that layer cannot be a column of the
+same table. The plugin writes its values into the feature's `fq_extra_json` under the
+column's own name instead; the [field mapping](interchange-mapping.md#a-column-with-no-canonical-name)
+lists the cases.
+
+JSON has no date type, so a date or time the plugin carries in `fq_extra_json` or in an
+`fq_extension` payload travels as text. From FiberQ 1.6.0, one that arrived in a bundle's
+`DATE` or `DATETIME` column travels as the text that column stored, character for
+character, in whatever form the writer chose. One the plugin formats itself, from a field
+of a project layer, is ISO 8601: a date-time with milliseconds and, where QGIS reports
+one, its offset from UTC (`2026-01-02T03:04:05.678Z`); a time with milliseconds when it
+has some; a date as `YYYY-MM-DD`. For a GeoPackage `DATETIME`, QGIS 3.22 reports no
+offset.
 
 ## 13. Corrections to this text
 
@@ -460,10 +521,9 @@ described it wrongly in six ways. They are corrected above:
 
 In each case the reference implementation has always done what the text now says for
 the tables and columns this version defines, and a reader or writer built from the
-earlier text should follow the text above. FiberQ
-carries an `fq_container_slot` row through with the columns listed in §6.2, so a slot
-number stored in a column called `index` is dropped when a bundle passes through
-FiberQ: rename that column to `slot_index` first.
+earlier text should follow the text above. From FiberQ 1.6.0 a column called `index`
+passes through FiberQ like any column a table did not define, but a reader built from
+the corrected text looks for `slot_index`: rename the column.
 
 The FiberQ plugin now checks in CI (`tests/test_interchange_format_doc.py`) that the
 `fq_*` tables in the §3 tree, the §6.1 type codes, the column lists in §6.2, §6.4 and §8

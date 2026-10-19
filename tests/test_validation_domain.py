@@ -290,6 +290,12 @@ def test_e1_flags_a_geographic_crs_because_tolerances_are_in_degrees(qgis_app):
                   if i.details.get("geographic")]
     assert len(geographic) == 1
     assert geographic[0].severity == vm.Severity.WARNING
+    # The hint must name the fix that works: no dialog changes the tolerance
+    # (it can be set from the Python console, docs/validation-rules.md,
+    # "Configuring the rules"), and a tolerance in degrees is no fix for
+    # working in degrees.
+    assert "tolerance" not in geographic[0].fix_hint.lower()
+    assert "projected CRS" in geographic[0].fix_hint
 
 
 # ---------------------------------------------------------------------------

@@ -258,7 +258,8 @@ def test_the_warning_names_what_cannot_be_read(plugin, clean_project, qgis4_proj
     said = plugin.iface.bar.warnings[0]
     assert "QGIS 4" in said
     assert "Do not save" in said
-    for lost in ("relations", "catalogues", "auto-save path"):
+    for lost in ("relations", "catalogues", "pass-through elements", "auto-save path",
+                 "validation settings", "an interchange import kept"):
         assert lost in said, f"the warning does not mention {lost}"
 
 
@@ -293,3 +294,66 @@ def test_no_warning_on_a_project_that_was_never_saved(plugin, clean_project):
     plugin._warn_if_project_is_from_a_newer_qgis()
 
     assert plugin.iface.bar.warnings == []
+
+
+def test_a_qgis4_project_in_qgis3_never_writes_over_a_bundle(qgis4_project, tmp_path, monkeypatch):
+    """U8's export guard, which the plan named and v1.5.0 never had.
+
+    Read in QGIS 3, a QGIS 4 project has no relations, no pass-through elements
+    and nothing an import kept for other tools. Written over a bundle, that
+    removed every relation row FiberQ had written there -- the project "no
+    longer has" them -- and the attributes its features carried in
+    fq_extra_json. The export over an existing bundle is refused now, and the
+    file is left byte for byte as it was; a new file is written, with a warning.
+    Driven as though QGIS 3 were running, like the warning above, so it is
+    checked on both legs.
+    """
+    import hashlib
+    import json
+    import uuid
+
+    from qgis.core import (QgsFeature, QgsGeometry, QgsPointXY, QgsProject,
+                           QgsVectorLayer)
+
+    from fiberq.core import interchange as ic
+    from fiberq.core.interchange_bundle import InterchangeBundleWriter
+    from fiberq.utils import compat
+
+    def cables(project):
+        layer = QgsVectorLayer("LineString?crs=EPSG:3857&field=fiberq_uuid:string(64)",
+                               "Underground cables", "memory")
+        feature = QgsFeature(layer.fields())
+        feature.setGeometry(QgsGeometry.fromPolylineXY(
+            [QgsPointXY(0, 0), QgsPointXY(100, 0)]))
+        feature.setAttribute("fiberq_uuid", "u-cable-1")
+        ok, (feature,) = layer.dataProvider().addFeatures([feature])
+        assert ok
+        project.addMapLayer(layer)
+        return layer, feature.id()
+
+    bundle = str(tmp_path / "b.gpkg")
+    source = QgsProject()
+    layer, fid = cables(source)
+    source.writeEntry("StuboviPlugin", "Relacije/relations_v1", json.dumps({"relations": [
+        {"id": str(uuid.uuid4()), "name": "R",
+         "cables": [{"layer_id": layer.id(), "fid": fid}]}]}))
+    kept = [{"kind": ic.EXTENSION_KIND_ATTRIBUTES, "namespace": ic.EXTENSION_NAMESPACE,
+             "owner_uuid": "u-cable-1", "payload_json": json.dumps({"acme_colour": "teal"})}]
+    assert InterchangeBundleWriter(source).write(bundle, layers=[layer], passthrough=kept).ok
+    source.clear()
+    before = hashlib.sha256(open(bundle, "rb").read()).hexdigest()
+
+    monkeypatch.setattr(compat, "QGIS_VERSION_INT", 34400)   # pretend 3.44
+    newer = QgsProject()
+    assert newer.read(qgis4_project)
+    layer, _fid = cables(newer)
+    over = InterchangeBundleWriter(newer).write(bundle, layers=[layer])
+    fresh = InterchangeBundleWriter(newer).write(str(tmp_path / "fresh.gpkg"), layers=[layer])
+    newer.clear()
+
+    assert not over.ok
+    assert any("saved in QGIS 4" in error for error in over.errors), over.errors
+    assert hashlib.sha256(open(bundle, "rb").read()).hexdigest() == before, (
+        "a refused export changed the bundle")
+    assert fresh.ok, fresh.errors
+    assert any("saved in QGIS 4" in warning for warning in fresh.warnings), fresh.warnings

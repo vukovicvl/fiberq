@@ -13,7 +13,7 @@ from qgis.PyQt.QtWidgets import QInputDialog
 
 from qgis.core import (
     QgsProject, QgsFeature, QgsGeometry,
-    QgsPointXY, QgsWkbTypes, QgsDistanceArea
+    QgsPointXY, QgsWkbTypes
 )
 from qgis.gui import QgsMapTool, QgsRubberBand
 
@@ -22,6 +22,7 @@ from ..utils.legacy_bridge import _ensure_region_layer
 
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
+from ..utils.measure import ground_area, ground_perimeter
 logger = get_logger(__name__)
 
 
@@ -146,18 +147,16 @@ class DrawRegionPolygonTool(QgsMapTool):
             if not ok:
                 return
 
-            d = QgsDistanceArea()
-            try:
-                prj = QgsProject.instance()
-                if prj.ellipsoid():
-                    d.setEllipsoid(prj.ellipsoid())
-                d.setSourceCrs(prj.crs(), QgsProject.instance().transformContext())
-                d.setEllipsoidalMode(True)
-            except Exception as e:
-                logger.debug(f"Error in DrawRegionPolygonTool._finish_polygon: {e}")
-
-            area = d.measureArea(geom) if d else geom.area()
-            peri = d.measurePerimeter(geom) if d else geom.length()
+            # On the ground, like every length the plugin stores (utils.measure):
+            # the project's ellipsoid, else the one its CRS names. The measurer
+            # built here before stayed planar whenever the project's ellipsoid
+            # was 'NONE' -- a non-empty string, so it passed `if prj.ellipsoid()`
+            # -- and its setEllipsoidalMode() call, gone from QGIS 3, raised into
+            # a swallowed except every time. Web Mercator areas came out in map
+            # units: twice the ground figure at 45 degrees north.
+            crs = QgsProject.instance().crs()
+            area = ground_area(geom, crs=crs)
+            peri = ground_perimeter(geom, crs=crs)
 
             region.startEditing()
             f = QgsFeature(region.fields())

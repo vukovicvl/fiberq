@@ -73,7 +73,7 @@ LON, LAT = 21.90, 43.32
 
 @pytest.mark.parametrize("value, expected", [
     (QDate(2025, 3, 17), "2025-03-17"),
-    (QDateTime(QDate(2025, 3, 17), QTime(14, 5, 6)), "2025-03-17T14:05:06"),
+    (QDateTime(QDate(2025, 3, 17), QTime(14, 5, 6)), "2025-03-17T14:05:06.000"),
     (QTime(14, 5, 6), "14:05:06"),
 ])
 def test_a_qt_date_becomes_iso_text(value, expected):
@@ -86,6 +86,30 @@ def test_a_qt_date_becomes_iso_text(value, expected):
     """
     assert ic.json_safe(value) == expected
     json.dumps(ic.json_safe(value))
+
+
+@pytest.mark.parametrize("text, expected", [
+    # What a GeoPackage DATETIME holds, and QGIS reads back as a UTC QDateTime.
+    ("2026-01-02T03:04:05.678Z", "2026-01-02T03:04:05.678Z"),
+    ("2026-01-02T03:04:05.000Z", "2026-01-02T03:04:05.000Z"),
+    # Another tool may store an offset; it is kept, not converted.
+    ("2026-01-02T03:04:05.678+02:00", "2026-01-02T03:04:05.678+02:00"),
+    ("2026-01-02T03:04:05.678-05:30", "2026-01-02T03:04:05.678-05:30"),
+])
+def test_a_date_time_keeps_its_milliseconds_and_its_offset(text, expected):
+    """The WP3 known limit "a date or time value is re-emitted as text rather
+    than byte-for-byte". The pattern this replaced, ``yyyy-MM-ddTHH:mm:ss``,
+    gave ``2026-01-02T03:04:05`` for all four: the milliseconds and the time's
+    relation to UTC were gone."""
+    from qgis.PyQt.QtCore import Qt
+
+    value = QDateTime.fromString(text, Qt.DateFormat.ISODateWithMs)
+    assert value.isValid(), text
+    assert ic.json_safe(value) == expected
+
+
+def test_a_time_keeps_its_milliseconds():
+    assert ic.json_safe(QTime(14, 5, 6, 789)) == "14:05:06.789"
 
 
 def test_a_null_date_is_absent_rather_than_empty():
@@ -251,9 +275,124 @@ def test_a_date_survives_a_whole_round_trip(tmp_path, target_project):
         f"the date did not reach the next bundle: {carried}")
 
 
+def test_a_geopackage_date_time_reaches_the_next_bundle_as_it_was_stored(
+        tmp_path, target_project):
+    """Byte for byte: the text the next bundle carries is the text the first
+    one stored. 3.44 and 4.2 store ``...05.678Z``; 3.22's writer stores
+    ``...05.000`` without the Z, and that is what comes back there."""
+    import sqlite3
+    from contextlib import closing
+
+    from qgis.PyQt.QtCore import Qt
+
+    when = QDateTime.fromString("2026-01-02T03:04:05.678Z", Qt.DateFormat.ISODateWithMs)
+    bundle = _foreign_bundle(tmp_path, extra_fields=("surveyed_at:datetime",),
+                             values={"surveyed_at": when})
+    with closing(sqlite3.connect(bundle)) as conn:
+        stored = conn.execute('SELECT surveyed_at FROM "Joint Closures"').fetchone()[0]
+    assert stored and stored.startswith("2026-01-02T03:04:05."), stored
+
+    assert InterchangeBundleReader(target_project).read(bundle).ok
+    again = str(tmp_path / "again.gpkg")
+    assert _export_again(target_project, again)
+    assert [extra.get("surveyed_at") for extra in _carried_extras(again)] == [stored]
+
+
+def _rewrite(path, sql, params=()):
+    """Change a feature table's attributes as another tool would: through SQLite.
+
+    GDAL's R-tree triggers name spatial functions plain sqlite3 does not have,
+    so they are stood in for. The geometry is not touched, so they are never
+    asked anything that matters.
+    """
+    import sqlite3
+    from contextlib import closing
+
+    with closing(sqlite3.connect(path)) as conn:
+        conn.create_function("ST_IsEmpty", 1, lambda geom: 0)
+        for name in ("ST_MinX", "ST_MaxX", "ST_MinY", "ST_MaxY"):
+            conn.create_function(name, 1, lambda geom: 0.0)
+        conn.execute(sql, params)
+        conn.commit()
+
+
+@pytest.mark.parametrize("text", [
+    "2026-01-02 03:04:05",          # a space, no milliseconds, no zone
+    "2026-01-02T03:04:05+02:00",    # an offset and no milliseconds
+    "2026-01-02T03:04:05Z",
+    "next Tuesday",                 # QGIS reads NULL, and NULL was dropped
+])
+def test_date_time_text_another_tool_stored_reaches_the_next_bundle_unchanged(
+        tmp_path, target_project, text):
+    """The text a DATETIME column holds is carried, not QGIS's reading of it.
+
+    Before, the value was read as a QDateTime and formatted again: the first
+    three came back as ``2026-01-02T03:04:05.000`` with or without a ``Z``, and
+    the fourth, which QGIS cannot read as a date at all, was dropped.
+    """
+    from qgis.PyQt.QtCore import Qt
+
+    when = QDateTime.fromString("2026-01-02T03:04:05.678Z", Qt.DateFormat.ISODateWithMs)
+    bundle = _foreign_bundle(tmp_path, extra_fields=("surveyed_at:datetime",),
+                             values={"surveyed_at": when})
+    _rewrite(bundle, 'UPDATE "Joint Closures" SET surveyed_at = ?', (text,))
+
+    assert InterchangeBundleReader(target_project).read(bundle).ok
+    again = str(tmp_path / "again.gpkg")
+    assert _export_again(target_project, again)
+    assert [extra.get("surveyed_at") for extra in _carried_extras(again)] == [text]
+
+
+def test_a_whole_unsupported_feature_keeps_its_date_time_text(tmp_path, target_project):
+    import sqlite3
+    from contextlib import closing
+
+    from qgis.PyQt.QtCore import Qt
+
+    when = QDateTime.fromString("2026-01-02T03:04:05.678Z", Qt.DateFormat.ISODateWithMs)
+    bundle = _foreign_bundle(tmp_path, extra_fields=("surveyed_at:datetime",),
+                             values={"surveyed_at": when})
+    _rewrite(bundle, 'UPDATE "Joint Closures" SET fq_type = ?, surveyed_at = ?',
+             ("acme.splitter", "2026-01-02 03:04:05"))
+
+    assert InterchangeBundleReader(target_project).read(bundle).ok
+    # An export needs a FiberQ layer; the bundle brought only the splitter.
+    poles = _bundle_layer("Poles", ("fiberq_uuid:string(64)",))
+    target_project.addMapLayer(poles)
+    again = str(tmp_path / "again.gpkg")
+    assert _export_again(target_project, again)
+    with closing(sqlite3.connect(again)) as conn:
+        payloads = [json.loads(row[0]) for row in conn.execute(
+            "SELECT payload_json FROM fq_extension WHERE kind = 'unsupported_feature'")]
+    assert [p["attributes"]["surveyed_at"] for p in payloads] == ["2026-01-02 03:04:05"]
+
+
+def _export_again(project, path):
+    layers = [lyr for lyr in project.mapLayers().values() if isinstance(lyr, QgsVectorLayer)]
+    return InterchangeBundleWriter(project).write(path, layers=layers).ok
+
+
+def _carried_extras(path):
+    """The re-exported closures' ``fq_extra_json``, as plain dicts.
+
+    Plain data on purpose: a failing assertion keeps its frame's locals alive
+    until the session ends, and an OGR layer that outlives QgsApplication takes
+    the interpreter down with it (exit 139, measured on 3.44). The failure has to
+    be reported, not crash the run.
+    """
+    out = QgsVectorLayer(f"{path}|layername=Joint Closures", "check", "ogr")
+    try:
+        return [json.loads(str(f.attribute("fq_extra_json")))
+                for f in out.getFeatures() if f.attribute("fq_extra_json")]
+    finally:
+        del out
+
+
 def test_extras_from_a_newer_version_are_re_emitted(tmp_path, target_project):
     """Characterisation, and the plan's first "limit" -- which turned out not to
-    be one.
+    be one for feature columns. It was one for side-car tables: a column a
+    newer version adds there was dropped on export until FiberQ 1.6.0
+    (tests/test_interchange_sidecar_kept.py).
 
     Measured against the parent commit: this already worked.
     ``_load_passthrough`` collects the stored ``feature_attributes`` rows and

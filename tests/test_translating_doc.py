@@ -70,3 +70,54 @@ def test_a_volunteer_can_reach_the_guide_from_the_issue_template():
     assert "## Translations" in contributing
     assert "docs/TRANSLATING.md" in contributing, (
         "CONTRIBUTING.md no longer links the step-by-step guide")
+
+
+def _compile_recipe():
+    """The shell recipe of ``make i18n-compile``, as one string."""
+    lines = (REPO / "Makefile").read_text(encoding="utf-8").splitlines()
+    start = lines.index("i18n-compile:")
+    recipe = []
+    for line in lines[start + 1:]:
+        if not line.startswith("\t"):
+            break
+        recipe.append(line)
+    return "\n".join(recipe)
+
+
+def test_the_build_ships_only_finished_translations():
+    """The guide tells a volunteer that an entry still marked unfinished is not
+    shipped. Plain lrelease compiles those too, so the promise holds only while
+    the build passes -nounfinished."""
+    recipe = _compile_recipe()
+    invocation = [line for line in recipe.splitlines() if line.strip().startswith('"$$lr"')]
+    assert invocation, "i18n-compile no longer runs the lrelease it found"
+    assert all("-nounfinished" in line for line in invocation), invocation
+
+
+def test_an_unfinished_draft_does_not_reach_the_compiled_catalogue(tmp_path):
+    """The flag does what the guide says, with whichever lrelease is installed."""
+    import shutil
+    import subprocess
+
+    import pytest
+
+    lrelease = next((shutil.which(name) or name for name in (
+        "lrelease", "lrelease-qt6", "lrelease6", "lrelease-qt5",
+        "/usr/lib/qt6/bin/lrelease", "/usr/lib/qt5/bin/lrelease")
+        if shutil.which(name) or pathlib.Path(name).is_file()), None)
+    if lrelease is None:
+        pytest.skip("no lrelease in this environment")
+    source = tmp_path / "fiberq_xx.ts"
+    source.write_text(
+        '<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE TS>\n'
+        '<TS version="2.1" language="fr" sourcelanguage="en"><context><name>FiberQ</name>'
+        '<message><source>Finished</source><translation>Fini</translation></message>'
+        '<message><source>Draft</source>'
+        '<translation type="unfinished">Brouillon</translation></message>'
+        '</context></TS>\n', encoding="utf-8")
+    compiled = tmp_path / "fiberq_xx.qm"
+    subprocess.run([lrelease, "-nounfinished", str(source), "-qm", str(compiled)],
+                   check=True, capture_output=True)
+    text = compiled.read_bytes().decode("utf-16-be", "ignore")
+    assert "Fini" in text
+    assert "Brouillon" not in text
