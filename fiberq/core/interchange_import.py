@@ -1082,7 +1082,24 @@ class InterchangeBundleReader:
         into a *different* file -- which is what a round trip through this plugin
         produces -- needs somewhere to hold them in between, and the project is
         the only place there is.
+
+        The colour standard and catalogue are kept the same way, in a row of
+        their own. They are keys the format owns, not another tool's, but they
+        say what the bundle's fibre colours are, and the next bundle carries
+        them while the project has no colour catalogue of its own. They were
+        dropped, and that bundle said TIA-598-C. Unclaimed (WP3 code, found in
+        the v1.6.0 review).
         """
+        colour = {key: metadata[key] for key in ic.COLOUR_METADATA_KEYS if metadata.get(key)}
+        if colour:
+            passthrough.append({
+                "uuid": ic.stable_uuid("metadata", "colour"),
+                "owner_uuid": None,
+                "kind": ic.EXTENSION_KIND_METADATA,
+                "namespace": ic.EXTENSION_NAMESPACE,
+                "payload_json": json.dumps(colour, ensure_ascii=False, sort_keys=True),
+                "produced_by": self._producer(result),
+            })
         foreign = ic.foreign_keys(metadata)
         if not foreign:
             return

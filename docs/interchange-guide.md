@@ -232,6 +232,11 @@ You are told it is there:
 It is never reclassified to the nearest familiar type. Filing a splitter as an
 OTB cannot be undone, and the import would look like it worked.
 
+**The colour standard a bundle was drawn to** travels with it. A bundle made to a
+standard other than TIA-598-C, with the catalogue that defines it, comes back out
+of FiberQ saying so for as long as your project has no colour catalogue of its own.
+Once it has one, the project's own standard is written instead.
+
 **An attribute with no column** is kept against the feature it belongs to and
 restored on export, an empty value included. So is a `cable_uuid` on an element
 FiberQ does not link to a cable, and a slack loop's or fibre break's `cable_uuid`

@@ -61,6 +61,18 @@ OWNED_METADATA_KEYS = frozenset({
     "latent_elements_json", "plugin_settings_json",
 })
 
+#: Keys FiberQ's project export to GeoPackage writes (core/export_manager.py)
+#: and a bundle never does. Found in a bundle, they are left over from an
+#: earlier export to the same file and describe the project as it was then, so
+#: the bundle writer removes them rather than carrying them forward.
+RETIRED_METADATA_KEYS = ("project_version", "export_timestamp", "relations_json",
+                         "latent_elements_json", "plugin_settings_json")
+
+#: The fibre colour standard a bundle's colours are derived from (section 6.2),
+#: and the catalogue that defines it when it is not a published one. They
+#: travel together.
+COLOUR_METADATA_KEYS = ("color_standard", "color_catalog_json")
+
 #: Canonical FiberQ layer name -> (fq_type, placement).
 #:
 #: Placement is an attribute rather than a family of type codes (spec 6.1), so

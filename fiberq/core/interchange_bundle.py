@@ -1189,6 +1189,23 @@ class InterchangeBundleWriter:
 
         ``written`` is FiberQ's record of the relation and cable rows it wrote
         (``interchange.WRITTEN_KEY``); without one, an older record is removed.
+
+        Unclaimed (WP3 code, found in the v1.6.0 review), two keys FiberQ owns
+        but does not always produce:
+
+        - the colour standard. Every export wrote the project's own, or
+          TIA-598-C when it has no colour catalogue, so a bundle drawn to
+          another standard -- imported into a new project, or exported over --
+          left saying TIA-598-C beside the catalogue that defines the other
+          one. While the project has no catalogue, the standard and the
+          catalogue it arrived with are carried on together. Once it has one,
+          its own is written and the arrived catalogue, which describes another
+          standard, is removed;
+        - keys that only describe an earlier write to the same file. The five
+          of RETIRED_METADATA_KEYS are FiberQ's project export's (a bundle
+          written over one kept its relations_json, which disagrees with the
+          bundle's own fq_relation from then on), and ``profile`` is the
+          GeoJSON profile's, which sets it again when it applies.
         """
         crs = self.project.crs()
         epsg = ""
@@ -1196,18 +1213,24 @@ class InterchangeBundleWriter:
             authid = crs.authid()
             epsg = authid.split(":")[-1] if ":" in authid else authid
 
+        own = self._project_color_standard()
         produced = ic.build_metadata(
             schema_version=SCHEMA_VERSION,
             crs_epsg=epsg,
             plugin_version=self.plugin_version,
             timestamp=timestamp,
-            color_standard=self._color_standard(),
+            color_standard=own or (existing or {}).get("color_standard") or "TIA-598-C",
         )
         if written:
             produced[ic.WRITTEN_KEY] = json.dumps(written, sort_keys=True)
         merged = ic.merge_metadata(existing, produced)
+        stale = set(ic.RETIRED_METADATA_KEYS) | {"profile"}
+        if own:
+            stale.add("color_catalog_json")
         if not written:
-            merged.pop(ic.WRITTEN_KEY, None)
+            stale.add(ic.WRITTEN_KEY)
+        for key in stale:
+            merged.pop(key, None)
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS _fiberq_metadata "
@@ -1223,8 +1246,8 @@ class InterchangeBundleWriter:
         except sqlite3.Error as e:
             logger.debug(f"Could not register _fiberq_metadata in gpkg_contents: {e}")
 
-        if not written:
-            conn.execute("DELETE FROM _fiberq_metadata WHERE key = ?", (ic.WRITTEN_KEY,))
+        for key in sorted(stale):
+            conn.execute("DELETE FROM _fiberq_metadata WHERE key = ?", (key,))
         for key, value in merged.items():
             conn.execute(
                 "INSERT OR REPLACE INTO _fiberq_metadata (key, value) VALUES (?, ?)",
@@ -1232,20 +1255,22 @@ class InterchangeBundleWriter:
             )
         return merged
 
-    def _color_standard(self):
+    def _project_color_standard(self):
+        """The name of the project's own colour catalogue, or ``None`` when it has none."""
         raw = self.project.readEntry("StuboviPlugin", "ColorCatalogs/catalogs_v1", "")[0]
         if not raw:
-            return "TIA-598-C"
+            return None
         try:
-            catalogs = json.loads(raw).get("catalogs", []) or []
+            data = json.loads(raw)
         except ValueError as e:
             logger.debug(f"Colour catalogue entry is not valid JSON: {e}")
-            return "TIA-598-C"
-        for catalog in catalogs:
-            name = (catalog.get("name") or "").strip()
+            return None
+        catalogs = data.get("catalogs") if isinstance(data, dict) else None
+        for catalog in catalogs if isinstance(catalogs, list) else []:
+            name = str(catalog.get("name") or "").strip() if isinstance(catalog, dict) else ""
             if name:
                 return name
-        return "TIA-598-C"
+        return None
 
     # -- the whole thing ---------------------------------------------------
 

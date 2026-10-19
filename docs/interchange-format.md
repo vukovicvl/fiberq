@@ -438,6 +438,15 @@ longer has. It records which ones in the metadata key `fiberq_written`, its
 own (§7), tied to that export's `produced_at`: a copy of the key in another file is
 not trusted. Every other row stays.
 
+`color_standard` is the name of the project's own colour catalogue when it has one, and
+an arrived `color_catalog_json` is then removed, since it defines another standard.
+While the project has none, the standard and catalogue the bundle arrived with are
+written again, or TIA-598-C when it arrived with none. Writing over a file also removes
+keys that describe only an earlier write to it: `profile`, which only the GeoJSON
+profile sets, and the five FiberQ's project export to GeoPackage writes
+(`relations_json`, `latent_elements_json`, `plugin_settings_json`, `export_timestamp`,
+`project_version`).
+
 In FiberQ, `is_latent` 0 means an element the pass-through dialog lists along the cable
 but the user has not marked as passed through, which is every element's default there.
 It does not record that the cable terminates at that element.
