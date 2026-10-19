@@ -296,23 +296,26 @@ def test_no_warning_on_a_project_that_was_never_saved(plugin, clean_project):
     assert plugin.iface.bar.warnings == []
 
 
-def test_a_bundle_export_from_a_qgis4_project_removes_nothing_fiberq_wrote(
-        qgis4_project, tmp_path, monkeypatch):
+def test_a_qgis4_project_in_qgis3_never_writes_over_a_bundle(qgis4_project, tmp_path, monkeypatch):
     """U8's export guard, which the plan named and v1.5.0 never had.
 
-    Read in QGIS 3, a QGIS 4 project has no relations, so an export over a
-    bundle used to remove every relation row FiberQ had written there: the
-    project "no longer has" them. Driven as though QGIS 3 were running, like
-    the warning above, so it is checked on both legs.
+    Read in QGIS 3, a QGIS 4 project has no relations, no pass-through elements
+    and nothing an import kept for other tools. Written over a bundle, that
+    removed every relation row FiberQ had written there -- the project "no
+    longer has" them -- and the attributes its features carried in
+    fq_extra_json. The export over an existing bundle is refused now, and the
+    file is left byte for byte as it was; a new file is written, with a warning.
+    Driven as though QGIS 3 were running, like the warning above, so it is
+    checked on both legs.
     """
+    import hashlib
     import json
-    import sqlite3
     import uuid
-    from contextlib import closing
 
     from qgis.core import (QgsFeature, QgsGeometry, QgsPointXY, QgsProject,
                            QgsVectorLayer)
 
+    from fiberq.core import interchange as ic
     from fiberq.core.interchange_bundle import InterchangeBundleWriter
     from fiberq.utils import compat
 
@@ -331,22 +334,26 @@ def test_a_bundle_export_from_a_qgis4_project_removes_nothing_fiberq_wrote(
     bundle = str(tmp_path / "b.gpkg")
     source = QgsProject()
     layer, fid = cables(source)
-    relation = str(uuid.uuid4())
     source.writeEntry("StuboviPlugin", "Relacije/relations_v1", json.dumps({"relations": [
-        {"id": relation, "name": "R", "cables": [{"layer_id": layer.id(), "fid": fid}]}]}))
-    assert InterchangeBundleWriter(source).write(bundle, layers=[layer]).ok
+        {"id": str(uuid.uuid4()), "name": "R",
+         "cables": [{"layer_id": layer.id(), "fid": fid}]}]}))
+    kept = [{"kind": ic.EXTENSION_KIND_ATTRIBUTES, "namespace": ic.EXTENSION_NAMESPACE,
+             "owner_uuid": "u-cable-1", "payload_json": json.dumps({"acme_colour": "teal"})}]
+    assert InterchangeBundleWriter(source).write(bundle, layers=[layer], passthrough=kept).ok
     source.clear()
+    before = hashlib.sha256(open(bundle, "rb").read()).hexdigest()
 
     monkeypatch.setattr(compat, "QGIS_VERSION_INT", 34400)   # pretend 3.44
     newer = QgsProject()
     assert newer.read(qgis4_project)
     layer, _fid = cables(newer)
-    result = InterchangeBundleWriter(newer).write(bundle, layers=[layer])
+    over = InterchangeBundleWriter(newer).write(bundle, layers=[layer])
+    fresh = InterchangeBundleWriter(newer).write(str(tmp_path / "fresh.gpkg"), layers=[layer])
     newer.clear()
 
-    assert result.ok, result.errors
-    with closing(sqlite3.connect(bundle)) as conn:
-        assert (relation,) in conn.execute("SELECT uuid FROM fq_relation").fetchall()
-        assert conn.execute("SELECT COUNT(*) FROM fq_relation_member WHERE relation_uuid = ?",
-                            (relation,)).fetchone() == (1,)
-    assert any("saved in QGIS 4" in warning for warning in result.warnings), result.warnings
+    assert not over.ok
+    assert any("saved in QGIS 4" in error for error in over.errors), over.errors
+    assert hashlib.sha256(open(bundle, "rb").read()).hexdigest() == before, (
+        "a refused export changed the bundle")
+    assert fresh.ok, fresh.errors
+    assert any("saved in QGIS 4" in warning for warning in fresh.warnings), fresh.warnings

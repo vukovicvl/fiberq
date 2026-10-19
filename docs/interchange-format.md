@@ -434,13 +434,16 @@ or an element the plugin does not draw is kept as it came and written out again.
 
 An export over a bundle the plugin wrote before replaces the `fq_relation`,
 `fq_relation_member` and `fq_path_stop` rows of the relations and cables it writes,
-and removes the rows it wrote there last time for a relation or a cable the project no
-longer has, and the feature tables it wrote for a layer this export does not include.
-In the GeoJSON profile it removes the files it wrote last time in the same way. It
-records what it wrote in the metadata key `fiberq_written`, its own (§7), tied to that
-export's `produced_at`: a copy of the key in another file is not trusted. Every other
-row, table and file stays, and a bundle written before FiberQ 1.6.0, which has no such
-record, loses nothing.
+whichever tool added them, and removes the rows of a relation or a cable it wrote there
+last time that the project no longer has, and the feature table it wrote for a layer
+the project no longer has. While a FiberQ layer of the project cannot be read (QGIS
+cannot open its data, or its coordinates do not convert to EPSG:4326), or the
+project's relations or pass-through elements cannot be read, it removes none of those
+rows, and that layer's table stays. In the GeoJSON profile it removes the files it
+wrote last time in the same way. It records what it wrote in the metadata key
+`fiberq_written`, its own (§7), tied to that export's `produced_at`: a copy of the key
+in another file is not trusted. Every other row, table and file stays, and a bundle
+written before FiberQ 1.6.0, which has no such record, loses nothing.
 
 `color_standard` is the name of the project's own colour catalogue when it has one, and
 an arrived `color_catalog_json` is then removed, since it defines another standard.

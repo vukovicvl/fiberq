@@ -224,12 +224,19 @@ def _with_extra(values, record, extra_columns):
     return list(values) + [ic.from_json_safe(extra.get(c)) for c in extra_columns]
 
 
+#: The lists FiberQ's record of a write holds; each is a list of names or uuids.
+_RECORD_LISTS = ("fq_relation", "fq_path_stop", "features", "files")
+
+
 def _previously_written(file_metadata):
-    """The relation and cable uuids FiberQ's last export wrote rows for in this file.
+    """What FiberQ's last export wrote in this file: relation and cable uuids, tables, files.
 
     Only while the record's ``produced_at`` is the file's own: another tool that
     copied the key into a different file, as section 7 asks, does not make it
-    true there, and a malformed record is ignored rather than trusted.
+    true there. A malformed record -- not JSON, not an object, or a list of
+    anything but names -- is ignored rather than trusted; a list of lists used
+    to raise mid-export, after the feature tables were written, on every export
+    over that file.
     """
     raw = (file_metadata or {}).get(ic.WRITTEN_KEY)
     if not raw:
@@ -241,6 +248,11 @@ def _previously_written(file_metadata):
         return {}
     if not isinstance(record, dict) or record.get("produced_at") != file_metadata.get("produced_at"):
         return {}
+    for key in _RECORD_LISTS:
+        value = record.get(key, [])
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            logger.debug(f"FiberQ's record of written rows has a malformed {key}; nothing removed")
+            return {}
     return record
 
 
@@ -258,7 +270,8 @@ def _old_tables_removed(gpkg_path, previous, current):
     try:
         with closing(sqlite3.connect(gpkg_path)) as conn:
             present = {str(name).lower(): name for (name,) in conn.execute(
-                "SELECT table_name FROM gpkg_contents WHERE data_type = 'features'")}
+                "SELECT table_name FROM gpkg_contents "
+                "WHERE data_type IN ('features', 'attributes')")}
     except (sqlite3.Error, sqlite3.Warning) as e:
         return [], [f"{', '.join(stale)} ({e})"]
     removed, failed = [], []
@@ -442,6 +455,8 @@ class InterchangeBundleWriter:
         self._unreprojectable = 0
         self._uncarried = 0
         self._carried_columns = []
+        self._unreadable_entries = []
+        self._unavailable = []
 
     @staticmethod
     def _detect_version():
@@ -469,9 +484,13 @@ class InterchangeBundleWriter:
             ]
         mapped, skipped = [], []
         seen = set()
+        self._unavailable = []
         for lyr in layers:
             if not isinstance(lyr, QgsVectorLayer) or not lyr.isValid():
-                skipped.append((getattr(lyr, "name", lambda: "?")(), "not a valid vector layer"))
+                name = getattr(lyr, "name", lambda: "?")()
+                skipped.append((name, "not a valid vector layer"))
+                if isinstance(lyr, QgsVectorLayer) and canonical_layer_name(name):
+                    self._unavailable.append(name)
                 continue
             if lyr.id() in seen:
                 continue
@@ -577,6 +596,22 @@ class InterchangeBundleWriter:
         if refused:
             return None
         return [entry for entry in mapped if entry[0].id() in chosen]
+
+    def _project_canonicals(self, mapped):
+        """Every FiberQ layer name the project has, open or not, and those being written.
+
+        A table or file in an existing bundle is FiberQ's to remove only when the
+        project no longer has its layer at all. One whose data QGIS cannot open
+        today (a database that is down, a file that moved) or that could not be
+        placed in EPSG:4326 is still the project's: its old table stays.
+        """
+        names = {canonical for _lyr, canonical, _t, _p in mapped}
+        for layer in self.project.mapLayers().values():
+            if isinstance(layer, QgsVectorLayer):
+                canonical = canonical_layer_name(layer.name())
+                if canonical:
+                    names.add(canonical)
+        return names
 
     def _entries_unreadable(self):
         """True when this QGIS cannot read the project entries a newer one saved (U8)."""
@@ -957,7 +992,7 @@ class InterchangeBundleWriter:
                 # is still readable by any SQLite client, so this is not fatal.
                 logger.debug(f"Could not register {name} in gpkg_contents: {e}")
 
-    def _write_relations(self, conn, index):
+    def _write_relations(self, conn, index, additive=False):
         """Emit the project's cable relations as uuid-keyed side-car rows.
 
         Returns ``(relations, members written, unresolved, uuids written)``.
@@ -976,10 +1011,10 @@ class InterchangeBundleWriter:
         raw = self.project.readEntry("StuboviPlugin", "Relacije/relations_v1", "")[0]
         if not raw:
             return 0, 0, 0, set()
-        try:
-            data = json.loads(raw)
-        except ValueError as e:
-            logger.debug(f"Relations entry is not valid JSON, not exported: {e}")
+        data = _parsed(raw)
+        if not isinstance(data, dict):
+            # Not "no relations": what FiberQ wrote for them before is kept.
+            self._unreadable_entries.append("relations")
             return 0, 0, 0, set()
         relations_list = [r for r in data.get("relations", []) or [] if isinstance(r, dict)]
 
@@ -1005,8 +1040,12 @@ class InterchangeBundleWriter:
             relations += 1
             written.add(relation_uuid)
             # This relation's rows are rewritten from the project: a member
-            # removed since the last export over this file must not stay.
-            conn.execute("DELETE FROM fq_relation_member WHERE relation_uuid = ?", (relation_uuid,))
+            # removed since the last export over this file must not stay. Not
+            # while a FiberQ layer cannot be read (``additive``): a member on it
+            # cannot be written again, and would be lost rather than kept.
+            if not additive:
+                conn.execute("DELETE FROM fq_relation_member WHERE relation_uuid = ?",
+                             (relation_uuid,))
             members = [m for m in relation.get("cables", []) or [] if isinstance(m, dict)]
             orders = [_order(m, None) for m in members]
             following = max((o for o in orders if o is not None), default=-1) + 1
@@ -1038,7 +1077,7 @@ class InterchangeBundleWriter:
                 written_members += 1
         return relations, written_members, unresolved, written
 
-    def _write_path_stops(self, conn, index):
+    def _write_path_stops(self, conn, index, additive=False):
         """Emit the elements each cable passes as ``fq_path_stop`` rows, in order.
 
         Read through :func:`interchange.latent_records`, which knows both shapes
@@ -1055,10 +1094,9 @@ class InterchangeBundleWriter:
         raw = self.project.readEntry("StuboviPlugin", "LatentElements/latent_v1", "")[0]
         if not raw:
             return 0, 0, set()
-        try:
-            data = json.loads(raw)
-        except ValueError as e:
-            logger.debug(f"Latent elements entry is not valid JSON, not exported: {e}")
+        data = _parsed(raw)
+        if not isinstance(data, dict):
+            self._unreadable_entries.append("pass-through elements")
             return 0, 0, set()
 
         records = ic.latent_records(data)
@@ -1089,8 +1127,10 @@ class InterchangeBundleWriter:
                 unresolved += len(elements)
                 continue
             # This cable's stops are rewritten from the project, so one removed
-            # since the last export over this file goes.
-            conn.execute("DELETE FROM fq_path_stop WHERE cable_uuid = ?", (cable_uuid,))
+            # since the last export over this file goes -- unless a FiberQ layer
+            # cannot be read, as for relation members above.
+            if not additive:
+                conn.execute("DELETE FROM fq_path_stop WHERE cable_uuid = ?", (cable_uuid,))
             cables.add(cable_uuid)
             for position, element in enumerate(elements):
                 element_uuid = self._resolve(index, element.get("layer_id"), element.get("fid"))
@@ -1386,6 +1426,16 @@ class InterchangeBundleWriter:
                 "convert to EPSG:4326.")
             result.errors.append(QCoreApplication.translate('FiberQInterchange', src))
             return result
+        if not self._unreadable_project_may_write(gpkg_path, result):
+            return result
+        if self._unavailable:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "Not exported, because QGIS cannot open their data: {layers}. Their tables in "
+                "an existing bundle are kept as they were.")
+            result.warnings.append(safe_format(
+                QCoreApplication.translate('FiberQInterchange', src), src,
+                layers=", ".join(repr(name) for name in self._unavailable)))
 
         # Read first: a half-written file no longer knows what another tool put
         # in it, and this is the merge's only chance to find out.
@@ -1414,6 +1464,7 @@ class InterchangeBundleWriter:
         self._unreprojectable = 0
         self._uncarried = 0
         self._carried_columns = []
+        self._unreadable_entries = []
 
         file_exists = os.path.exists(gpkg_path)
         for lyr, canonical, fq_type, placement in mapped:
@@ -1462,32 +1513,23 @@ class InterchangeBundleWriter:
         if not result.layers:
             return result
 
-        # U8. A project QGIS 4 saved reads, in QGIS 3, as one with no relations,
-        # no pass-through elements and nothing kept from an import (see
-        # core/project_compat.py). Exported like any other, it would also remove
-        # from an existing bundle every row FiberQ wrote there for them, because
-        # the project "no longer has" them. Here nothing is removed for them,
-        # and the user is told what the bundle lacks.
-        unreadable = self._entries_unreadable()
-        if unreadable:
-            src = QT_TRANSLATE_NOOP(
-                'FiberQInterchange',
-                "This project was saved in QGIS 4, and QGIS 3 cannot read its relations, "
-                "pass-through elements or what an import kept for other tools, so this bundle "
-                "has none of them. What FiberQ wrote for them in an existing bundle is kept.")
-            result.warnings.append(QCoreApplication.translate('FiberQInterchange', src))
-
         # Unclaimed (WP3 code, found in the v1.6.0 review). An export over a
         # bundle left the tables it had written there last time for a layer the
-        # project no longer has -- removed, renamed, or left out above -- so a
-        # reader went on finding manholes that had been deleted, presented as
-        # this export's. The record of what FiberQ wrote says which tables are
-        # its own; nobody else's is touched, and a bundle with no record (one
-        # written before 1.6.0) loses nothing.
+        # project no longer has -- removed or renamed -- so a reader went on
+        # finding manholes that had been deleted, presented as this export's.
+        # The record of what FiberQ wrote says which tables are its own; nobody
+        # else's is touched, and a bundle with no record (one written before
+        # 1.6.0) loses nothing. A layer the project still has, open or not,
+        # keeps its table.
         previous = _previously_written(file_metadata)
-        removed, failed = _old_tables_removed(
-            gpkg_path, previous, {canonical for _lyr, canonical, _t, _p in mapped})
+        present = self._project_canonicals(mapped)
+        removed, failed = _old_tables_removed(gpkg_path, previous, present)
         self._report_removed(result, removed, failed, "bundle")
+        # The project's relations and pass-through elements can only be judged
+        # complete when every FiberQ layer was read: a member or a stop on a
+        # feature of a layer QGIS could not open is not resolvable today, and
+        # that is not the same as the project no longer having it.
+        incomplete = bool(present - {canonical for _lyr, canonical, _t, _p in mapped})
 
         timestamp = datetime.now(timezone.utc).isoformat()
         conn = None
@@ -1495,15 +1537,24 @@ class InterchangeBundleWriter:
             conn = sqlite3.connect(gpkg_path)
             self._create_sidecar(conn, timestamp)
 
-            relations, members, unresolved_members, relation_uuids = self._write_relations(conn, index)
-            stops, unresolved_stops, cable_uuids = self._write_path_stops(conn, index)
-            if unreadable:
-                # Kept, and still FiberQ's: a later export from a project that
-                # can read its entries decides about them.
+            relations, members, unresolved_members, relation_uuids = self._write_relations(
+                conn, index, additive=incomplete)
+            stops, unresolved_stops, cable_uuids = self._write_path_stops(
+                conn, index, additive=incomplete)
+            # Kept, and still FiberQ's, when what the project holds could not be
+            # read in full: a later export that can read it decides about them.
+            if incomplete or "relations" in self._unreadable_entries:
                 relation_uuids = set(relation_uuids) | set(previous.get("fq_relation") or [])
+            if incomplete or "pass-through elements" in self._unreadable_entries:
                 cable_uuids = set(cable_uuids) | set(previous.get("fq_path_stop") or [])
-            else:
-                _forget(conn, previous, relation_uuids, cable_uuids)
+            _forget(conn, previous, relation_uuids, cable_uuids)
+            for entry in self._unreadable_entries:
+                src = QT_TRANSLATE_NOOP(
+                    'FiberQInterchange',
+                    "The project's {entry} could not be read, so none were exported; what FiberQ "
+                    "wrote for them in an existing bundle is kept.")
+                result.warnings.append(safe_format(
+                    QCoreApplication.translate('FiberQInterchange', src), src, entry=entry))
             written_extensions = self._write_passthrough(conn, extensions)
             result.sidecar_rows = {
                 "fq_relation": relations,
@@ -1525,8 +1576,14 @@ class InterchangeBundleWriter:
 
             result.preserved = ic.foreign_keys(existing)
             # A table this export could not write, or could not remove, stays
-            # FiberQ's: it is in the file, and the next export decides again.
-            features = set(result.layers) | (set(previous.get("features") or []) - set(removed))
+            # FiberQ's while it is in the file, and the next export decides again.
+            # One that is gone is forgotten: another tool may make a table of
+            # that name later, and it is not FiberQ's.
+            in_file = {str(name).lower() for (name,) in conn.execute(
+                "SELECT table_name FROM gpkg_contents")}
+            features = set(result.layers) | {
+                name for name in previous.get("features") or []
+                if name.lower() in in_file and name not in removed}
             written = {"produced_at": timestamp, "fq_relation": sorted(relation_uuids),
                        "fq_path_stop": sorted(cable_uuids), "features": sorted(features)}
             result.metadata = self._write_metadata(conn, existing, timestamp, written)
@@ -1572,6 +1629,9 @@ class InterchangeBundleWriter:
         folder_metadata, problem = self._folder_metadata(directory)
         if problem:
             result.warnings.append(problem)
+        bundle_there = os.path.isfile(os.path.join(directory, "_fiberq_metadata.json"))
+        if not self._unreadable_project_may_write(directory, result, bundle_there):
+            return result
 
         workdir = tempfile.mkdtemp(prefix="fiberq-bundle-")
         try:
@@ -1604,16 +1664,18 @@ class InterchangeBundleWriter:
                     result.errors.append(error)
 
             # As for the GeoPackage profile's tables: the files FiberQ wrote here
-            # last time for an element type this export has no layer for.
+            # last time for an element type the project no longer has a layer for.
             previous = _previously_written(folder_metadata)
-            removed, failed = _old_files_removed(directory, previous, files)
+            removed, failed = _old_files_removed(
+                directory, previous, files | self._stems(self._project_canonicals([])))
             self._report_removed(result, removed, failed, "folder")
 
             dropped = sum(staged.sidecar_rows.values())
             metadata = dict(staged.metadata)
             # The staged record is of a GeoPackage's tables and side-car rows;
-            # this profile records its files.
-            kept = (set(previous.get("files") or []) - set(removed)) | files
+            # this profile records its files, while they are there.
+            kept = files | {name for name in previous.get("files") or []
+                            if name not in removed and self._file_there(directory, name)}
             metadata[ic.WRITTEN_KEY] = json.dumps(
                 {"produced_at": metadata.get("produced_at"), "files": sorted(kept)},
                 sort_keys=True)
@@ -1637,6 +1699,56 @@ class InterchangeBundleWriter:
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
         return result
+
+    @staticmethod
+    def _file_there(directory, name):
+        """True when a recorded GeoJSON file name is a bare name and the file is there."""
+        if not _geojson_name(name):
+            return False
+        return os.path.isfile(os.path.join(directory, name))
+
+    @staticmethod
+    def _stems(canonicals):
+        """The GeoJSON file names the profile writes for these canonical layer names."""
+        stems = set()
+        for canonical in canonicals:
+            entry = ic.type_for_layer(canonical)
+            if entry is not None:
+                fq_type, placement = entry
+                stems.add(f"{fq_type}.{placement}.geojson" if placement else f"{fq_type}.geojson")
+        return stems
+
+    def _unreadable_project_may_write(self, target, result, exists=None):
+        """U8: False, with an error, when a QGIS 4 project read in QGIS 3 would write over a bundle.
+
+        QGIS 3 cannot read a single project entry QGIS 4 saved (see
+        core/project_compat.py), so the project reads as one with no relations,
+        no pass-through elements and nothing an import kept for other tools.
+        Written over an existing bundle, that removed what FiberQ had written
+        there for them and the attributes its features carried in
+        fq_extra_json. Nothing is written over one now; a new bundle is
+        written, and says what it lacks.
+        """
+        if not self._entries_unreadable():
+            return True
+        if exists is None:
+            exists = os.path.exists(target)
+        if exists:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "Nothing was exported: this project was saved in QGIS 4, and QGIS 3 cannot read "
+                "its relations, pass-through elements or what an import kept for other tools. "
+                "Written over the existing bundle, that would remove them from it. Export from "
+                "QGIS 4, or to a new file.")
+            result.errors.append(QCoreApplication.translate('FiberQInterchange', src))
+            return False
+        src = QT_TRANSLATE_NOOP(
+            'FiberQInterchange',
+            "This project was saved in QGIS 4, and QGIS 3 cannot read its relations, "
+            "pass-through elements or what an import kept for other tools, so this bundle has "
+            "none of them. Export from QGIS 4 for a complete bundle.")
+        result.warnings.append(QCoreApplication.translate('FiberQInterchange', src))
+        return True
 
     @staticmethod
     def _report_removed(result, removed, failed, where):

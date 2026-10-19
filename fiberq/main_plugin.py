@@ -680,10 +680,11 @@ class FiberQPlugin:
             question = QT_TRANSLATE_NOOP(
                 'FiberQPlugin', 'The folder {name} already exists. Write the bundle into it?')
             detail = self.tr(
-                'The GeoJSON files FiberQ wrote there are replaced, or removed for an '
-                'element type this export has no layer for, and _fiberq_metadata.json is '
-                'rewritten, keeping the keys other tools stored in it. Other files in the '
-                'folder are left alone.')
+                'The GeoJSON files of the element types this export writes are replaced, '
+                'whoever wrote them, and one FiberQ wrote there before for an element type '
+                'the project no longer has is removed. _fiberq_metadata.json is rewritten, '
+                'keeping the keys other tools stored in it. Other files in the folder are '
+                'left alone.')
         else:
             target = path if path.lower().endswith('.gpkg') else path + '.gpkg'
             if not os.path.isfile(target):
@@ -691,11 +692,12 @@ class FiberQPlugin:
             question = QT_TRANSLATE_NOOP(
                 'FiberQPlugin', 'Replace the bundle {name}?')
             detail = self.tr(
-                'Its FiberQ layers, relations and pass-through elements are rewritten '
-                'from this project, and what FiberQ wrote there for a layer, relation or '
-                'cable the project no longer has is removed. Anything another tool stored '
-                'in the file -- its own metadata keys, tables and rows -- is kept, not '
-                'discarded.')
+                "Its FiberQ layers, and the members and pass-through elements of FiberQ's "
+                'own relations and cables, are rewritten from this project -- import the '
+                'file first to keep what another tool added to them -- and what FiberQ wrote '
+                'there for a layer, relation or cable the project no longer has is removed. '
+                'Everything else another tool stored in the file -- its own metadata keys, '
+                'tables and rows -- is kept.')
 
         confirm = QMessageBox(self.iface.mainWindow())
         confirm.setIcon(QMessageBox.Icon.Question)

@@ -54,12 +54,17 @@ out, and why, goes only to FiberQ's debug log, which is off by default: start QG
 with the environment variable `FIBERQ_LOG_LEVEL=DEBUG` and they are listed in
 **View → Panels → Log Messages**, on the *FiberQ* tab.
 
-Two things are reported in a warning as well, by name:
+Three things are reported in a warning as well, by name:
 
+- **A FiberQ layer whose data QGIS cannot open** is left out, and its table in an
+  existing bundle is kept as it was. So are the relations and pass-through
+  elements FiberQ wrote there before: with a layer unread, the project cannot
+  say which of them it no longer has.
 - **A layer whose coordinates cannot be converted to EPSG:4326** is left out: it
   has no CRS, or one with no transformation to EPSG:4326, and its features would
   otherwise land in the bundle unmoved, in the wrong place. Set the CRS its
-  coordinates are in (**Layer Properties → Source**) and export again.
+  coordinates are in (**Layer Properties → Source**) and export again. Its table
+  in an existing bundle is kept, as for a layer QGIS cannot open.
 - **A column whose name FiberQ writes** is moved. A GeoPackage compares column names
   regardless of letter case, so a column of your own called `Name` or `name`
   beside FiberQ's `naziv`, say, cannot be a column of the bundle. Its values go
@@ -80,25 +85,32 @@ exactly as it was.
 If the file already exists, FiberQ asks first, and says what replacing it does:
 
 > **Replace the bundle design.gpkg?**
-> Its FiberQ layers, relations and pass-through elements are rewritten from this
-> project, and what FiberQ wrote there for a layer, relation or cable the project
-> no longer has is removed. Anything another tool stored in the file — its own
-> metadata keys, tables and rows — is kept, not discarded.
+> Its FiberQ layers, and the members and pass-through elements of FiberQ's own
+> relations and cables, are rewritten from this project — import the file first
+> to keep what another tool added to them — and what FiberQ wrote there for a
+> layer, relation or cable the project no longer has is removed. Everything else
+> another tool stored in the file — its own metadata keys, tables and rows — is
+> kept.
 
 That is the honest description of the operation, and it is worth reading once.
 Exporting over a file a colleague's tool also writes to does **not** wipe their
-half of it. FiberQ's own half is brought up to date: the rows it wrote there last
-time for a relation, a relation member or a pass-through element the project no
-longer has are removed, and so is the table it wrote for a layer this export does
-not include — one you deleted, renamed, or that was left out above. A warning
-names each table removed. A bundle written before FiberQ 1.6.0 does not record
-which tables FiberQ wrote, so the first export over it removes none.
+half of it, with one exception: what their tool added to FiberQ's own relations
+and cables (a member, a stop) is rewritten from your project with the rest of
+them. Import their file first, and it is in your project and in the next bundle.
+FiberQ's own half is brought up to date: the rows it wrote there last time for a
+relation, a relation member or a pass-through element the project no longer has
+are removed, and so is the table it wrote for a layer the project no longer has —
+one you deleted or renamed. A layer still in the project keeps its table even
+when it could not be exported this time, as above. A warning names each table
+removed. A bundle written before FiberQ 1.6.0 does not record which tables
+FiberQ wrote, so the first export over it removes none.
 
 **A project saved in QGIS 4 and opened in QGIS 3** cannot have its relations,
 pass-through elements or what an import kept read there (QGIS 3 does not
-understand how QGIS 4 stores them). A bundle exported from it has none of them,
-and the export says so. Over an existing bundle, what FiberQ wrote for them before
-is kept rather than removed. Export from QGIS 4 for a complete bundle.
+understand how QGIS 4 stores them). A bundle exported from it to a new file has
+none of them, and the export says so. Over an existing bundle the export is
+refused, because it would remove them from it. Export from QGIS 4 for a complete
+bundle.
 
 ---
 
