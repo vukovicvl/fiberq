@@ -1058,10 +1058,12 @@ def _check_crs_consistency(ctx):
                     rule_id="E1", severity=Severity.WARNING, category=_CAT_DOMAIN,
                     message=_safe_format(
                         QCoreApplication.translate('ValidationRules', src), src, crs=authid),
+                    # The tolerance is not adjustable from the interface, so the
+                    # hint names the one fix a user can actually make.
                     fix_hint=QCoreApplication.translate(
                         'ValidationRules',
-                        "Reproject to a national grid, or lower the tolerance to "
-                        "a fraction of a degree."),
+                        "Reproject the project and its layers to a projected CRS, "
+                        "ideally your national grid."),
                     layer_name=layer.name(), layer_id=layer.id(),
                     details={"crs": authid, "geographic": True},
                 )
