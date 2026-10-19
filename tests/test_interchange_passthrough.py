@@ -73,7 +73,7 @@ LON, LAT = 21.90, 43.32
 
 @pytest.mark.parametrize("value, expected", [
     (QDate(2025, 3, 17), "2025-03-17"),
-    (QDateTime(QDate(2025, 3, 17), QTime(14, 5, 6)), "2025-03-17T14:05:06"),
+    (QDateTime(QDate(2025, 3, 17), QTime(14, 5, 6)), "2025-03-17T14:05:06.000"),
     (QTime(14, 5, 6), "14:05:06"),
 ])
 def test_a_qt_date_becomes_iso_text(value, expected):
@@ -86,6 +86,30 @@ def test_a_qt_date_becomes_iso_text(value, expected):
     """
     assert ic.json_safe(value) == expected
     json.dumps(ic.json_safe(value))
+
+
+@pytest.mark.parametrize("text, expected", [
+    # What a GeoPackage DATETIME holds, and QGIS reads back as a UTC QDateTime.
+    ("2026-01-02T03:04:05.678Z", "2026-01-02T03:04:05.678Z"),
+    ("2026-01-02T03:04:05.000Z", "2026-01-02T03:04:05.000Z"),
+    # Another tool may store an offset; it is kept, not converted.
+    ("2026-01-02T03:04:05.678+02:00", "2026-01-02T03:04:05.678+02:00"),
+    ("2026-01-02T03:04:05.678-05:30", "2026-01-02T03:04:05.678-05:30"),
+])
+def test_a_date_time_keeps_its_milliseconds_and_its_offset(text, expected):
+    """The WP3 known limit "a date or time value is re-emitted as text rather
+    than byte-for-byte". The pattern this replaced, ``yyyy-MM-ddTHH:mm:ss``,
+    gave ``2026-01-02T03:04:05`` for all four: the milliseconds and the time's
+    relation to UTC were gone."""
+    from qgis.PyQt.QtCore import Qt
+
+    value = QDateTime.fromString(text, Qt.DateFormat.ISODateWithMs)
+    assert value.isValid(), text
+    assert ic.json_safe(value) == expected
+
+
+def test_a_time_keeps_its_milliseconds():
+    assert ic.json_safe(QTime(14, 5, 6, 789)) == "14:05:06.789"
 
 
 def test_a_null_date_is_absent_rather_than_empty():
@@ -249,6 +273,50 @@ def test_a_date_survives_a_whole_round_trip(tmp_path, target_project):
     carried = [str(f.attribute("fq_extra_json") or "") for f in out.getFeatures()]
     assert any("2026-01-02" in text for text in carried), (
         f"the date did not reach the next bundle: {carried}")
+
+
+def test_a_geopackage_date_time_reaches_the_next_bundle_as_it_was_stored(
+        tmp_path, target_project):
+    """Byte for byte: the text the next bundle carries is the text the first
+    one stored. 3.44 and 4.2 store ``...05.678Z``; 3.22's writer stores
+    ``...05.000`` without the Z, and that is what comes back there."""
+    import sqlite3
+    from contextlib import closing
+
+    from qgis.PyQt.QtCore import Qt
+
+    when = QDateTime.fromString("2026-01-02T03:04:05.678Z", Qt.DateFormat.ISODateWithMs)
+    bundle = _foreign_bundle(tmp_path, extra_fields=("surveyed_at:datetime",),
+                             values={"surveyed_at": when})
+    with closing(sqlite3.connect(bundle)) as conn:
+        stored = conn.execute('SELECT surveyed_at FROM "Joint Closures"').fetchone()[0]
+    assert stored and stored.startswith("2026-01-02T03:04:05."), stored
+
+    assert InterchangeBundleReader(target_project).read(bundle).ok
+    again = str(tmp_path / "again.gpkg")
+    assert _export_again(target_project, again)
+    assert [extra.get("surveyed_at") for extra in _carried_extras(again)] == [stored]
+
+
+def _export_again(project, path):
+    layers = [lyr for lyr in project.mapLayers().values() if isinstance(lyr, QgsVectorLayer)]
+    return InterchangeBundleWriter(project).write(path, layers=layers).ok
+
+
+def _carried_extras(path):
+    """The re-exported closures' ``fq_extra_json``, as plain dicts.
+
+    Plain data on purpose: a failing assertion keeps its frame's locals alive
+    until the session ends, and an OGR layer that outlives QgsApplication takes
+    the interpreter down with it (exit 139, measured on 3.44). The failure has to
+    be reported, not crash the run.
+    """
+    out = QgsVectorLayer(f"{path}|layername=Joint Closures", "check", "ogr")
+    try:
+        return [json.loads(str(f.attribute("fq_extra_json")))
+                for f in out.getFeatures() if f.attribute("fq_extra_json")]
+    finally:
+        del out
 
 
 def test_extras_from_a_newer_version_are_re_emitted(tmp_path, target_project):

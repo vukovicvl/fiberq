@@ -436,6 +436,11 @@ outdoors and on a pole, and for `to` in a joint closure (§6.1). Any other place
 reads is kept in the feature's `fq_extra_json`, so the feature's `placement` column is
 empty when the plugin writes it again.
 
+JSON has no date type, so a date or time the plugin carries in `fq_extra_json` or in an
+`fq_extension` payload travels as ISO 8601 text. From FiberQ 1.6.0 that text keeps the
+milliseconds and the offset from UTC (`2026-01-02T03:04:05.678Z`), so it is the text a
+GeoPackage `DATETIME` column stored.
+
 ## 13. Corrections to this text
 
 The format has not changed since `1.0` was published. Until FiberQ 1.6.0, this document

@@ -212,11 +212,42 @@ def can_read_format_version(value) -> bool:
 #: ``TypeError: argument 1 has unexpected type 'int'``. A format string works
 #: identically on 3.22.16, 3.40.15 and 4.2.3 and produces the same text the
 #: enum does.
+#:
+#: A date-time keeps its milliseconds and its offset from UTC (see
+#: :func:`_utc_suffix`): a GeoPackage DATETIME is stored as
+#: ``YYYY-MM-DDTHH:MM:SS.SSSZ``, and QGIS reads it back as a UTC QDateTime with
+#: the milliseconds, so this reproduces the stored text exactly. The pattern
+#: ``yyyy-MM-ddTHH:mm:ss`` it replaces dropped both -- the WP3 known limit "a
+#: date or time value is re-emitted as text rather than byte-for-byte".
 _ISO_PATTERNS = {
     "QDate": "yyyy-MM-dd",
     "QTime": "HH:mm:ss",
-    "QDateTime": "yyyy-MM-ddTHH:mm:ss",
+    "QDateTime": "yyyy-MM-ddTHH:mm:ss.zzz",
 }
+
+#: Qt.TimeSpec values, compared as integers: PyQt5 hands back an int-like enum,
+#: PyQt6 a Python enum whose ``.value`` is the same number.
+_LOCAL_TIME, _UTC = 0, 1
+
+
+def _utc_suffix(value):
+    """``Z``, ``+HH:MM`` or nothing: where a QDateTime stands against UTC.
+
+    A local time carries no offset of its own, so it gets none -- inventing one
+    from the machine running the export would move the value. A UTC time is
+    ``Z``, as GeoPackage writes it; any other (an offset or a time zone) is
+    written as the offset it has at that instant.
+    """
+    spec = value.timeSpec()
+    spec = int(getattr(spec, "value", spec))
+    if spec == _LOCAL_TIME:
+        return ""
+    if spec == _UTC:
+        return "Z"
+    seconds = int(value.offsetFromUtc())
+    sign = "-" if seconds < 0 else "+"
+    hours, minutes = divmod(abs(seconds) // 60, 60)
+    return f"{sign}{hours:02d}:{minutes:02d}"
 
 
 def json_safe(value):
@@ -256,7 +287,13 @@ def json_safe(value):
     if pattern is not None:
         # A null QDate formats as the empty string, which would be
         # indistinguishable from a real empty value. None says "absent".
-        return None if value.isNull() else value.toString(pattern)
+        if value.isNull():
+            return None
+        if name == "QDateTime":
+            return value.toString(pattern) + _utc_suffix(value)
+        if name == "QTime" and value.msec():
+            return value.toString("HH:mm:ss.zzz")
+        return value.toString(pattern)
 
     if isinstance(value, (list, tuple)):
         return [json_safe(item) for item in value]
