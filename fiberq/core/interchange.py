@@ -407,3 +407,53 @@ def build_metadata(schema_version: str, crs_epsg, plugin_version: str,
         "crs_epsg": str(crs_epsg) if crs_epsg not in (None, "") else "",
         "color_standard": color_standard or "TIA-598-C",
     }
+
+
+# ---------------------------------------------------------------------------
+# Pass-through elements: the two shapes the project entry comes in
+# ---------------------------------------------------------------------------
+
+def _distance_along(element) -> float:
+    try:
+        return float(element.get("m") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def latent_records(data) -> Dict[str, list]:
+    """Every cable's pass-through elements, in order, whichever shape stores them.
+
+    ``StuboviPlugin/LatentElements/latent_v1`` comes in two shapes, and until
+    FiberQ 1.6.0 each side read only one of them -- so a bundle export of a
+    project edited in the dialog raised, and the dialog raised on a project a
+    bundle import had written:
+
+    * the dialog's (``dialogs/latent_dialog.py``, the only place a user edits
+      them): ``{"cables": {"<layer_id>:<fid>": {"elements": [{"layer_id",
+      "fid", "naziv", "latent"}, ...]}}}`` -- every element found along the
+      cable, in order, each marked latent (passed through) or not;
+    * the one a v1.5.0 bundle import wrote: ``{"cables": {"<layer_id>:<fid>":
+      [{"layer_id", "fid", "m"}, ...]}}``, ordered by ``m``, all latent.
+
+    Answers ``{cable key: [element dicts]}``: copies, each with ``latent`` as a
+    bool and every other key it had. Anything malformed is skipped rather than
+    raised, because this runs inside an export.
+    """
+    cables = data.get("cables") if isinstance(data, dict) else None
+    if not isinstance(cables, dict):
+        return {}
+    out = {}
+    for key, record in cables.items():
+        if isinstance(record, dict):
+            elements = [dict(e) for e in record.get("elements") or [] if isinstance(e, dict)]
+            for element in elements:
+                element["latent"] = bool(element.get("latent"))
+        elif isinstance(record, list):
+            elements = sorted((dict(e) for e in record if isinstance(e, dict)),
+                              key=_distance_along)
+            for element in elements:
+                element["latent"] = bool(element.get("latent", True))
+        else:
+            continue
+        out[str(key)] = elements
+    return out

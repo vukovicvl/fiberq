@@ -61,6 +61,14 @@ def _text_field(name):
         return QgsField(name, QVariant.String)
 
 
+def _order(record, position):
+    """A row's own ``order_index`` when an import recorded one, else its position."""
+    try:
+        return int(record["order_index"])
+    except (KeyError, TypeError, ValueError):
+        return position
+
+
 def _stored_index(source_fields, stored):
     """Index of a stored field, under its modern name or a pre-1.0 one.
 
@@ -514,11 +522,18 @@ class InterchangeBundleWriter:
         return relations, written_members, unresolved
 
     def _write_path_stops(self, conn, index):
-        """Emit latent elements as ``fq_path_stop`` rows, ordered along the cable.
+        """Emit the elements each cable passes as ``fq_path_stop`` rows, in order.
 
-        The plugin stores these as ``{"cables": {"<layer_id>:<fid>": [{...,
-        "m": <distance along cable>}]}}``. ``m`` is what gives the stops their
-        order; it is a project-local measurement and does not itself travel.
+        Read through :func:`interchange.latent_records`, which knows both shapes
+        the project entry comes in: the pass-through dialog's, where every
+        element found along the cable is listed in order and marked latent or
+        not, and the list a v1.5.0 bundle import wrote, ordered by ``m``. This
+        used to read only the second, and raised on the first -- so a bundle
+        export of any project edited in FiberQ's own dialog failed outright.
+
+        ``is_latent`` is the element's mark (spec section 6.4: 1 for an element
+        the cable merely passes through). ``order_index`` is the element's own,
+        when an import recorded one, else its position.
         """
         raw = self.project.readEntry("StuboviPlugin", "LatentElements/latent_v1", "")[0]
         if not raw:
@@ -530,25 +545,22 @@ class InterchangeBundleWriter:
             return 0, 0
 
         written = unresolved = 0
-        for key, elements in (data.get("cables", {}) or {}).items():
-            layer_id, _, fid = str(key).rpartition(":")
+        for key, elements in ic.latent_records(data).items():
+            layer_id, _, fid = key.rpartition(":")
             cable_uuid = self._resolve(index, layer_id, fid)
             if cable_uuid is None:
-                unresolved += len(elements or [])
+                unresolved += len(elements)
                 continue
-            ordered = sorted(
-                elements or [],
-                key=lambda e: float(e.get("m") or 0.0),
-            )
-            for order, element in enumerate(ordered):
+            for position, element in enumerate(elements):
                 element_uuid = self._resolve(index, element.get("layer_id"), element.get("fid"))
                 if element_uuid is None:
                     unresolved += 1
                     continue
                 conn.execute(
                     "INSERT OR REPLACE INTO fq_path_stop "
-                    "(cable_uuid, element_uuid, order_index, is_latent) VALUES (?, ?, ?, 1)",
-                    (cable_uuid, element_uuid, order),
+                    "(cable_uuid, element_uuid, order_index, is_latent) VALUES (?, ?, ?, ?)",
+                    (cable_uuid, element_uuid, _order(element, position),
+                     1 if element["latent"] else 0),
                 )
                 written += 1
         return written, unresolved
