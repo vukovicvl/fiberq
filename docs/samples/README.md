@@ -20,7 +20,7 @@ generated — see [Regenerating](#regenerating).
 2. **Plugins → FiberQ → Validate project**.
 3. You should see **4 errors, 9 warnings and 1 info** — matching
    [`demo-validation.html`](demo-validation.html).
-4. Click any row to jump to it on the map.
+4. Double-click any row to jump to it on the map.
 5. **Export report…** to write your own copy.
 
 Then try **Plugins → FiberQ → Recalculate lengths…** and validate again: the D3
@@ -82,13 +82,13 @@ the published sample.
 | **B4** | Error | Two poles share one `fiberq_uuid` — the signature of a copied and pasted feature. |
 | **E2** | Error | The fifth pole has no geometry, as an attribute-table edit leaves it. |
 | **A1** | Warning | Aerial cable `AC-2` is stranded — neither end reaches anything. *One fault, two findings: a cable has two ends.* Plus `AC-3`'s near miss below, so A1 reports three endpoints in total. |
-| **A3** | Warning | The fourth pole sits 45 m off the network, attached to nothing. |
-| **B3** | Warning | Slack `SL-3` names a cable that exists but sits 80 m from it — a stale link, as if the cable were re-routed afterwards. |
+| **A3** | Warning | The fourth pole sits 45 map units (about 33 m on the ground) off the network, attached to nothing. |
+| **B3** | Warning | Slack `SL-3` names a cable that exists but sits 80 map units (about 58 m) from it — a stale link, as if the cable were re-routed afterwards. |
 | **C1** | Warning | Underground cable `UC-2` has no cable type recorded. |
 | **D1** | Warning | `UC-2` is in state `Someday`, which is not a permitted value. |
 | **D2** | Warning | `AC-2` claims 9999 fibres. |
 | **D3** | Warning | Route `R-3` stores 210 m against a real ground length of ~145 m. |
-| **A2** | Info | Aerial cable `AC-3` starts 7 m from the third pole: outside the 5 m tolerance, close enough that it was plainly meant to connect. A2 refines A1 rather than replacing it, so that endpoint appears in both. |
+| **A2** | Info | Aerial cable `AC-3` starts 7 map units (about 5 m on the ground) from the third pole: outside the 5-unit tolerance (about 3.6 m here), close enough that it was plainly meant to connect. A2 refines A1 rather than replacing it, so that endpoint appears in both. |
 
 **Two rules are not demonstrated here, and cannot be.** Each needs the project
 itself to be wrong in a way that would invalidate everything else:
@@ -105,7 +105,9 @@ lands exactly on `JC-2` rather than dangling.
 
 `R-3`'s stale length is the interesting one. It is not a projection artefact — the
 demo stores it as if someone moved a vertex and nothing recomputed the attribute.
-That is a real failure mode, and D3 is how you catch it.
+From FiberQ 1.6.0 a vertex moved with the plugin running takes its length with it,
+but a line edited in another program, or before 1.6.0, still arrives like this. That
+is a real failure mode, and D3 is how you catch it.
 
 ## Regenerating
 

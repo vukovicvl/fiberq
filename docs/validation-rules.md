@@ -44,8 +44,9 @@ Whether the network actually joins up. These rules use a snap tolerance (default
 > **A note on tolerance and your CRS.** The tolerance is in *map units*. In a
 > national grid those are true metres. In Web Mercator (EPSG:3857) they are not:
 > distances there are inflated by 1/cos(latitude), so a 5-unit tolerance behaves
-> like 3.6 m in Serbia and 3.2 m in the Netherlands — the A-rules are stricter
-> than the number suggests. Raise the tolerance if that matters to you. (E1
+> like 3.5 m in Serbia and about 3.1 m in the Netherlands — the A-rules are stricter
+> than the number suggests, and the tolerance cannot be changed from the QGIS
+> interface in this release (see [Configuring the rules](#configuring-the-rules)). (E1
 > reports a *geographic* CRS, where the effect is drastic enough to break the
 > rules outright; it does not report Web Mercator, where they still work.)
 
@@ -209,13 +210,25 @@ it look like.
 
 **Two things make a stored length wrong:**
 
-1. **The geometry was edited afterwards.** Move a vertex and the attribute keeps its
-   old value.
+1. **The geometry was edited where FiberQ could not follow.** From FiberQ 1.6.0 a
+   stored length follows the edit: move a vertex of a saved line and the length
+   moves with it, in the same undo step, and other edits made in QGIS (a line not
+   saved yet, a split, a tool such as Route correction) are re-measured when the
+   layer is saved. A line edited in another program, with the plugin switched off,
+   or in a FiberQ older than 1.6.0 keeps its old value. In a project that uses
+   buffered transaction groups (Project Properties → Data Sources) there is no
+   re-measuring at save, so FiberQ follows only the vertices you move on lines
+   already saved: a feature you add there (including the new part of a split, or
+   a paste), or a line that a tool such as Route correction changes, keeps its old
+   value.
 2. **It was written in map units.** Versions of FiberQ before 1.4.0 stored the
-   projected length for routes and cables. In Web Mercator that is inflated by
-   1/cos(latitude) — about 41% at Serbian latitudes, 55% in the Netherlands, 86% in
-   Finland. A bill of materials built on those numbers over-orders by the same
-   margin.
+   projected length for routes and cables. Until 1.6.0, **Cut infrastructure** did
+   the same for the two parts it creates whenever the project had no ellipsoid set;
+   it also wrote the metres into `duzina_km` and reset `total_len_m` to the bare
+   length, dropping the slack. In Web Mercator a projected length is inflated by
+   1/cos(latitude) — about 41% at Serbian latitudes, 62% in the Netherlands, 100% in
+   southern Finland. A bill of materials built on those numbers over-orders by the
+   same margin.
 
 **What to do:** run **Plugins → FiberQ → Recalculate lengths…**. It shows you
 exactly what will change before writing anything, and rewrites `duzina`,
@@ -245,7 +258,13 @@ feature you draw is placed in an undefined system.
 
 This is not hypothetical: opening a project saved by QGIS 4.2 in QGIS 3.40 drops
 the project CRS (QGIS reports "could not be completely loaded"), while the layers
-keep theirs. Set it again in **Project → Properties → CRS** before drawing.
+keep theirs. QGIS 3 cannot read the project's other FiberQ settings either —
+relations, colour catalogues, latent elements, picture and drawing links, the
+auto-save path, and data an interchange import carried for other tools (the
+passthrough store) — and from 1.6.0 FiberQ warns on open that saving the project there
+removes them permanently. Reopen it in QGIS 4 to keep working. If you only need to
+look at it in QGIS 3, set the CRS in **Project → Properties → CRS** for that session
+and do not save.
 
 A **geographic CRS** (EPSG:4326 and friends) is flagged separately. Lengths are
 fine there — they are measured on the ellipsoid — but the A-rule tolerance is in
@@ -256,10 +275,11 @@ means roughly 550 km, and A1/A2/A3 stop meaning anything.
 ideally your national grid rather than Web Mercator.
 
 ### E2 — Geometries are present and well formed
-**Error · every FiberQ layer**
+**Error for a missing or empty geometry, Warning for a malformed one · every FiberQ layer**
 
-Every feature has a geometry, it is not empty, and it is valid — no
-self-intersections, no single-point lines, no null shapes.
+Every feature has a geometry and it is not empty (an Error otherwise). A line of
+zero length, a single-point line included, or one that crosses itself, and a polygon
+of zero area or with a self-intersecting boundary, are reported as Warnings.
 
 **Typical causes:** an interrupted digitising session; an import that dropped
 geometry; a feature created by an attribute-table edit.
@@ -290,14 +310,18 @@ something on top.
 
 ## Configuring the rules
 
-The snap tolerance and the length-agreement tolerances live in `ValidationConfig`
-and travel with the project. Individual rules can be disabled or have their
-severity overridden.
+Nothing is configurable from the QGIS interface in this release. Every run uses the
+defaults: a snap tolerance of 5 map units for the A-rules and B3, and a stored
+length agrees with the geometry when it is within 1 % of it or 0.5 m, whichever is
+larger. (The engine's Python API, `ValidationConfig`, accepts other tolerances,
+disabled rules and severity overrides, but the plugin neither stores them in the
+project nor offers them in a dialog.)
 
 A rule that fails to run is reported as such rather than passing silently — if a
-rule crashes on your data, the run continues and the panel tells you which rule
-gave up. Please [open an issue](https://github.com/vukovicvl/fiberq/issues) if you
-see one.
+rule crashes on your data, the run continues and the panel says how many rules gave
+up. Which ones, and why, are in **View → Panels → Log Messages**, on the *FiberQ*
+tab, and in the HTML and JSON reports. Please
+[open an issue](https://github.com/vukovicvl/fiberq/issues) if you see one.
 
 ---
 

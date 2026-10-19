@@ -29,7 +29,7 @@ The **FiberQ validation** panel opens with the results, and the QGIS message bar
 gives you the headline:
 
 ```
-FiberQ: 4 errors, 9 warnings, 1 info
+FiberQ: 4 error(s), 9 warning(s), 1 info
 ```
 
 A clean project says so, and says what it looked at:
@@ -42,9 +42,11 @@ That second half matters. "No issues" from fourteen rules across fifteen layers
 and "no issues" because there was nothing to check read identically otherwise —
 and only one of them is good news.
 
-> **If a rule crashes on your data**, the run continues and the panel tells you
-> which rule gave up. A run where every rule failed is never reported as a clean
-> project. Please [open an issue](https://github.com/vukovicvl/fiberq/issues) if
+> **If a rule crashes on your data**, the run continues and the panel says how
+> many rules gave up. Which ones, and why, are in **View → Panels → Log Messages**,
+> on the *FiberQ* tab, and in the reports: under "Rules that failed to run" in the
+> HTML, and as `run.rule_errors` in the JSON. A run where every rule failed is never
+> reported as a clean project. Please [open an issue](https://github.com/vukovicvl/fiberq/issues) if
 > you see one.
 
 ## 2. Reading the panel
@@ -62,11 +64,12 @@ warnings; **the number that matters at handover is the error count**.
 
 What you can do from the panel:
 
-- **Click any row** (or double-click) to centre the map on that finding. Layer-level
+- **Double-click any row** (or select it and press Enter — Cmd+O on macOS) to centre
+  the map on that finding. Layer-level
   findings — a missing CRS, a layer with no identity field — have no coordinate to
   jump to, so nothing moves.
-- **Filter** by severity, layer or rule. The combos only offer values that are
-  actually present, so an empty filter list means an empty category.
+- **Filter** by severity, layer or rule. The Layer and Rule combos only offer values
+  that are actually present; Severity always lists all three.
 - **Sort** any column. Severity sorts by rank rather than by its translated
   label, and Feature sorts numerically, so 9 comes before 10.
 - **Hover a message** to see the fix hint where a rule has one.
@@ -97,10 +100,10 @@ Full detail, including causes and what to do about each finding, is in the
 | *Attributes* | D2 | Warning | Numbers are physically plausible |
 | | D3 | Warning | Stored lengths agree with the drawn geometry |
 | **E** | E1 | Warning | The project has a CRS, and layers share it |
-| *Geometry* | E2 | Error | Geometries present, non-empty and valid |
+| *Geometry* | E2 | Error / Warning | Geometry present and non-empty (Error); lines and polygons well formed (Warning) |
 
 The A-rules use a snap tolerance — "close enough to be the same point" — of
-**5 map units** by default. In a national grid those are true metres. In Web
+**5 map units**, which cannot be changed from the interface in this release. In a national grid those are true metres. In Web
 Mercator they are not, which is one of several reasons to work in your national
 grid where you can; E1 will tell you when the CRS is actively breaking the other
 rules.
@@ -116,16 +119,24 @@ what a design traced over a web basemap really uses — distances are inflated b
 
 | Where | Latitude | Stored length was too long by |
 |---|---|---|
-| Serbia | ≈ 44° | **≈ 41 %** |
-| Netherlands | ≈ 50° | **≈ 55 %** |
-| Finland | ≈ 58° | **≈ 86 %** |
+| Serbia | ≈ 45° | **≈ 41 %** |
+| Netherlands | ≈ 52° | **≈ 62 %** |
+| Southern Finland | ≈ 60° | **≈ 100 %** |
 
 Pipes were already measured correctly. So in the *same project*, a trench and the
 duct inside it could disagree by that margin — and a bill of materials built on
 the cable figure over-ordered by it.
 
-From 1.4.0, every length is measured **on the project ellipsoid**, exactly the
-way the QGIS measure tool does. New features are correct as drawn.
+From 1.4.0, every route, cable and pipe length is measured **on the project
+ellipsoid**, exactly the way the QGIS measure tool does, and new features are
+correct as drawn. (Two exceptions, both when the project has no ellipsoid set: until
+1.6.0, **Cut infrastructure** still wrote map units for the two parts it creates, and
+the **Service Area** tools still store `perim_m` and `area_m2` in map units, which D3
+does not check.) From 1.6.0 lengths
+also stay correct as you edit: move a vertex of a saved line and the stored length
+follows in the same undo step, and other edits are re-measured when you save. Rule
+[D3](validation-rules.md#d3--stored-lengths-agree-with-geometry) lists the edits
+FiberQ cannot follow.
 
 ### Repairing existing features
 
@@ -135,19 +146,18 @@ It is menu-only on purpose: this one rewrites your attributes, so it should be a
 deliberate trip to the menu rather than a click away on the toolbar.
 
 It shows you **exactly what will change before writing anything** — how many
-features, broken down per layer, and the single largest change:
+features, broken down per layer, and the single largest change. On the demo project
+(section 6) it shows:
 
 ```
 Recalculate stored lengths?
 
-  12 feature(s) will have their stored length rewritten from the
+  1 feature(s) will have their stored length rewritten from the
   drawn geometry.
 
-    Routes: 3
-    Underground cables: 6
-    Aerial cables: 3
+    Route: 1
 
-  Largest change: duzina 210.00 -> 145.31 on Routes
+  Largest change: duzina 210.00 -> 144.61 on Route
 ```
 
 Then, and only if you say yes, it rewrites `duzina`, `duzina_m`, `duzina_km` and
@@ -156,8 +166,9 @@ Then, and only if you say yes, it rewrites `duzina`, `duzina_m`, `duzina_km` and
 - **Slack values are read but never changed.** Slack is a deliberate surplus of
   cable, not a measurement of the line on screen, so recomputing it from geometry
   would be wrong.
-- **Layers with unsaved edits are skipped** and named, so nothing collides with an
-  edit session you have open. Save or discard there and run it again.
+- **Layers open for editing are skipped** and named, even with nothing unsaved, so
+  nothing collides with an edit session you have open. Save or discard there, leave
+  edit mode, and run it again.
 - If the panel is already open, validation re-runs afterwards so you can see the
   D3 findings disappear.
 
@@ -171,7 +182,7 @@ Then, and only if you say yes, it rewrites `duzina`, `duzina_m`, `duzina_km` and
 The ellipsoidal one — the one you get after recalculating. It is the distance
 along the ground, which is what you order cable by and what a surveyor would
 find on site. The old figure was the length of the line *as the map projection
-draws it*, which at 44° north is a 41 % exaggeration nobody asked for.
+draws it*, which at 45° north is a 41 % exaggeration nobody asked for.
 
 ## 5. Exporting a report
 
@@ -202,7 +213,7 @@ one planted fault, alongside the report it produces.
 2. **Plugins → FiberQ → Validate project**.
 3. You should see **4 errors, 9 warnings and 1 info**, matching the committed
    `demo-validation.html`.
-4. Click a row to jump to it.
+4. Double-click a row to jump to it.
 5. **Plugins → FiberQ → Recalculate lengths…**, then validate again: the D3
    finding goes away and the warning count drops to 8.
 
@@ -225,8 +236,10 @@ what each planted fault is and why.
 - **Opening a QGIS 4 project in QGIS 3 no longer re-runs the schema migration.**
   QGIS 4 stores project properties in a form QGIS 3 cannot read, so the schema
   marker now falls back to the copy in the GeoPackage. The same QGIS limitation
-  drops the *project* CRS on the way down, which E1 now reports — set it again in
-  **Project → Properties → CRS** before you draw.
+  drops the *project* CRS on the way down, which E1 now reports. From 1.6.0 FiberQ
+  also warns on open that QGIS 3 cannot read the project's other FiberQ settings and
+  that saving it there removes them permanently: reopen such a project in QGIS 4
+  rather than resetting the CRS and saving it in QGIS 3.
 - **The plugin is now translatable.** The English source catalogue and the tooling
   are in place; see [`docs/TRANSLATING.md`](TRANSLATING.md), which assumes no
   programming, Git or terminal experience. Partial translations are welcome and

@@ -11,8 +11,8 @@ There are two paths, and the split between them is not an implementation detail
 
 **1. The live path** (``geometryChanged``) writes while the user's own edit
 command is still open, so the attribute write joins that command. One gesture
-stays one undo step: Ctrl+Z puts the vertex *and* the length back, Ctrl+Shift+Z
-brings both forward. It runs only under :func:`_user_edit_command_is_open` and
+stays one undo step: QGIS's Undo puts the vertex *and* the length back, and its
+Redo brings both forward. It runs only under :func:`_user_edit_command_is_open` and
 only for features that already exist.
 
 **2. The commit sweep** (``beforeCommitChanges``) re-measures every geometry in
