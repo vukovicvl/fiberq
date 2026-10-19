@@ -159,13 +159,15 @@ Your data model does not change to accommodate a file.
 FiberQ: Imported design.gpkg — 23 layer(s), 46 feature(s)
 ```
 
-Three behaviours are worth knowing before you rely on it.
+Four behaviours are worth knowing before you rely on it.
 
 **Importing the same bundle twice changes nothing.** Identity is permanent, so a
 feature whose `fiberq_uuid` is already in the project is the *same* feature, not
 a second one. The second import reports `0 feature(s), 46 already in the
 project, left as they are` — it does not duplicate your design, and it does not
-disturb the relationships the first one restored.
+disturb the relationships the first one restored. The one exception is a feature
+with no `fiberq_uuid` at all: nothing says it is one already imported, so it is
+added again, and the import warns about it every time.
 
 **Into an empty project, the authoring CRS comes back.** Import into a project
 you have just created and it switches to the CRS the design was drawn in. Import
@@ -180,8 +182,10 @@ its own members, and a cable the project already records pass-through elements f
 keeps its own; a warning counts those where the bundle's differ. A relation or a
 cable the project does not have yet gets the bundle's, with the relation's own
 identity, category, member roles and order. A feature already in the project is not
-updated either. To see a colleague's version exactly as they sent it,
-import it into a new project.
+updated either — not even a slack loop's cable, which stays as you left it. A row
+of a side-car table FiberQ keeps for other tools, with the key of a row an earlier
+import kept, does not replace it; a warning counts those that differ. To see a
+colleague's version exactly as they sent it, import it into a new project.
 
 **A bundle it cannot read is refused before anything is imported.** A bundle
 declaring a newer *major* version of the format stops with an explanation.

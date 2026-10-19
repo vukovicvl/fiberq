@@ -475,7 +475,9 @@ A side-car table this version does not define, and a column a defined table lack
 carried too, as rule 4 asks of a 1.0 reader: re-created as they arrived, with their
 columns, their declared types (an unusual type is written as the plain type with the
 same SQLite affinity) and their primary key. Rows that several imported bundles brought
-for the same table are kept side by side. Views, indexes and triggers are not carried.
+for the same table are kept side by side; for one key the row an earlier import brought
+is kept, and a later bundle's different one is reported. Text that is not UTF-8 is kept
+byte for byte. Views, indexes and triggers are not carried.
 
 The plugin has separate layers per placement only for `otb` and `to` mounted indoors,
 outdoors and on a pole, and for `to` in a joint closure (§6.1). Any other placement it

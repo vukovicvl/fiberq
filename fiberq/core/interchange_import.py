@@ -32,7 +32,6 @@ import os
 import re
 import sqlite3
 from contextlib import closing
-from uuid import uuid4
 
 from qgis.core import (
     QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsFeature, QgsFeatureRequest,
@@ -82,13 +81,33 @@ _MEMBER_COLUMNS = frozenset({"relation_uuid", "member_uuid", "order_index", "rol
 _PATH_STOP_COLUMNS = frozenset({"cable_uuid", "element_uuid", "order_index", "is_latent"})
 
 
-def _same_unidentified(relation, name, wanted, member_uuids):
-    """Whether a relation with no identity of its own has this name and these members."""
-    if relation.get("uuid") or ic.is_uuid(relation.get("id")):
-        return False
-    if (relation.get("name") or "") != (name or ""):
-        return False
-    return member_uuids(relation) == wanted
+def _unidentified(relations):
+    """The project's relations with no identity of its own (a FiberQ 1.5.0 import's), by name."""
+    by_name = {}
+    for relation in relations:
+        if relation.get("uuid") or ic.is_uuid(relation.get("id")):
+            continue
+        by_name.setdefault(relation.get("name") or "", []).append(relation)
+    return by_name
+
+
+def _is_null(value):
+    """True for a NULL, however this QGIS hands one back: None (QGIS 4) or a NULL QVariant (QGIS 3)."""
+    return value is None or (hasattr(value, "isNull") and value.isNull())
+
+
+def _decoded(raw):
+    """SQLite text as str, or as the bytes it is when it is not valid UTF-8.
+
+    Another tool's text in another encoding -- "Optički" in CP1250 -- made
+    sqlite3 raise "Could not decode to UTF-8" in the middle of an import, after
+    features were added and before the store was saved, so all it kept was
+    lost. As bytes it is kept byte for byte, and goes back as it came.
+    """
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return bytes(raw)
 
 
 def _flag(value):
@@ -286,19 +305,24 @@ class InterchangeBundleReader:
         formatted again: 3.22 reads a GeoPackage DATETIME as local time and
         loses its Z, and every version rewrites text another tool stored in a
         form of its own (``2026-01-02 03:04:05``). The text the column holds is
-        read here instead and carried as it is. Keyed by the table's integer
-        primary key, which is the feature id OGR reports.
+        read here instead and carried as it is. Keyed by the feature id OGR
+        reports: the table's integer primary key, or its rowid when it has none
+        -- a REAL or TEXT key is not the feature id, and keyed by it the dates
+        went to the wrong features.
         """
         try:
             with closing(sqlite3.connect(gpkg_path)) as conn:
+                conn.text_factory = _decoded
                 # The name came from gpkg_contents and passed _openable (no
                 # control character), and is quoted, so it is only ever a name.
                 info = list(conn.execute(f"PRAGMA table_info({_quoted(table)})"))  # nosec B608
-                keys = [row[1] for row in info if row[5]]
+                keys = [row for row in info if row[5]]
                 dated = [row[1] for row in info if str(row[2] or "").upper() in ("DATE", "DATETIME")]
-                if len(keys) != 1 or not dated:
+                if not dated:
                     return {}
-                columns = ", ".join(_quoted(name) for name in [keys[0]] + dated)
+                integer_key = len(keys) == 1 and "INT" in str(keys[0][2] or "").upper()
+                key = _quoted(keys[0][1]) if integer_key else "rowid"
+                columns = ", ".join([key] + [_quoted(name) for name in dated])
                 rows = conn.execute(f"SELECT {columns} FROM {_quoted(table)}").fetchall()  # nosec B608
         except (sqlite3.Error, sqlite3.Warning) as e:
             logger.debug(f"Stored dates of '{table}' not read; QGIS's reading is carried: {e}")
@@ -318,6 +342,7 @@ class InterchangeBundleReader:
         if name is None:
             return []
         with closing(sqlite3.connect(gpkg_path)) as conn:
+            conn.text_factory = _decoded
             # Validated and present: see _table_info.
             cursor = conn.execute(f'SELECT * FROM "{name}"')  # nosec B608
             columns = [d[0] for d in cursor.description]
@@ -410,8 +435,10 @@ class InterchangeBundleReader:
                     # came back NULL, and was dropped with the rest.
                     extras[name] = stored_text[name]
                     continue
-                # An empty string is a value, not an absence: only NULL is left out.
-                if value is not None:
+                # An empty string is a value, not an absence: only NULL is left
+                # out -- None on QGIS 4, a NULL QVariant on QGIS 3, which was
+                # kept as {"column": null} for every feature.
+                if not _is_null(value):
                     # U19 / FU-9. The raw provider value used to go in here and
                     # json.dumps raised on a QDate, ending the import halfway.
                     extras[name] = ic.json_safe(value)
@@ -486,8 +513,10 @@ class InterchangeBundleReader:
         # Per import: each feature's cable_uuid by its identity, the identities
         # this import added, and the slack/break rows with no cable_uuid column.
         self._cable_refs, self._added, self._detached = {}, set(), {}
-        # Features whose attributes with no FiberQ column could not be kept.
-        self._unusable_extras = self._unkeyed_extras = 0
+        # Features whose attributes with no FiberQ column could not be kept,
+        # and features with no identity at all.
+        self._unusable_extras = self._unkeyed_extras = self._unidentified = 0
+        self._extras_rows = None
 
         for table in self._feature_tables(gpkg_path, result):
             self._import_table(
@@ -615,6 +644,8 @@ class InterchangeBundleReader:
                 elif not identity and (extras or self._text(feature, "fq_extra_json")):
                     # Kept against the feature's identity, and it has none.
                     self._unkeyed_extras += 1
+                if not identity:
+                    self._unidentified += 1
 
             if unreprojectable:
                 result.warnings.append(
@@ -654,14 +685,27 @@ class InterchangeBundleReader:
             result.warnings.append(safe_format(
                 QCoreApplication.translate('FiberQInterchange', src), src,
                 count=self._unusable_extras))
-        if self._unkeyed_extras:
-            src = QT_TRANSLATE_NOOP(
-                'FiberQInterchange',
-                "{count} feature(s) have no fiberq_uuid, so the attributes FiberQ has no "
-                "column for could not be kept: they are kept against a feature's identity.")
-            result.warnings.append(safe_format(
-                QCoreApplication.translate('FiberQInterchange', src), src,
-                count=self._unkeyed_extras))
+        if self._unidentified:
+            # Identity is how an import knows a feature it has seen (spec 4):
+            # without one it cannot, and a second import adds them again.
+            if self._unkeyed_extras:
+                src = QT_TRANSLATE_NOOP(
+                    'FiberQInterchange',
+                    "{count} feature(s) have no fiberq_uuid, so FiberQ cannot recognise them: "
+                    "importing this bundle again adds them again. The attributes FiberQ has no "
+                    "column for on {extras} of them could not be kept, since they are kept "
+                    "against a feature's identity.")
+                result.warnings.append(safe_format(
+                    QCoreApplication.translate('FiberQInterchange', src), src,
+                    count=self._unidentified, extras=self._unkeyed_extras))
+            else:
+                src = QT_TRANSLATE_NOOP(
+                    'FiberQInterchange',
+                    "{count} feature(s) have no fiberq_uuid, so FiberQ cannot recognise them: "
+                    "importing this bundle again adds them again.")
+                result.warnings.append(safe_format(
+                    QCoreApplication.translate('FiberQInterchange', src), src,
+                    count=self._unidentified))
 
     @staticmethod
     def _absorb_extra_json(feature, identity, extras_by_uuid):
@@ -675,16 +719,26 @@ class InterchangeBundleReader:
         It used to go with nothing but a debug line. Unclaimed (WP3 code, found
         in the v1.6.0 review); the caller counts it into a warning.
         """
-        # A NULL is a NULL QVariant, not None, on QGIS 3: through _text, or it
-        # reads as the text "NULL".
-        raw = InterchangeBundleReader._text(feature, "fq_extra_json")
-        if not raw:
+        if feature.fields().indexFromName("fq_extra_json") < 0:
             return False
-        try:
-            carried = json.loads(raw)
-        except ValueError as e:
-            logger.debug(f"fq_extra_json on {identity} is not valid JSON: {e}")
+        value = feature.attribute("fq_extra_json")
+        if isinstance(value, dict):
+            # A JSON-typed column (GDAL's application/json subtype): QGIS hands
+            # it over parsed. Through str() it was a Python repr, not JSON.
+            carried = value
+        elif isinstance(value, list):
             return True
+        else:
+            # A NULL is a NULL QVariant, not None, on QGIS 3: through _text, or it
+            # reads as the text "NULL".
+            raw = InterchangeBundleReader._text(feature, "fq_extra_json")
+            if not raw:
+                return False
+            try:
+                carried = json.loads(raw)
+            except ValueError as e:
+                logger.debug(f"fq_extra_json on {identity} is not valid JSON: {e}")
+                return True
         if not isinstance(carried, dict):
             return True
         if identity:
@@ -712,7 +766,7 @@ class InterchangeBundleReader:
                 attributes[name] = stored_text[name]
                 continue
             value = feature.attribute(name)
-            if value is None:
+            if _is_null(value):
                 continue
             # Was `str(value)` for anything non-primitive, which did not crash
             # but wrote 'PyQt5.QtCore.QDate(2025, 3, 17)' into the payload --
@@ -754,10 +808,10 @@ class InterchangeBundleReader:
         the column only from a bundle table named exactly "Optical slack" or
         "Fiber break", so a bundle keeping its loops in any other table
         imported them unattached and said nothing. A reference is set only on a
-        feature this import added, or on one with no cable yet -- re-importing
-        a bundle used to re-point a loop the user had moved since. A reference
-        to a cable the project does not have is kept, not dropped, and written
-        out again.
+        feature this import added -- re-importing a bundle used to re-point a
+        loop the user had moved since, and to re-attach one the user had
+        detached. A reference to a cable the project does not have is kept, not
+        dropped, and written out again.
         """
         for canonical in ("Optical slack", "Fiber break"):
             layer = self._find_layer(canonical)
@@ -768,7 +822,8 @@ class InterchangeBundleReader:
             layer_idx = layer.fields().indexFromName(layer_id_field) if layer_id_field else -1
             fid_idx = layer.fields().indexFromName(fid_field) if fid_field else -1
             uuid_idx = layer.fields().indexFromName(FIBERQ_UUID_FIELD)
-            detached = self._detached.get(canonical, 0)
+            detached = sum(1 for identity in self._detached.get(canonical, [])
+                           if not identity or identity in self._added)
             if detached:
                 result.warnings.append(
                     f"{detached} {canonical} row(s) in the bundle carry no cable_uuid column, so "
@@ -797,9 +852,11 @@ class InterchangeBundleReader:
             changes = {}
             unresolved = 0
             for feature, identity, cable_uuid in referenced:
-                no_layer = self._blank(feature.attribute(layer_idx))
-                no_fid = self._blank(feature.attribute(fid_idx))
-                if identity not in self._added and not (no_layer or no_fid):
+                # Only a feature this import added. One already in the project is
+                # as the project has it: a loop the user detached stays detached,
+                # and one an earlier import could not attach keeps its kept
+                # reference, which the next bundle writes out again.
+                if identity not in self._added:
                     continue
                 target = uuid_index.get(cable_uuid)
                 if target is None:
@@ -820,33 +877,42 @@ class InterchangeBundleReader:
         identity = self._text(feature, FIBERQ_UUID_FIELD)
         index = feature.fields().lookupField(fm.CABLE_REFERENCE_FIELD)
         if index < 0:
-            self._detached[canonical] = self._detached.get(canonical, 0) + 1
+            # Counted once the import knows whether it added the row.
+            self._detached.setdefault(canonical, []).append(identity)
             return
         value = feature.attribute(index)
         if identity and not self._blank(value):
             self._cable_refs[identity] = str(value).strip()
 
     def _keep_extra(self, passthrough, identity, values, result):
-        """Add ``values`` to what the store keeps for one feature's extra attributes."""
+        """Add ``values`` to what the store keeps for one feature's extra attributes.
+
+        Into the row the store will keep: when one uuid is there twice -- the
+        earlier import's row and this one's, for a feature added again -- saving
+        keeps the last, and the first is the one this used to update, so a kept
+        cable reference was lost. Found through an index built once per import,
+        not a scan of the whole store per call, which was quadratic.
+        """
+        if self._extras_rows is None:
+            self._extras_rows = {row.get("uuid"): row for row in passthrough
+                                 if row.get("kind") == ic.EXTENSION_KIND_ATTRIBUTES}
         uuid = ic.stable_uuid("extras", identity)
-        for row in passthrough:
-            if row.get("uuid") == uuid:
-                try:
-                    payload = json.loads(row.get("payload_json") or "{}")
-                except ValueError:
-                    payload = {}
-                if isinstance(payload, dict):
-                    payload.update(values)
-                    row["payload_json"] = json.dumps(payload, ensure_ascii=False, sort_keys=True)
-                return
-        passthrough.append({
+        row = self._extras_rows.get(uuid)
+        if row is not None:
+            payload = ic.json_object(row.get("payload_json") or "{}") or {}
+            payload.update(values)
+            row["payload_json"] = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+            return
+        row = {
             "uuid": uuid,
             "owner_uuid": identity,
             "kind": ic.EXTENSION_KIND_ATTRIBUTES,
             "namespace": ic.EXTENSION_NAMESPACE,
             "payload_json": json.dumps(values, ensure_ascii=False, sort_keys=True),
             "produced_by": self._producer(result),
-        })
+        }
+        passthrough.append(row)
+        self._extras_rows[uuid] = row
 
     @staticmethod
     def _blank(value):
@@ -871,8 +937,6 @@ class InterchangeBundleReader:
         any column a later 1.x version added.
         """
         bundle_relations = self._table_rows(gpkg_path, "fq_relation")
-        if not bundle_relations:
-            return
         members = {}
         for row in self._table_rows(gpkg_path, "fq_relation_member"):
             folded = {str(k).lower(): v for k, v in row.items()}
@@ -890,6 +954,8 @@ class InterchangeBundleReader:
                 "not imported.")
             result.warnings.append(safe_format(
                 QCoreApplication.translate('FiberQInterchange', src), src, count=stray))
+        if not bundle_relations:
+            return
 
         data = read_json_entry(
             "StuboviPlugin", "Relacije/relations_v1", {"relations": []},
@@ -909,27 +975,42 @@ class InterchangeBundleReader:
         by_identity = {}
         for relation in relations:
             by_identity.setdefault(ic.relation_identity(relation, project_key), relation)
+        # Built once: matching each bundle relation against every project
+        # relation, members and all, was quadratic (2,000 took 10 s on 3.22).
+        unidentified = _unidentified(relations)
 
         differing = kept = 0
         for row in bundle_relations:
             folded = {str(k).lower(): v for k, v in row.items()}
-            relation_uuid = str(folded.get("uuid") or "").strip() or str(uuid4())
+            # A relation with no uuid gets one derived from what it is, not a new
+            # random one: re-importing its bundle added it again each time.
+            relation_uuid = str(folded.get("uuid") or "").strip() or ic.stable_uuid(
+                "relation", "unidentified", folded.get("name") or "", folded.get("category") or "")
             incoming = sorted(members.get(relation_uuid, []),
                               key=lambda m: _integer({str(k).lower(): v for k, v in m.items()}
                                                      .get("order_index")) or 0)
             wanted = {str({str(k).lower(): v for k, v in m.items()}.get("member_uuid"))
                       for m in incoming}
             match = by_identity.get(relation_uuid)
-            if match is None and wanted:
+            if match is None:
                 # A relation with no identity of its own (a 1.5.0 import's integer
-                # id) saved somewhere else since: the same name and members.
-                match = next((r for r in relations if _same_unidentified(
-                    r, folded.get("name"), wanted, member_uuids)), None)
+                # id) saved somewhere else since: by name when only one has it,
+                # else by name and members -- its members may have changed since.
+                named = unidentified.get(folded.get("name") or "", [])
+                if len(named) == 1:
+                    match = named[0]
+                elif wanted:
+                    match = next((r for r in named if member_uuids(r) == wanted), None)
             if match is not None:
                 if not match.get("uuid") and not ic.is_uuid(match.get("id")):
                     match["uuid"] = relation_uuid
+                    for group in unidentified.values():
+                        if match in group:
+                            group.remove(match)
                 by_identity[relation_uuid] = match
-                if member_uuids(match) != wanted:
+                # A partial export of the same project lists fewer members; only
+                # one the project's relation lacks is a difference worth saying.
+                if not wanted <= member_uuids(match):
                     differing += 1
                 continue
 
@@ -1001,7 +1082,7 @@ class InterchangeBundleReader:
         rows = self._table_rows(gpkg_path, "fq_path_stop")
         if not rows:
             return
-        incoming, orphans, by_uuid = {}, [], 0
+        incoming, orphans, by_uuid = {}, [], {}
         for row in rows:
             folded = {str(k).lower(): v for k, v in row.items()}
             cable = uuid_index.get(str(folded.get("cable_uuid")))
@@ -1014,17 +1095,19 @@ class InterchangeBundleReader:
             if extra:
                 entry["extra"] = extra
             element = uuid_index.get(str(folded.get("element_uuid")))
+            key = f"{cable[0]}:{cable[1]}"
             if element is None:
                 entry["element_uuid"] = str(folded.get("element_uuid"))
-                by_uuid += 1
+                by_uuid[key] = by_uuid.get(key, 0) + 1
             else:
                 entry.update({"layer_id": element[0], "fid": element[1], "naziv": ""})
-            incoming.setdefault(f"{cable[0]}:{cable[1]}", []).append(entry)
+            incoming.setdefault(key, []).append(entry)
             result.path_stops += 1
         for elements in incoming.values():
             elements.sort(key=lambda e: (e["order_index"] is None, e["order_index"] or 0))
+        newly_kept = 0
         if orphans:
-            self._keep_rows(passthrough, "fq_path_stop", columns, orphans, result)
+            newly_kept = self._keep_rows(passthrough, "fq_path_stop", columns, orphans, result)
 
         data = read_json_entry(
             *LATENT_ENTRY, {"cables": {}},
@@ -1032,13 +1115,14 @@ class InterchangeBundleReader:
             expect="cables", project=self.project)
         cables = data.get("cables") if isinstance(data.get("cables"), dict) else {}
         existing = ic.latent_records(data)
-        differing = 0
+        differing = kept_by_uuid = 0
         for key, elements in incoming.items():
             if existing.get(key):
                 if not _agrees(existing[key], elements):
                     differing += 1
                 continue
             cables[key] = {"elements": elements}
+            kept_by_uuid += by_uuid.get(key, 0)
         data["cables"] = cables
         self.project.writeEntry(*LATENT_ENTRY, json.dumps(data, ensure_ascii=False))
 
@@ -1049,14 +1133,16 @@ class InterchangeBundleReader:
                 "bundle's for them were not used.")
             result.warnings.append(safe_format(
                 QCoreApplication.translate('FiberQInterchange', src), src, count=differing))
-        if by_uuid or orphans:
+        # What this import newly kept: re-importing the project's own bundle
+        # said it all again.
+        if kept_by_uuid or newly_kept:
             src = QT_TRANSLATE_NOOP(
                 'FiberQInterchange',
                 "{count} path stop(s) name a cable or element FiberQ does not draw; they are "
                 "kept and written out again with the next bundle.")
             result.warnings.append(safe_format(
                 QCoreApplication.translate('FiberQInterchange', src), src,
-                count=by_uuid + len(orphans)))
+                count=kept_by_uuid + newly_kept))
 
     def _keep_unmodelled_sidecar(self, gpkg_path, passthrough, result):
         """Keep the side-car tables this plugin has no model for, verbatim.
@@ -1065,28 +1151,40 @@ class InterchangeBundleReader:
         exists to carry and the plugin does not yet hold. Kept whole and written
         back into the real table on export, so it is still relational when it
         reaches a tool that does model it.
+
+        A table that cannot be read -- SQLite refusing something in another
+        tool's file -- costs that table and a warning; it used to raise out of
+        the import after the features were added and before the store was
+        saved, which lost everything the import had kept.
         """
-        for table in ic.SIDECAR_TABLES:
-            if table in ic.MODELLED_SIDECAR_TABLES or table == "fq_extension":
+        tables = [t for t in ic.SIDECAR_TABLES
+                  if t not in ic.MODELLED_SIDECAR_TABLES and t != "fq_extension"]
+        try:
+            # A table a later 1.x version of the format adds: rule 4 says a 1.0
+            # reader carries it, and it used to be left behind unread.
+            tables += self._unknown_sidecar_tables(gpkg_path, result)
+        except (sqlite3.Error, sqlite3.Warning) as e:
+            result.warnings.append(f"The bundle's own tables could not be listed: {e}")
+        for table in tables:
+            try:
+                _name, columns = self._table_info(gpkg_path, table)
+                rows = self._table_rows(gpkg_path, table)
+            except (sqlite3.Error, sqlite3.Warning) as e:
+                result.warnings.append(f"The bundle's table {table} could not be read: {e}")
                 continue
-            _name, columns = self._table_info(gpkg_path, table)
-            rows = self._table_rows(gpkg_path, table)
             if not rows:
                 continue
             self._keep_rows(passthrough, table, columns, rows, result)
             result.sidecar_kept[table] = len(rows)
 
-        # A table a later 1.x version of the format adds: rule 4 says a 1.0
-        # reader carries it, and it used to be left behind unread.
-        for table in self._unknown_sidecar_tables(gpkg_path, result):
-            _name, columns = self._table_info(gpkg_path, table)
-            rows = self._table_rows(gpkg_path, table)
-            self._keep_rows(passthrough, table, columns, rows, result)
-            result.sidecar_kept[table] = len(rows)
-
         # Whatever the bundle itself was already carrying for other tools --
         # every column, including one a later version adds to fq_extension.
-        for row in self._table_rows(gpkg_path, "fq_extension"):
+        try:
+            extensions = self._table_rows(gpkg_path, "fq_extension")
+        except (sqlite3.Error, sqlite3.Warning) as e:
+            result.warnings.append(f"The bundle's table fq_extension could not be read: {e}")
+            extensions = []
+        for row in extensions:
             passthrough.append(dict(row))
 
     @staticmethod
@@ -1108,18 +1206,19 @@ class InterchangeBundleReader:
                     "SELECT table_name FROM gpkg_geometry_columns")}
             except sqlite3.Error:
                 geometry = set()
+            # A virtual table is visible by its CREATE statement, and its shadow
+            # tables by its name as their prefix, on any SQLite. table_list says
+            # it outright from 3.37; before that an unknown PRAGMA is not an
+            # error but an empty answer, so the statement is always read too.
             virtual = set()
-            try:
+            for name, sql in conn.execute(
+                    "SELECT name, sql FROM sqlite_master WHERE type='table'"):
+                if (sql or "").upper().startswith("CREATE VIRTUAL"):
+                    virtual.add(str(name).lower())
+            if sqlite3.sqlite_version_info >= (3, 37, 0):
                 for row in conn.execute("PRAGMA table_list"):
                     if row[2] in ("virtual", "shadow"):
                         virtual.add(str(row[1]).lower())
-            except sqlite3.Error:
-                # SQLite before 3.37 has no table_list: a virtual table is still
-                # visible by its CREATE statement, and its shadows by its prefix.
-                for name, sql in conn.execute(
-                        "SELECT name, sql FROM sqlite_master WHERE type='table'"):
-                    if (sql or "").upper().startswith("CREATE VIRTUAL"):
-                        virtual.add(str(name).lower())
             for (name,) in conn.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' "
                     "AND lower(name) LIKE 'fq\\_%' ESCAPE '\\' ORDER BY name"):
@@ -1157,14 +1256,23 @@ class InterchangeBundleReader:
             except ValueError as e:
                 logger.warning(f"Kept rows of {table} are not readable JSON and are replaced: {e}")
                 before = {}
+            merged, added, differing = ic.merge_kept_rows_counted(before.get("rows"), rows, keys)
             payload = {
                 "table": table,
                 "columns": _united_columns(before.get("columns"), columns),
-                "rows": ic.merge_kept_rows(before.get("rows"), rows, keys),
+                "rows": merged,
             }
             kept["payload_json"] = json.dumps(payload, ensure_ascii=False, sort_keys=True)
             kept["produced_by"] = self._producer(result)
-            return
+            if differing:
+                src = QT_TRANSLATE_NOOP(
+                    'FiberQInterchange',
+                    "{count} row(s) of {table} in this bundle have the key of a row an earlier "
+                    "import kept, with other values; the earlier row is kept.")
+                result.warnings.append(safe_format(
+                    QCoreApplication.translate('FiberQInterchange', src), src,
+                    count=differing, table=table))
+            return added
         passthrough.append({
             "uuid": uuid,
             "owner_uuid": None,
@@ -1175,6 +1283,7 @@ class InterchangeBundleReader:
                 ensure_ascii=False, sort_keys=True),
             "produced_by": self._producer(result),
         })
+        return len(rows)
 
     def _keep_foreign_metadata(self, metadata, passthrough, result):
         """Keep the metadata keys another tool wrote, so the next bundle has them.
@@ -1292,7 +1401,8 @@ class InterchangeBundleReader:
             QgsFeatureRequest.Flag.NoGeometry).setSubsetOfAttributes([index])
         for feature in layer.getFeatures(request):
             value = feature.attribute(index)
-            if value is not None and str(value).strip():
+            # A NULL is no identity; on QGIS 3 str() of one is the text "NULL".
+            if not _is_null(value) and str(value).strip():
                 found[str(value).strip()] = int(feature.id())
         return found
 

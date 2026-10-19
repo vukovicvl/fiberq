@@ -339,9 +339,8 @@ def json_safe(value):
         return json_safe(bytes(value.data()))
 
     if name == "QVariant":
-        # The provider hands a NULL back as Python None on every supported
-        # version (measured), so this is for a QVariant built in code rather
-        # than read from a layer. Either way a null one is the format's None.
+        # QGIS 4 hands a NULL back as Python None; QGIS 3 as a NULL QVariant
+        # (measured on 3.22, 3.40 and 3.44). Either way it is the format's None.
         if value.isNull():
             return None
         inner = value.value()
@@ -510,7 +509,10 @@ def latent_records(data) -> Dict[str, list]:
     out = {}
     for key, record in cables.items():
         if isinstance(record, dict):
-            elements = [dict(e) for e in record.get("elements") or [] if isinstance(e, dict)]
+            listed = record.get("elements")
+            if not isinstance(listed, list):
+                continue  # {"elements": 5} raised here, inside an export
+            elements = [dict(e) for e in listed if isinstance(e, dict)]
             for element in elements:
                 element["latent"] = bool(element.get("latent"))
         elif isinstance(record, list):
@@ -549,24 +551,41 @@ def _row_key(row, key_columns):
 
 
 def merge_kept_rows(existing, incoming, key_columns=()):
-    """One kept side-car table's rows from several imports, added together.
+    """One kept side-car table's rows from several imports, added together."""
+    return merge_kept_rows_counted(existing, incoming, key_columns)[0]
+
+
+def merge_kept_rows_counted(existing, incoming, key_columns=()):
+    """``(rows, added, differing)``: one kept table's rows from several imports.
 
     Every import used to replace the table's whole store row, so importing a
     second bundle dropped the fibre splices the first one had brought. Rows are
-    keyed by the table's primary key (whole rows when it has none); on an equal
-    key the incoming row wins, in place. Nothing is removed: an import adds.
+    keyed by the table's primary key (whole rows when it has none). On an equal
+    key the row already kept stays: an import adds, it never updates, as for
+    features, relations and pass-through elements. *added* counts the incoming
+    rows with a key not kept before, *differing* those whose key was kept with
+    other values -- which the caller reports rather than letting a later
+    bundle, older or newer, silently overwrite an earlier one's row.
     """
     merged, where = [], {}
-    for row in list(existing or []) + list(incoming or []):
+    for row in existing or []:
+        if isinstance(row, dict):
+            key = _row_key(row, key_columns)
+            if key not in where:
+                where[key] = len(merged)
+                merged.append(row)
+    added = differing = 0
+    for row in incoming or []:
         if not isinstance(row, dict):
             continue
         key = _row_key(row, key_columns)
-        if key in where:
-            merged[where[key]] = row
-        else:
+        if key not in where:
             where[key] = len(merged)
             merged.append(row)
-    return merged
+            added += 1
+        elif merged[where[key]] != row:
+            differing += 1
+    return merged, added, differing
 
 
 # ---------------------------------------------------------------------------
