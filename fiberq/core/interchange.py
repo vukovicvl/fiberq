@@ -321,8 +321,9 @@ def json_safe(value):
     pattern = _ISO_PATTERNS.get(name)
     if pattern is not None:
         # A null QDate formats as the empty string, which would be
-        # indistinguishable from a real empty value. None says "absent".
-        if value.isNull():
+        # indistinguishable from a real empty value. None says "absent". So
+        # does an invalid one (31 February), which formats as "" too.
+        if value.isNull() or not value.isValid():
             return None
         if name == "QDateTime":
             return value.toString(pattern) + _utc_suffix(value)

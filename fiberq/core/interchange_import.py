@@ -65,6 +65,11 @@ def _safe_table(name):
     return name if name and _SAFE_TABLE_NAME.match(str(name)) else None
 
 
+def _quoted(identifier):
+    """An SQL identifier in double quotes, with any quote inside doubled."""
+    return '"' + str(identifier).replace('"', '""') + '"'
+
+
 LATENT_ENTRY = ("StuboviPlugin", "LatentElements/latent_v1")
 
 #: The columns of ``fq_relation`` and ``fq_relation_member`` this format version
@@ -268,6 +273,35 @@ class InterchangeBundleReader:
                        for row in conn.execute(f'PRAGMA table_info("{found[0]}")')]  # nosec B608
         return found[0], columns
 
+    @staticmethod
+    def _stored_dates(gpkg_path, table):
+        """``{fid: {column: text}}``: what each DATE and DATETIME column of a table stored.
+
+        A value carried to the next bundle -- in a feature's extras, or in a
+        whole unsupported feature -- used to be QGIS's reading of the column,
+        formatted again: 3.22 reads a GeoPackage DATETIME as local time and
+        loses its Z, and every version rewrites text another tool stored in a
+        form of its own (``2026-01-02 03:04:05``). The text the column holds is
+        read here instead and carried as it is. Keyed by the table's integer
+        primary key, which is the feature id OGR reports.
+        """
+        try:
+            with closing(sqlite3.connect(gpkg_path)) as conn:
+                # The name came from gpkg_contents and passed _openable (no
+                # control character), and is quoted, so it is only ever a name.
+                info = list(conn.execute(f"PRAGMA table_info({_quoted(table)})"))  # nosec B608
+                keys = [row[1] for row in info if row[5]]
+                dated = [row[1] for row in info if str(row[2] or "").upper() in ("DATE", "DATETIME")]
+                if len(keys) != 1 or not dated:
+                    return {}
+                columns = ", ".join(_quoted(name) for name in [keys[0]] + dated)
+                rows = conn.execute(f"SELECT {columns} FROM {_quoted(table)}").fetchall()  # nosec B608
+        except (sqlite3.Error, sqlite3.Warning) as e:
+            logger.debug(f"Stored dates of '{table}' not read; QGIS's reading is carried: {e}")
+            return {}
+        return {row[0]: {name: value for name, value in zip(dated, row[1:]) if isinstance(value, str)}
+                for row in rows}
+
     @classmethod
     def _table_rows(cls, gpkg_path, table):
         """Every row of a side-car table as JSON-safe dicts, or ``[]`` if it is not there.
@@ -331,13 +365,16 @@ class InterchangeBundleReader:
 
     # -- feature import ----------------------------------------------------
 
-    def _restore_attributes(self, roster, bundle_feature, target_fields):
+    def _restore_attributes(self, roster, bundle_feature, target_fields, stored_text=None):
         """Bundle attributes -> FiberQ's stored names and values.
 
         Returns ``(attributes, extras)``. *extras* holds canonical fields this
         plugin has no column for; they are kept against the feature's identity
-        rather than dropped.
+        rather than dropped. ``stored_text`` is the feature's DATE and DATETIME
+        text as the bundle holds it (:meth:`_stored_dates`), carried instead of
+        QGIS's reading of it.
         """
+        stored_text = stored_text or {}
         attributes = {}
         extras = {}
         for field in bundle_feature.fields():
@@ -364,6 +401,11 @@ class InterchangeBundleReader:
             # that was sitting right there holding the old value.
             actual = fm.actual_field(target_fields.names(), stored) if stored else ""
             if not actual:
+                if name in stored_text:
+                    # The text itself: one QGIS could not read as a date at all
+                    # came back NULL, and was dropped with the rest.
+                    extras[name] = stored_text[name]
+                    continue
                 # An empty string is a value, not an absence: only NULL is left out.
                 if value is not None:
                     # U19 / FU-9. The raw provider value used to go in here and
@@ -373,7 +415,7 @@ class InterchangeBundleReader:
             attributes[actual] = fm.stored_value(roster, name, value)
         return attributes, extras
 
-    def _import_feature(self, bundle_feature, target, roster, transform):
+    def _import_feature(self, bundle_feature, target, roster, transform, stored_text=None):
         """Copy one bundle feature into a FiberQ layer, or answer ``(None, None)``.
 
         ``None`` means the feature could not be reprojected into the project's
@@ -397,7 +439,7 @@ class InterchangeBundleReader:
         feature.setGeometry(geometry)
 
         attributes, extras = self._restore_attributes(
-            roster, bundle_feature, target.fields())
+            roster, bundle_feature, target.fields(), stored_text)
         for name, value in attributes.items():
             index = target.fields().indexFromName(name)
             if index >= 0:
@@ -494,13 +536,15 @@ class InterchangeBundleReader:
             result.errors.append(f"Could not read bundle layer '{table}'.")
             return
 
+        dates = self._stored_dates(gpkg_path, table)
         by_target = {}
         for feature in source.getFeatures():
             fq_type = self._text(feature, "fq_type")
             placement = self._text(feature, "placement") or None
             canonical = ic.layer_for_type(fq_type, placement) if fq_type else None
             if canonical is None:
-                self._keep_unsupported(feature, fq_type, placement, passthrough, result)
+                self._keep_unsupported(feature, fq_type, placement, passthrough, result,
+                                       dates.get(feature.id()))
                 continue
             # U19. layer_for_type falls back to the placement-less layer when it
             # does not model this exact placement -- right, but the value is
@@ -544,7 +588,7 @@ class InterchangeBundleReader:
                     result.already_present += 1
                     continue
                 built, extras = self._import_feature(
-                    feature, target, roster, transform)
+                    feature, target, roster, transform, dates.get(feature.id()))
                 if built is None:
                     # Nothing is recorded for a skipped feature -- not its
                     # extras, not its fq_extension rows. An fq_extension row
@@ -611,17 +655,23 @@ class InterchangeBundleReader:
             merged.update(extras_by_uuid.get(identity, {}))
             extras_by_uuid[identity] = merged
 
-    def _keep_unsupported(self, feature, fq_type, placement, passthrough, result):
+    def _keep_unsupported(self, feature, fq_type, placement, passthrough, result,
+                          stored_text=None):
         """Keep a whole feature this plugin has no layer for (spec section 8).
 
         Never reclassified to the nearest familiar type: that is irreversible,
-        and the import would look like it worked.
+        and the import would look like it worked. ``stored_text`` is as for
+        :meth:`_restore_attributes`.
         """
         identity = self._text(feature, FIBERQ_UUID_FIELD)
+        stored_text = stored_text or {}
         attributes = {}
         for field in feature.fields():
             name = field.name()
             if name in ("fid",):
+                continue
+            if name in stored_text:
+                attributes[name] = stored_text[name]
                 continue
             value = feature.attribute(name)
             if value is None:

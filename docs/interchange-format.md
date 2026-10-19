@@ -473,9 +473,11 @@ reads is kept in the feature's `fq_extra_json`, so the feature's `placement` col
 empty when the plugin writes it again.
 
 JSON has no date type, so a date or time the plugin carries in `fq_extra_json` or in an
-`fq_extension` payload travels as ISO 8601 text. From FiberQ 1.6.0 that text keeps the
-milliseconds and the offset from UTC (`2026-01-02T03:04:05.678Z`), so it is the text a
-GeoPackage `DATETIME` column stored.
+`fq_extension` payload travels as text. From FiberQ 1.6.0, one that arrived in a bundle's
+`DATE` or `DATETIME` column travels as the text that column stored, character for
+character, in whatever form the writer chose. One the plugin formats itself, from a field
+of a project layer, is ISO 8601 with milliseconds and, where QGIS reports one, the offset
+from UTC (`2026-01-02T03:04:05.678Z`); QGIS 3.22 reports none.
 
 ## 13. Corrections to this text
 

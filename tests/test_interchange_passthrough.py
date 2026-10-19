@@ -298,6 +298,75 @@ def test_a_geopackage_date_time_reaches_the_next_bundle_as_it_was_stored(
     assert [extra.get("surveyed_at") for extra in _carried_extras(again)] == [stored]
 
 
+def _rewrite(path, sql, params=()):
+    """Change a feature table's attributes as another tool would: through SQLite.
+
+    GDAL's R-tree triggers name spatial functions plain sqlite3 does not have,
+    so they are stood in for. The geometry is not touched, so they are never
+    asked anything that matters.
+    """
+    import sqlite3
+    from contextlib import closing
+
+    with closing(sqlite3.connect(path)) as conn:
+        conn.create_function("ST_IsEmpty", 1, lambda geom: 0)
+        for name in ("ST_MinX", "ST_MaxX", "ST_MinY", "ST_MaxY"):
+            conn.create_function(name, 1, lambda geom: 0.0)
+        conn.execute(sql, params)
+        conn.commit()
+
+
+@pytest.mark.parametrize("text", [
+    "2026-01-02 03:04:05",          # a space, no milliseconds, no zone
+    "2026-01-02T03:04:05+02:00",    # an offset and no milliseconds
+    "2026-01-02T03:04:05Z",
+    "next Tuesday",                 # QGIS reads NULL, and NULL was dropped
+])
+def test_date_time_text_another_tool_stored_reaches_the_next_bundle_unchanged(
+        tmp_path, target_project, text):
+    """The text a DATETIME column holds is carried, not QGIS's reading of it.
+
+    Before, the value was read as a QDateTime and formatted again: the first
+    three came back as ``2026-01-02T03:04:05.000`` with or without a ``Z``, and
+    the fourth, which QGIS cannot read as a date at all, was dropped.
+    """
+    from qgis.PyQt.QtCore import Qt
+
+    when = QDateTime.fromString("2026-01-02T03:04:05.678Z", Qt.DateFormat.ISODateWithMs)
+    bundle = _foreign_bundle(tmp_path, extra_fields=("surveyed_at:datetime",),
+                             values={"surveyed_at": when})
+    _rewrite(bundle, 'UPDATE "Joint Closures" SET surveyed_at = ?', (text,))
+
+    assert InterchangeBundleReader(target_project).read(bundle).ok
+    again = str(tmp_path / "again.gpkg")
+    assert _export_again(target_project, again)
+    assert [extra.get("surveyed_at") for extra in _carried_extras(again)] == [text]
+
+
+def test_a_whole_unsupported_feature_keeps_its_date_time_text(tmp_path, target_project):
+    import sqlite3
+    from contextlib import closing
+
+    from qgis.PyQt.QtCore import Qt
+
+    when = QDateTime.fromString("2026-01-02T03:04:05.678Z", Qt.DateFormat.ISODateWithMs)
+    bundle = _foreign_bundle(tmp_path, extra_fields=("surveyed_at:datetime",),
+                             values={"surveyed_at": when})
+    _rewrite(bundle, 'UPDATE "Joint Closures" SET fq_type = ?, surveyed_at = ?',
+             ("acme.splitter", "2026-01-02 03:04:05"))
+
+    assert InterchangeBundleReader(target_project).read(bundle).ok
+    # An export needs a FiberQ layer; the bundle brought only the splitter.
+    poles = _bundle_layer("Poles", ("fiberq_uuid:string(64)",))
+    target_project.addMapLayer(poles)
+    again = str(tmp_path / "again.gpkg")
+    assert _export_again(target_project, again)
+    with closing(sqlite3.connect(again)) as conn:
+        payloads = [json.loads(row[0]) for row in conn.execute(
+            "SELECT payload_json FROM fq_extension WHERE kind = 'unsupported_feature'")]
+    assert [p["attributes"]["surveyed_at"] for p in payloads] == ["2026-01-02 03:04:05"]
+
+
 def _export_again(project, path):
     layers = [lyr for lyr in project.mapLayers().values() if isinstance(lyr, QgsVectorLayer)]
     return InterchangeBundleWriter(project).write(path, layers=layers).ok
