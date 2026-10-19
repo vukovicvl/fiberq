@@ -5,8 +5,8 @@ A QGIS plugin for fiber optic network design and documentation.
 ## What's New in v1.4.0 — Project Validation
 
 **Validate project** runs fourteen checks over the whole design and lists what it
-finds in a dockable panel — filter by severity, layer or rule, and click any issue
-to jump straight to it on the map.
+finds in a dockable panel — filter by severity, layer or rule, and double-click any
+issue to jump straight to it on the map.
 
 - **Fourteen rules** — topology and connectivity, referential integrity, feature
   identity, required attributes, value domains, length coherence, CRS consistency
@@ -23,7 +23,7 @@ to jump straight to it on the map.
 - **True ground metres, everywhere** — lengths are now measured on the project
   ellipsoid. Routes and cables previously stored the length in *map units*, which
   in Web Mercator is inflated by 1/cos(latitude): about 41% at Serbian latitudes,
-  55% in the Netherlands, 86% in Finland. Pipes were already correct, so a trench
+  62% in the Netherlands, 100% in southern Finland. Pipes were already correct, so a trench
   and the duct inside it could disagree by that margin in the same project — and a
   bill of materials over-ordered cable to match. New features are measured
   correctly; run **Recalculate lengths** to repair existing ones.
@@ -65,10 +65,10 @@ Place 20+ manholes without retyping the ID. Enter a starting ID like `MH 1` or `
 
 Independent undo/redo that works reliably across all FiberQ layers — unlike QGIS's built-in Ctrl+Z which can struggle with plugin-created features.
 
-- **Ctrl+Shift+Z** — Undo last FiberQ action
+- **Ctrl+Shift+Z** — Undo the last feature a FiberQ tool placed
 - **Ctrl+Shift+Y** — Redo
 - Toolbar buttons with icons in the main FiberQ toolbar
-- Tracks all tools: manholes, poles, elements, routes, cables, slacks, pipes, objects, regions
+- Records what the placement tools add: manholes, poles, elements, routes, cables, slacks, pipes, objects, regions. Deletions and edits (Delete selected, Merge routes, Change route type, Change element type, Route correction) are not recorded
 - Message bar shows what was undone: *"Undone: Added MH 3 (Manholes)"*
 - Stack depth: 50 operations
 
@@ -143,6 +143,9 @@ fiberq/
 - Draw service areas
 - Export to GeoPackage, GPX, KML/KMZ
 - BOM (Bill of Materials) report generation
+- Relations management
+- Fiber break tracking
+- Infrastructure cut tools
 
 ### Productivity Features (v1.2)
 
@@ -155,9 +158,8 @@ fiberq/
 
 - Preview Map integration
 - Publish to PostGIS
-- Relations management
-- Fiber break tracking
-- Infrastructure cut tools
+
+Only these two ask for a licence key. Everything else in FiberQ is free.
 
 ## Installation
 
@@ -174,6 +176,9 @@ fiberq/
    - Windows: `%APPDATA%\QGIS\QGIS3\profiles\default\python\plugins\`
    - Linux: `~/.local/share/QGIS/QGIS3/profiles/default/python/plugins/`
    - macOS: `~/Library/Application Support/QGIS/QGIS3/profiles/default/python/plugins/`
+
+   On QGIS 4 the folder is `QGIS4` instead of `QGIS3` (for example
+   `~/.local/share/QGIS/QGIS4/profiles/default/python/plugins/`).
 3. Restart QGIS
 4. Enable the plugin in Plugins → Manage and Install Plugins
 
