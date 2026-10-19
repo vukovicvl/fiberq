@@ -157,6 +157,14 @@ not model. See §5.
 Features land in FiberQ's own layers, with FiberQ's own field names and values.
 Your data model does not change to accommodate a file.
 
+A FiberQ layer the import has to create is a temporary layer, like every layer
+FiberQ creates, until it is saved. With **Auto save to GeoPackage** on, it goes into
+the project's GeoPackage as it is made. Otherwise use **Save all layers to
+GeoPackage** before you close the project: a temporary layer is empty when the
+project is opened again, and the features the import added with it are gone. What
+the import kept for other tools is in the project file itself, and survives either
+way.
+
 ```
 FiberQ: Imported design.gpkg — 23 layer(s), 46 feature(s)
 ```
