@@ -51,7 +51,7 @@ class DrawingsUI:
         #: Menu entry, imperative. Opens the CAD file attached to an element in the
         #: system's default application. "(by click)" tells the user the element is
         #: chosen by clicking it on the map afterwards.
-        act_open = QAction(load_icon('ic_drawing.svg'), self.tr("Open drawing (by click)"), core.iface.mainWindow())
+        act_open = QAction(load_icon('ic_otvori_crtez.svg'), self.tr("Open drawing (by click)"), core.iface.mainWindow())
         #: Tooltip for the entry above; a full sentence instructing the user.
         act_open.setToolTip(self.tr("Click on an element to open its linked drawing"))
         act_open.triggered.connect(core.ui_open_drawing_click)

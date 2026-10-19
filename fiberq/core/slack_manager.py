@@ -566,11 +566,16 @@ class SlackManager:
         gives the same result only when nothing else rides on those sessions:
         layers edited and saved one by one (``_plain_edit_mode``), no session
         of the user's on a layer the batch writes (it would join it), layers
-        that save all or nothing (``_saves_all_or_nothing``), no cable field
-        whose default is applied again on every update (it would count one
-        update where v1.5.0 made two), and no legacy ``Opticke_rezerve``
-        layer, which ``addons/reserve_hook.py`` rewrites cables from after
-        every slack commit.
+        that save all or nothing (``_saves_all_or_nothing``), and no cable
+        field whose default is applied again on every update (it would count
+        one update where v1.5.0 made two). The slack layer's name is not one
+        of them. A pre-1.0 ``Opticke_rezerve`` layer was refused while
+        ``addons/reserve_hook.py`` could rewrite cables from its commits (it
+        did so only on one carrying the English link columns); the hook is
+        gone (WP4 U12), nothing in the batch reads the layer's name, and its
+        ``kabl_layer_id`` / ``kabl_fid`` columns resolve here exactly as in
+        the loop (the "legacy slack layer" scenario in
+        ``tests/test_slack_generate.py``).
 
         The code review found four more, each measured: a filter on the
         slack layer (v1.5.0's Undo lookup reads through it and records
@@ -587,7 +592,7 @@ class SlackManager:
             return False
         if vl.isEditable() or not _saves_all_or_nothing(vl) or vl.subsetString():
             return False
-        if vl.name().lower().startswith("opticke_rezerve") or _database_answers_writes(vl):
+        if _database_answers_writes(vl):
             return False
         for layer in cable_layers:
             if layer.selectedFeatureCount() == 0:

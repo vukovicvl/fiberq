@@ -365,13 +365,35 @@ def test_recompute_reports_into_a_shared_collector(project):
 # Generate terminal slacks: KeyError on v1.5.0
 # ---------------------------------------------------------------------------
 
-def test_generate_writes_through_the_legacy_pair(project):
+def _generate(manager, flow):
+    """Generate terminal slacks along the per-slack loop, or through the one-session batch.
+
+    Both paths read the legacy pair: the loop since R9, the batch since the
+    retired ReserveHook stopped keeping ``Opticke_rezerve`` layers out of it.
+    """
+    answers, ran = [], []
+    if flow == "loop":
+        manager._batch_allowed = lambda *args: False
+    else:
+        allowed = manager._batch_allowed
+        manager._batch_allowed = lambda *args: answers.append(allowed(*args)) or answers[-1]
+        batch = manager._generate_in_one_session
+        manager._generate_in_one_session = lambda *args, **kwargs: ran.append(batch(*args, **kwargs)) or ran[-1]
+    manager.generate_terminal_slack_for_selected()
+    if flow == "batch":
+        assert answers == [True], "premise: the batch was allowed"
+        # Allowed is not enough: the batch hands back to the loop by answering None.
+        assert ran and ran[-1] is not None, "premise: the batch ran to its end, not back to the loop: " + repr(ran)
+
+
+@pytest.mark.parametrize("flow", ["loop", "batch"])
+def test_generate_writes_through_the_legacy_pair(project, flow):
     cable, fid = _cable_layer(project)
     slack = _slack_layer(project)
     cable.selectByIds([fid])
     iface = FakeIface()
 
-    _manager(project, iface).generate_terminal_slack_for_selected()
+    _generate(_manager(project, iface), flow)
 
     rows = list(slack.getFeatures())
     assert len(rows) == 2, "one terminal slack at each end"
@@ -399,7 +421,8 @@ def test_generate_refuses_a_slack_layer_with_no_link_columns(project):
     assert "no cable reference columns" in iface.bar.warnings[0]
 
 
-def test_generate_handles_a_multipart_cable(project):
+@pytest.mark.parametrize("flow", ["loop", "batch"])
+def test_generate_handles_a_multipart_cable(project, flow):
     """v1.5.0 raised TypeError here, as an unhandled Python error.
 
     ``asPolyline()`` raises on a MultiLineString rather than answering an empty
@@ -415,7 +438,7 @@ def test_generate_handles_a_multipart_cable(project):
     slack = _slack_layer(project)
     cable.selectByIds([fid])
 
-    _manager(project).generate_terminal_slack_for_selected()
+    _generate(_manager(project), flow)
     assert slack.featureCount() == 2
 
 

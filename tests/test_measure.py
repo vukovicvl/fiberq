@@ -186,7 +186,6 @@ LENGTH_WRITERS = [
     ("fiberq/tools/route_tool.py", 1),
     ("fiberq/tools/branch_tool.py", 1),
     ("fiberq/dialogs/schematic_dialog.py", 1),
-    ("fiberq/addons/reserve_hook.py", 1),
     ("fiberq/tools/pipe_tool.py", 1),
     # The cut tool's fallback for a line layer FiberQ has no schema for; it used
     # to build its own QgsDistanceArea and feed it the raw project ellipsoid.

@@ -120,8 +120,8 @@ class LengthSync:
         #: layer id -> the partial connected to beforeCommitChanges.
         self._commit_slots: Dict[str, object] = {}
         #: Layer ids whose sweep is running, so a commit triggered from inside
-        #: one (the reserve hook commits cables from the slack layer's signals)
-        #: cannot re-enter it.
+        #: one (a slot elsewhere that saves the layer from the signals the
+        #: sweep's own writes emit) cannot re-enter it.
         self._sweeping: Set[str] = set()
         #: Layer ids already reported as unmeasurable, so that warning is once
         #: per layer and not once per vertex moved.

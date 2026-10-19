@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+ <!-- Clear picture from element: the artwork of ic_import_picture.svg, unchanged, with its "+" replaced by an "x" (add / remove).
+      The x is 4.5 units wide (the "+" is 3) and sits a little further right, clear of the frame, so the two still differ at 16 px. -->
+ <g fill="none" stroke="#334155" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="3.5" y="5.5" width="13" height="11" rx="1.2"/>
+  <path d="M4.5 14.5l3.5-3.5 2.5 2.5 2-2 3 3" />
+  <circle cx="9" cy="9" r="1.2" />
+  <path d="M18.5 6l4.5 4.5m0-4.5l-4.5 4.5" />
+ </g>
+</svg>

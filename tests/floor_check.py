@@ -22,7 +22,7 @@ What it catches, and nothing else does:
   out of its Qt slot. QGIS 3.40 ships 3.12 and 3.44 ships 3.13, so both CI legs
   stayed green and it shipped in a release.
 * **A package that takes its own submodules down.** ``addons/__init__.py``
-  imports all six addons, so one bad import there makes every one of them
+  imports all five addons, so one bad import there makes every one of them
   unavailable -- including the fibre-break tool, reached lazily as
   ``from .addons.fiber_break import FiberBreakTool``, which must import the
   failing ``__init__`` first.

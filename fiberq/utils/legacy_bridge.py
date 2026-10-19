@@ -56,7 +56,6 @@ def _fiberq_translate(text: str, lang: str) -> str:
         'Razgrani cables (offset)': 'Separate cables (offset)',
         'Show shortcuts': 'Show shortcuts',
         'BOM report (XLSX/CSV)': 'BOM report (XLSX/CSV)',
-        'Check (health check)': 'Health check',
         'Cable laying': 'Cable laying',
         'Underground': 'Underground',
         'Aerial': 'Aerial', 'Main': 'Main',

@@ -361,7 +361,7 @@ worth doing them:
 | `SelectionUI` | 4 | Smart selection, clear selection, delete selected. |
 | `ElementPlacementUI` | 3 | Placing network elements, including joint closures. |
 | `QuickToolbar` | 1 | One label template for the quick-access toolbar. |
-| `FiberQPlugin` | 105 | **Everything else** — menu entries, dialogs, tooltips, status messages and error messages from the plugin's main module: BOM report, locator, PostGIS publishing, health check, image linking, cutting tools, export, and the language menu. |
+| `FiberQPlugin` | 105 | **Everything else** — menu entries, dialogs, tooltips, status messages and error messages from the plugin's main module: BOM report, locator, PostGIS publishing, image linking, cutting tools, export, and the language menu. |
 
 **Suggested order:** do `FiberQ`, `RoutingUI` and `CableLayingUI` first — that is
 31 strings and covers almost everything a user sees on screen constantly. Then
