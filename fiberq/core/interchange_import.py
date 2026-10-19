@@ -482,6 +482,8 @@ class InterchangeBundleReader:
         # Per import: each feature's cable_uuid by its identity, the identities
         # this import added, and the slack/break rows with no cable_uuid column.
         self._cable_refs, self._added, self._detached = {}, set(), {}
+        # Features whose attributes with no FiberQ column could not be kept.
+        self._unusable_extras = self._unkeyed_extras = 0
 
         for table in self._feature_tables(gpkg_path, result):
             self._import_table(
@@ -494,6 +496,7 @@ class InterchangeBundleReader:
         self._keep_unmodelled_sidecar(gpkg_path, passthrough, result)
         self._keep_foreign_metadata(metadata, passthrough, result)
 
+        self._report_unkept_extras(result)
         result.passthrough = self._save_passthrough(passthrough)
         return result
 
@@ -603,7 +606,11 @@ class InterchangeBundleReader:
                     extras.setdefault("placement", kept_placement)
                 if extras and identity:
                     extras_by_uuid[identity] = extras
-                self._absorb_extra_json(feature, identity, extras_by_uuid)
+                if self._absorb_extra_json(feature, identity, extras_by_uuid):
+                    self._unusable_extras += 1
+                elif not identity and (extras or self._text(feature, "fq_extra_json")):
+                    # Kept against the feature's identity, and it has none.
+                    self._unkeyed_extras += 1
 
             if unreprojectable:
                 result.warnings.append(
@@ -633,27 +640,54 @@ class InterchangeBundleReader:
                 })
                 result.extra_attributes += 1
 
+    def _report_unkept_extras(self, result):
+        """Say how many features' attributes with no FiberQ column were not kept, and why."""
+        if self._unusable_extras:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "{count} feature(s) carried an fq_extra_json that is not a JSON object; it "
+                "was not imported, because it holds no attributes to keep.")
+            result.warnings.append(safe_format(
+                QCoreApplication.translate('FiberQInterchange', src), src,
+                count=self._unusable_extras))
+        if self._unkeyed_extras:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "{count} feature(s) have no fiberq_uuid, so the attributes FiberQ has no "
+                "column for could not be kept: they are kept against a feature's identity.")
+            result.warnings.append(safe_format(
+                QCoreApplication.translate('FiberQInterchange', src), src,
+                count=self._unkeyed_extras))
+
     @staticmethod
     def _absorb_extra_json(feature, identity, extras_by_uuid):
         """Merge a feature's own ``fq_extra_json`` into what we keep for it.
 
         A bundle that already carried extras for this feature -- because some
         other tool could not model them either -- must not lose them here.
+
+        Returns True when the feature had an ``fq_extra_json`` that could not
+        be kept: not a JSON object, so there are no attributes in it to keep.
+        It used to go with nothing but a debug line. Unclaimed (WP3 code, found
+        in the v1.6.0 review); the caller counts it into a warning.
         """
-        if not identity or feature.fields().indexFromName("fq_extra_json") < 0:
-            return
-        raw = feature.attribute("fq_extra_json")
-        if raw is None or not str(raw).strip():
-            return
+        # A NULL is a NULL QVariant, not None, on QGIS 3: through _text, or it
+        # reads as the text "NULL".
+        raw = InterchangeBundleReader._text(feature, "fq_extra_json")
+        if not raw:
+            return False
         try:
-            carried = json.loads(str(raw))
+            carried = json.loads(raw)
         except ValueError as e:
             logger.debug(f"fq_extra_json on {identity} is not valid JSON: {e}")
-            return
-        if isinstance(carried, dict):
+            return True
+        if not isinstance(carried, dict):
+            return True
+        if identity:
             merged = dict(carried)
             merged.update(extras_by_uuid.get(identity, {}))
             extras_by_uuid[identity] = merged
+        return False
 
     def _keep_unsupported(self, feature, fq_type, placement, passthrough, result,
                           stored_text=None):
@@ -839,6 +873,19 @@ class InterchangeBundleReader:
         for row in self._table_rows(gpkg_path, "fq_relation_member"):
             folded = {str(k).lower(): v for k, v in row.items()}
             members.setdefault(str(folded.get("relation_uuid")), []).append(row)
+        # A member naming no relation of the bundle -- or a relation with no
+        # uuid, which cannot be named -- belongs to nothing it could join. It
+        # was left out without a word.
+        named = {str({str(k).lower(): v for k, v in row.items()}.get("uuid") or "").strip()
+                 for row in bundle_relations} - {""}
+        stray = sum(len(rows) for key, rows in members.items() if key not in named)
+        if stray:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "{count} relation member row(s) name no relation in the bundle, so they were "
+                "not imported.")
+            result.warnings.append(safe_format(
+                QCoreApplication.translate('FiberQInterchange', src), src, count=stray))
 
         data = read_json_entry(
             "StuboviPlugin", "Relacije/relations_v1", {"relations": []},
