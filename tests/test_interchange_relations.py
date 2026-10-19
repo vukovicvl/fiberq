@@ -236,19 +236,24 @@ def test_a_record_another_tool_copied_deletes_nothing(project, tmp_path):
     assert _rows(path, "SELECT uuid FROM fq_relation") == [(r1,)]
 
 
-def test_no_record_is_left_where_nothing_was_written(project, tmp_path):
+def _record(path):
+    (value,) = _rows(path, f"SELECT value FROM _fiberq_metadata WHERE key = '{ic.WRITTEN_KEY}'")[0]
+    return json.loads(value)
+
+
+def test_the_record_names_only_what_this_export_wrote(project, tmp_path):
     layer, c1, _c2 = _two_cables(project)
-    _relations_entry(project, {"id": str(uuid.uuid4()), "name": "R",
-                               "cables": [{"layer_id": layer.id(), "fid": c1}]})
+    r1 = str(uuid.uuid4())
+    _relations_entry(project, {"id": r1, "name": "R", "cables": [{"layer_id": layer.id(), "fid": c1}]})
     path = tmp_path / "out.gpkg"
     _export(project, path)
-    assert _rows(path, f"SELECT COUNT(*) FROM _fiberq_metadata WHERE key = '{ic.WRITTEN_KEY}'") == [(1,)]
+    assert _record(path)["fq_relation"] == [r1]
     _relations_entry(project)
     _export(project, path)
-    assert _rows(path, f"SELECT COUNT(*) FROM _fiberq_metadata WHERE key = '{ic.WRITTEN_KEY}'") == [(0,)]
+    assert _record(path)["fq_relation"] == []
 
 
-def test_the_geojson_profile_never_carries_the_record(project, tmp_path):
+def test_the_geojson_profile_records_its_files_not_the_side_car(project, tmp_path):
     layer, c1, _c2 = _two_cables(project)
     _relations_entry(project, {"id": str(uuid.uuid4()), "name": "R",
                                "cables": [{"layer_id": layer.id(), "fid": c1}]})
@@ -256,7 +261,9 @@ def test_the_geojson_profile_never_carries_the_record(project, tmp_path):
     result = InterchangeBundleWriter(project).write_geojson(str(folder), layers=[layer])
     assert result.ok, result.errors
     with open(folder / "_fiberq_metadata.json", encoding="utf-8") as handle:
-        assert ic.WRITTEN_KEY not in json.load(handle)
+        record = json.loads(json.load(handle)[ic.WRITTEN_KEY])
+    assert record["files"] == ["cable.underground.geojson"]
+    assert "fq_relation" not in record
 
 
 def test_a_relation_with_an_integer_id_is_matched_on_reimport(project, tmp_path):

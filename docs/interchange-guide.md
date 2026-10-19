@@ -81,14 +81,18 @@ If the file already exists, FiberQ asks first, and says what replacing it does:
 
 > **Replace the bundle design.gpkg?**
 > Its FiberQ layers, relations and pass-through elements are rewritten from this
-> project. Anything another tool stored in the file — its own metadata keys,
-> tables and rows — is kept, not discarded.
+> project, and what FiberQ wrote there for a layer, relation or cable the project
+> no longer has is removed. Anything another tool stored in the file — its own
+> metadata keys, tables and rows — is kept, not discarded.
 
 That is the honest description of the operation, and it is worth reading once.
 Exporting over a file a colleague's tool also writes to does **not** wipe their
 half of it. FiberQ's own half is brought up to date: the rows it wrote there last
 time for a relation, a relation member or a pass-through element the project no
-longer has are removed.
+longer has are removed, and so is the table it wrote for a layer this export does
+not include — one you deleted, renamed, or that was left out above. A warning
+names each table removed. A bundle written before FiberQ 1.6.0 does not record
+which tables FiberQ wrote, so the first export over it removes none.
 
 ---
 
@@ -201,7 +205,8 @@ filename. Coordinates are WGS84 longitude/latitude, as RFC 7946 requires.
 
 Writing into a folder that already holds a bundle works like writing over a
 GeoPackage one: `_fiberq_metadata.json` is rewritten, and the keys another tool
-stored in it are kept.
+stored in it are kept. A `.geojson` file FiberQ wrote there last time for an
+element type this export has no layer for is removed, and the warning names it.
 
 **GeoJSON cannot express the relational side-car.** If your project has
 relationships to lose, the export says so, and stamps the bundle

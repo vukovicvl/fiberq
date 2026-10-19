@@ -44,15 +44,17 @@ UUID_NAMESPACE = _uuid.UUID("1f5b9c4e-3a76-5d0b-9c21-7e4a8d6f0b32")
 #: separately as ``crs_epsg`` and restored on import (spec section 5).
 STORAGE_EPSG = 4326
 
-#: Metadata keys this implementation owns and may overwrite on export. Any key
-#: NOT in this set was written by another tool and must survive untouched.
-#: FiberQ's own record, in a bundle it wrote, of the relations and cables whose
-#: rows it wrote there, so that exporting over the same file again can remove the
-#: rows of a relation or a cable the project no longer has (and nobody else's).
-#: Trusted only while its ``produced_at`` is the file's own: a tool that copies
-#: the key into another file, as section 7 asks it to, does not make it true there.
+#: FiberQ's own record, in a bundle it wrote, of what it wrote there: the
+#: relations and cables whose side-car rows it wrote and the feature tables, or,
+#: in the GeoJSON profile, the files. Exporting over the same bundle again
+#: removes what it wrote last time for something the project no longer has (and
+#: nobody else's). Trusted only while its ``produced_at`` is the file's own: a
+#: tool that copies the key into another file, as section 7 asks it to, does not
+#: make it true there.
 WRITTEN_KEY = "fiberq_written"
 
+#: Metadata keys this implementation owns and may overwrite on export. Any key
+#: NOT in this set was written by another tool and must survive untouched.
 OWNED_METADATA_KEYS = frozenset({
     "format", "format_version", "schema_version", "produced_by", "produced_at",
     "crs_epsg", "color_standard", "color_catalog_json", "profile", WRITTEN_KEY,

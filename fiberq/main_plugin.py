@@ -672,9 +672,10 @@ class FiberQPlugin:
             question = QT_TRANSLATE_NOOP(
                 'FiberQPlugin', 'The folder {name} already exists. Write the bundle into it?')
             detail = self.tr(
-                'Existing GeoJSON files for the same element types are replaced, and '
-                '_fiberq_metadata.json is rewritten, keeping the keys other tools stored '
-                'in it. Other files in the folder are left alone.')
+                'The GeoJSON files FiberQ wrote there are replaced, or removed for an '
+                'element type this export has no layer for, and _fiberq_metadata.json is '
+                'rewritten, keeping the keys other tools stored in it. Other files in the '
+                'folder are left alone.')
         else:
             target = path if path.lower().endswith('.gpkg') else path + '.gpkg'
             if not os.path.isfile(target):
@@ -683,8 +684,10 @@ class FiberQPlugin:
                 'FiberQPlugin', 'Replace the bundle {name}?')
             detail = self.tr(
                 'Its FiberQ layers, relations and pass-through elements are rewritten '
-                'from this project. Anything another tool stored in the file -- its own '
-                'metadata keys, tables and rows -- is kept, not discarded.')
+                'from this project, and what FiberQ wrote there for a layer, relation or '
+                'cable the project no longer has is removed. Anything another tool stored '
+                'in the file -- its own metadata keys, tables and rows -- is kept, not '
+                'discarded.')
 
         confirm = QMessageBox(self.iface.mainWindow())
         confirm.setIcon(QMessageBox.Icon.Question)

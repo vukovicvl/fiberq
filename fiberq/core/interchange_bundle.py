@@ -28,13 +28,15 @@ import re
 import shutil
 import sqlite3
 import tempfile
+from contextlib import closing
 from datetime import datetime, timezone
 
 from qgis.core import (
     QgsCoordinateReferenceSystem, QgsCoordinateTransform,
     QgsCoordinateTransformContext, QgsFeature, QgsFeatureRequest, QgsField,
     QgsFields, QgsGeometry, QgsMemoryProviderUtils, QgsProject,
-    QgsVectorFileWriter, QgsVectorLayer,
+    QgsProviderConnectionException, QgsProviderRegistry, QgsVectorFileWriter,
+    QgsVectorLayer,
 )
 from qgis.PyQt.QtCore import QT_TRANSLATE_NOOP, QCoreApplication
 
@@ -240,6 +242,65 @@ def _previously_written(file_metadata):
     if not isinstance(record, dict) or record.get("produced_at") != file_metadata.get("produced_at"):
         return {}
     return record
+
+
+def _old_tables_removed(gpkg_path, previous, current):
+    """Drop the feature tables FiberQ wrote here last time that this export did not.
+
+    Returns ``(removed, failed)``. Only a table the record names, and only one
+    that is still a feature table of the file, is dropped; through QGIS's own
+    GeoPackage connection, which takes the spatial index and the registration
+    with it.
+    """
+    stale = sorted(set(previous.get("features") or []) - set(current))
+    if not stale:
+        return [], []
+    try:
+        with closing(sqlite3.connect(gpkg_path)) as conn:
+            present = {str(name).lower(): name for (name,) in conn.execute(
+                "SELECT table_name FROM gpkg_contents WHERE data_type = 'features'")}
+    except (sqlite3.Error, sqlite3.Warning) as e:
+        return [], [f"{', '.join(stale)} ({e})"]
+    removed, failed = [], []
+    for table in stale:
+        name = present.get(str(table).lower())
+        if name is None:
+            continue
+        try:
+            connection = QgsProviderRegistry.instance().providerMetadata("ogr").createConnection(
+                gpkg_path, {})
+            connection.dropVectorTable("", name)
+        except QgsProviderConnectionException as e:
+            failed.append(f"{name} ({e})")
+        else:
+            removed.append(name)
+    return removed, failed
+
+
+def _geojson_name(name):
+    """True for a bare ``*.geojson`` file name: never a path, so never outside the folder."""
+    text = str(name or "")
+    if not text.endswith(".geojson") or text.startswith("."):
+        return False
+    if any(ch in text for ch in "/\\\0:"):
+        return False
+    return os.path.basename(text) == text
+
+
+def _old_files_removed(directory, previous, current):
+    """Delete the GeoJSON files FiberQ wrote in this folder last time that this export did not."""
+    removed, failed = [], []
+    for name in sorted(set(previous.get("files") or []) - set(current)):
+        path = os.path.join(directory, str(name))
+        if not _geojson_name(name) or not os.path.isfile(path):
+            continue
+        try:
+            os.remove(path)
+        except OSError as e:
+            failed.append(f"{name} ({e})")
+        else:
+            removed.append(name)
+    return removed, failed
 
 
 def _forget(conn, previous, relations_now, cables_now):
@@ -1384,13 +1445,24 @@ class InterchangeBundleWriter:
         if not result.layers:
             return result
 
+        # Unclaimed (WP3 code, found in the v1.6.0 review). An export over a
+        # bundle left the tables it had written there last time for a layer the
+        # project no longer has -- removed, renamed, or left out above -- so a
+        # reader went on finding manholes that had been deleted, presented as
+        # this export's. The record of what FiberQ wrote says which tables are
+        # its own; nobody else's is touched, and a bundle with no record (one
+        # written before 1.6.0) loses nothing.
+        previous = _previously_written(file_metadata)
+        removed, failed = _old_tables_removed(
+            gpkg_path, previous, {canonical for _lyr, canonical, _t, _p in mapped})
+        self._report_removed(result, removed, failed, "bundle")
+
         timestamp = datetime.now(timezone.utc).isoformat()
         conn = None
         try:
             conn = sqlite3.connect(gpkg_path)
             self._create_sidecar(conn, timestamp)
 
-            previous = _previously_written(file_metadata)
             relations, members, unresolved_members, relation_uuids = self._write_relations(conn, index)
             stops, unresolved_stops, cable_uuids = self._write_path_stops(conn, index)
             _forget(conn, previous, relation_uuids, cable_uuids)
@@ -1414,10 +1486,11 @@ class InterchangeBundleWriter:
                 )
 
             result.preserved = ic.foreign_keys(existing)
-            written = None
-            if relation_uuids or cable_uuids:
-                written = {"produced_at": timestamp, "fq_relation": sorted(relation_uuids),
-                           "fq_path_stop": sorted(cable_uuids)}
+            # A table this export could not write, or could not remove, stays
+            # FiberQ's: it is in the file, and the next export decides again.
+            features = set(result.layers) | (set(previous.get("features") or []) - set(removed))
+            written = {"produced_at": timestamp, "fq_relation": sorted(relation_uuids),
+                       "fq_path_stop": sorted(cable_uuids), "features": sorted(features)}
             result.metadata = self._write_metadata(conn, existing, timestamp, written)
             conn.commit()
         except (sqlite3.Error, sqlite3.Warning) as e:
@@ -1482,18 +1555,30 @@ class InterchangeBundleWriter:
                 result.errors.append(f"Could not create {directory}: {e}")
                 return result
 
+            files = set()
             for canonical in list(result.layers):
                 fq_type, placement = result.types[canonical]
                 stem = f"{fq_type}.{placement}" if placement else fq_type
+                files.add(f"{stem}.geojson")
                 error = self._write_geojson_layer(
                     staged.path, canonical, os.path.join(directory, f"{stem}.geojson"))
                 if error:
                     result.errors.append(error)
 
+            # As for the GeoPackage profile's tables: the files FiberQ wrote here
+            # last time for an element type this export has no layer for.
+            previous = _previously_written(folder_metadata)
+            removed, failed = _old_files_removed(directory, previous, files)
+            self._report_removed(result, removed, failed, "folder")
+
             dropped = sum(staged.sidecar_rows.values())
             metadata = dict(staged.metadata)
-            # It records rows of a GeoPackage this profile has no side-car for.
-            metadata.pop(ic.WRITTEN_KEY, None)
+            # The staged record is of a GeoPackage's tables and side-car rows;
+            # this profile records its files.
+            kept = (set(previous.get("files") or []) - set(removed)) | files
+            metadata[ic.WRITTEN_KEY] = json.dumps(
+                {"produced_at": metadata.get("produced_at"), "files": sorted(kept)},
+                sort_keys=True)
             if dropped:
                 # Only when something is actually lost. Marking a complete
                 # bundle lossy is as misleading as not marking a lossy one.
@@ -1514,6 +1599,32 @@ class InterchangeBundleWriter:
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
         return result
+
+    @staticmethod
+    def _report_removed(result, removed, failed, where):
+        """Say what an export removed from the bundle or folder it replaced, and what it could not."""
+        if removed:
+            if where == "bundle":
+                src = QT_TRANSLATE_NOOP(
+                    'FiberQInterchange',
+                    "Removed from the bundle: {names}. FiberQ wrote them there last time, and "
+                    "this export has no layer for them.")
+            else:
+                src = QT_TRANSLATE_NOOP(
+                    'FiberQInterchange',
+                    "Removed from the folder: {names}. FiberQ wrote them there last time, and "
+                    "this export has no layer for them.")
+            result.warnings.append(safe_format(
+                QCoreApplication.translate('FiberQInterchange', src), src,
+                names=", ".join(removed)))
+        if failed:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "Could not remove what FiberQ wrote last time for a layer this export does not "
+                "have: {names}.")
+            result.warnings.append(safe_format(
+                QCoreApplication.translate('FiberQInterchange', src), src,
+                names=", ".join(failed)))
 
     @staticmethod
     def _folder_metadata(directory):
