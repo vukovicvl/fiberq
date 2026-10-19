@@ -169,6 +169,19 @@ def foreign_bundle(source_project, tmp_path):
         conn.execute(
             "INSERT OR REPLACE INTO _fiberq_metadata (key, value) VALUES (?, ?)",
             FOREIGN_METADATA)
+        # Richer than the plugin even where it does model the data: a relation's
+        # category and a member's role and order, a stop the cable does not pass
+        # through (is_latent 0) after the one it does, and a side-car table and
+        # a column that a later 1.x version adds.
+        conn.execute("UPDATE fq_relation SET category = 'Main'")
+        conn.execute("UPDATE fq_relation_member SET role = 'feeder', order_index = 0")
+        conn.execute("INSERT INTO fq_path_stop (cable_uuid, element_uuid, order_index, is_latent) "
+                     "VALUES ('u-cable-1', 'u-closure-1', 1, 0)")
+        conn.execute("CREATE TABLE fq_tray (uuid TEXT PRIMARY KEY, closure_uuid TEXT, "
+                     "capacity INTEGER)")
+        conn.execute("INSERT INTO fq_tray VALUES ('tray-1', 'u-closure-1', 12)")
+        conn.execute("ALTER TABLE fq_splice_point ADD COLUMN vendor_ref TEXT")
+        conn.execute("UPDATE fq_splice_point SET vendor_ref = 'V-77'")
     return path
 
 
@@ -351,21 +364,35 @@ def test_metadata_another_tool_wrote_reaches_the_next_bundle(round_tripped):
     assert exported.preserved.get(key) == value
 
 
-def test_relations_survive_as_relations(round_tripped):
+def test_relations_survive_as_relations(round_tripped, foreign_bundle):
     """Not as a blob: they go out uuid-keyed, come back as project relations,
-    and go out uuid-keyed again."""
+    and go out uuid-keyed again -- under the same uuid, with the category and
+    the member's role and order they came with."""
     imported, _exported, again = round_tripped
     assert imported.relations == 1
-    assert _rows(again, "SELECT name FROM fq_relation") == [("Feeder A",)]
-    assert _rows(again, "SELECT member_uuid FROM fq_relation_member") == [("u-cable-1",)]
+    (relation,) = _rows(foreign_bundle, "SELECT uuid FROM fq_relation")
+    assert _rows(again, "SELECT uuid, name, category FROM fq_relation") == [
+        (relation[0], "Feeder A", "Main")]
+    assert _rows(again, "SELECT relation_uuid, member_uuid, order_index, role "
+                        "FROM fq_relation_member") == [(relation[0], "u-cable-1", 0, "feeder")]
 
 
 def test_path_stops_survive(round_tripped):
+    """In the cable's order, each with its mark: passed through (1) or not (0)."""
     imported, _exported, again = round_tripped
-    assert imported.path_stops == 1
+    assert imported.path_stops == 2
     assert _rows(
-        again, "SELECT cable_uuid, element_uuid FROM fq_path_stop"
-    ) == [("u-cable-1", "u-mh-1")]
+        again, "SELECT cable_uuid, element_uuid, order_index, is_latent FROM fq_path_stop "
+               "ORDER BY order_index"
+    ) == [("u-cable-1", "u-mh-1", 0, 1), ("u-cable-1", "u-closure-1", 1, 0)]
+
+
+def test_a_side_car_table_and_column_a_later_version_adds_survive(round_tripped):
+    """Rule 4: a 1.x bundle may add tables and columns a 1.0 reader must carry."""
+    _imported, _exported, again = round_tripped
+    assert _rows(again, "SELECT uuid, closure_uuid, capacity FROM fq_tray") == [
+        ("tray-1", "u-closure-1", 12)]
+    assert _rows(again, "SELECT uuid, vendor_ref FROM fq_splice_point") == [("sp-1", "V-77")]
 
 
 def test_a_cable_reference_survives_as_a_reference(round_tripped):
@@ -503,7 +530,7 @@ def test_a_second_import_leaves_the_path_stops_intact(foreign_bundle, target_pro
         "StuboviPlugin", "LatentElements/latent_v1", "")[0])
     # Counted through latent_records: the entry is in the pass-through dialog's
     # shape, {"elements": [...]} per cable, and len() of that dict is always 1.
-    assert sum(len(stops) for stops in ic.latent_records(stored).values()) == 1
+    assert sum(len(stops) for stops in ic.latent_records(stored).values()) == 2
 
 
 def test_a_second_import_keeps_the_cable_reference_pointing_at_the_cable(

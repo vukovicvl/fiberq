@@ -397,6 +397,7 @@ plugin** and exports it again, then checks that all of the following survived:
 | A `_fiberq_metadata` key FiberQ did not write | Carried through the project into the next bundle |
 | Relations | Out under their own uuid with their category, member roles and order, back as project data, out again unchanged |
 | Path stops | Out with `is_latent` 1 or 0 in the cable's order, back into the project, out again with the same order and marks |
+| A side-car table this version does not define, and a column a defined table lacks | Re-created as they arrived and written back as rows |
 
 It runs on **QGIS 3 / Qt5 and QGIS 4 / Qt6** in CI. Import is also idempotent: importing
 the same bundle twice is a no-op, because identity is permanent and a feature with a
