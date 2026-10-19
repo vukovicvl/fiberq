@@ -627,9 +627,11 @@ class FiberQPlugin:
             bar.pushWarning('FiberQ', safe_format(self.tr(src), src, details=e))
             return
 
-        # Anything left out is named, never implied. A bundle that quietly
-        # dropped a layer and one that had nothing to drop look identical from
-        # a success message alone.
+        # Every vector layer left out is counted, never implied: the summary below
+        # says how many are not part of the bundle (other layer kinds, a raster
+        # basemap say, are not looked at). A bundle that quietly dropped a layer and
+        # one that had nothing to drop look identical from a success message alone.
+        # Which layers, and why, goes only to the debug log.
         for name, reason in result.skipped:
             logger.debug(f"Bundle: not including '{name}' ({reason})")
         for warning in result.warnings:

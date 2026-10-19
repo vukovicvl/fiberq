@@ -37,13 +37,20 @@ rewritten. You can export mid-design as often as you like.
 When it finishes, the message bar says what was written:
 
 ```
-FiberQ: Wrote design.gpkg — 23 layer(s), 46 feature(s), 1 foreign metadata key(s) preserved
+FiberQ: Wrote design.gpkg — 23 layer(s), 46 feature(s), 1 foreign metadata key(s) preserved, 2 layer(s) not part of the bundle
 ```
 
 Every clause is there on purpose. An export that quietly dropped a layer and an
 export that had nothing to drop read identically from a bare "done", so the
-summary names what happened — including layers left out, and how many metadata
-keys belonging to another tool were carried forward.
+summary counts what happened: how many metadata keys belonging to another tool
+were carried forward, and how many layers were left out. It gives the number, not
+the names. A vector layer is left out when FiberQ does not recognise its name as
+one of its own (a layer of your own, or a FiberQ layer you renamed) or when QGIS
+cannot open its data source (a missing file, an unreachable database). Layers that are not vector layers, such as a raster
+basemap, are never part of a bundle and are not counted. Which layers were left
+out, and why, goes only to FiberQ's debug log, which is off by default: start QGIS
+with the environment variable `FIBERQ_LOG_LEVEL=DEBUG` and they are listed in
+**View → Panels → Log Messages**, on the *FiberQ* tab.
 
 ### Overwriting an existing bundle
 
@@ -112,13 +119,22 @@ your design, and it does not disturb the relationships the first one restored.
 
 **Into an empty project, the authoring CRS comes back.** Import into a project
 you have just created and it switches to the CRS the design was drawn in. Import
-into a project that already holds layers and your own CRS is left alone — an
-import adds to your work, it does not reproject it.
+into a project that already holds vector layers and your own CRS is left alone — an
+import adds to your work, it does not reproject it. Only ordinary vector layers
+count: a project holding nothing but rasters (an XYZ or WMS basemap, say), vector
+tiles, meshes or point clouds is treated as empty, and its CRS switches too. A
+basemap loaded as a vector layer counts as your work.
 
-**A bundle it cannot read fully is refused, not read partially.** A bundle
+**A bundle it cannot read is refused before anything is imported.** A bundle
 declaring a newer *major* version of the format stops with an explanation.
 Importing half a network and reporting success is worse than importing none of
 it.
+
+Inside a bundle it can read, from FiberQ 1.6.0 a feature whose coordinates cannot
+be reprojected into your project's CRS is skipped rather than imported with infinite
+coordinates, and a warning says how many, layer by layer. If a layer of the bundle
+cannot be read, or its features cannot be added, the import carries on with the rest
+of the bundle and then reports a failure; nothing it added is taken out again.
 
 > **What if the file is not a bundle?** An ordinary GeoPackage from another GIS
 > user has no `_fiberq_metadata` table, and the import refuses it: *"This is not
@@ -171,8 +187,9 @@ come back.
 The format's first rule is that a tool passes on what it cannot use.
 
 **An element type FiberQ has no layer for** — a splitter, say — is kept whole,
-with its geometry and attributes, and written out again unchanged. You are told
-it is there:
+with its geometry and attributes, and written out again unchanged as a row of the
+bundle's passthrough table, `fq_extension`, rather than as a layer of its own.
+You are told it is there:
 
 > Carried through unchanged, with no FiberQ layer to draw them in: splitter (14).
 > They survive the next export.
@@ -206,7 +223,7 @@ it.
 **If the other tool does not**, you have two options.
 
 *Ask them to implement it.* The spec is short, the container is a plain
-GeoPackage, and the conformance list is nine items.
+GeoPackage, and the conformance list is ten items.
 
 *Or bring the data in by hand.* An ordinary GeoPackage, Shapefile or DXF can be
 added to QGIS the usual way (**Layer → Add Layer → Add Vector Layer**), and any
@@ -241,9 +258,9 @@ bundle, and the project still says `Stubovi` afterwards.
 
 The round trip is asserted in CI on every commit, against a bundle deliberately
 richer than this plugin: it carries an element type FiberQ has no layer for, an
-attribute it has no column for, fibre-splice tables it does not model, a third
-tool's passthrough rows and a metadata key it did not write. The test imports
-it, exports it again, and checks that every object is still there.
+attribute it has no column for, fibre-splice tables it does not model, a
+passthrough row from a third tool and a metadata key it did not write. The test
+imports it, exports it again, and checks that every object is still there.
 
 FiberQ 1.5.0 was verified by hand on **QGIS 3.40 (Qt5)** and **QGIS 4.2 (Qt6)**:
 a modern project, a project renamed to pre-1.0 Serbian layer names, an empty

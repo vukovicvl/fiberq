@@ -10,7 +10,8 @@ geometry, attributes, identity, and the relationships between elements — betwe
 FiberQ QGIS plugin and any other conformant tool, without losing anything on the way.
 
 - **Format identifier:** `fiberq-interchange`
-- **This revision:** `1.0`
+- **This revision:** `1.0` (the text was corrected in FiberQ 1.6.0 and the format is
+  unchanged, see §13)
 - **Container:** GeoPackage (OGC GeoPackage 1.3), with a GeoJSON profile for the
   geometry-only subset
 - **Licence:** this specification is published under CC-BY-4.0 so it can be
@@ -72,6 +73,7 @@ design.gpkg
     ├── fq_container
     ├── fq_container_slot
     ├── fq_slot_assignment
+    ├── fq_path_stop        ordered traversal              (§6.4)
     └── fq_extension        the passthrough store          (§8)
 ```
 
@@ -91,7 +93,8 @@ Each file is named for the element type it holds — `pole.geojson`,
 `otb.indoor.geojson`. Every feature still carries `fq_type` and `placement`, so nothing
 depends on the filename.
 
-Feature properties carry the canonical fields and nothing else. In particular a writer
+Feature properties carry the canonical fields, plus any column of the writer's own that
+has no canonical name, under that column's own name (§6.3). In particular a writer
 must **not** publish the container's row id (a GeoPackage `fid`, a shapefile record
 number) as a property: identity is `fiberq_uuid` and only `fiberq_uuid` (§4), and a
 second identifier-shaped field beside it invites a receiver to join on the one that does
@@ -126,7 +129,9 @@ Rules:
 - relations reference objects **by `fiberq_uuid` only**, never by row id, feature id, or
   layer name — those are local to a file and do not survive a round trip.
 
-Validation rule **B4** enforces presence and uniqueness inside the plugin.
+Inside the plugin, validation rule **B4** reports a feature whose `fiberq_uuid` is
+missing or shared with another. It does not block an export, so a bundle written from a
+project B4 flags carries the same fault.
 
 ## 5. Coordinates and measurement
 
@@ -148,7 +153,8 @@ Validation rule **B4** enforces presence and uniqueness inside the plugin.
 Every feature carries `fq_type` — a stable, untranslated code identifying what it is.
 The layer it happens to sit in is a presentation detail; `fq_type` is the contract.
 
-Codes are lowercase, dot-free, and stable forever once published:
+Codes are lowercase, may contain a dot or an underscore (`cable.aerial`, `patch_panel`),
+and are stable forever once published:
 
 | `fq_type` | Geometry | Meaning |
 |---|---|---|
@@ -195,8 +201,9 @@ These carry what is not geometry. All references are `fiberq_uuid` strings.
 **`fq_fiber_connection`** — one fibre spliced or connected to another. This is the table
 that makes the format worth having.
 `uuid`, `source_element_uuid`, `source_cable_uuid`, `source_tube`, `source_fiber`,
-`source_port`, `source_side`, `dest_element_uuid`, `dest_cable_uuid`, `dest_tube`,
-`dest_fiber`, `dest_port`, `dest_side`, `connection_type`, `loss_db`, `tray_ref`, `notes`
+`source_port`, `source_side`, `source_color_hex`, `dest_element_uuid`, `dest_cable_uuid`,
+`dest_tube`, `dest_fiber`, `dest_port`, `dest_side`, `dest_color_hex`, `connection_type`,
+`loss_db`, `tray_ref`, `notes`
 
 Tube and fibre numbers are **1-based**.
 
@@ -216,7 +223,7 @@ path, a feeder, a named route. `fq_relation(uuid, name, category)` and
 for "a thing with numbered positions that other things occupy": duct holes in a manhole
 wall, ports on a panel, trays in a closure.
 `fq_container(uuid, host_uuid, host_kind, kind, name, geometry_json)`,
-`fq_container_slot(uuid, container_uuid, index, label, kind, spec_json, status)`,
+`fq_container_slot(uuid, container_uuid, slot_index, label, kind, spec_json, status)`,
 `fq_slot_assignment(slot_uuid, occupant_uuid, direction, notes, extra_json)`
 
 **Containers nest.** `host_uuid` may reference either a feature or **another
@@ -247,8 +254,11 @@ Two rules govern it:
 - **A value outside a published domain is carried through unchanged.** Tidying a
   vocabulary is not worth discarding what the user recorded.
 
-An attribute with no canonical column travels in the feature's own `fq_extra_json`
-rather than being dropped (§8).
+A writer's own column with no canonical name is written as a column under its own name
+(the [field mapping](interchange-mapping.md#a-column-with-no-canonical-name) states the
+rule), so a reader must expect columns outside the canonical set. An attribute a
+*reader* has no column for travels in the feature's own `fq_extra_json` on its next
+write rather than being dropped (§8).
 
 ### 6.4 Ordered traversal
 
@@ -288,10 +298,10 @@ replace.
 
 `uuid` · `owner_uuid` · `kind` · `namespace` · `payload_json` · `produced_by`
 
-When a reader meets something it has no model for — an unknown `fq_type`, an attribute
-with no column, a side-car table it does not implement — it writes the whole thing here
-verbatim, keyed to the object it belongs to, and emits it again untouched on the next
-write.
+When a reader meets something it has no model for, it keeps it verbatim, keyed to the
+object it belongs to, and emits it again untouched on the next write: an unknown
+`fq_type` as a whole object here, a side-car table it does not implement as rows of that
+same table, and an attribute with no column in the feature's own `fq_extra_json` (below).
 
 Consequences worth stating plainly:
 
@@ -300,16 +310,16 @@ Consequences worth stating plainly:
 - When a tool later gains real support for something it used to pass through, the mapping
   is upgraded and those objects start importing properly — **older bundles still work**,
   because nothing was ever thrown away.
-- Per-feature attributes with no canonical column travel in the feature's own
-  `fq_extra_json` column rather than here; `fq_extension` is for whole objects and whole
-  tables.
+- Per-feature attributes a reader has no column for travel in the feature's own
+  `fq_extra_json` column rather than here; `fq_extension` is for whole objects, and for
+  the rows other tools have already put in it.
 
 ## 9. Conformance
 
 A **conformant reader** must:
 1. read every feature layer and the metadata table;
 2. preserve `fiberq_uuid` exactly;
-3. store anything it does not understand in the passthrough store;
+3. carry anything it does not understand through to its next write, as §8 describes;
 4. refuse, with a clear error, a bundle whose `format_version` has a **major** number it
    does not implement — rather than importing it partially.
 
@@ -376,7 +386,7 @@ plugin** and exports it again, then checks that all of the following survived:
 
 | Carried | How |
 |---|---|
-| An element type with no FiberQ layer | Kept whole in the passthrough store, re-emitted unchanged — never reclassified |
+| An element type with no FiberQ layer | Kept whole in the passthrough store and re-emitted unchanged as an `fq_extension` row, not as a layer of its own — never reclassified |
 | An attribute with no FiberQ column | Kept against the feature's identity, re-emitted into its `fq_extra_json` |
 | `fq_splice_point`, `fq_fiber_connection` | Kept verbatim and written back **as rows**, so they are still queryable |
 | A passthrough row from a third tool | Untouched |
@@ -414,9 +424,52 @@ QGIS project, which are meaningless in any other tool and do not survive a round
 The writer resolves them to `fiberq_uuid` on the way out. A reference it cannot resolve
 is **reported and left out**, never mapped to the nearest plausible object.
 
-The other side-car tables are created empty. That is intentional: a reader finds the
-table whether or not this particular writer had anything to put in it, and a tool that
-does model splicing can write into a bundle the plugin produced.
+The other side-car tables are always created, even though the plugin never writes rows
+of its own into them: what they hold is what it carried through from a bundle it
+imported and, when an export replaces an existing bundle, the rows already in that file,
+which are kept. That is intentional: a reader finds the table whether or not this
+particular writer had anything to put in it, and a tool that does model splicing can
+write into a bundle the plugin produced.
+
+The plugin has separate layers per placement only for `otb` and `to` mounted indoors,
+outdoors and on a pole, and for `to` in a joint closure (§6.1). Any other placement it
+reads is kept in the feature's `fq_extra_json`, so the feature's `placement` column is
+empty when the plugin writes it again.
+
+## 13. Corrections to this text
+
+The format has not changed since `1.0` was published. Until FiberQ 1.6.0, this document
+described it wrongly in six ways. They are corrected above:
+
+- the §3 tree left out `fq_path_stop`, which §6.4 specifies, so it showed eight `fq_*`
+  tables where a bundle has nine;
+- §3 said a feature carries the canonical fields and nothing else, and §6.3 and §8 that
+  an attribute with no canonical column travels in `fq_extra_json`. A writer's own
+  column with no canonical name is written under its own name; `fq_extra_json` is where
+  a reader keeps an attribute it has no column for;
+- §8 and §9 said a reader stores everything it does not understand in `fq_extension`.
+  Only a whole object of an unknown type goes there: an attribute with no column travels
+  in the feature's `fq_extra_json`, as §8's own last point already said, and a side-car
+  table a reader does not implement returns as rows of that table;
+- §6.1 called the type codes dot-free, but five of them (`cable.aerial`,
+  `cable.underground`, `duct.pe`, `duct.transition`, `closure.joint`) contain a dot;
+- §6.2 gave `fq_container_slot` a column called `index`, but the column is
+  `slot_index`;
+- §6.2's column list for `fq_fiber_connection` left out `source_color_hex` and
+  `dest_color_hex`, the advisory columns the paragraph below the list describes.
+
+In each case the reference implementation has always done what the text now says for
+the tables and columns this version defines, and a reader or writer built from the
+earlier text should follow the text above. FiberQ
+carries an `fq_container_slot` row through with the columns listed in §6.2, so a slot
+number stored in a column called `index` is dropped when a bundle passes through
+FiberQ: rename that column to `slot_index` first.
+
+The FiberQ plugin now checks in CI (`tests/test_interchange_format_doc.py`) that the
+`fq_*` tables in the §3 tree, the §6.1 type codes, the column lists in §6.2, §6.4 and §8
+and the required §7 keys match its implementation, that every other §7 key is one it
+owns, and that every back-quoted `fq_*` name in this text is a table or a column the
+format has. Nothing else on the page is checked.
 
 ---
 

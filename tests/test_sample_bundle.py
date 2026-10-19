@@ -10,7 +10,7 @@ These tests do not diff bytes. A GeoPackage is not byte-reproducible and
 ``produced_at`` changes on every run, so a byte comparison would fail for
 reasons that say nothing about the format. They check the things a reader
 actually depends on: that it declares itself, that it is readable by this
-plugin's own importer, and that every identity in it survives that round trip.
+plugin's own importer, and that every identity in it survives that import.
 """
 import json
 import pathlib
@@ -84,11 +84,13 @@ def test_every_side_car_table_is_present_even_when_empty():
 
 
 def test_the_example_imports_back_without_losing_an_identity():
-    """The round trip the format exists to pass, run against the published file.
+    """The published file, read back by the plugin's own importer.
 
     This is what makes the example trustworthy rather than merely present: it is
     checked by reading it the way a consumer would, not by trusting the writer
-    that produced it.
+    that produced it. It is an import, not the round trip the format exists to
+    pass: importing a bundle and exporting it unchanged is
+    ``tests/test_interchange_roundtrip.py``.
     """
     from qgis.core import QgsProject
 

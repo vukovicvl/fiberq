@@ -87,8 +87,8 @@ class ValidationRule:
 
 @dataclass
 class ValidationConfig:
-    """Runtime configuration. Persisted to a project entry
-    (``FiberQPlugin/validation``) by the UI layer so it travels with the project."""
+    """Runtime configuration. Not persisted: the plugin's own runs use these
+    defaults, and no project entry is read or written for it."""
     tol: float = 5.0  # snap tolerance in map units (reuses the relations default)
     # Length agreement: a stored length may differ from the computed one by the
     # larger of these two, so short features are not flagged for rounding noise.

@@ -7,9 +7,9 @@ conformal projection is the ground length multiplied by the local scale factor.
 
 In Web Mercator (EPSG:3857), by far the most common working CRS because it is what
 the web basemaps use, that factor is ``1 / cos(latitude)``. It is 1.00 on the
-equator, 1.41 in Serbia, 1.55 in the Netherlands and 1.86 in Finland. A cable
-digitised over a 276 m street in Niš therefore stores as 389 m, and the bill of
-materials over-orders by 41%.
+equator, 1.41 in Belgrade, 1.62 in the Netherlands and about 2.0 in southern
+Finland. A cable digitised over a 276 m street in Belgrade therefore stores as
+389 m, and the bill of materials over-orders by 41%.
 
 So: never call ``geom.length()`` on a value that reaches a field or a user. Call
 :func:`ground_length`, which measures on the project ellipsoid the way the QGIS

@@ -2,8 +2,11 @@
 
 This document describes the FiberQ project data model: the layer types, their
 fields, units and value domains, the CRS expectations, and the project
-**schema version** marker. It is generated from the single source of truth in
-[`fiberq/models/schema.py`](../fiberq/models/schema.py).
+**schema version** marker. It describes the single source of truth in
+[`fiberq/models/schema.py`](../fiberq/models/schema.py) and is kept in step with it
+by hand; the [interchange field mapping](interchange-mapping.md) is the page
+generated from it (and from `fiberq/core/interchange_fields.py`) and checked against
+them in CI.
 
 > **Status:** this is the *as-built* schema for FiberQ **1.x**, schema version
 > **1.0**. It faithfully reflects what the plugin creates today. A small number
@@ -155,7 +158,9 @@ LineString. Legacy name: `Trasa`.
 | fiberq_uuid | text | | | FiberQ UUID |
 
 ### Optical slack
-Point. Canonical name `Optical slack`; legacy `Optical slacks`, `Opticke_rezerve`.
+Point. Canonical name `Optical slack`. FiberQ's slack tools create the layer as
+`Optical slacks` (plural); an interchange import creates it as `Optical slack`;
+`Opticke_rezerve` is the pre-1.0 name. All three are recognised.
 
 | field | type | units | value map | alias |
 |---|---|---|---|---|
@@ -210,8 +215,10 @@ Polygon, **project CRS**. Legacy name `Objekti`.
 
 ### Aerial cables / Underground cables
 LineString. Both share one roster. Legacy names `Kablovi_vazdusni` /
-`Kablovi_podzemni`. (`branch_index` is added on demand when a cable is branched
-and is therefore not part of the base roster.)
+`Kablovi_podzemni`. (`branch_index` is part of the roster but created on demand:
+FiberQ adds the column the first time **Branch cables (offset)** is run on the layer,
+so a cable layer made by Lay cable does not carry it. A cable layer created by
+importing an interchange bundle does.)
 
 | field | type | units | value map | alias |
 |---|---|---|---|---|
@@ -245,6 +252,7 @@ and is therefore not part of the base roster.)
 | fibers_per_tube | int | | fiber-schema (interchange) | Fibers per tube |
 | total_fibers | int | | fiber-schema (interchange) | Total fibers |
 | color_standard | text | | fiber-schema (interchange), e.g. TIA-598-C | Color standard |
+| branch_index | int | | on demand: created the first time a cable is branched | — |
 | fiberq_uuid | text | | identity | FiberQ UUID |
 
 ### Fiber break
@@ -278,7 +286,7 @@ Older projects use the original names; FiberQ recognises them as the same type:
 | Manholes | OKNA |
 | Patch panel | Patch Panel |
 | Joint Closures | Nastavci |
-| Optical slack | Optical slacks, Opticke_rezerve |
+| Optical slack | Optical slacks (the name the slack tools create), Opticke_rezerve |
 | Fiber break | Prekid vlakna |
 | Route | Trasa |
 | Aerial cables | Kablovi_vazdusni |
@@ -302,7 +310,9 @@ to stored values is coordinated and lossless):
 - **Manhole `poklop_tes` / `poklop_lak` are boolean** — booleans may not round-trip
   cleanly through some GeoPackage/OGR paths.
 - **Cable `tip` storage direction:** the value map expects Serbian stored values,
-  but a one-off migration rewrites them to English; the canonical direction will
-  be fixed by the interchange work (the stored typo `bakarnI` is preserved for now).
+  but every cable restyle (at project open, after Lay cable and after each slack
+  recompute) rewrites `opticki` / `bakarnI` to `Optical` / `Copper`; the canonical
+  direction will be fixed by the interchange work (the value map still carries the
+  typo `bakarnI` for now).
 - **Mixed field naming:** a few keys are English in an otherwise Serbian roster
   (e.g. element `address_id`, the cable fibre-schema fields). These are kept as-is.

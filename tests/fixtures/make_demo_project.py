@@ -13,7 +13,7 @@ and the .qgz differ), and GeoPackage stamps ``gpkg_contents.last_change``. Neith
 is content; ``tests/test_sample_report.py`` compares rules, severities and issue
 order rather than bytes.
 
-The network is deliberately imperfect. Seven of the fourteen validation rules are
+The network is deliberately imperfect. Twelve of the fourteen validation rules are
 meant to fire, each from exactly one planted fault, so the sample report shows
 what a real audit looks like instead of an empty table. See ``FAULTS`` below for
 the catalogue; ``docs/samples/README.md`` repeats it for readers of the report.
@@ -40,25 +40,27 @@ EPSG = 3857
 
 #: A quiet corner of nowhere: far out in the Adriatic, so nobody mistakes the
 #: demo for a real deployment, but at a European latitude where the Web Mercator
-#: scale factor (~1.36x here) is representative.
+#: scale factor (~1.38x here) is representative.
 ORIGIN_X, ORIGIN_Y = 1_900_000.0, 5_400_000.0
 
 #: The planted faults, by rule. Kept next to the data that creates them so the
-#: two cannot drift apart; asserted by tests/test_demo_project.py.
+#: two cannot drift apart; asserted by tests/test_sample_report.py.
 FAULTS = {
     "A1": ("Aerial cable 'AC-2' is stranded: neither end reaches anything. "
            "One fault, two findings -- a cable has two ends."),
-    "A2": ("Aerial cable 'AC-3' starts 7 m from the third pole: outside the 5 m "
-           "tolerance, close enough that it was plainly meant to connect. "
+    "A2": ("Aerial cable 'AC-3' starts 7 map units (about 5 m on the ground) from "
+           "the third pole: outside the 5-unit tolerance, close enough that it was "
+           "plainly meant to connect. "
            "A2 refines A1 rather than replacing it, so this endpoint is "
            "reported by both."),
-    "A3": "The fourth pole sits 45 m off the network, attached to nothing.",
+    "A3": "The fourth pole sits 45 map units (about 33 m) off the network, attached to nothing.",
     "B1": "Optical slack 'SL-2' references a cable layer that is not in the project.",
     "B2": ("The fibre break is recorded against the Route layer. The reference "
            "resolves, so only the layer-type check catches it -- a break on a "
            "trench is not a thing."),
-    "B3": ("Optical slack 'SL-3' names a cable that exists, but sits 80 m away "
-           "from it: a stale link, as if the cable were re-routed afterwards."),
+    "B3": ("Optical slack 'SL-3' names a cable that exists, but sits 80 map units "
+           "(about 58 m) away from it: a stale link, as if the cable were re-routed "
+           "afterwards."),
     "B4": ("Two poles share one fiberq_uuid, the signature of a copied and "
            "pasted feature."),
     "C1": "Underground cable 'UC-2' has no cable type recorded.",
@@ -113,8 +115,9 @@ def _p(dx, dy):
 # The network
 # ---------------------------------------------------------------------------
 # A short street running east, with a spur north. Coordinates are projected
-# metres; at this latitude the true ground length is about 0.735 of the drawn
-# figure, which is why the stored lengths below are not the plan distances.
+# metres; at this latitude the true ground length is about 0.725 of the drawn
+# figure (0.726 east-west, 0.723 north-south: R-3's 200 drawn units measure
+# 144.61 m), which is why the stored lengths below are not the plan distances.
 
 ROUTE_MAIN_A = [_p(0, 0), _p(120, 0)]
 ROUTE_MAIN_B = [_p(120, 0), _p(280, 0)]
@@ -124,13 +127,13 @@ CABLE_BACKBONE = [_p(0, 0), _p(120, 0), _p(280, 0)]
 CABLE_DISTRIBUTION = [_p(120, 0), _p(120, 200)]
 #: Deliberately stranded -- nothing else reaches it (fault A1).
 CABLE_STRANDED = [_p(360, 90), _p(430, 90)]
-#: Starts 7 m from the pole at (280, 0): past the 5 m tolerance, inside 2x it, so
+#: Starts 7 map units from the pole at (280, 0): past the 5-unit tolerance, inside 2x it, so
 #: A2 calls it a near miss (fault A2). Its far end lands exactly on JC-2, so the
 #: cable contributes one dangling endpoint rather than two.
 CABLE_NEAR_MISS = [_p(287, 0), _p(287, -60)]
 
 POLE_POSITIONS = [_p(0, 0), _p(120, 0), _p(280, 0)]
-#: 45 m clear of every line (fault A3).
+#: 45 map units (about 33 m) clear of every line (fault A3).
 POLE_ORPHAN = _p(200, 45)
 #: Shares POLE_POSITIONS[0]'s identity (fault B4) and sits on it, so it is
 #: attached and only B4 has anything to say about it.
@@ -144,7 +147,7 @@ JOINT_CLOSURE_POSITIONS = [_p(120, 0), _p(287, -60)]
 #: On route R-1, but recorded against the Route layer instead of a cable (B2).
 FIBER_BREAK_POSITION = _p(60, 0)
 
-#: Names UC-1, which exists, but sits 80 m off it (fault B3).
+#: Names UC-1, which exists, but sits 80 map units (about 58 m) off it (fault B3).
 SLACK_STALE = _p(60, 80)
 
 
@@ -249,7 +252,7 @@ def _rows():
         # Fault B1: points at a cable that was never created.
         (_p(120, 100), {"napomena": "SL-2", "duzina_m": 15.0, "cable_fid": 999,
                         "cable_layer_id": "no-such-layer-id"}),
-        # Fault B3: names UC-1, which exists, but sits 80 m off it.
+        # Fault B3: names UC-1, which exists, but sits 80 map units off it.
         (SLACK_STALE, {"napomena": "SL-3", "duzina_m": 15.0, "cable_fid": 1,
                        "cable_layer_id": CABLE_LAYER_PLACEHOLDER}),
     ]

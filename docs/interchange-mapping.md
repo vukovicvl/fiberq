@@ -342,8 +342,9 @@ is what keeps adding a third tool from being a change to the first
 ([rule 3](interchange-format.md#2-the-four-rules)).
 
 If a tool has a field with no canonical equivalent, the honest options are, in order:
-propose it for the canonical set (the format is meant to be a superset), or carry it in
-the feature's `fq_extra_json`, or carry the whole object in
+propose it for the canonical set (the format is meant to be a superset), or write it as a
+column under its own name (what this plugin does, below; a reader must carry it, rule 1),
+or carry it in the feature's `fq_extra_json`, or carry the whole object in
 [`fq_extension`](interchange-format.md#8-the-passthrough-store). What is never
 acceptable is mapping it onto the nearest canonical field that nearly fits — that loses
 information irreversibly while looking like it worked.
@@ -354,8 +355,16 @@ The two directions are not symmetrical, and a tool that assumes they are will lo
 
 **Writing.** A column FiberQ has no canonical name for is written to the bundle **under
 the name it arrived with**, with its own type. It is not renamed and it is not moved into
-`fq_extra_json`. A reader that does not know the column simply ignores it; a reader that
-does — the tool that wrote it, most often — finds it exactly where it left it.
+`fq_extra_json`, with these exceptions. When another column of the same layer is renamed
+to that name (a column of your own called `name` beside FiberQ's `naziv`, say), the two
+are written as one column, and where both hold a value the first column's value is kept
+and the other's is dropped; if the two names differ only in letter case (`Name`), the
+layer cannot be written and the export reports a failure. A column of your own named
+`cable_uuid` on a slack or fibre-break layer is overwritten wherever FiberQ resolves the
+cable reference. A reader with no column for it must still carry it
+([rule 1](interchange-format.md#2-the-four-rules)); this plugin keeps it in
+`fq_extra_json`, as described next. A reader that has one — the tool that wrote it, most
+often — finds it exactly where it left it.
 
 **Reading.** A bundle column with no counterpart in the target layer is kept in that
 feature’s `fq_extra_json`, keyed by the identity of the feature it belongs to, and is
@@ -363,10 +372,11 @@ emitted again on the next write ([rule 1](interchange-format.md#2-the-four-rules
 [section 8](interchange-format.md#8-the-passthrough-store)). Nothing is dropped because
 this implementation has no field for it.
 
-One field in the table above is marked **on demand**: the plugin creates that column only
-when a feature needs it, so a freshly created layer does not carry it and a bundle written
-from such a project will not contain it. It is published here because it exists in real
-projects and a conformant tool must expect it.
+One field in the table above is marked **on demand**: the plugin's own tools create that
+column only when a feature needs it, so a layer they create does not carry it (a cable layer
+created by a bundle import does), and a bundle written from such a project may not contain
+it. It is published here because it exists in real projects and a conformant tool must
+expect it.
 
 ---
 
