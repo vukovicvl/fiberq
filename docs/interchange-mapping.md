@@ -355,13 +355,17 @@ The two directions are not symmetrical, and a tool that assumes they are will lo
 
 **Writing.** A column FiberQ has no canonical name for is written to the bundle **under
 the name it arrived with**, with its own type. It is not renamed and it is not moved into
-`fq_extra_json`, with these exceptions. When another column of the same layer is renamed
-to that name (a column of your own called `name` beside FiberQ's `naziv`, say), the two
-are written as one column, and where both hold a value the first column's value is kept
-and the other's is dropped; if the two names differ only in letter case (`Name`), the
-layer cannot be written and the export reports a failure. A column of your own named
-`cable_uuid` on a slack or fibre-break layer is overwritten wherever FiberQ resolves the
-cable reference. A reader with no column for it must still carry it
+`fq_extra_json` — unless its name is taken. A GeoPackage compares column names regardless
+of letter case, so when a column's name, in any case, is one FiberQ writes on that layer —
+the canonical name another column is renamed to (a column of your own called `name` or
+`Name` beside FiberQ's `naziv`, say), `fq_type`, `placement` or `fq_extra_json` in another
+case, `cable_uuid` on a slack or fibre-break layer, `geom`, or a `fid` that is not the layer's
+own row id — or differs only in case from the name of a column before it, its values are
+written into the feature's `fq_extra_json` under its own name instead, and the export says
+which columns went there. Nothing is merged, overwritten or dropped. A column named exactly
+`fq_type`, `placement` or `fq_extra_json` is the bundle's own column and keeps its values,
+and a GeoPackage layer's own `fid` stays the row id. A reader with no column for a column FiberQ wrote
+must still carry it
 ([rule 1](interchange-format.md#2-the-four-rules)); this plugin keeps it in
 `fq_extra_json`, as described next. A reader that has one — the tool that wrote it, most
 often — finds it exactly where it left it.
@@ -370,7 +374,7 @@ often — finds it exactly where it left it.
 feature’s `fq_extra_json`, keyed by the identity of the feature it belongs to, and is
 emitted again on the next write ([rule 1](interchange-format.md#2-the-four-rules),
 [section 8](interchange-format.md#8-the-passthrough-store)). Nothing is dropped because
-this implementation has no field for it -- an empty value included, and a `cable_uuid` on
+this implementation has no field for it — an empty value included, and a `cable_uuid` on
 an element type the plugin does not link to a cable.
 
 One field in the table above is marked **on demand**: the plugin's own tools create that

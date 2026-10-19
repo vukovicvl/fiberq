@@ -32,12 +32,15 @@ from datetime import datetime, timezone
 
 from qgis.core import (
     QgsCoordinateReferenceSystem, QgsCoordinateTransform,
-    QgsCoordinateTransformContext, QgsFeature, QgsField, QgsFields,
-    QgsGeometry, QgsMemoryProviderUtils, QgsProject, QgsVectorFileWriter,
-    QgsVectorLayer,
+    QgsCoordinateTransformContext, QgsFeature, QgsFeatureRequest, QgsField,
+    QgsFields, QgsGeometry, QgsMemoryProviderUtils, QgsProject,
+    QgsVectorFileWriter, QgsVectorLayer,
 )
+from qgis.PyQt.QtCore import QT_TRANSLATE_NOOP, QCoreApplication
+
 from . import interchange as ic
 from . import interchange_fields as fm
+from ..i18n import safe_format
 from ..models.schema import SCHEMA_VERSION, canonical_layer_name
 from ..utils.geometry import transformed
 from ..utils.logger import get_logger
@@ -248,6 +251,16 @@ def _forget(conn, previous, relations_now, cables_now):
         conn.execute("DELETE FROM fq_path_stop WHERE cable_uuid = ?", (cable,))
 
 
+def _json_object(value):
+    """``value`` -- a dict, JSON text or blank -- as a dict, or ``None`` if it is not one."""
+    if isinstance(value, dict):
+        return value
+    if value is None or (hasattr(value, "isNull") and value.isNull()) or not str(value).strip():
+        return {}
+    parsed = _parsed(str(value))
+    return parsed if isinstance(parsed, dict) else None
+
+
 def _order(record, position):
     """A row's own ``order_index`` when an import recorded one, else its position."""
     try:
@@ -366,6 +379,8 @@ class InterchangeBundleWriter:
         self.plugin_version = plugin_version or self._detect_version()
         self._unresolved_cable_refs = 0
         self._unreprojectable = 0
+        self._uncarried = 0
+        self._carried_columns = []
 
     @staticmethod
     def _detect_version():
@@ -384,7 +399,7 @@ class InterchangeBundleWriter:
         Returns ``(mapped, skipped)`` where *mapped* is a list of
         ``(layer, canonical_name, fq_type, placement)`` and *skipped* is a list
         of ``(layer_name, reason)``. Nothing is dropped without a reason the
-        caller can show the user.
+        caller can show the user. A layer passed twice is one layer.
         """
         if layers is None:
             layers = [
@@ -392,10 +407,14 @@ class InterchangeBundleWriter:
                 if isinstance(lyr, QgsVectorLayer)
             ]
         mapped, skipped = [], []
+        seen = set()
         for lyr in layers:
             if not isinstance(lyr, QgsVectorLayer) or not lyr.isValid():
                 skipped.append((getattr(lyr, "name", lambda: "?")(), "not a valid vector layer"))
                 continue
+            if lyr.id() in seen:
+                continue
+            seen.add(lyr.id())
             canonical = canonical_layer_name(lyr.name())
             if canonical is None:
                 skipped.append((lyr.name(), "not a FiberQ layer"))
@@ -409,6 +428,107 @@ class InterchangeBundleWriter:
             fq_type, placement = entry
             mapped.append((lyr, canonical, fq_type, placement))
         return mapped, skipped
+
+    def _placeable(self, mapped, result):
+        """The mapped layers whose coordinates can be put in the storage CRS.
+
+        Unclaimed (WP3 code, found in the v1.6.0 review). A layer with no valid
+        CRS, or with one no transformation leads from to EPSG:4326 -- an
+        engineering CRS, say -- was written as it stood: its coordinates
+        unmoved, in a table that declares EPSG:4326, so a pole 7 500 000 m east
+        became a pole at 7 500 000 degrees. Measured on 3.22, 3.44 and 4.2. Such
+        a layer is left out now, and the user is told. Its features are in no
+        table, so a relation or path stop naming them is reported as
+        unresolved, like a reference to any feature the bundle does not hold.
+        """
+        target = QgsCoordinateReferenceSystem.fromEpsgId(ic.STORAGE_EPSG)
+        kept, unplaceable = [], []
+        for entry in mapped:
+            layer = entry[0]
+            if self._reaches(layer, target):
+                kept.append(entry)
+                continue
+            unplaceable.append(layer.name())
+            result.skipped.append((layer.name(), "its CRS does not convert to EPSG:4326"))
+        if unplaceable:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "Not exported, because their coordinates cannot be converted to EPSG:4326: "
+                "{layers}. Each has no valid CRS, or one with no transformation to "
+                "EPSG:4326. Set the CRS their coordinates are in (Layer Properties > "
+                "Source), then export again.")
+            result.warnings.append(safe_format(
+                QCoreApplication.translate('FiberQInterchange', src), src,
+                layers=", ".join(repr(name) for name in unplaceable)))
+        return kept
+
+    def _reaches(self, layer, target):
+        """True when ``layer``'s coordinates can be transformed to ``target``."""
+        if not layer.isSpatial():
+            return True  # a table with no geometry has no coordinates to place
+        crs = layer.crs()
+        if crs == target:
+            return True
+        if not crs.isValid():
+            return False
+        return QgsCoordinateTransform(crs, target, self.project).isValid()
+
+    def _one_layer_per_table(self, mapped, result):
+        """The mapped layers, at most one per bundle table -- or ``None``, refused.
+
+        Unclaimed (WP3 code, found in the v1.6.0 review). Two layers that are
+        one FiberQ layer by name -- "Poles" beside the pre-1.0 "Stubovi", or a
+        name loaded twice -- were both written as the table "Poles", and the
+        second write replaced the first: the first layer's features were not in
+        the bundle, and nothing said so. An empty duplicate holds nothing to
+        lose and is left out. Two that both hold features cannot share one
+        table without choosing whose features to drop, so nothing is written
+        and the error names them, with where each one's data lives.
+        """
+        by_table = {}
+        for entry in mapped:
+            by_table.setdefault(entry[1], []).append(entry)
+        chosen, refused = set(), []
+        for table, entries in by_table.items():
+            if len(entries) == 1:
+                chosen.add(entries[0][0].id())
+                continue
+            filled = [entry for entry in entries if self._has_features(entry[0])]
+            if len(filled) > 1:
+                refused.append((table, filled))
+                continue
+            keep = (filled or entries)[0][0]
+            chosen.add(keep.id())
+            for entry in entries:
+                if entry[0].id() != keep.id():
+                    result.skipped.append((entry[0].name(), f"empty, and '{keep.name()}' is the "
+                                                            f"bundle table '{table}'"))
+        for table, filled in refused:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "Nothing was exported: the layers {layers} would all be written as the bundle "
+                "table '{table}', which holds one layer. Merge their features into one layer, "
+                "or remove or rename all but one of them, then export again.")
+            result.errors.append(safe_format(
+                QCoreApplication.translate('FiberQInterchange', src), src, table=table,
+                layers=", ".join(f"'{entry[0].name()}' ({self._source_of(entry[0])})"
+                                 for entry in filled)))
+        if refused:
+            return None
+        return [entry for entry in mapped if entry[0].id() in chosen]
+
+    @staticmethod
+    def _has_features(layer):
+        request = QgsFeatureRequest().setFlags(
+            QgsFeatureRequest.Flag.NoGeometry).setNoAttributes().setLimit(1)
+        return any(True for _feature in layer.getFeatures(request))
+
+    @staticmethod
+    def _source_of(layer):
+        """Where a layer's data lives, without a password its connection may hold."""
+        if layer.providerType() == "memory":
+            return QCoreApplication.translate('FiberQInterchange', "temporary scratch layer")
+        return layer.publicSource()
 
     # -- identity index ----------------------------------------------------
 
@@ -491,6 +611,13 @@ class InterchangeBundleWriter:
         """
         roster = fm.roster_for_type(fq_type)
         source_fields = layer.fields()
+        structural = [
+            name for name in fm.STRUCTURAL_FIELDS
+            if _stored_index(source_fields, name) >= 0
+        ]
+        wanted = list(STAMP_COLUMNS)
+        if structural:
+            wanted.append(fm.CABLE_REFERENCE_FIELD)
 
         # Field plan: rename to canonical, drop the project-local pair, keep
         # anything the format has no name for under the name it arrived with.
@@ -507,17 +634,44 @@ class InterchangeBundleWriter:
         #
         # So the result of append() is read, and a refused name is merged into
         # the destination already planned for it.
+        #
+        # That merge is for two of FiberQ's own columns. Unclaimed (WP3 code,
+        # found in the v1.6.0 review): a column of the user's own with the name
+        # of one this writer fills -- a `Name` or a `name` beside FiberQ's
+        # `naziv`, a `cable_uuid` on a slack layer, an `FQ_TYPE` -- failed the
+        # whole export when the names differed only in case, because a
+        # GeoPackage compares column names as SQLite does, regardless of case;
+        # and when they matched exactly it was merged into FiberQ's column, or
+        # overwritten by it, and lost a value. Measured on 3.22, 3.44 and 4.2.
+        # So FiberQ's names are claimed first, in a pass of their own, and a
+        # column of the user's that wants one keeps its values in fq_extra_json
+        # under its own name: what a reader does with an attribute it has no
+        # column for.
+        claimed = {name.lower() for name in wanted} | {"geom"}
+        for source in source_fields:
+            canonical_name = fm.canonical_field(roster, source.name()) if roster else None
+            if canonical_name:
+                claimed.add(canonical_name.lower())
+
         fields = QgsFields()
         plan = []  # (source index, destination index, canonical name)
         merged = set()  # destinations more than one source column feeds
+        carried = []  # (source index, name) of columns kept in fq_extra_json
+        taken = set()  # planned names, as SQLite compares them
+        primary = set(layer.primaryKeyAttributes())
         for src_index, source in enumerate(source_fields):
             name = source.name()
             if fm.modern_field(name) in fm.STRUCTURAL_FIELDS:
                 continue
             canonical_name = fm.canonical_field(roster, name) if roster else None
+            if canonical_name is None and not self._keeps_column(
+                    source, claimed, taken, src_index in primary):
+                carried.append((src_index, name))
+                continue
             field = QgsField(source)
             if canonical_name and canonical_name != name:
                 field.setName(canonical_name)
+            taken.add(field.name().lower())
             if fields.append(field):
                 plan.append((src_index, fields.count() - 1, canonical_name or name))
                 continue
@@ -527,13 +681,6 @@ class InterchangeBundleWriter:
             merged.add(existing)
             plan.append((src_index, existing, canonical_name or name))
 
-        structural = [
-            name for name in fm.STRUCTURAL_FIELDS
-            if _stored_index(source_fields, name) >= 0
-        ]
-        wanted = list(STAMP_COLUMNS)
-        if structural:
-            wanted.append(fm.CABLE_REFERENCE_FIELD)
         for name in wanted:
             if fields.indexFromName(name) < 0:
                 fields.append(_text_field(name))
@@ -566,6 +713,7 @@ class InterchangeBundleWriter:
         built = []
         unresolved = 0
         unreprojectable = 0
+        uncarried = 0
         for source_feature in layer.getFeatures():
             feature = QgsFeature(fields)
             geometry = QgsGeometry(source_feature.geometry())
@@ -638,6 +786,19 @@ class InterchangeBundleWriter:
                 elif not self._is_blank(source_feature.attribute(cable_fid_index)):
                     unresolved += 1
 
+            values = {}
+            for src_index, name in carried:
+                value = ic.json_safe(source_feature.attribute(src_index))
+                if value is not None:
+                    values[name] = value
+            if values:
+                combined = self._combined_extras(payload, values, feature.attribute(extra_index))
+                if combined is None:
+                    uncarried += 1
+                else:
+                    feature.setAttribute(extra_index, combined)
+                    payload = None
+
             if payload and extra_index >= 0 and self._is_blank(feature.attribute(extra_index)):
                 feature.setAttribute(extra_index, payload if isinstance(
                     payload, str) else json.dumps(payload))
@@ -648,7 +809,47 @@ class InterchangeBundleWriter:
             return None, f"could not fill the bundle copy of '{canonical}'"
         self._unresolved_cable_refs += unresolved
         self._unreprojectable += unreprojectable
+        self._uncarried += uncarried
+        self._carried_columns.extend(f"{layer.name()}.{name}" for _index, name in carried)
         return clone, None
+
+    @staticmethod
+    def _keeps_column(source, claimed, taken, is_primary_key=False):
+        """True when a column the format has no name for can be a column of its own."""
+        name = source.name()
+        folded = name.lower()
+        if folded in taken:
+            return False  # differs only in case from a column already planned
+        if name in STAMP_COLUMNS:
+            # Already a bundle column, filled by whoever wrote it, and kept: the
+            # writer never overwrites a value (spec 6.1).
+            return True
+        if folded == "fid":
+            # The layer's own row id (a GeoPackage layer's primary key) stays the
+            # bundle's row id, as it always has. Any other column of that name is
+            # the user's: OGR would take it for the row id, and failed the write
+            # when it was not an integer ("Wrong field type for fid") or, on
+            # QGIS 3.40, as soon as two features had one ("UNIQUE constraint
+            # failed"). Measured on 3.22, 3.40, 3.44 and 4.2.
+            return is_primary_key
+        return folded not in claimed
+
+    @staticmethod
+    def _combined_extras(kept, values, live):
+        """fq_extra_json for a feature that has columns carried in it, or ``None``.
+
+        What an import kept, then the carried columns, then the feature's own
+        fq_extra_json, each winning over the one before: what the project holds
+        now beats what an import kept. ``None`` when the kept or the feature's
+        own value is not a JSON object, so there is nothing to add them to.
+        """
+        combined = {}
+        for part in (kept, values, live):
+            part = _json_object(part)
+            if part is None:
+                return None
+            combined.update(part)
+        return json.dumps(combined, sort_keys=True)
 
     # -- side-car ----------------------------------------------------------
 
@@ -1065,6 +1266,18 @@ class InterchangeBundleWriter:
                 "No FiberQ layers in this project, so there is nothing to put in a bundle."
             )
             return result
+        # Both before a byte is written: a refusal must leave an existing
+        # bundle exactly as it was.
+        mapped = self._one_layer_per_table(self._placeable(mapped, result), result)
+        if mapped is None:
+            return result
+        if not mapped:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "Nothing was exported: no FiberQ layer in this project has coordinates that "
+                "convert to EPSG:4326.")
+            result.errors.append(QCoreApplication.translate('FiberQInterchange', src))
+            return result
 
         # Read first: a half-written file no longer knows what another tool put
         # in it, and this is the merge's only chance to find out.
@@ -1091,6 +1304,8 @@ class InterchangeBundleWriter:
         existing = ic.merge_metadata(kept_metadata, existing)
         self._unresolved_cable_refs = 0
         self._unreprojectable = 0
+        self._uncarried = 0
+        self._carried_columns = []
 
         file_exists = os.path.exists(gpkg_path)
         for lyr, canonical, fq_type, placement in mapped:
@@ -1119,6 +1334,22 @@ class InterchangeBundleWriter:
                 f"{self._unreprojectable} feature(s) could not be reprojected to EPSG:4326 and were "
                 "left out of the bundle rather than written with infinite coordinates."
             )
+        if self._carried_columns:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "These columns have the name of a column FiberQ writes, so their values are in "
+                "fq_extra_json under their own names: {columns}.")
+            result.warnings.append(safe_format(
+                QCoreApplication.translate('FiberQInterchange', src), src,
+                columns=", ".join(self._carried_columns)))
+        if self._uncarried:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "{count} feature(s) have a column that belongs in fq_extra_json, but their "
+                "fq_extra_json is not a JSON object, so that column's values were not written.")
+            result.warnings.append(safe_format(
+                QCoreApplication.translate('FiberQInterchange', src), src,
+                count=self._uncarried))
 
         if not result.layers:
             return result

@@ -45,12 +45,35 @@ export that had nothing to drop read identically from a bare "done", so the
 summary counts what happened: how many metadata keys belonging to another tool
 were carried forward, and how many layers were left out. It gives the number, not
 the names. A vector layer is left out when FiberQ does not recognise its name as
-one of its own (a layer of your own, or a FiberQ layer you renamed) or when QGIS
-cannot open its data source (a missing file, an unreachable database). Layers that are not vector layers, such as a raster
+one of its own (a layer of your own, or a FiberQ layer you renamed), when QGIS
+cannot open its data source (a missing file, an unreachable database), or when it
+is empty and another layer with the same FiberQ name holds features (an empty
+`Poles` beside your `Stubovi`). Layers that are not vector layers, such as a raster
 basemap, are never part of a bundle and are not counted. Which layers were left
 out, and why, goes only to FiberQ's debug log, which is off by default: start QGIS
 with the environment variable `FIBERQ_LOG_LEVEL=DEBUG` and they are listed in
 **View → Panels → Log Messages**, on the *FiberQ* tab.
+
+Two things are reported in a warning as well, by name:
+
+- **A layer whose coordinates cannot be converted to EPSG:4326** is left out: it
+  has no CRS, or one with no transformation to EPSG:4326, and its features would
+  otherwise land in the bundle unmoved, in the wrong place. Set the CRS its
+  coordinates are in (**Layer Properties → Source**) and export again.
+- **A column whose name FiberQ writes** is moved. A GeoPackage compares column names
+  regardless of letter case, so a column of your own called `Name` or `name`
+  beside FiberQ's `naziv`, say, cannot be a column of the bundle. Its values go
+  into the feature's `fq_extra_json` under the column's own name, and the warning
+  lists the columns. Nothing is merged, overwritten or dropped; the
+  [field mapping](interchange-mapping.md#a-column-with-no-canonical-name) lists
+  the names this applies to.
+
+**Two layers that are one FiberQ layer.** A bundle holds one table per element
+type, so `Poles` and the pre-1.0 `Stubovi` in one project would both become the
+table `Poles`. When both hold features, FiberQ writes nothing, and says which
+layers they are and where each one's data lives: merge them into one layer, or
+remove or rename all but one, then export again. An existing bundle is left
+exactly as it was.
 
 ### Overwriting an existing bundle
 
@@ -254,9 +277,12 @@ GeoPackage, and the conformance list is ten items.
 
 *Or bring the data in by hand.* An ordinary GeoPackage, Shapefile or DXF can be
 added to QGIS the usual way (**Layer → Add Layer → Add Vector Layer**), and any
-layer you rename to a FiberQ layer name is exported as that type from then on.
+layer you rename to a FiberQ layer name is exported as that type from then on —
+a name the project does not already use. If it does, copy the features into the
+existing layer instead: two layers with one FiberQ name stop the export (§1).
 It is manual, and it is honest: you decide what each layer is, rather than the
-plugin guessing.
+plugin guessing. Its columns go into the bundle under their own names, except one
+whose name FiberQ writes on that layer, which travels in `fq_extra_json` (§1).
 
 A guided importer that maps a foreign file's columns onto FiberQ's fields is a
 sensible future feature, and is not part of this release.
@@ -278,6 +304,10 @@ the next tool detached from its cable.
 
 Your project is not renamed by any of this. Open a 2019 project, export a
 bundle, and the project still says `Stubovi` afterwards.
+
+If the project also has a layer under the modern name — an empty `Poles` beside
+`Stubovi` — the empty one is left out. If both hold features, the export stops
+and says so (§1).
 
 ---
 

@@ -256,7 +256,9 @@ Two rules govern it:
 
 A writer's own column with no canonical name is written as a column under its own name
 (the [field mapping](interchange-mapping.md#a-column-with-no-canonical-name) states the
-rule), so a reader must expect columns outside the canonical set. An attribute a
+rule), so a reader must expect columns outside the canonical set. One whose name, compared
+regardless of letter case as SQLite compares column names, is already a column of that
+table travels in the feature's own `fq_extra_json` under its own name instead. An attribute a
 *reader* has no column for travels in the feature's own `fq_extra_json` on its next
 write rather than being dropped (§8).
 
