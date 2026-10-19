@@ -25,6 +25,8 @@ Design notes
 The rule registry and the individual checks live in :mod:`.validation_rules`.
 """
 import enum
+import json
+import math
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
@@ -85,23 +87,114 @@ class ValidationRule:
     applies_to: Tuple[str, ...] = ()
 
 
+#: The project entry ``(scope, key)`` a project's validation settings live in,
+#: as one JSON object, so they travel with the project (WP2).
+CONFIG_ENTRY = ("FiberQPlugin", "validation")
+
+#: The numeric settings, each a number >= 0.
+_NUMERIC_SETTINGS = ("tol", "length_rel_tol", "length_abs_tol")
+
+
 @dataclass
 class ValidationConfig:
-    """Runtime configuration. Not persisted: the plugin's own runs use these
-    defaults, and no project entry is read or written for it."""
+    """Tolerances and per-rule settings for a validation run.
+
+    A project keeps its own in the project entry :data:`CONFIG_ENTRY`, so they
+    travel with it: :meth:`from_project` reads them and :meth:`save` writes them.
+    This release has no dialog for them; docs/validation-rules.md shows how to
+    set them.
+
+    Unclaimed fix (found in the v1.6.0 review). WP2 stored nothing: the class
+    said "Not persisted", every run used these defaults, and the entry the WP2
+    plan named was never read or written.
+    """
     tol: float = 5.0  # snap tolerance in map units (reuses the relations default)
     # Length agreement: a stored length may differ from the computed one by the
     # larger of these two, so short features are not flagged for rounding noise.
     length_rel_tol: float = 0.01   # 1%
-    length_abs_tol: float = 0.5    # map units
+    length_abs_tol: float = 0.5    # metres: D3 compares ground lengths
     disabled_rules: set = field(default_factory=set)
     severity_overrides: Dict[str, Severity] = field(default_factory=dict)
+    #: What :meth:`from_project` could not use, each with why; the default
+    #: stands in for it. Reported by the run, never silently dropped.
+    problems: List[str] = field(default_factory=list)
 
     def is_enabled(self, rule_id: str) -> bool:
         return rule_id not in self.disabled_rules
 
     def severity_for(self, rule: ValidationRule) -> Severity:
         return self.severity_overrides.get(rule.id, rule.default_severity)
+
+    @classmethod
+    def from_project(cls, project) -> "ValidationConfig":
+        """The settings ``project`` keeps, with a default for anything it does not.
+
+        Each setting is read on its own: one that cannot be used is named in
+        :attr:`problems` and leaves the others as stored.
+        """
+        config = cls()
+        raw = project.readEntry(*CONFIG_ENTRY, "")[0]
+        if not raw:
+            return config
+        try:
+            data = json.loads(raw)
+        except ValueError as e:
+            config.problems.append(f"the entry is not valid JSON ({e})")
+            return config
+        if not isinstance(data, dict):
+            config.problems.append("the entry is not a JSON object")
+            return config
+        for name in _NUMERIC_SETTINGS:
+            if name not in data:
+                continue
+            value = data[name]
+            if _usable_number(value):
+                setattr(config, name, float(value))
+            else:
+                config.problems.append(f"{name} ({value!r} is not a number >= 0)")
+        config._read_rules(data)
+        return config
+
+    def _read_rules(self, data) -> None:
+        disabled = data.get("disabled_rules", [])
+        if isinstance(disabled, list) and all(isinstance(rule, str) for rule in disabled):
+            self.disabled_rules = set(disabled)
+        else:
+            self.problems.append("disabled_rules (not a list of rule ids)")
+        overrides = data.get("severity_overrides", {})
+        if not isinstance(overrides, dict):
+            self.problems.append("severity_overrides (not an object of rule id -> severity)")
+            return
+        for rule_id, value in overrides.items():
+            try:
+                self.severity_overrides[str(rule_id)] = Severity(str(value).lower())
+            except ValueError:
+                self.problems.append(
+                    f"severity_overrides.{rule_id} ({value!r} is not error, warning or info)")
+
+    def to_json(self) -> str:
+        """The settings as the JSON object :data:`CONFIG_ENTRY` holds."""
+        return json.dumps({
+            "tol": self.tol,
+            "length_rel_tol": self.length_rel_tol,
+            "length_abs_tol": self.length_abs_tol,
+            "disabled_rules": sorted(self.disabled_rules),
+            "severity_overrides": {rule_id: severity.value for rule_id, severity
+                                   in sorted(self.severity_overrides.items())},
+        }, sort_keys=True)
+
+    def save(self, project) -> bool:
+        """Store the settings in ``project``; True when the entry was written.
+
+        Saving the project file is still the user's step, as for any change.
+        """
+        return bool(project.writeEntry(*CONFIG_ENTRY, self.to_json()))
+
+
+def _usable_number(value) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return math.isfinite(value) and value >= 0
 
 
 @dataclass
@@ -117,6 +210,9 @@ class ValidationResult:
     ran_rules: List[str] = field(default_factory=list)
     skipped_rules: List[str] = field(default_factory=list)
     rule_errors: List[str] = field(default_factory=list)
+    #: Settings of the project's own that this run could not use (see
+    #: :attr:`ValidationConfig.problems`), and rule ids it names that no rule has.
+    config_problems: List[str] = field(default_factory=list)
 
     def add(self, issue: ValidationIssue) -> None:
         self.issues.append(issue)
@@ -212,23 +308,25 @@ def run_validation(project=None, rules=None, config=None,
                    timestamp=None, plugin_version="") -> ValidationResult:
     """Run the validation rules over ``project`` and return a structured result.
 
-    ``project`` defaults to the current ``QgsProject``. ``rules`` defaults to the
-    full registry (:data:`fiberq.core.validation_rules.RULES`). Each rule is run
-    inside a try/except: a failure is recorded in ``result.rule_errors`` and the
-    remaining rules still run. Never raises.
+    ``project`` defaults to the current ``QgsProject``, and ``config`` to the
+    settings that project keeps (:meth:`ValidationConfig.from_project`).
+    ``rules`` defaults to the full registry
+    (:data:`fiberq.core.validation_rules.RULES`). Each rule is run inside a
+    try/except: a failure is recorded in ``result.rule_errors`` and the remaining
+    rules still run. Never raises.
     """
     from qgis.core import QgsProject
 
+    # Lazy import breaks the manager<->rules import cycle (rules imports the
+    # data model above; the manager only needs the registry at call time).
+    from .validation_rules import RULES
+
     if project is None:
         project = QgsProject.instance()
-    cfg = config or ValidationConfig()
+    cfg = config or ValidationConfig.from_project(project)
     ctx = ValidationContext(project, cfg)
 
-    if rules is None:
-        # Lazy import breaks the manager<->rules import cycle (rules imports the
-        # data model above; the manager only needs the registry at call time).
-        from .validation_rules import RULES
-        rules = RULES
+    rules = list(RULES if rules is None else rules)
 
     result = ValidationResult(
         project_name=project.baseName() or project.fileName(),
@@ -238,6 +336,14 @@ def run_validation(project=None, rules=None, config=None,
         timestamp=timestamp,
         feature_counts=_feature_counts(ctx),
     )
+    result.config_problems.extend(cfg.problems)
+    # A typo in a rule id ("D33") would otherwise disable or re-grade nothing,
+    # and say nothing about it.
+    known = {rule.id for rule in RULES} | {rule.id for rule in rules}
+    for rule_id in sorted((set(cfg.disabled_rules) | set(cfg.severity_overrides)) - known):
+        result.config_problems.append(f"{rule_id} (no rule has this id)")
+    for problem in result.config_problems:
+        logger.warning(f"Validation setting not used: {problem}")
 
     for rule in rules:
         if not cfg.is_enabled(rule.id):

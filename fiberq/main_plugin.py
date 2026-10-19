@@ -385,6 +385,14 @@ class FiberQPlugin:
         panel.show()
         panel.raise_()
 
+        if result.config_problems:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                "Some of this project's validation settings could not be used, and the "
+                "defaults stood in for them: {details}")
+            self.iface.messageBar().pushWarning('FiberQ', safe_format(
+                self.tr(src), src, details='; '.join(result.config_problems)))
+
         counts = result.counts_by_severity()
         summary = ', '.join([
             self.tr('%n error(s)', '', counts['error']),

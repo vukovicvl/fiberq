@@ -301,7 +301,9 @@ def plan_recalculation(project=None, config: Optional[ValidationConfig] = None) 
         from qgis.core import QgsProject
         project = QgsProject.instance()
 
-    config = config or ValidationConfig()
+    # The project's own tolerances, the ones D3 reads, so "recalculate, then
+    # validate" clears every D3 finding there too.
+    config = config or ValidationConfig.from_project(project)
     ctx = ValidationContext(project, config)
     plan = RecalcPlan()
 

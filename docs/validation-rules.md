@@ -45,8 +45,8 @@ Whether the network actually joins up. These rules use a snap tolerance (default
 > national grid those are true metres. In Web Mercator (EPSG:3857) they are not:
 > distances there are inflated by 1/cos(latitude), so a 5-unit tolerance behaves
 > like 3.5 m in Serbia and about 3.1 m in the Netherlands — the A-rules are stricter
-> than the number suggests, and the tolerance cannot be changed from the QGIS
-> interface in this release (see [Configuring the rules](#configuring-the-rules)). (E1
+> than the number suggests. The tolerance is a setting the project keeps (see
+> [Configuring the rules](#configuring-the-rules)). (E1
 > reports a *geographic* CRS, where the effect is drastic enough to break the
 > rules outright; it does not report Web Mercator, where they still work.)
 
@@ -310,12 +310,37 @@ something on top.
 
 ## Configuring the rules
 
-Nothing is configurable from the QGIS interface in this release. Every run uses the
-defaults: a snap tolerance of 5 map units for the A-rules and B3, and a stored
-length agrees with the geometry when it is within 1 % of it or 0.5 m, whichever is
-larger. (The engine's Python API, `ValidationConfig`, accepts other tolerances,
-disabled rules and severity overrides, but the plugin neither stores them in the
-project nor offers them in a dialog.)
+The settings live in the project, so they travel with it: whoever opens the
+project validates it the same way. A project that has none uses the defaults:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `tol` | `5.0` | snap tolerance, in map units, for the A-rules and B3 |
+| `length_rel_tol` | `0.01` | a stored length agrees with the geometry within this fraction of it (D3, and **Recalculate lengths**)… |
+| `length_abs_tol` | `0.5` | …or within this many metres, whichever is larger |
+| `disabled_rules` | none | rule ids that do not run; a run lists them as skipped |
+| `severity_overrides` | none | rule id → `error`, `warning` or `info`, for every issue that rule reports |
+
+There is no dialog for them in this release. Set them from the QGIS Python console
+(**Plugins → Python Console**), then save the project:
+
+```python
+from qgis.core import QgsProject
+from fiberq.core.validation_manager import Severity, ValidationConfig
+
+project = QgsProject.instance()
+config = ValidationConfig.from_project(project)
+config.tol = 2.0                                   # map units
+config.disabled_rules.add("A2")
+config.severity_overrides["C1"] = Severity.INFO
+config.save(project)
+```
+
+They are stored as one JSON object in the project entry `FiberQPlugin/validation`.
+A value FiberQ cannot use, or a rule id no rule has, is named in a warning when
+validation runs, and the default stands in for it; the other settings still apply.
+**Recalculate lengths** reads the same two length tolerances as D3, so recalculating
+and then validating clears every D3 finding.
 
 A rule that fails to run is reported as such rather than passing silently — if a
 rule crashes on your data, the run continues and the panel says how many rules gave

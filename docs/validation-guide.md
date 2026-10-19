@@ -103,7 +103,9 @@ Full detail, including causes and what to do about each finding, is in the
 | *Geometry* | E2 | Error / Warning | Geometry present and non-empty (Error); lines and polygons well formed (Warning) |
 
 The A-rules use a snap tolerance — "close enough to be the same point" — of
-**5 map units**, which cannot be changed from the interface in this release. In a national grid those are true metres. In Web
+**5 map units**, a setting the project keeps; the rules reference's
+[Configuring the rules](validation-rules.md#configuring-the-rules) shows how to change
+it, from the Python console, since this release has no dialog for it. In a national grid those are true metres. In Web
 Mercator they are not, which is one of several reasons to work in your national
 grid where you can; E1 will tell you when the CRS is actively breaking the other
 rules.
