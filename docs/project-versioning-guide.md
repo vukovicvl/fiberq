@@ -52,9 +52,11 @@ tab). What the upgrade guarantees:
   simply retries next time. The version never claims a migration that didn't
   actually reach disk.
 
-> **Tip:** the upgrade becomes permanent only when you **save** the project (or
-> export it to GeoPackage). If you open an old project and close without saving,
-> it just upgrades again harmlessly next time.
+> **Tip:** on a file-backed layer (a GeoPackage or a shapefile), the `fiberq_uuid`
+> column and its values are written to the data file while the project opens. Only
+> the version marker waits until you **save** the project (or export it to
+> GeoPackage). If you close without saving, the next open finds every identity
+> already in place and simply stamps the marker again.
 
 ## 3. Stable feature identity: `fiberq_uuid`
 

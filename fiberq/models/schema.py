@@ -17,8 +17,8 @@ Important invariants (do not break without a migration):
 
 This module is authored to match what the plugin creates today; the existing
 modules (``element_defs``, ``field_aliases``, ``dialogs.base``, ``legacy_bridge``)
-delegate to it so there is one definition. The human-readable reference generated
-from this model lives in ``docs/schema.md``.
+delegate to it so there is one definition. The human-readable reference to this
+model is ``docs/schema.md``, kept in step with it by hand.
 
 Known as-built inconsistencies are preserved here verbatim (not "fixed") and are
 documented as deferred items for the interchange work — see ``docs/schema.md``.
