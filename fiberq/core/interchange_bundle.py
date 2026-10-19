@@ -578,6 +578,18 @@ class InterchangeBundleWriter:
             return None
         return [entry for entry in mapped if entry[0].id() in chosen]
 
+    def _entries_unreadable(self):
+        """True when this QGIS cannot read the project entries a newer one saved (U8)."""
+        from ..utils import compat
+        from .project_compat import opened_a_newer_project
+
+        try:
+            saved_major = self.project.lastSaveVersion().majorVersion()
+        except (AttributeError, RuntimeError) as e:
+            logger.warning(f"Could not read the version this project was saved with: {e}")
+            return False
+        return opened_a_newer_project(saved_major, compat.QGIS_VERSION_INT // 10000, True)
+
     @staticmethod
     def _has_features(layer):
         request = QgsFeatureRequest().setFlags(
@@ -1445,6 +1457,21 @@ class InterchangeBundleWriter:
         if not result.layers:
             return result
 
+        # U8. A project QGIS 4 saved reads, in QGIS 3, as one with no relations,
+        # no pass-through elements and nothing kept from an import (see
+        # core/project_compat.py). Exported like any other, it would also remove
+        # from an existing bundle every row FiberQ wrote there for them, because
+        # the project "no longer has" them. Here nothing is removed for them,
+        # and the user is told what the bundle lacks.
+        unreadable = self._entries_unreadable()
+        if unreadable:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "This project was saved in QGIS 4, and QGIS 3 cannot read its relations, "
+                "pass-through elements or what an import kept for other tools, so this bundle "
+                "has none of them. What FiberQ wrote for them in an existing bundle is kept.")
+            result.warnings.append(QCoreApplication.translate('FiberQInterchange', src))
+
         # Unclaimed (WP3 code, found in the v1.6.0 review). An export over a
         # bundle left the tables it had written there last time for a layer the
         # project no longer has -- removed, renamed, or left out above -- so a
@@ -1465,7 +1492,13 @@ class InterchangeBundleWriter:
 
             relations, members, unresolved_members, relation_uuids = self._write_relations(conn, index)
             stops, unresolved_stops, cable_uuids = self._write_path_stops(conn, index)
-            _forget(conn, previous, relation_uuids, cable_uuids)
+            if unreadable:
+                # Kept, and still FiberQ's: a later export from a project that
+                # can read its entries decides about them.
+                relation_uuids = set(relation_uuids) | set(previous.get("fq_relation") or [])
+                cable_uuids = set(cable_uuids) | set(previous.get("fq_path_stop") or [])
+            else:
+                _forget(conn, previous, relation_uuids, cable_uuids)
             written_extensions = self._write_passthrough(conn, extensions)
             result.sidecar_rows = {
                 "fq_relation": relations,

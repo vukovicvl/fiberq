@@ -2713,8 +2713,9 @@ class FiberQPlugin:
         QGIS 4 serialises project properties in a form QGIS 3 does not
         understand, so opening a QGIS 4 project here loses **every** FiberQ
         project entry -- relations, colour catalogues, latent elements, picture
-        and drawing links, the auto-save path, and WP3's interchange
-        passthrough store. Two of those fail quietly: the colour catalogues
+        and drawing links, the auto-save path, the validation settings, and
+        WP3's interchange passthrough store, which the warning did not name
+        before 1.6.0. Two of them fail quietly: the colour catalogues
         fall back to built-in defaults, so the user sees plausible colours
         rather than an absence, and the passthrough store holds another tool's
         data carried through an import.
@@ -2745,8 +2746,10 @@ class FiberQPlugin:
         src = QT_TRANSLATE_NOOP(
             'FiberQPlugin',
             "This project was saved in QGIS 4. Its FiberQ settings -- relations, colour "
-            "catalogues, latent elements, picture and drawing links, the auto-save path -- "
-            "cannot be read in QGIS 3. Do not save it here: that removes them permanently.")
+            "catalogues, pass-through elements, picture and drawing links, the auto-save "
+            "path, validation settings, and what an interchange import kept for other "
+            "tools -- cannot be read in QGIS 3. Do not save it here: that removes them "
+            "permanently.")
         # No placeholders, so no safe_format: there is nothing for a renamed
         # one to break.
         self.iface.messageBar().pushWarning(

@@ -258,7 +258,8 @@ def test_the_warning_names_what_cannot_be_read(plugin, clean_project, qgis4_proj
     said = plugin.iface.bar.warnings[0]
     assert "QGIS 4" in said
     assert "Do not save" in said
-    for lost in ("relations", "catalogues", "auto-save path"):
+    for lost in ("relations", "catalogues", "pass-through elements", "auto-save path",
+                 "validation settings", "an interchange import kept"):
         assert lost in said, f"the warning does not mention {lost}"
 
 
@@ -293,3 +294,59 @@ def test_no_warning_on_a_project_that_was_never_saved(plugin, clean_project):
     plugin._warn_if_project_is_from_a_newer_qgis()
 
     assert plugin.iface.bar.warnings == []
+
+
+def test_a_bundle_export_from_a_qgis4_project_removes_nothing_fiberq_wrote(
+        qgis4_project, tmp_path, monkeypatch):
+    """U8's export guard, which the plan named and v1.5.0 never had.
+
+    Read in QGIS 3, a QGIS 4 project has no relations, so an export over a
+    bundle used to remove every relation row FiberQ had written there: the
+    project "no longer has" them. Driven as though QGIS 3 were running, like
+    the warning above, so it is checked on both legs.
+    """
+    import json
+    import sqlite3
+    import uuid
+    from contextlib import closing
+
+    from qgis.core import (QgsFeature, QgsGeometry, QgsPointXY, QgsProject,
+                           QgsVectorLayer)
+
+    from fiberq.core.interchange_bundle import InterchangeBundleWriter
+    from fiberq.utils import compat
+
+    def cables(project):
+        layer = QgsVectorLayer("LineString?crs=EPSG:3857&field=fiberq_uuid:string(64)",
+                               "Underground cables", "memory")
+        feature = QgsFeature(layer.fields())
+        feature.setGeometry(QgsGeometry.fromPolylineXY(
+            [QgsPointXY(0, 0), QgsPointXY(100, 0)]))
+        feature.setAttribute("fiberq_uuid", "u-cable-1")
+        ok, (feature,) = layer.dataProvider().addFeatures([feature])
+        assert ok
+        project.addMapLayer(layer)
+        return layer, feature.id()
+
+    bundle = str(tmp_path / "b.gpkg")
+    source = QgsProject()
+    layer, fid = cables(source)
+    relation = str(uuid.uuid4())
+    source.writeEntry("StuboviPlugin", "Relacije/relations_v1", json.dumps({"relations": [
+        {"id": relation, "name": "R", "cables": [{"layer_id": layer.id(), "fid": fid}]}]}))
+    assert InterchangeBundleWriter(source).write(bundle, layers=[layer]).ok
+    source.clear()
+
+    monkeypatch.setattr(compat, "QGIS_VERSION_INT", 34400)   # pretend 3.44
+    newer = QgsProject()
+    assert newer.read(qgis4_project)
+    layer, _fid = cables(newer)
+    result = InterchangeBundleWriter(newer).write(bundle, layers=[layer])
+    newer.clear()
+
+    assert result.ok, result.errors
+    with closing(sqlite3.connect(bundle)) as conn:
+        assert (relation,) in conn.execute("SELECT uuid FROM fq_relation").fetchall()
+        assert conn.execute("SELECT COUNT(*) FROM fq_relation_member WHERE relation_uuid = ?",
+                            (relation,)).fetchone() == (1,)
+    assert any("saved in QGIS 4" in warning for warning in result.warnings), result.warnings

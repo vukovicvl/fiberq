@@ -94,6 +94,12 @@ not include — one you deleted, renamed, or that was left out above. A warning
 names each table removed. A bundle written before FiberQ 1.6.0 does not record
 which tables FiberQ wrote, so the first export over it removes none.
 
+**A project saved in QGIS 4 and opened in QGIS 3** cannot have its relations,
+pass-through elements or what an import kept read there (QGIS 3 does not
+understand how QGIS 4 stores them). A bundle exported from it has none of them,
+and the export says so. Over an existing bundle, what FiberQ wrote for them before
+is kept rather than removed. Export from QGIS 4 for a complete bundle.
+
 ---
 
 ## 2. What is in a bundle
