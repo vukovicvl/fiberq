@@ -193,12 +193,12 @@ the whole gate inside the official image — this is exactly what CI does:
 ```bash
 docker run --rm -v "$PWD:/src" -w /src \
   -e QT_QPA_PLATFORM=offscreen -e PIP_FLAGS=--break-system-packages \
-  qgis/qgis:4.0-trixie \
+  qgis/qgis:4.2-trixie \
   bash -c "apt-get update -qq && apt-get install -y --no-install-recommends make >/dev/null && make deps && make lint && make test"
 ```
 
 CI runs this against **two** images — `qgis/qgis:3.44-trixie` (QGIS 3, Qt5) and
-`qgis/qgis:4.0-trixie` (QGIS 4, Qt6). Both must be green.
+`qgis/qgis:4.2-trixie` (QGIS 4, Qt6). Both must be green.
 
 ### Qt6 source check
 

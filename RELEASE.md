@@ -71,7 +71,7 @@ PowerShell/cmd):
 - **Full gate (lint + tests) in the QGIS image** — from Git Bash, with Docker Desktop running:
   ```bash
   docker run --rm -v "$PWD:/src" -w /src -e QT_QPA_PLATFORM=offscreen \
-    -e PIP_FLAGS=--break-system-packages qgis/qgis:4.0-trixie \
+    -e PIP_FLAGS=--break-system-packages qgis/qgis:4.2-trixie \
     bash -c "apt-get update -qq && apt-get install -y --no-install-recommends make >/dev/null && make deps && make lint && make test"
   ```
   Repeat with `qgis/qgis:3.44-trixie`. For a local non-Debian/venv run, set
@@ -112,7 +112,7 @@ GitHub; video guide(s) where relevant; and a note to the mailing list.
 
 ## Tested QGIS versions
 
-CI builds against `qgis/qgis:3.44-trixie` (QGIS 3, Qt5) and `qgis/qgis:4.0-trixie`
+CI builds against `qgis/qgis:3.44-trixie` (QGIS 3, Qt5) and `qgis/qgis:4.2-trixie`
 (QGIS 4, Qt6). `metadata.txt` declares `qgisMinimumVersion=3.22` and
 `qgisMaximumVersion=4.99`.
 
