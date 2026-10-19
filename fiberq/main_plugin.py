@@ -275,6 +275,9 @@ class FiberQPlugin:
             dlg = LocatorDialog(self)
             dlg.exec()
         except Exception as e:
+            #: Title of an error box. FiberQ's OWN address-finder dialog
+            #: (the "Locator" toolbar button), NOT the QGIS "Locator" search
+            #: bar - do not reuse the QGIS translation. Sense: address finder.
             QMessageBox.critical(self.iface.mainWindow(), self.tr("Locator"),
                                  self.tr("Error opening locator: {details}").format(details=e))
 
