@@ -1337,7 +1337,7 @@ class InterchangeBundleWriter:
             crs_epsg=epsg,
             plugin_version=self.plugin_version,
             timestamp=timestamp,
-            color_standard=own or (existing or {}).get("color_standard") or "TIA-598-C",
+            color_standard=own or (existing or {}).get("color_standard") or ic.DEFAULT_COLOR_STANDARD,
         )
         if written:
             produced[ic.WRITTEN_KEY] = json.dumps(written, sort_keys=True)
@@ -1460,6 +1460,14 @@ class InterchangeBundleWriter:
         # Keys another tool wrote reach a *new* bundle through the project;
         # keys already in *this* file are read straight off it (above).
         existing = ic.merge_metadata(ic.merge_metadata(kept_metadata, carried_metadata), existing)
+        # Except the colour pair, which is taken whole from one place: what an
+        # import brought (what the project's cables were drawn to), else the
+        # file, else the folder. Merged key by key, an earlier FiberQ export's
+        # TIA-598-C sat beside an imported ACME-24 catalogue.
+        colour = ic.colour_pair(kept_metadata, file_metadata, carried_metadata)
+        for key in ic.COLOUR_METADATA_KEYS:
+            existing.pop(key, None)
+        existing.update(colour)
         self._unresolved_cable_refs = 0
         self._unreprojectable = 0
         self._uncarried = 0

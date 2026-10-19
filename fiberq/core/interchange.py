@@ -75,6 +75,35 @@ RETIRED_METADATA_KEYS = ("project_version", "export_timestamp", "relations_json"
 #: travel together.
 COLOUR_METADATA_KEYS = ("color_standard", "color_catalog_json")
 
+#: What a writer says when it has no colour catalogue of its own.
+DEFAULT_COLOR_STANDARD = "TIA-598-C"
+
+
+def colour_pair(*sources):
+    """The colour standard and catalogue from the first source that has either, as one.
+
+    Never one key from one source and the other from another: a TIA-598-C
+    standard beside a catalogue defining ACME-24 tells a reader the wrong
+    colours for every fibre.
+    """
+    for source in sources:
+        pair = {key: source[key] for key in COLOUR_METADATA_KEYS if (source or {}).get(key)}
+        if pair:
+            return pair
+    return {}
+
+
+def json_object(value):
+    """``value`` -- a dict or JSON text -- as a dict, or None if it is not one."""
+    if isinstance(value, dict):
+        return value
+    try:
+        parsed = json.loads(value) if isinstance(value, str) else None
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
 #: Canonical FiberQ layer name -> (fq_type, placement).
 #:
 #: Placement is an attribute rather than a family of type codes (spec 6.1), so
@@ -441,7 +470,7 @@ def build_metadata(schema_version: str, crs_epsg, plugin_version: str,
         "produced_by": f"FiberQ QGIS plugin {plugin_version}",
         "produced_at": timestamp,
         "crs_epsg": str(crs_epsg) if crs_epsg not in (None, "") else "",
-        "color_standard": color_standard or "TIA-598-C",
+        "color_standard": color_standard or DEFAULT_COLOR_STANDARD,
     }
 
 

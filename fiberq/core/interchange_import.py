@@ -1192,9 +1192,23 @@ class InterchangeBundleReader:
         the v1.6.0 review).
         """
         colour = {key: metadata[key] for key in ic.COLOUR_METADATA_KEYS if metadata.get(key)}
-        if colour:
+        # TIA-598-C with no catalogue is what every writer says when it has
+        # nothing else to say -- FiberQ's own default. It must not erase the
+        # pair an earlier import brought: that one says something.
+        if colour and colour != {"color_standard": ic.DEFAULT_COLOR_STANDARD}:
+            row_uuid = ic.stable_uuid("metadata", "colour")
+            earlier = next((row for row in passthrough if row.get("uuid") == row_uuid), None)
+            before = ic.json_object(earlier.get("payload_json")) if earlier else None
+            if before and before != colour:
+                src = QT_TRANSLATE_NOOP(
+                    'FiberQInterchange',
+                    "This bundle's colour standard, {new}, replaces {old}, which an earlier "
+                    "import brought; the next bundle says {new}.")
+                result.warnings.append(safe_format(
+                    QCoreApplication.translate('FiberQInterchange', src), src,
+                    new=colour.get("color_standard", "?"), old=before.get("color_standard", "?")))
             passthrough.append({
-                "uuid": ic.stable_uuid("metadata", "colour"),
+                "uuid": row_uuid,
                 "owner_uuid": None,
                 "kind": ic.EXTENSION_KIND_METADATA,
                 "namespace": ic.EXTENSION_NAMESPACE,

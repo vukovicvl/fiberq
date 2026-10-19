@@ -194,3 +194,59 @@ def test_an_unreadable_folder_metadata_file_is_replaced_and_said_so(project, tmp
     assert any("_fiberq_metadata.json could not be read" in w for w in result.warnings), (
         result.warnings)
     assert _folder_keys(folder)["format"] == "fiberq-interchange"
+
+
+# -- the pair is one thing -------------------------------------------------------------
+#
+# Found in the final review of the 1.6.0 branch: merged key by key, an export over
+# an earlier FiberQ bundle (TIA-598-C, no catalogue) after importing an ACME-24
+# bundle wrote TIA-598-C beside the ACME-24 catalogue; and every plain FiberQ
+# bundle imported later said TIA-598-C and erased the ACME-24 pair.
+
+ZZ = json.dumps({"catalogs": [{"name": "ZZ-8", "colors": [{"name": "ochre", "hex": "#cc7722"}]}]})
+
+
+def test_an_imported_pair_is_written_whole_over_an_earlier_fiberq_bundle(project, tmp_path):
+    target = tmp_path / "FiberQ_bundle.gpkg"
+    _poles(project, "p2")
+    _export(project, target)   # FiberQ's default: TIA-598-C, no catalogue
+    assert InterchangeBundleReader(project).read(str(_acme_bundle(tmp_path / "acme.gpkg"))).ok
+
+    _export(project, target)
+
+    metadata = read_bundle_metadata(str(target))
+    assert metadata["color_standard"] == "ACME-24"
+    assert json.loads(metadata["color_catalog_json"]) == json.loads(ACME)
+
+
+def test_a_bundle_with_only_the_default_leaves_an_imported_pair_alone(project, tmp_path):
+    assert InterchangeBundleReader(project).read(str(_acme_bundle(tmp_path / "acme.gpkg"))).ok
+    plain = _project()
+    _poles(plain, "p9")
+    _export(plain, tmp_path / "plain.gpkg")
+    plain.clear()
+    assert InterchangeBundleReader(project).read(str(tmp_path / "plain.gpkg")).ok
+
+    out = tmp_path / "out.gpkg"
+    _export(project, out)
+
+    assert read_bundle_metadata(str(out))["color_standard"] == "ACME-24"
+
+
+def test_a_bundle_with_another_pair_replaces_it_and_says_so(project, tmp_path):
+    assert InterchangeBundleReader(project).read(str(_acme_bundle(tmp_path / "acme.gpkg"))).ok
+    other = _project()
+    _poles(other, "p9")
+    _export(other, tmp_path / "zz.gpkg")
+    other.clear()
+    _set_keys(tmp_path / "zz.gpkg", {"color_standard": "ZZ-8", "color_catalog_json": ZZ})
+
+    second = InterchangeBundleReader(project).read(str(tmp_path / "zz.gpkg"))
+
+    assert second.ok, second.errors
+    assert any("ZZ-8" in w and "ACME-24" in w for w in second.warnings), second.warnings
+    out = tmp_path / "out.gpkg"
+    _export(project, out)
+    metadata = read_bundle_metadata(str(out))
+    assert metadata["color_standard"] == "ZZ-8"
+    assert json.loads(metadata["color_catalog_json"]) == json.loads(ZZ)

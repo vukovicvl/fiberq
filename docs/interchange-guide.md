@@ -263,7 +263,9 @@ OTB cannot be undone, and the import would look like it worked.
 **The colour standard a bundle was drawn to** travels with it. A bundle made to a
 standard other than TIA-598-C, with the catalogue that defines it, comes back out
 of FiberQ saying so for as long as your project has no colour catalogue of its own.
-Once it has one, the project's own standard is written instead.
+Once it has one, the project's own standard is written instead. Import bundles drawn
+to two different standards and the later one wins, and the import says so; a
+bundle that names only TIA-598-C does not replace one that named something else.
 
 **An attribute with no column** is kept against the feature it belongs to and
 restored on export, an empty value included. So is a `cable_uuid` on an element

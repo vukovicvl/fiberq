@@ -448,7 +448,11 @@ written before FiberQ 1.6.0, which has no such record, loses nothing.
 `color_standard` is the name of the project's own colour catalogue when it has one, and
 an arrived `color_catalog_json` is then removed, since it defines another standard.
 While the project has none, the standard and catalogue the bundle arrived with are
-written again, or TIA-598-C when it arrived with none. Writing over a file also removes
+written again, or TIA-598-C when it arrived with none. The two are taken together from
+one place, never one from each: what the last import naming another standard than
+TIA-598-C brought, else the file being written over, else the GeoJSON folder. A bundle
+that names only TIA-598-C, with no catalogue, does not replace a pair an earlier import
+kept. Writing over a file also removes
 keys that describe only an earlier write to it: `profile`, which only the GeoJSON
 profile sets, and the five FiberQ's project export to GeoPackage writes
 (`relations_json`, `latent_elements_json`, `plugin_settings_json`, `export_timestamp`,
