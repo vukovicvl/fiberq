@@ -672,8 +672,9 @@ class FiberQPlugin:
             question = QT_TRANSLATE_NOOP(
                 'FiberQPlugin', 'The folder {name} already exists. Write the bundle into it?')
             detail = self.tr(
-                'Existing GeoJSON files for the same element types are replaced. '
-                'Other files in the folder are left alone.')
+                'Existing GeoJSON files for the same element types are replaced, and '
+                '_fiberq_metadata.json is rewritten, keeping the keys other tools stored '
+                'in it. Other files in the folder are left alone.')
         else:
             target = path if path.lower().endswith('.gpkg') else path + '.gpkg'
             if not os.path.isfile(target):

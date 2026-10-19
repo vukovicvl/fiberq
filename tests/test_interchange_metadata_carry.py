@@ -127,3 +127,70 @@ def test_keys_of_an_earlier_write_to_the_file_are_removed(project, tmp_path):
                 "export_timestamp", "project_version", "profile"):
         assert key not in metadata, key
     assert metadata["acme_note"] == "another tool's"
+
+
+# -- the GeoJSON profile's folder -------------------------------------------------
+#
+# Unclaimed (WP3 code), found in the v1.6.0 review: a GeoJSON export wrote its
+# folder's _fiberq_metadata.json from this export's keys alone, so the keys
+# another tool had stored there were lost -- what section 7 forbids, and what
+# the GeoPackage profile has never done.
+
+
+def _geojson(project, folder):
+    layers = [lyr for lyr in project.mapLayers().values() if isinstance(lyr, QgsVectorLayer)]
+    result = InterchangeBundleWriter(project).write_geojson(str(folder), layers=layers)
+    assert result.ok, result.errors
+    return result
+
+
+def _folder_keys(folder):
+    with open(folder / "_fiberq_metadata.json", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _set_folder_keys(folder, keys):
+    metadata = _folder_keys(folder)
+    metadata.update(keys)
+    with open(folder / "_fiberq_metadata.json", "w", encoding="utf-8") as handle:
+        json.dump(metadata, handle)
+
+
+def test_a_geojson_export_keeps_the_keys_another_tool_stored_in_its_folder(project, tmp_path):
+    folder = tmp_path / "geojson"
+    _poles(project)
+    _geojson(project, folder)
+    _set_folder_keys(folder, {"acme_note": "another tool's", "acme_count": 3})
+
+    result = _geojson(project, folder)
+
+    metadata = _folder_keys(folder)
+    assert metadata["acme_note"] == "another tool's"
+    assert metadata["acme_count"] == 3
+    assert "acme_note" in result.preserved
+
+
+def test_a_geojson_folder_keeps_its_colour_standard_while_the_project_has_none(project, tmp_path):
+    folder = tmp_path / "geojson"
+    _poles(project)
+    _geojson(project, folder)
+    _set_folder_keys(folder, {"color_standard": "ACME-24", "color_catalog_json": ACME})
+
+    _geojson(project, folder)
+
+    metadata = _folder_keys(folder)
+    assert metadata["color_standard"] == "ACME-24"
+    assert json.loads(metadata["color_catalog_json"]) == json.loads(ACME)
+
+
+def test_an_unreadable_folder_metadata_file_is_replaced_and_said_so(project, tmp_path):
+    folder = tmp_path / "geojson"
+    _poles(project)
+    _geojson(project, folder)
+    (folder / "_fiberq_metadata.json").write_text("{not json", encoding="utf-8")
+
+    result = _geojson(project, folder)
+
+    assert any("_fiberq_metadata.json could not be read" in w for w in result.warnings), (
+        result.warnings)
+    assert _folder_keys(folder)["format"] == "fiberq-interchange"

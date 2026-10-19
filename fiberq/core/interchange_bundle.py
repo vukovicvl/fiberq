@@ -1274,8 +1274,13 @@ class InterchangeBundleWriter:
 
     # -- the whole thing ---------------------------------------------------
 
-    def write(self, gpkg_path, layers=None, passthrough=None):
-        """Write a bundle to ``gpkg_path`` and report exactly what went into it."""
+    def write(self, gpkg_path, layers=None, passthrough=None, carried_metadata=None):
+        """Write a bundle to ``gpkg_path`` and report exactly what went into it.
+
+        ``carried_metadata`` is the metadata of a bundle this one replaces when
+        that is not the file itself -- the GeoJSON profile's folder. The file's
+        own keys win over it, and it wins over the keys the project kept.
+        """
         if not gpkg_path:
             result = BundleResult()
             result.errors.append("No output path given.")
@@ -1326,7 +1331,7 @@ class InterchangeBundleWriter:
             passthrough)
         # Keys another tool wrote reach a *new* bundle through the project;
         # keys already in *this* file are read straight off it (above).
-        existing = ic.merge_metadata(kept_metadata, existing)
+        existing = ic.merge_metadata(ic.merge_metadata(kept_metadata, carried_metadata), existing)
         self._unresolved_cable_refs = 0
         self._unreprojectable = 0
         self._uncarried = 0
@@ -1448,15 +1453,24 @@ class InterchangeBundleWriter:
             result.errors.append("No output directory given.")
             return result
 
+        # Unclaimed (WP3 code, found in the v1.6.0 review). The folder's own
+        # _fiberq_metadata.json was overwritten with this export's keys alone,
+        # so writing into a folder another tool also writes lost that tool's
+        # keys -- what section 7 forbids, and what the GeoPackage profile has
+        # never done. They are merged now, the same way.
+        folder_metadata, problem = self._folder_metadata(directory)
+        if problem:
+            result.warnings.append(problem)
+
         workdir = tempfile.mkdtemp(prefix="fiberq-bundle-")
         try:
             staged = self.write(
                 os.path.join(workdir, "bundle.gpkg"), layers=layers,
-                passthrough=passthrough)
+                passthrough=passthrough, carried_metadata=folder_metadata)
             result.layers = staged.layers
             result.types = staged.types
             result.skipped = staged.skipped
-            result.warnings = list(staged.warnings)
+            result.warnings.extend(staged.warnings)
             result.errors = list(staged.errors)
             result.preserved = staged.preserved
             if not staged.ok:
@@ -1500,6 +1514,28 @@ class InterchangeBundleWriter:
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
         return result
+
+    @staticmethod
+    def _folder_metadata(directory):
+        """``(metadata, problem)``: the folder's ``_fiberq_metadata.json``, if it has one."""
+        path = os.path.join(directory, "_fiberq_metadata.json")
+        if not os.path.isfile(path):
+            return {}, None
+        try:
+            with open(path, encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, ValueError) as e:
+            data, reason = None, str(e)
+        else:
+            reason = "not a JSON object"
+        if isinstance(data, dict):
+            return data, None
+        src = QT_TRANSLATE_NOOP(
+            'FiberQInterchange',
+            "The folder's _fiberq_metadata.json could not be read ({reason}), so it was "
+            "replaced, and any keys another tool kept in it are lost.")
+        return {}, safe_format(QCoreApplication.translate('FiberQInterchange', src), src,
+                               reason=reason)
 
     def _write_geojson_layer(self, gpkg_path, table, out_path):
         """Convert one canonicalised bundle table to a GeoJSON file."""

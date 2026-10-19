@@ -199,6 +199,10 @@ Files are named for the *element type*, not the layer, so a receiving tool reads
 feature still carries `fq_type` and `placement`, so nothing depends on the
 filename. Coordinates are WGS84 longitude/latitude, as RFC 7946 requires.
 
+Writing into a folder that already holds a bundle works like writing over a
+GeoPackage one: `_fiberq_metadata.json` is rewritten, and the keys another tool
+stored in it are kept.
+
 **GeoJSON cannot express the relational side-car.** If your project has
 relationships to lose, the export says so, and stamps the bundle
 `"profile": "geojson-lite"` so a reader can tell:
