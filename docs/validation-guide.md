@@ -129,10 +129,11 @@ the cable figure over-ordered by it.
 
 From 1.4.0, every route, cable and pipe length is measured **on the project
 ellipsoid**, exactly the way the QGIS measure tool does, and new features are
-correct as drawn. (Two exceptions, both when the project has no ellipsoid set: until
-1.6.0, **Cut infrastructure** still wrote map units for the two parts it creates, and
-the **Service Area** tools still store `perim_m` and `area_m2` in map units, which D3
-does not check.) From 1.6.0 lengths
+correct as drawn. (Two tools lagged behind when the project had no ellipsoid set,
+both fixed in 1.6.0: **Cut infrastructure** wrote map units for the two parts it
+creates, and the **Service Area** tools stored `perim_m` and `area_m2` in map units.
+A Service Area made before 1.6.0 keeps the figures it was stored with: neither D3 nor
+**Recalculate lengths** looks at them, so draw it again to replace them.) From 1.6.0 lengths
 also stay correct as you edit: move a vertex of a saved line and the stored length
 follows in the same undo step, and other edits are re-measured when you save. Rule
 [D3](validation-rules.md#d3--stored-lengths-agree-with-geometry) lists the edits

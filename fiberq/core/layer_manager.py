@@ -20,7 +20,7 @@ from qgis.core import (
     QgsMarkerSymbol, QgsSymbol, QgsUnitTypes,
     QgsSingleSymbolRenderer, QgsSvgMarkerSymbolLayer,
     QgsPalLayerSettings, QgsVectorLayerSimpleLabeling,
-    QgsFeature, QgsGeometry, QgsDistanceArea,
+    QgsFeature, QgsGeometry,
     QgsFillSymbol, QgsLinePatternFillSymbolLayer, QgsSimpleFillSymbolLayer,
 )
 from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, QVariant
@@ -602,16 +602,12 @@ def _create_region_from_selection(core, name: str, buf_m: float):
     if not region:
         return False
 
-    # Measure area/perimeter with project settings
-    d = QgsDistanceArea()
-    try:
-        prj = QgsProject.instance()
-        if prj.ellipsoid():
-            d.setEllipsoid(prj.ellipsoid())
-        d.setSourceCrs(prj.crs(), QgsProject.instance().transformContext())
-        d.setEllipsoidalMode(True)
-    except Exception as e:
-        logger.debug(f"Error in _create_region_from_selection: {e}")
+    # On the ground, like every length the plugin stores (utils.measure). The
+    # measurer built here before stayed planar whenever the project's ellipsoid
+    # was 'NONE' (a non-empty string), and its setEllipsoidalMode() call, gone
+    # from QGIS 3, raised into a swallowed except: map units in Web Mercator.
+    from ..utils.measure import ground_area, ground_perimeter
+    crs = QgsProject.instance().crs()
 
     # Add features
     added = 0
@@ -620,8 +616,8 @@ def _create_region_from_selection(core, name: str, buf_m: float):
         for part in parts:
             if not part or part.isEmpty():
                 continue
-            area = d.measureArea(part) if d else part.area()
-            peri = d.measurePerimeter(part) if d else part.length()
+            area = ground_area(part, crs=crs)
+            peri = ground_perimeter(part, crs=crs)
             f = QgsFeature(region.fields())
             try:
                 f.setGeometry(part)

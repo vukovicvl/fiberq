@@ -138,6 +138,47 @@ def ground_length(geom, layer=None, crs=None, project=None) -> float:
             return 0.0
 
 
+def ground_area(geom, layer=None, crs=None, project=None) -> float:
+    """Area of a polygon ``geom`` in square metres on the ground.
+
+    Measured exactly as :func:`ground_length` measures a line: on the project's
+    ellipsoid, else on the one the CRS names. In Web Mercator a planar area is
+    inflated by 1/cos(latitude) **squared** -- twice at 45 degrees north.
+    """
+    return _measure(geom, layer, crs, project, "measureArea", "area")
+
+
+def ground_perimeter(geom, layer=None, crs=None, project=None) -> float:
+    """Perimeter of a polygon ``geom`` in metres on the ground (see :func:`ground_area`)."""
+    return _measure(geom, layer, crs, project, "measurePerimeter", "length")
+
+
+def _measure(geom, layer, crs, project, measurer, planar):
+    """``distance_area(...).<measurer>(geom)``, falling back to the planar figure."""
+    if geom is None:
+        return 0.0
+    try:
+        if geom.isEmpty():
+            return 0.0
+    except Exception:
+        return 0.0
+
+    if crs is None and layer is not None:
+        try:
+            crs = layer.crs()
+        except Exception:
+            crs = None
+
+    try:
+        return float(getattr(distance_area(crs, project), measurer)(geom))
+    except Exception as e:
+        logger.debug(f"Ellipsoidal measurement failed, using the planar {planar}: {e}")
+        try:
+            return float(getattr(geom, planar)())
+        except Exception:
+            return 0.0
+
+
 def ground_length_km(geom, layer=None, crs=None, project=None, places: int = 2) -> float:
     """:func:`ground_length` in kilometres, rounded the way the layers store it."""
     return round(ground_length(geom, layer, crs, project) / 1000.0, places)

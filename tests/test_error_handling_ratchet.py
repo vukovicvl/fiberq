@@ -400,8 +400,11 @@ ALLOWED_WRITES = {
 #: around its wiring with the wiring. U3 took eight, deleted with the health
 #: check: ``run_health_check``'s three and its toolbar action's five. The
 #: language fix took one: ``_fiberq_apply_language`` no longer stores the
-#: language at start-up, and the handler around that write went with it.
-SILENCE_CEILING = 686
+#: language at start-up, and the handler around that write went with it. The
+#: Service Area fix took two: the ellipsoid set-up both region tools wrote out
+#: by hand, each in a handler that logged at debug level, is
+#: ``utils.measure`` now.
+SILENCE_CEILING = 684
 
 
 # ---------------------------------------------------------------------------
