@@ -90,9 +90,9 @@ benchmark JSON is produced or compared in CI still holds.
 
 It takes `--k 2` by default instead of the benchmark's 50 cables, because the
 post-condition ("two terminal slacks per selected cable") does not need 50 and
-CI pays for every second. One process for all 22 rows is a deliberate departure
+CI pays for every second. One process for all 23 rows is a deliberate departure
 from fairness rule 9: that rule protects a published number, and this publishes
-none. The 22 QgsApplication starts it saves are most of the cost.
+none. The 23 QgsApplication starts it saves are most of the cost.
 
 ## What a row can come back as
 
