@@ -84,8 +84,10 @@ Not the row number — row numbers change every time anything is rewritten, and 
 reference built on one breaks silently.
 
 **Relationships as side-car tables.** `fq_relation`, `fq_relation_member` and
-`fq_path_stop` record the named cable groupings and the elements a cable passes
-through, all by `fiberq_uuid`. A slack loop or fibre break carries
+`fq_path_stop` record the named cable groupings and the elements a cable passes,
+all by `fiberq_uuid`. `fq_path_stop` holds, for each cable whose list was saved in
+the pass-through dialog, the elements along it in order, each marked as passed
+through (`is_latent` 1) or not (0). A slack loop or fibre break carries
 `cable_uuid` instead of a project-local layer id and feature id.
 
 **A metadata table.** `_fiberq_metadata` records the format and its version, the
@@ -124,6 +126,12 @@ import adds to your work, it does not reproject it. Only ordinary vector layers
 count: a project holding nothing but rasters (an XYZ or WMS basemap, say), vector
 tiles, meshes or point clouds is treated as empty, and its CRS switches too. A
 basemap loaded as a vector layer counts as your work.
+
+**An import adds; it never replaces.** A cable the project already records
+pass-through elements for keeps its own, and a warning counts the cables where the
+bundle's differ; a cable with none gets the bundle's. A feature already in the
+project is not updated either. To see a colleague's version exactly as they sent it,
+import it into a new project.
 
 **A bundle it cannot read is refused before anything is imported.** A bundle
 declaring a newer *major* version of the format stops with an explanation.
@@ -206,6 +214,10 @@ table on the way out, so it reaches a tool that *does* model it still
 queryable, not as an opaque blob. That includes a table or a column a later
 version of the format adds, and the rows several imported bundles brought: a
 second import adds to what the first kept.
+
+**A pass-through element FiberQ does not draw** — a stop on a splitter it keeps
+only in the passthrough store, or on a cable that is not in the project — is kept
+and written out again, though the pass-through dialog does not list it.
 
 **Metadata keys another tool wrote** are merged into the next bundle, never
 replaced.

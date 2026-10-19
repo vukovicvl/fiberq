@@ -669,8 +669,27 @@ class InterchangeBundleWriter:
             logger.debug(f"Latent elements entry is not valid JSON, not exported: {e}")
             return 0, 0
 
+        records = ic.latent_records(data)
+        # A column a later 1.x version added to fq_path_stop rides in each stop's
+        # "extra" (the importer put it there); it goes back as that column.
+        extra_names = []
+        for elements in records.values():
+            for element in elements:
+                for name in (element.get("extra") or {}):
+                    if name not in extra_names:
+                        extra_names.append(name)
+        columns = ["cable_uuid", "element_uuid", "order_index", "is_latent"]
+        if extra_names:
+            present = {c.lower() for c in _ensure_columns(
+                conn, "fq_path_stop", [[name, ""] for name in extra_names])}
+            columns += [n for n in extra_names if n.lower() in present and n.lower() not in
+                        {"cable_uuid", "element_uuid", "order_index", "is_latent"}]
+        # The format's own table; the extra column names are quoted.
+        insert = (f'INSERT OR REPLACE INTO fq_path_stop ({", ".join(_quoted(c) for c in columns)}) '  # nosec B608
+                  f'VALUES ({", ".join("?" for _ in columns)})')
+
         written = unresolved = 0
-        for key, elements in ic.latent_records(data).items():
+        for key, elements in records.items():
             layer_id, _, fid = key.rpartition(":")
             cable_uuid = self._resolve(index, layer_id, fid)
             if cable_uuid is None:
@@ -678,15 +697,18 @@ class InterchangeBundleWriter:
                 continue
             for position, element in enumerate(elements):
                 element_uuid = self._resolve(index, element.get("layer_id"), element.get("fid"))
+                if element_uuid is None and "layer_id" not in element:
+                    # Kept by identity at import: an element FiberQ does not
+                    # draw (a splitter in the passthrough store, say).
+                    element_uuid = element.get("element_uuid")
                 if element_uuid is None:
                     unresolved += 1
                     continue
-                conn.execute(
-                    "INSERT OR REPLACE INTO fq_path_stop "
-                    "(cable_uuid, element_uuid, order_index, is_latent) VALUES (?, ?, ?, ?)",
-                    (cable_uuid, element_uuid, _order(element, position),
-                     1 if element["latent"] else 0),
-                )
+                extra = element.get("extra") or {}
+                values = [cable_uuid, element_uuid, _order(element, position),
+                          1 if element["latent"] else 0]
+                values.extend(ic.from_json_safe(extra.get(c)) for c in columns[4:])
+                conn.execute(insert, values)
                 written += 1
         return written, unresolved
 

@@ -501,7 +501,9 @@ def test_a_second_import_leaves_the_path_stops_intact(foreign_bundle, target_pro
 
     stored = json.loads(target_project.readEntry(
         "StuboviPlugin", "LatentElements/latent_v1", "")[0])
-    assert sum(len(stops) for stops in stored["cables"].values()) == 1
+    # Counted through latent_records: the entry is in the pass-through dialog's
+    # shape, {"elements": [...]} per cable, and len() of that dict is always 1.
+    assert sum(len(stops) for stops in ic.latent_records(stored).values()) == 1
 
 
 def test_a_second_import_keeps_the_cable_reference_pointing_at_the_cable(

@@ -391,7 +391,8 @@ plugin** and exports it again, then checks that all of the following survived:
 | `fq_splice_point`, `fq_fiber_connection` | Kept verbatim and written back **as rows**, so they are still queryable |
 | A passthrough row from a third tool | Untouched |
 | A `_fiberq_metadata` key FiberQ did not write | Carried through the project into the next bundle |
-| Relations and path stops | Out as `fiberq_uuid` references, back as project data, out again |
+| Relations | Out as `fiberq_uuid` references, back as project data, out again |
+| Path stops | Out with `is_latent` 1 or 0 in the cable's order, back into the project, out again with the same order and marks |
 
 It runs on **QGIS 3 / Qt5 and QGIS 4 / Qt6** in CI. Import is also idempotent: importing
 the same bundle twice is a no-op, because identity is permanent and a feature with a
@@ -421,8 +422,14 @@ In the FiberQ QGIS plugin: **Plugins → FiberQ → Export interchange bundle…
 Two notes on what "written" means for the relational tables. The plugin stores relations
 and pass-through elements against `(layer_id, feature_id)` — identifiers local to one
 QGIS project, which are meaningless in any other tool and do not survive a round trip.
-The writer resolves them to `fiberq_uuid` on the way out. A reference it cannot resolve
-is **reported and left out**, never mapped to the nearest plausible object.
+The writer resolves them to `fiberq_uuid` on the way out. A project-local reference it
+cannot resolve is **reported and left out**, never mapped to the nearest plausible
+object. A `fiberq_uuid` that arrived in a bundle is different: a path stop naming a cable
+or an element the plugin does not draw is kept as it came and written out again.
+
+In FiberQ, `is_latent` 0 means an element the pass-through dialog lists along the cable
+but the user has not marked as passed through, which is every element's default there.
+It does not record that the cable terminates at that element.
 
 The other side-car tables are always created, even though the plugin never writes rows
 of its own into them: what they hold is what it carried through from a bundle it

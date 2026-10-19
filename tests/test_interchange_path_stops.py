@@ -236,3 +236,151 @@ def test_opening_the_list_reads_the_store_once(plugin, monkeypatch):
                         lambda data: calls.append(1) or real(data))
     latent_dialog.LatentElementsDialog(plugin)
     assert len(calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# Import: the dialog's shape, and an import adds instead of replacing
+# ---------------------------------------------------------------------------
+
+def _source(tmp_path, name="source.gpkg", stop_rows=(), alter=()):
+    """A bundle FiberQ wrote: two cables, three manholes, one record per cable.
+
+    ``alter``/``stop_rows`` are SQL run on it afterwards, as another tool would.
+    """
+    project = QgsProject()
+    cables, (x,) = _layer("Underground cables", "LineString", [
+        (QgsGeometry.fromPolylineXY([QgsPointXY(0, 0), QgsPointXY(300, 0)]), "u-cable-x")])
+    aerial, (y,) = _layer("Aerial cables", "LineString", [
+        (QgsGeometry.fromPolylineXY([QgsPointXY(0, 50), QgsPointXY(300, 50)]), "u-cable-y")])
+    manholes, (m1, m2, m3) = _layer("Manholes", "Point", [
+        (QgsGeometry.fromPointXY(QgsPointXY(px, 0)), f"u-mh-{px}") for px in (50, 150, 250)])
+    project.addMapLayers([cables, aerial, manholes])
+    project.writeEntry(*ENTRY, json.dumps({"cables": {
+        f"{cables.id()}:{x}": {"elements": [
+            {"layer_id": manholes.id(), "fid": m1, "naziv": "", "latent": True},
+            {"layer_id": manholes.id(), "fid": m2, "naziv": "", "latent": False}]},
+        f"{aerial.id()}:{y}": {"elements": [
+            {"layer_id": manholes.id(), "fid": m3, "naziv": "", "latent": True}]},
+    }}))
+    path = str(tmp_path / name)
+    _export(project, [cables, aerial, manholes], path)
+    project.clear()
+    with closing(sqlite3.connect(path)) as conn:
+        for statement in list(alter) + list(stop_rows):
+            conn.execute(statement)
+        conn.commit()
+    return path
+
+
+def _import(project, path):
+    from fiberq.core.interchange_import import InterchangeBundleReader
+
+    result = InterchangeBundleReader(project).read(path)
+    assert result.ok, result.errors
+    return result
+
+
+def _records(project):
+    from fiberq.core.interchange import latent_records
+
+    raw = project.readEntry(*ENTRY, "")[0]
+    return latent_records(json.loads(raw)) if raw else {}
+
+
+def _layer_named(project, name):
+    return next(lyr for lyr in project.mapLayers().values() if lyr.name() == name)
+
+
+def _again(project, tmp_path, name="again.gpkg"):
+    path = tmp_path / name
+    layers = [lyr for lyr in project.mapLayers().values() if isinstance(lyr, QgsVectorLayer)]
+    _export(project, layers, path)
+    return _stops(path)
+
+
+def test_an_import_writes_the_shape_the_dialog_reads(project, tmp_path):
+    _import(project, _source(tmp_path))
+    raw = json.loads(project.readEntry(*ENTRY, "")[0])
+    assert all(isinstance(record, dict) and "elements" in record
+               for record in raw["cables"].values()), raw
+    # ... in order, with each mark, and it goes out again as it came in.
+    assert _again(project, tmp_path) == [
+        ("u-cable-x", "u-mh-50", 0, 1), ("u-cable-x", "u-mh-150", 1, 0),
+        ("u-cable-y", "u-mh-250", 0, 1)]
+
+
+def test_an_import_keeps_the_projects_own_pass_through_elements(project, tmp_path):
+    """It used to write the bundle's entry over the project's own."""
+    bundle = _source(tmp_path)
+    _import(project, bundle)
+    cables = _layer_named(project, "Underground cables")
+    manholes = _layer_named(project, "Manholes")
+    key = next(k for k in _records(project) if k.startswith(cables.id()))
+    mine = {"elements": [{"layer_id": manholes.id(), "fid": fid, "naziv": "", "latent": True}
+                         for fid in sorted(f.id() for f in manholes.getFeatures())]}
+    entry = json.loads(project.readEntry(*ENTRY, "")[0])
+    entry["cables"][key] = mine
+    project.writeEntry(*ENTRY, json.dumps(entry))
+
+    result = _import(project, bundle)
+    assert _records(project)[key] == [dict(e) for e in mine["elements"]]
+    assert any("already had pass-through elements" in w for w in result.warnings), result.warnings
+
+
+def test_reimporting_a_projects_own_bundle_changes_nothing_and_says_nothing(project, tmp_path):
+    bundle = _source(tmp_path)
+    _import(project, bundle)
+    before = project.readEntry(*ENTRY, "")[0]
+    result = _import(project, bundle)
+    assert project.readEntry(*ENTRY, "")[0] == before
+    assert not [w for w in result.warnings if "pass-through" in w], result.warnings
+
+
+def test_a_stop_on_an_element_fiberq_does_not_draw_is_kept(project, tmp_path):
+    bundle = _source(tmp_path, stop_rows=[
+        "INSERT INTO fq_path_stop VALUES ('u-cable-x', 'u-splitter-1', 5, 1)"])
+    result = _import(project, bundle)
+    assert any("kept and written out again" in w for w in result.warnings), result.warnings
+    assert ("u-cable-x", "u-splitter-1", 5, 1) in _again(project, tmp_path)
+
+
+def test_a_stop_whose_cable_is_not_in_the_project_is_kept(project, tmp_path):
+    bundle = _source(tmp_path, stop_rows=[
+        "INSERT INTO fq_path_stop VALUES ('u-cable-elsewhere', 'u-mh-50', 0, 0)"])
+    _import(project, bundle)
+    assert ("u-cable-elsewhere", "u-mh-50", 0, 0) in _again(project, tmp_path)
+
+
+def test_a_column_a_newer_version_adds_to_path_stops_travels_on(project, tmp_path):
+    bundle = _source(tmp_path, alter=[
+        "ALTER TABLE fq_path_stop ADD COLUMN distance_m REAL",
+        "UPDATE fq_path_stop SET distance_m = 12.5 WHERE element_uuid = 'u-mh-50'"])
+    _import(project, bundle)
+    path = tmp_path / "again.gpkg"
+    layers = [lyr for lyr in project.mapLayers().values() if isinstance(lyr, QgsVectorLayer)]
+    _export(project, layers, path)
+    with closing(sqlite3.connect(str(path))) as conn:
+        rows = conn.execute("SELECT element_uuid, distance_m FROM fq_path_stop "
+                            "WHERE cable_uuid = 'u-cable-x' ORDER BY order_index").fetchall()
+    assert rows == [("u-mh-50", 12.5), ("u-mh-150", None)]
+
+
+def test_a_stop_on_a_closure_the_project_already_has_resolves(project, tmp_path):
+    """The index covered only the layers the import wrote into."""
+    only_cables = QgsProject()
+    cables, (x,) = _layer("Underground cables", "LineString", [
+        (QgsGeometry.fromPolylineXY([QgsPointXY(0, 0), QgsPointXY(300, 0)]), "u-cable-x")])
+    only_cables.addMapLayer(cables)
+    path = str(tmp_path / "cables-only.gpkg")
+    _export(only_cables, [cables], path)
+    only_cables.clear()
+    with closing(sqlite3.connect(path)) as conn:
+        conn.execute("INSERT INTO fq_path_stop VALUES ('u-cable-x', 'u-jc-mine', 0, 1)")
+        conn.commit()
+
+    closures, (mine,) = _layer("Joint Closures", "Point", [
+        (QgsGeometry.fromPointXY(QgsPointXY(100, 0)), "u-jc-mine")])
+    project.addMapLayer(closures)
+    _import(project, path)
+    (elements,) = _records(project).values()
+    assert [(e.get("layer_id"), e.get("fid")) for e in elements] == [(closures.id(), mine)]

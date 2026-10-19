@@ -34,13 +34,17 @@ import sqlite3
 from contextlib import closing
 
 from qgis.core import (
-    QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsFeature, QgsField,
-    QgsGeometry, QgsProject, QgsVectorLayer,
+    QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsFeature, QgsFeatureRequest,
+    QgsField, QgsGeometry, QgsProject, QgsVectorLayer,
 )
+
+from qgis.PyQt.QtCore import QT_TRANSLATE_NOOP, QCoreApplication
 
 from . import interchange as ic
 from . import interchange_fields as fm
 from .interchange_bundle import read_bundle_metadata
+from .project_store import read_json_entry
+from ..i18n import safe_format
 from ..models import schema as fq_schema
 from ..utils.geometry import transformed
 from ..utils.logger import get_logger
@@ -58,6 +62,43 @@ _SAFE_TABLE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_ .\-]{0,62}$")
 def _safe_table(name):
     """Return ``name`` if it is a table name safe to quote into SQL, else ``None``."""
     return name if name and _SAFE_TABLE_NAME.match(str(name)) else None
+
+
+LATENT_ENTRY = ("StuboviPlugin", "LatentElements/latent_v1")
+
+#: The columns of ``fq_path_stop`` this format version defines; any other a row
+#: carries travels in the stop's ``extra``.
+_PATH_STOP_COLUMNS = frozenset({"cable_uuid", "element_uuid", "order_index", "is_latent"})
+
+
+def _flag(value):
+    """``is_latent`` as a bool. NULL is not latent: the column's own DEFAULT is 0."""
+    try:
+        return bool(int(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def _integer(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _agrees(project_elements, bundle_elements):
+    """Whether every element the bundle lists is in the project's record, with its mark.
+
+    Order is not compared, and neither are elements the project lists and the
+    bundle does not: the dialog saves every candidate along the cable, an
+    export may have left some out, and re-importing a project's own bundle
+    must not warn about every cable.
+    """
+    def ident(element):
+        return (element.get("layer_id"), element.get("fid"), element.get("element_uuid"))
+
+    marks = {ident(e): bool(e.get("latent")) for e in project_elements}
+    return all(marks.get(ident(e)) == bool(e.get("latent")) for e in bundle_elements)
 
 
 def _united_columns(before, columns):
@@ -357,9 +398,10 @@ class InterchangeBundleReader:
             self._import_table(
                 gpkg_path, table, storage_crs, passthrough, uuid_index, result)
 
+        self._index_project(uuid_index)
         self._restore_cable_references(gpkg_path, uuid_index, result)
         self._restore_relations(gpkg_path, uuid_index, result)
-        self._restore_path_stops(gpkg_path, uuid_index, result)
+        self._restore_path_stops(gpkg_path, uuid_index, result, passthrough)
         self._keep_unmodelled_sidecar(gpkg_path, passthrough, result)
         self._keep_foreign_metadata(metadata, passthrough, result)
 
@@ -680,36 +722,85 @@ class InterchangeBundleReader:
                 f"{unresolved} relation member(s) name a feature that is not in this "
                 "bundle and were left out.")
 
-    def _restore_path_stops(self, gpkg_path, uuid_index, result):
-        """Rebuild the recorded pass-through elements from ``fq_path_stop``."""
-        stops = self._table_rows(gpkg_path, "fq_path_stop")
-        if not stops:
+    def _restore_path_stops(self, gpkg_path, uuid_index, result, passthrough):
+        """Add the bundle's pass-through elements to the project's, as the dialog stores them.
+
+        Three things went wrong here before FiberQ 1.6.0:
+        - the entry was written as a list per cable, a shape the pass-through
+          dialog could not open, and over the project's own entry, so an import
+          replaced every cable's elements with the bundle's;
+        - ``is_latent`` was not read, so a stop the cable terminates at came
+          back as one it passes through;
+        - a stop that did not resolve was dropped, even when the bundle
+          carried its element as a type FiberQ keeps but does not draw.
+
+        Now a cable the project already records keeps its own elements (a
+        warning counts the cables where the bundle's differ), and a new one gets
+        the bundle's, in order, each with its mark and any column a later 1.x
+        version added. A stop on an element FiberQ does not draw is kept by its
+        uuid; a stop whose cable is not in the project is kept as the row it
+        was. Both go out again on export.
+        """
+        _name, columns = self._table_info(gpkg_path, "fq_path_stop")
+        rows = self._table_rows(gpkg_path, "fq_path_stop")
+        if not rows:
             return
-        cables = {}
-        unresolved = 0
-        for row in sorted(stops, key=lambda r: r.get("order_index") or 0):
-            cable = uuid_index.get(str(row.get("cable_uuid")))
-            element = uuid_index.get(str(row.get("element_uuid")))
-            if cable is None or element is None:
-                unresolved += 1
+        incoming, orphans, by_uuid = {}, [], 0
+        for row in rows:
+            folded = {str(k).lower(): v for k, v in row.items()}
+            cable = uuid_index.get(str(folded.get("cable_uuid")))
+            if cable is None:
+                orphans.append(row)
                 continue
-            key = f"{cable[0]}:{cable[1]}"
-            entries = cables.setdefault(key, [])
-            entries.append({
-                "layer_id": element[0],
-                "fid": element[1],
-                # order_index is the traversal order; 'm' is what the plugin
-                # sorts on, and the real distance is recoverable from geometry.
-                "m": float(row.get("order_index") or len(entries)),
-            })
+            entry = {"latent": _flag(folded.get("is_latent")),
+                     "order_index": _integer(folded.get("order_index"))}
+            extra = {k: v for k, v in row.items() if str(k).lower() not in _PATH_STOP_COLUMNS}
+            if extra:
+                entry["extra"] = extra
+            element = uuid_index.get(str(folded.get("element_uuid")))
+            if element is None:
+                entry["element_uuid"] = str(folded.get("element_uuid"))
+                by_uuid += 1
+            else:
+                entry.update({"layer_id": element[0], "fid": element[1], "naziv": ""})
+            incoming.setdefault(f"{cable[0]}:{cable[1]}", []).append(entry)
             result.path_stops += 1
-        self.project.writeEntry(
-            "StuboviPlugin", "LatentElements/latent_v1",
-            json.dumps({"cables": cables}, ensure_ascii=False))
-        if unresolved:
-            result.warnings.append(
-                f"{unresolved} path stop(s) name a feature that is not in this bundle "
-                "and were left out.")
+        for elements in incoming.values():
+            elements.sort(key=lambda e: (e["order_index"] is None, e["order_index"] or 0))
+        if orphans:
+            self._keep_rows(passthrough, "fq_path_stop", columns, orphans, result)
+
+        data = read_json_entry(
+            *LATENT_ENTRY, {"cables": {}},
+            QCoreApplication.translate('FiberQStore', "Pass-through elements"),
+            expect="cables", project=self.project)
+        cables = data.get("cables") if isinstance(data.get("cables"), dict) else {}
+        existing = ic.latent_records(data)
+        differing = 0
+        for key, elements in incoming.items():
+            if existing.get(key):
+                if not _agrees(existing[key], elements):
+                    differing += 1
+                continue
+            cables[key] = {"elements": elements}
+        data["cables"] = cables
+        self.project.writeEntry(*LATENT_ENTRY, json.dumps(data, ensure_ascii=False))
+
+        if differing:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "{count} cable(s) already had pass-through elements in this project; the "
+                "bundle's for them were not used.")
+            result.warnings.append(safe_format(
+                QCoreApplication.translate('FiberQInterchange', src), src, count=differing))
+        if by_uuid or orphans:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "{count} path stop(s) name a cable or element FiberQ does not draw; they are "
+                "kept and written out again with the next bundle.")
+            result.warnings.append(safe_format(
+                QCoreApplication.translate('FiberQInterchange', src), src,
+                count=by_uuid + len(orphans)))
 
     def _keep_unmodelled_sidecar(self, gpkg_path, passthrough, result):
         """Keep the side-car tables this plugin has no model for, verbatim.
@@ -884,6 +975,19 @@ class InterchangeBundleReader:
     def _producer(result):
         return result.metadata.get("produced_by") or "unknown"
 
+    def _index_project(self, uuid_index):
+        """Add every identity the project holds, in any layer, to the index.
+
+        A relation member, a path stop or a cable reference may name a feature
+        that is in the project but in no table of this bundle -- a closure the
+        project has, on a cable the bundle brings. The index covered only the
+        layers this import wrote into, so such references were dropped.
+        """
+        for layer in self.project.mapLayers().values():
+            if isinstance(layer, QgsVectorLayer) and layer.isValid():
+                for identity, fid in self._existing_identities(layer).items():
+                    uuid_index.setdefault(identity, (layer.id(), fid))
+
     @staticmethod
     def _existing_identities(layer):
         """``fiberq_uuid -> fid`` for what this layer already holds.
@@ -897,7 +1001,9 @@ class InterchangeBundleReader:
         if index < 0:
             return {}
         found = {}
-        for feature in layer.getFeatures():
+        request = QgsFeatureRequest().setFlags(
+            QgsFeatureRequest.Flag.NoGeometry).setSubsetOfAttributes([index])
+        for feature in layer.getFeatures(request):
             value = feature.attribute(index)
             if value is not None and str(value).strip():
                 found[str(value).strip()] = int(feature.id())
