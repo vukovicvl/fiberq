@@ -41,15 +41,17 @@ number, both meaningless outside that one project file. In the bundle the same
 loops carry `cable_uuid` instead. One of the three is deliberately `NULL`: that is
 the planted B1 fault, a slack loop whose cable reference is broken in the source
 design, and the format carries the break honestly rather than inventing a target
-for it.
+for it. The other planted faults travel the same way: the two poles that share one
+`fiberq_uuid` (B4) share it in the bundle too, and the fibre break recorded
+against the Route layer (B2) carries a route's uuid as its `cable_uuid`.
 
 All nine side-car tables are present, and empty. This design has no named cable
 groupings and no recorded pass-through elements, so there is nothing to put in
 them — but an implementer needs to see the tables and their columns, which an
 omitted table would not show. For a worked example of side-car data surviving a
 round trip, see `tests/test_interchange_roundtrip.py`, which round-trips a bundle
-carrying fibre splices, an element type the plugin has no layer for and a third
-tool's passthrough rows.
+carrying fibre splices, an element type the plugin has no layer for and a
+passthrough row from a third tool.
 
 [`demo-bundle-geojson/`](demo-bundle-geojson/) is the same export in the GeoJSON
 profile: one file per element type, named for the type rather than the layer, plus
@@ -122,8 +124,8 @@ on every regeneration — that field is provenance, not content.)
 **Re-run it whenever the rules or the format change.** `tests/test_sample_report.py`
 fails if the committed report no longer matches a fresh run, and
 `tests/test_sample_bundle.py` fails if the committed bundle stops declaring the
-format this plugin implements or stops round-tripping through its own importer. The
-published samples cannot silently go stale.
+format this plugin implements, or loses an identity when the plugin's own importer
+reads it back. The published samples cannot silently go stale.
 
 ---
 
