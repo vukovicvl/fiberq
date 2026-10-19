@@ -78,7 +78,7 @@ type, so `Poles` and the pre-1.0 `Stubovi` in one project would both become the
 table `Poles`. When both hold features, FiberQ writes nothing, and says which
 layers they are and where each one's data lives: merge them into one layer, or
 remove or rename all but one, then export again. An existing bundle is left
-exactly as it was.
+exactly as it was. The same table loaded twice is one layer, and is exported once.
 
 ### Overwriting an existing bundle
 

@@ -34,7 +34,7 @@ from datetime import datetime, timezone
 from qgis.core import (
     QgsCoordinateReferenceSystem, QgsCoordinateTransform,
     QgsCoordinateTransformContext, QgsFeature, QgsFeatureRequest, QgsField,
-    QgsFields, QgsGeometry, QgsMemoryProviderUtils, QgsProject,
+    QgsDataSourceUri, QgsFields, QgsGeometry, QgsMemoryProviderUtils, QgsProject,
     QgsProviderConnectionException, QgsProviderRegistry, QgsVectorFileWriter,
     QgsVectorLayer,
 )
@@ -203,9 +203,13 @@ def _extra_columns(conn, table, defined, extras):
     a modelled table (``fq_relation``, ``fq_relation_member``).
     """
     names = []
+    # Regardless of case, as SQLite compares column names: "Foo" and "foo" from
+    # two bundles are one column, and both in one INSERT kept only the first.
+    seen = {d.lower() for d in defined}
     for extra in extras:
         for name in (extra or {}):
-            if str(name).lower() not in {d.lower() for d in defined} and name not in names:
+            if str(name).lower() not in seen:
+                seen.add(str(name).lower())
                 names.append(name)
     if names:
         present = {c.lower() for c in _ensure_columns(conn, table, [[n, ""] for n in names])}
@@ -220,8 +224,8 @@ def _insert_sql(table, columns):
 
 
 def _with_extra(values, record, extra_columns):
-    extra = (record or {}).get("extra") or {}
-    return list(values) + [ic.from_json_safe(extra.get(c)) for c in extra_columns]
+    extra = {str(k).lower(): v for k, v in ((record or {}).get("extra") or {}).items()}
+    return list(values) + [ic.from_json_safe(extra.get(c.lower())) for c in extra_columns]
 
 
 #: The lists FiberQ's record of a write holds; each is a list of names or uuids.
@@ -573,7 +577,18 @@ class InterchangeBundleWriter:
             if len(entries) == 1:
                 chosen.add(entries[0][0].id())
                 continue
-            filled = [entry for entry in entries if self._has_features(entry[0])]
+            filled = []
+            for entry in entries:
+                if not self._has_features(entry[0]):
+                    continue
+                twin = next((f for f in filled if self._same_data(f[0], entry[0])), None)
+                if twin is None:
+                    filled.append(entry)
+                else:
+                    # The same table loaded twice holds nothing the first does
+                    # not: refusing it sent the user to merge a layer with itself.
+                    result.skipped.append((entry[0].name(), f"the same data as '{twin[0].name()}'"))
+                    entries = [e for e in entries if e is not entry]
             if len(filled) > 1:
                 refused.append((table, filled))
                 continue
@@ -626,6 +641,13 @@ class InterchangeBundleWriter:
         return opened_a_newer_project(saved_major, compat.QGIS_VERSION_INT // 10000, True)
 
     @staticmethod
+    def _same_data(first, second):
+        """True when two layers read the same rows: one provider, source and filter."""
+        def data(layer):
+            return layer.providerType(), layer.source(), layer.subsetString()
+        return data(first) == data(second)
+
+    @staticmethod
     def _has_features(layer):
         request = QgsFeatureRequest().setFlags(
             QgsFeatureRequest.Flag.NoGeometry).setNoAttributes().setLimit(1)
@@ -633,10 +655,28 @@ class InterchangeBundleWriter:
 
     @staticmethod
     def _source_of(layer):
-        """Where a layer's data lives, without a password its connection may hold."""
-        if layer.providerType() == "memory":
+        """Where a layer's data lives, enough to tell two apart, never with a password.
+
+        Not publicSource(): on QGIS 3.22 it leaves the part of a password after a
+        space or a quote in place, and an OGR "PG:" connection string with the
+        password last is not redacted at all (measured on 3.22, 3.44 and 4.2).
+        A file's path is shown; a database's name and table, never its
+        connection string.
+        """
+        provider = layer.providerType()
+        if provider == "memory":
             return QCoreApplication.translate('FiberQInterchange', "temporary scratch layer")
-        return layer.publicSource()
+        if provider == "ogr":
+            parts = QgsProviderRegistry.instance().decodeUri("ogr", layer.source())
+            path = str(parts.get("path") or "")
+            name = str(parts.get("layerName") or "")
+            if path and os.path.isfile(path):
+                return f"{path}|layername={name}" if name else path
+            return f"ogr: {name or layer.name()}"
+        uri = QgsDataSourceUri(layer.source())
+        table = ".".join(part for part in (uri.schema(), uri.table()) if part)
+        where = uri.database() or uri.host()
+        return " ".join(part for part in (f"{provider}:", where, table) if part)
 
     # -- identity index ----------------------------------------------------
 
@@ -885,6 +925,10 @@ class InterchangeBundleWriter:
                     source_feature.attribute(cable_fid_index))
                 if resolved is not None:
                     feature.setAttribute(cable_index, resolved)
+                    if isinstance(payload, dict) and fm.CABLE_REFERENCE_FIELD in payload:
+                        # Kept while unresolved; the link is real now.
+                        payload = dict(payload)
+                        payload.pop(fm.CABLE_REFERENCE_FIELD)
                 elif isinstance(payload, dict) and payload.get(fm.CABLE_REFERENCE_FIELD):
                     # A reference the import could not resolve, kept with the
                     # feature's extras: back into its own column, where a reader
@@ -1046,8 +1090,15 @@ class InterchangeBundleWriter:
             if not additive:
                 conn.execute("DELETE FROM fq_relation_member WHERE relation_uuid = ?",
                              (relation_uuid,))
+            # Its pre-1.6.0 copy in this file, written under the identity derived
+            # from the project file: the same relation, so not left beside it.
+            legacy = ic.legacy_relation_uuid(relation, project_key)
+            if legacy != relation_uuid:
+                conn.execute("DELETE FROM fq_relation_member WHERE relation_uuid = ?", (legacy,))
+                conn.execute("DELETE FROM fq_relation WHERE uuid = ?", (legacy,))
             members = [m for m in relation.get("cables", []) or [] if isinstance(m, dict)]
-            orders = [_order(m, None) for m in members]
+            kept_members = [k for k in relation.get("kept_members") or [] if isinstance(k, dict)]
+            orders = [_order(m, None) for m in members + kept_members]
             following = max((o for o in orders if o is not None), default=-1) + 1
             emitted = set()
             for position, cable in enumerate(members):
@@ -1066,8 +1117,8 @@ class InterchangeBundleWriter:
                     cable, member_columns[4:]))
                 emitted.add(member)
                 written_members += 1
-            for kept in relation.get("kept_members") or []:
-                member = (kept or {}).get("member_uuid")
+            for kept in kept_members:
+                member = kept.get("member_uuid")
                 if not member or member in emitted:
                     continue
                 conn.execute(insert_member, _with_extra(
@@ -1103,10 +1154,12 @@ class InterchangeBundleWriter:
         # A column a later 1.x version added to fq_path_stop rides in each stop's
         # "extra" (the importer put it there); it goes back as that column.
         extra_names = []
+        folded_names = set()
         for elements in records.values():
             for element in elements:
                 for name in (element.get("extra") or {}):
-                    if name not in extra_names:
+                    if str(name).lower() not in folded_names:
+                        folded_names.add(str(name).lower())
                         extra_names.append(name)
         columns = ["cable_uuid", "element_uuid", "order_index", "is_latent"]
         if extra_names:
@@ -1141,10 +1194,10 @@ class InterchangeBundleWriter:
                 if element_uuid is None:
                     unresolved += 1
                     continue
-                extra = element.get("extra") or {}
+                extra = {str(k).lower(): v for k, v in (element.get("extra") or {}).items()}
                 values = [cable_uuid, element_uuid, _order(element, position),
                           1 if element["latent"] else 0]
-                values.extend(ic.from_json_safe(extra.get(c)) for c in columns[4:])
+                values.extend(ic.from_json_safe(extra.get(c.lower())) for c in columns[4:])
                 conn.execute(insert, values)
                 written += 1
         return written, unresolved, cables
@@ -1177,6 +1230,13 @@ class InterchangeBundleWriter:
         for row in passthrough or []:
             kind = row.get("kind")
             payload = row.get("payload_json")
+            if row.get("namespace") != ic.EXTENSION_NAMESPACE:
+                # Another tool's row, whatever its kind: written back as the row
+                # it is. Its feature_attributes and bundle_metadata rows used to
+                # be taken for FiberQ's and folded into fq_extra_json and the
+                # metadata table, or lost with an owner FiberQ does not have.
+                extensions.append(row)
+                continue
             if kind == ic.EXTENSION_KIND_METADATA:
                 try:
                     parsed = json.loads(payload) if isinstance(payload, str) else payload
@@ -1190,7 +1250,7 @@ class InterchangeBundleWriter:
                     extensions.append(row)
             elif kind == ic.EXTENSION_KIND_ATTRIBUTES and row.get("owner_uuid"):
                 attributes[str(row["owner_uuid"])] = payload
-            elif kind == ic.EXTENSION_KIND_SIDECAR and row.get("namespace") == ic.EXTENSION_NAMESPACE:
+            elif kind == ic.EXTENSION_KIND_SIDECAR:
                 # Only FiberQ's own store rows are table writes. Another tool's
                 # fq_extension row that happens to use the same kind is that
                 # tool's data, written back as the row it is.
@@ -1221,9 +1281,16 @@ class InterchangeBundleWriter:
         """
         written = 0
         for row in extensions or []:
-            values = dict(row)
+            # A tagged blob back to bytes first: a BLOB payload went back as the
+            # text of its tag.
+            values = {k: ic.from_json_safe(v) for k, v in dict(row).items()}
             payload = values.get("payload_json")
-            if payload is not None and not isinstance(payload, str):
+            if payload is None:
+                # NOT NULL in this format. Another tool's table may not have said
+                # so, and its one row with no payload failed the whole side-car
+                # and metadata write -- on every export of the project after.
+                values["payload_json"] = "null"
+            elif not isinstance(payload, (str, bytes)):
                 values["payload_json"] = json.dumps(payload)
             columns = _ensure_columns(conn, "fq_extension", [[k, ""] for k in values])
             names = [c for c in columns if c.lower() in {k.lower() for k in values}]
@@ -1232,7 +1299,7 @@ class InterchangeBundleWriter:
             conn.execute(
                 f'INSERT OR REPLACE INTO fq_extension ({", ".join(_quoted(c) for c in names)}) '  # nosec B608
                 f'VALUES ({", ".join("?" for _ in names)})',
-                [ic.from_json_safe(folded.get(c.lower())) for c in names])
+                [folded.get(c.lower()) for c in names])
             written += 1
         return written
 
@@ -1272,15 +1339,19 @@ class InterchangeBundleWriter:
                 # The table name is validated (a format table, or fq_ and word
                 # characters) and every column name is quoted.
                 insert = f'INSERT OR REPLACE INTO "{table}" ({quoted}) VALUES ({placeholders})'  # nosec B608
-                same = f'DELETE FROM "{table}" WHERE ' + " AND ".join(  # nosec B608
-                    f"{_quoted(c)} IS ?" for c in columns)
+                # No key to REPLACE on: an equal row from an earlier export over
+                # this file would be doubled every time. The rows already there
+                # are read once; a DELETE per row was quadratic (20,000 rows took
+                # 11 s, with QGIS frozen).
+                there = set() if keyed else {
+                    tuple(r) for r in conn.execute(f'SELECT {quoted} FROM "{table}"')}  # nosec B608
                 for row in rows:
                     folded = {str(k).lower(): v for k, v in row.items()}
                     values = [ic.from_json_safe(folded.get(c.lower())) for c in columns]
                     if not keyed:
-                        # No key to REPLACE on: an equal row from an earlier export
-                        # over this file would be doubled every time.
-                        conn.execute(same, values)
+                        if tuple(values) in there:
+                            continue
+                        there.add(tuple(values))
                     conn.execute(insert, values)
                 conn.execute("RELEASE fiberq_kept")
                 written += len(rows)
@@ -1570,6 +1641,15 @@ class InterchangeBundleWriter:
                 "fq_path_stop": stops,
                 "fq_extension": written_extensions,
             }
+            # A stop an earlier import kept for a cable the project did not have
+            # yields to the project's own record once it has the cable: written
+            # back after it, the kept row replaced the record's mark, and brought
+            # back a stop removed in the dialog.
+            stops_kept = kept_sidecar.get("fq_path_stop")
+            if stops_kept and cable_uuids:
+                stops_kept["rows"] = [
+                    r for r in stops_kept["rows"]
+                    if str({str(k).lower(): v for k, v in r.items()}.get("cable_uuid")) not in cable_uuids]
             _written, kept_problems = self._write_kept_sidecar(conn, kept_sidecar)
             for table, entry in kept_sidecar.items():
                 result.sidecar_rows[table] = len(entry["rows"])
@@ -1791,7 +1871,9 @@ class InterchangeBundleWriter:
         if not os.path.isfile(path):
             return {}, None
         try:
-            with open(path, encoding="utf-8") as handle:
+            # utf-8-sig: a byte-order mark, which Windows tools often write, is
+            # not a reason to call the file unreadable and replace it.
+            with open(path, encoding="utf-8-sig") as handle:
                 data = json.load(handle)
         except (OSError, ValueError) as e:
             data, reason = None, str(e)

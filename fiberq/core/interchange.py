@@ -597,4 +597,15 @@ def relation_identity(relation, project_key: str = "") -> str:
     rid = relation.get("id")
     if is_uuid(rid):
         return str(rid)
-    return stable_uuid("relation", project_key, rid, relation.get("name", "") or "")
+    return legacy_relation_uuid(relation, project_key)
+
+
+def legacy_relation_uuid(relation, project_key: str = "") -> str:
+    """The identity every FiberQ before 1.6.0 wrote a relation under.
+
+    Derived from the project file, the relation's id and its name, for every
+    relation -- including those the Relations dialog made with a uuid of their
+    own. An export over such a bundle removes the rows under it once the
+    relation is written under its real identity, or the bundle holds it twice.
+    """
+    return stable_uuid("relation", project_key, relation.get("id"), relation.get("name", "") or "")

@@ -443,7 +443,9 @@ rows, and that layer's table stays. In the GeoJSON profile it removes the files 
 wrote last time in the same way. It records what it wrote in the metadata key
 `fiberq_written`, its own (§7), tied to that export's `produced_at`: a copy of the key
 in another file is not trusted. Every other row, table and file stays, and a bundle
-written before FiberQ 1.6.0, which has no such record, loses nothing.
+written before FiberQ 1.6.0, which has no such record, loses nothing -- except the
+copy of a relation FiberQ wrote there under the identity derived from the project file,
+which goes once the relation is written under its own.
 
 `color_standard` is the name of the project's own colour catalogue when it has one, and
 an arrived `color_catalog_json` is then removed, since it defines another standard.
