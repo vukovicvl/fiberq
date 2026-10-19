@@ -28,8 +28,11 @@ from .utils.helpers import (
 # =============================================================================
 from .i18n import (
     available_languages,
+    effective_language,
+    forget_unpicked_language,
     install_translator,
     language_name,
+    mark_language_picked,
     remove_translator,
     safe_format,
 )
@@ -201,17 +204,15 @@ class FiberQPlugin:
         # French relabelled the toolbar in Serbian. Rewriting live also fought the
         # QTranslator for ownership of the same strings.
 
-        # 1) Update the language selector check-states and caption
+        # Update the language selector check-states and caption. Nothing is
+        # stored here: this also runs at every start, and storing what was
+        # merely shown wrote "English" on the first start, after which FiberQ's
+        # own choice outranked QGIS's language for good (i18n.current_locale).
+        # Only an explicit pick, _fiberq_set_language, stores a choice.
         try:
             self._fiberq_sync_language_selector(lang)
         except Exception as e:
             logger.warning(f"Could not update language selector: {e}")
-
-        # 2) Store preference
-        try:
-            _set_lang(lang)
-        except Exception as e:
-            logger.debug(f"Could not store language preference: {e}")
 
     def _fiberq_sync_language_selector(self, lang):
         """Reflect ``lang`` in the toolbar language button and its menu."""
@@ -239,6 +240,7 @@ class FiberQPlugin:
         if not code:
             return
         _set_lang(code)
+        mark_language_picked()
         self._fiberq_apply_language(code)
         QMessageBox.information(
             self.iface.mainWindow(),
@@ -851,6 +853,9 @@ class FiberQPlugin:
         # translating without any error being raised.
         self.translator = None
         try:
+            # Before the lookup: an "en" that a pre-1.6.0 start stored, rather
+            # than the user, would otherwise outrank QGIS's language for good.
+            forget_unpicked_language()
             self.translator = install_translator(self.plugin_dir)
         except (OSError, RuntimeError) as e:
             logger.warning(f"Could not install FiberQ translator: {e}")
@@ -1492,7 +1497,9 @@ class FiberQPlugin:
         # --- Language selector (one entry per shipped .qm catalogue) ---
         from qgis.PyQt.QtWidgets import QToolButton, QMenu
 
-        current_lang = _get_lang()
+        # The language the interface is actually in: FiberQ's own choice if one
+        # was made, otherwise QGIS's, and English when no catalogue exists for it.
+        current_lang = effective_language(self.plugin_dir)
 
         self.menu_language = QMenu(self.tr("Interface language"), self.iface.mainWindow())
         self._fiberq_lang_actions = {}

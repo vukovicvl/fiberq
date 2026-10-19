@@ -429,8 +429,11 @@ To see it once it has shipped:
    change cannot take effect until QGIS starts again.
 
 FiberQ follows QGIS's own language setting rather than your operating system's,
-which is what most users expect. Regional variants collapse to the base
-language: `fr_BE` and `fr_FR` both load the same French catalogue.
+which is what most users expect. You can also pick a language for FiberQ alone
+with the language button on the FiberQ toolbar; once you have picked one there,
+it is kept and QGIS's setting no longer changes FiberQ. Regional variants
+collapse to the base language: `fr_BE` and `fr_FR` both load the same French
+catalogue.
 
 If you want to check your work before a release, ask on the issue — the
 maintainer can build a test copy for you.

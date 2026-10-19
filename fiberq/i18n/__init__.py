@@ -33,6 +33,10 @@ _QM_SUFFIX = '.qm'
 # Kept in step with utils.helpers._FIBERQ_LANG_KEY (duplicated deliberately: this
 # package must not import from the rest of the plugin).
 FIBERQ_LANG_KEY = 'FiberQ/lang'
+#: Written by an explicit pick in FiberQ's language menu (FiberQ 1.6.0 and
+#: later). Every start before 1.6.0 stored FIBERQ_LANG_KEY itself, "en" when
+#: nothing was stored, so an "en" without this marker records no choice.
+FIBERQ_LANG_PICKED_KEY = 'FiberQ/lang_picked'
 
 # Display names for the locales we ship. Unknown codes fall back to the code
 # itself, so adding a new .qm file never crashes the language menu.
@@ -68,6 +72,40 @@ def _settings():
         except ImportError:
             logger.warning('FiberQ i18n: no settings backend available; using system locale')
             return None
+
+
+def _truthy(value):
+    return str(value).strip().lower() in ('1', 'true', 'yes')
+
+
+def mark_language_picked():
+    """Record that the stored language is the user's own choice."""
+    settings = _settings()
+    if settings is not None:
+        settings.setValue(FIBERQ_LANG_PICKED_KEY, True)
+
+
+def forget_unpicked_language():
+    """Remove a stored language that a start-up, not the user, wrote. Once.
+
+    Every start before FiberQ 1.6.0 stored the language it showed -- "en" when
+    nothing was stored -- and :func:`current_locale` prefers that key over
+    QGIS's language. Without this, an upgraded install would keep ignoring
+    QGIS's language for good. Only "en" can have been written that way: any
+    other stored value came from a pick and is kept. A user who had picked
+    English picks it again, once.
+
+    Returns True when a value was removed.
+    """
+    settings = _settings()
+    if settings is None or _truthy(settings.value(FIBERQ_LANG_PICKED_KEY, False)):
+        return False
+    value = settings.value(FIBERQ_LANG_KEY, None)
+    if not value or str(value)[0:2].lower() != 'en':
+        return False
+    settings.remove(FIBERQ_LANG_KEY)
+    logger.info('FiberQ i18n: dropped a stored "en" no one picked; following QGIS')
+    return True
 
 
 def current_locale():
@@ -134,6 +172,12 @@ def install_translator(plugin_dir):
     if not translator.load(qm_file):
         logger.warning('FiberQ i18n: failed to load catalogue %s', qm_file)
         return None
+    if translator.isEmpty():
+        # A catalogue with nothing translated yet (lrelease writes one for an
+        # untouched .ts). Installing it changes nothing, and counting it would
+        # put a language on the button that the interface is not shown in.
+        logger.debug('FiberQ i18n: catalogue %s has no translations yet', qm_file)
+        return None
 
     if not QCoreApplication.installTranslator(translator):
         logger.warning('FiberQ i18n: Qt refused to install catalogue %s', qm_file)
@@ -177,10 +221,34 @@ def available_languages(plugin_dir=None):
     for entry in entries:
         if entry.startswith(_QM_PREFIX) and entry.endswith(_QM_SUFFIX):
             code = entry[len(_QM_PREFIX):-len(_QM_SUFFIX)]
-            if code:
+            if code and _has_translations(os.path.join(base, entry)):
                 codes.add(code.lower())
 
     return sorted(codes)
+
+
+def _has_translations(qm_file):
+    """Whether a catalogue holds any translation at all.
+
+    ``make i18n-compile`` writes a .qm for every .ts, so a language nobody has
+    translated yet still has one (30 bytes). Offering it in the menu, or naming
+    it on the button, promises an interface the user will not get.
+    """
+    translator = QTranslator()
+    return bool(translator.load(qm_file)) and not translator.isEmpty()
+
+
+def effective_language(plugin_dir=None):
+    """The language FiberQ's interface is actually shown in.
+
+    :func:`current_locale` is the language asked for: FiberQ's own choice when
+    the user made one in its language menu, otherwise QGIS's. A catalogue for it
+    may not exist, and then the interface is English, the source language -- so
+    the language button must say English rather than name a language it is not
+    showing.
+    """
+    code = current_locale()
+    return code if code in available_languages(plugin_dir) else 'en'
 
 
 def safe_format(translated, source, **kwargs):
