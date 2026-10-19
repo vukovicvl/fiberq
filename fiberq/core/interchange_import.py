@@ -77,6 +77,10 @@ def _united_columns(before, columns):
     return united
 
 
+#: An ``fq_*`` table this format version does not define, as FiberQ will carry it:
+#: letters, digits and underscores, as every table the format does define.
+_UNKNOWN_SIDECAR_NAME = re.compile(r"^fq_[A-Za-z0-9_]{1,60}$")
+
 #: Columns a bundle adds that are not part of any FiberQ layer.
 BUNDLE_COLUMNS = frozenset({"fq_type", "placement", "fq_extra_json", "fid"})
 
@@ -725,16 +729,67 @@ class InterchangeBundleReader:
             self._keep_rows(passthrough, table, columns, rows, result)
             result.sidecar_kept[table] = len(rows)
 
-        # Whatever the bundle itself was already carrying for other tools.
+        # A table a later 1.x version of the format adds: rule 4 says a 1.0
+        # reader carries it, and it used to be left behind unread.
+        for table in self._unknown_sidecar_tables(gpkg_path, result):
+            _name, columns = self._table_info(gpkg_path, table)
+            rows = self._table_rows(gpkg_path, table)
+            self._keep_rows(passthrough, table, columns, rows, result)
+            result.sidecar_kept[table] = len(rows)
+
+        # Whatever the bundle itself was already carrying for other tools --
+        # every column, including one a later version adds to fq_extension.
         for row in self._table_rows(gpkg_path, "fq_extension"):
-            passthrough.append({
-                "uuid": row.get("uuid"),
-                "owner_uuid": row.get("owner_uuid"),
-                "kind": row.get("kind"),
-                "namespace": row.get("namespace"),
-                "payload_json": row.get("payload_json"),
-                "produced_by": row.get("produced_by"),
-            })
+            passthrough.append(dict(row))
+
+    @staticmethod
+    def _unknown_sidecar_tables(gpkg_path, result):
+        """The bundle's ``fq_*`` attribute tables this format version does not define.
+
+        Not every ``fq_*`` table is one: a FEATURE table so named is imported as
+        features (if registered as such), and a virtual table -- full-text
+        search, an R*Tree -- or one of the shadow tables SQLite keeps for it is
+        machinery, not data. A name that cannot be quoted back into SQL safely
+        is reported, not carried.
+        """
+        found = []
+        with closing(sqlite3.connect(gpkg_path)) as conn:
+            registered = {str(name).lower(): kind for name, kind in conn.execute(
+                "SELECT table_name, data_type FROM gpkg_contents")}
+            try:
+                geometry = {str(r[0]).lower() for r in conn.execute(
+                    "SELECT table_name FROM gpkg_geometry_columns")}
+            except sqlite3.Error:
+                geometry = set()
+            virtual = set()
+            try:
+                for row in conn.execute("PRAGMA table_list"):
+                    if row[2] in ("virtual", "shadow"):
+                        virtual.add(str(row[1]).lower())
+            except sqlite3.Error:
+                # SQLite before 3.37 has no table_list: a virtual table is still
+                # visible by its CREATE statement, and its shadows by its prefix.
+                for name, sql in conn.execute(
+                        "SELECT name, sql FROM sqlite_master WHERE type='table'"):
+                    if (sql or "").upper().startswith("CREATE VIRTUAL"):
+                        virtual.add(str(name).lower())
+            for (name,) in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' "
+                    "AND lower(name) LIKE 'fq\\_%' ESCAPE '\\' ORDER BY name"):
+                folded = str(name).lower()
+                if folded in ic.SIDECAR_TABLES or folded in geometry:
+                    continue
+                if folded in virtual or any(folded.startswith(v + "_") for v in virtual):
+                    continue
+                if registered.get(folded, "attributes") != "attributes":
+                    continue
+                if not _UNKNOWN_SIDECAR_NAME.match(str(name)):
+                    result.warnings.append(
+                        f"The bundle's table '{name}' has a name FiberQ cannot carry safely, "
+                        "so it is not in the next bundle.")
+                    continue
+                found.append(str(name))
+        return found
 
     def _keep_rows(self, passthrough, table, columns, rows, result):
         """Add one table's rows to what the store keeps for it.

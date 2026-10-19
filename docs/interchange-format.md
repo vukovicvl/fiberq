@@ -415,7 +415,7 @@ In the FiberQ QGIS plugin: **Plugins → FiberQ → Export interchange bundle…
 | GeoJSON profile (§3) | written |
 | All other side-car tables | created, populated by other tools |
 | Reading a bundle back, adapting it into FiberQ's own layers | written |
-| Carrying through types, attributes and side-car tables the plugin does not model | written |
+| Carrying through types, attributes and side-car tables the plugin does not model, including tables and columns a later 1.x version adds | written |
 | Round trip asserted in CI, on both Qt generations | written |
 
 Two notes on what "written" means for the relational tables. The plugin stores relations
@@ -430,6 +430,12 @@ imported and, when an export replaces an existing bundle, the rows already in th
 which are kept. That is intentional: a reader finds the table whether or not this
 particular writer had anything to put in it, and a tool that does model splicing can
 write into a bundle the plugin produced.
+
+A side-car table this version does not define, and a column a defined table lacks, are
+carried too, as rule 4 asks of a 1.0 reader: re-created as they arrived, with their
+columns, their declared types (an unusual type is written as the plain type with the
+same SQLite affinity) and their primary key. Rows that several imported bundles brought
+for the same table are kept side by side. Views, indexes and triggers are not carried.
 
 The plugin has separate layers per placement only for `otb` and `to` mounted indoors,
 outdoors and on a pole, and for `to` in a joint closure (§6.1). Any other placement it
@@ -465,10 +471,9 @@ described it wrongly in six ways. They are corrected above:
 
 In each case the reference implementation has always done what the text now says for
 the tables and columns this version defines, and a reader or writer built from the
-earlier text should follow the text above. FiberQ
-carries an `fq_container_slot` row through with the columns listed in §6.2, so a slot
-number stored in a column called `index` is dropped when a bundle passes through
-FiberQ: rename that column to `slot_index` first.
+earlier text should follow the text above. From FiberQ 1.6.0 a column called `index`
+passes through FiberQ like any column a table did not define, but a reader built from
+the corrected text looks for `slot_index`: rename the column.
 
 The FiberQ plugin now checks in CI (`tests/test_interchange_format_doc.py`) that the
 `fq_*` tables in the §3 tree, the §6.1 type codes, the column lists in §6.2, §6.4 and §8

@@ -203,7 +203,9 @@ restored on export.
 **Relational data FiberQ does not implement** — fibre splices, trays, duct
 occupancy — is kept as the rows it arrived as, and written back into the real
 table on the way out, so it reaches a tool that *does* model it still
-queryable, not as an opaque blob.
+queryable, not as an opaque blob. That includes a table or a column a later
+version of the format adds, and the rows several imported bundles brought: a
+second import adds to what the first kept.
 
 **Metadata keys another tool wrote** are merged into the next bundle, never
 replaced.

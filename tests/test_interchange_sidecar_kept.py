@@ -184,3 +184,126 @@ def test_another_tools_row_with_fiberqs_kind_stays_its_row(project, tmp_path):
 
     assert _rows(str(out), "SELECT uuid, namespace FROM fq_extension") == [("x-1", "example.other")]
     assert _rows(str(out), "SELECT uuid FROM fq_splice_point") == []
+
+
+# ---------------------------------------------------------------------------
+# What a later 1.x version of the format may add: columns and tables
+# ---------------------------------------------------------------------------
+#
+# Rule 4: a 1.0 reader carries what a newer minor version added. The WP3 known
+# limit "a column added by a newer minor format version survives in the project
+# but not into the next bundle" held for side-car tables until now: the writer
+# inserted only the columns its own DDL had, and a table this version does not
+# define was never read at all.
+
+def _columns(path, table):
+    return [(r[1], r[2], r[3], r[5]) for r in _rows(path, f'PRAGMA table_info("{table}")')]
+
+
+def test_a_column_a_newer_version_adds_travels_on(project, tmp_path):
+    bundle = _bundle(tmp_path / "newer.gpkg", "u-jc-1")
+    _sql(bundle,
+         ("ALTER TABLE fq_splice_point ADD COLUMN vendor_ref TEXT", ()),
+         ("INSERT INTO fq_splice_point (uuid, element_uuid, vendor_ref) "
+          "VALUES ('sp-1', 'u-jc-1', 'ACME-7')", ()))
+    assert InterchangeBundleReader(project).read(bundle).ok
+    out = str(tmp_path / "out.gpkg")
+    assert _export(project, out).ok
+    assert _rows(out, "SELECT uuid, vendor_ref FROM fq_splice_point") == [("sp-1", "ACME-7")]
+    assert ("vendor_ref", "TEXT", 0, 0) in _columns(out, "fq_splice_point")
+
+
+def test_a_slot_number_written_as_index_travels_on(project, tmp_path):
+    """Spec section 13: a writer that followed the earlier text wrote ``index``."""
+    bundle = _bundle(tmp_path / "index.gpkg", "u-jc-1")
+    _sql(bundle,
+         ('ALTER TABLE fq_container_slot ADD COLUMN "index" INTEGER', ()),
+         ('INSERT INTO fq_container_slot (uuid, container_uuid, "index") '
+          "VALUES ('slot-1', 'c-1', 7)", ()))
+    assert InterchangeBundleReader(project).read(bundle).ok
+    out = str(tmp_path / "out.gpkg")
+    assert _export(project, out).ok
+    assert _rows(out, 'SELECT uuid, "index", slot_index FROM fq_container_slot') == [
+        ("slot-1", 7, None)]
+
+
+def _tray_bundle(tmp_path):
+    bundle = _bundle(tmp_path / "trays.gpkg", "u-jc-1")
+    _sql(bundle,
+         ("CREATE TABLE fq_tray (uuid TEXT PRIMARY KEY, closure_uuid TEXT NOT NULL, "
+          "positions INTEGER, photo BLOB)", ()),
+         ("INSERT INTO gpkg_contents (table_name, data_type, identifier) "
+          "VALUES ('fq_tray', 'attributes', 'fq_tray')", ()),
+         ("INSERT INTO fq_tray VALUES ('t-1', 'u-jc-1', 12, ?)", (sqlite3.Binary(b"\x89PNG"),)))
+    return bundle
+
+
+def test_a_table_a_newer_version_adds_travels_on(project, tmp_path):
+    assert InterchangeBundleReader(project).read(_tray_bundle(tmp_path)).ok
+    out = str(tmp_path / "out.gpkg")
+    assert _export(project, out).ok
+
+    assert _rows(out, "SELECT * FROM fq_tray") == [("t-1", "u-jc-1", 12, b"\x89PNG")]
+    # Its columns, declared types and key; NOT NULL is not a declared type.
+    assert _columns(out, "fq_tray") == [("uuid", "TEXT", 0, 1), ("closure_uuid", "TEXT", 0, 0),
+                                        ("positions", "INTEGER", 0, 0), ("photo", "BLOB", 0, 0)]
+    assert _rows(out, "SELECT data_type FROM gpkg_contents WHERE table_name='fq_tray'") == [
+        ("attributes",)]
+
+
+def test_exporting_twice_over_one_file_does_not_double_a_carried_table(project, tmp_path):
+    bundle = _tray_bundle(tmp_path)
+    _sql(bundle, ("CREATE TABLE fq_notes (note TEXT, n INTEGER)", ()),
+         ("INSERT INTO fq_notes VALUES ('no key', 1)", ()))
+    assert InterchangeBundleReader(project).read(bundle).ok
+    out = str(tmp_path / "out.gpkg")
+    assert _export(project, out).ok
+    assert _export(project, out).ok
+    assert _rows(out, "SELECT COUNT(*) FROM fq_tray") == [(1,)]
+    assert _rows(out, "SELECT * FROM fq_notes") == [("no key", 1)]
+
+
+def test_a_declared_type_is_never_written_back_as_sql(project, tmp_path):
+    """A declared type is SQL text from another tool's file."""
+    bundle = _bundle(tmp_path / "odd.gpkg", "u-jc-1")
+    _sql(bundle,
+         ('CREATE TABLE fq_odd (a VARCHAR(36), b "TEXT NOT NULL", '
+          'c "x); DROP TABLE fq_extension; --", d UNSIGNED BIG INT)', ()),
+         ("INSERT INTO fq_odd VALUES ('A', NULL, 'C', 4)", ()))
+    assert InterchangeBundleReader(project).read(bundle).ok
+    out = str(tmp_path / "out.gpkg")
+    assert _export(project, out).ok
+    assert _columns(out, "fq_odd") == [("a", "VARCHAR(36)", 0, 0), ("b", "TEXT", 0, 0),
+                                       ("c", "NUMERIC", 0, 0), ("d", "INTEGER", 0, 0)]
+    assert _rows(out, "SELECT * FROM fq_odd") == [("A", None, "C", 4)]
+    assert _rows(out, "SELECT COUNT(*) FROM sqlite_master WHERE name='fq_extension'") == [(1,)]
+
+
+def test_a_column_a_newer_version_adds_to_fq_extension_travels_on(project, tmp_path):
+    bundle = _bundle(tmp_path / "ext.gpkg", "u-jc-1")
+    _sql(bundle,
+         ("ALTER TABLE fq_extension ADD COLUMN signature TEXT", ()),
+         ("INSERT INTO fq_extension (uuid, kind, namespace, payload_json, produced_by, signature) "
+          "VALUES ('x-1', 'plan', 'example.other', '{}', 'Another Tool', 'sig-1')", ()))
+    assert InterchangeBundleReader(project).read(bundle).ok
+    out = str(tmp_path / "out.gpkg")
+    assert _export(project, out).ok
+    assert _rows(out, "SELECT uuid, signature FROM fq_extension") == [("x-1", "sig-1")]
+
+
+def test_machinery_named_fq_is_not_carried_as_a_table(project, tmp_path):
+    """A virtual table (full-text search) and its shadow tables are SQLite's
+    machinery, and a table registered as anything but attributes is not a
+    side-car table."""
+    bundle = _bundle(tmp_path / "machinery.gpkg", "u-jc-1")
+    try:
+        _sql(bundle, ("CREATE VIRTUAL TABLE fq_search USING fts5(body)", ()),
+             ("INSERT INTO fq_search VALUES ('closure')", ()))
+    except sqlite3.OperationalError:
+        pytest.skip("no FTS5 in this sqlite3")
+    _sql(bundle, ("CREATE TABLE fq_tiles (id INTEGER PRIMARY KEY, z INTEGER)", ()),
+         ("INSERT INTO gpkg_contents (table_name, data_type, identifier) "
+          "VALUES ('fq_tiles', 'tiles', 'fq_tiles')", ()))
+    result = InterchangeBundleReader(project).read(bundle)
+    assert result.ok, result.errors
+    assert not [t for t in result.sidecar_kept if t.startswith(("fq_search", "fq_tiles"))]

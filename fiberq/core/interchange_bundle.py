@@ -24,6 +24,7 @@ Three things the existing GeoPackage export loses, and this writer does not:
 """
 import json
 import os
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -64,6 +65,106 @@ def _text_field(name):
 def _quoted(identifier):
     """An SQL identifier in double quotes, with any quote inside doubled."""
     return '"' + str(identifier).replace('"', '""') + '"'
+
+
+#: Declared types FiberQ re-creates a carried column with. Anything else maps to
+#: the type with the same SQLite affinity: a type is SQL text from someone else's
+#: file, and one such as ``TEXT NOT NULL`` or ``x); DROP ...`` must never be
+#: written back verbatim.
+_SAFE_TYPE = re.compile(
+    r"^(BOOLEAN|TINYINT|SMALLINT|MEDIUMINT|INT|INTEGER|BIGINT|FLOAT|DOUBLE|REAL|NUMERIC|"
+    r"DECIMAL|DATE|DATETIME|TEXT|VARCHAR|CHAR|CLOB|BLOB)(\(\d{1,9}(,\d{1,9})?\))?$",
+    re.IGNORECASE)
+_UNKNOWN_TABLE = re.compile(r"^fq_[A-Za-z0-9_]{1,60}$")
+
+
+def _column_type(declared):
+    """A declared type safe to write into DDL, keeping its SQLite affinity."""
+    text = str(declared or "").strip()
+    if not text or _SAFE_TYPE.match(text):
+        return text.upper()
+    upper = text.upper()
+    if "INT" in upper:
+        return "INTEGER"
+    if any(word in upper for word in ("CHAR", "CLOB", "TEXT")):
+        return "TEXT"
+    if "BLOB" in upper:
+        return "BLOB"
+    if any(word in upper for word in ("REAL", "FLOA", "DOUB")):
+        return "REAL"
+    return "NUMERIC"
+
+
+def _identifier_ok(name):
+    text = str(name)
+    return bool(text) and len(text) <= 128 and all(ord(ch) >= 32 for ch in text)
+
+
+def _ensure_columns(conn, table, wanted):
+    """Add every wanted ``[name, declared type]`` column ``table`` lacks; answer its columns.
+
+    Compared regardless of case, as SQLite compares column names, and through
+    ``table_xinfo`` so a generated column counts as present. A name with a
+    control character is not added.
+    """
+    def present():
+        try:
+            info = list(conn.execute(f'PRAGMA table_xinfo("{table}")'))  # nosec B608
+        except sqlite3.Error:
+            info = list(conn.execute(f'PRAGMA table_info("{table}")'))  # nosec B608
+        return [r[1] for r in info]
+
+    have = present()
+    folded = {c.lower() for c in have}
+    for column in wanted:
+        name = column[0] if isinstance(column, (list, tuple)) else column
+        declared = column[1] if isinstance(column, (list, tuple)) and len(column) > 1 else ""
+        if not _identifier_ok(name) or str(name).lower() in folded:
+            continue
+        # The table is validated, the name quoted, the type from _column_type.
+        conn.execute(f'ALTER TABLE "{table}" ADD COLUMN {_quoted(name)} {_column_type(declared)}')  # nosec B608
+        folded.add(str(name).lower())
+    return [c for c in present()]
+
+
+def _create_carried_table(conn, table, recorded, rows):
+    """Re-create a side-car table this format version does not define.
+
+    From the columns the import recorded -- names quoted, types through
+    _column_type, and the primary key it had, so a later export over the same
+    file replaces its rows instead of doubling them. Registered as an
+    attributes table so GDAL lists it, unless the name is already registered.
+    """
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND lower(name)=lower(?)",
+        (table,)).fetchone()
+    if exists is None:
+        columns = [c for c in recorded if isinstance(c, (list, tuple)) and _identifier_ok(c[0])]
+        if not columns:
+            names = []
+            for row in rows:
+                names += [k for k in row if k not in names]
+            columns = [[name, "", 0] for name in names if _identifier_ok(name)]
+        keys = [c[0] for c in sorted(columns, key=lambda c: c[2] if len(c) > 2 else 0)
+                if len(c) > 2 and c[2]]
+        parts = [f"{_quoted(c[0])} {_column_type(c[1] if len(c) > 1 else '')}".rstrip()
+                 for c in columns]
+        if keys:
+            parts.append("PRIMARY KEY (" + ", ".join(_quoted(k) for k in keys) + ")")
+        # Validated table name (fq_ and word characters), quoted columns.
+        conn.execute(f'CREATE TABLE "{table}" ({", ".join(parts)})')  # nosec B608
+    conn.execute(
+        "INSERT OR IGNORE INTO gpkg_contents "
+        "(table_name, data_type, identifier, description, last_change, srs_id) "
+        "VALUES (?, 'attributes', ?, ?, ?, 0)",
+        (table, table, f"Side-car table {table}, carried by FiberQ",
+         datetime.now(timezone.utc).isoformat()))
+
+
+def _unknown_table(name):
+    """``name`` as a carried ``fq_*`` table this format version does not define, or None."""
+    text = str(name or "")
+    return text if _UNKNOWN_TABLE.match(text) and _sidecar_table(text) is None else None
 
 
 def _sidecar_table(name):
@@ -640,7 +741,8 @@ class InterchangeBundleWriter:
                     logger.debug(f"Kept side-car payload is not valid JSON: {e}")
                     extensions.append(row)
                     continue
-                table = _sidecar_table((parsed or {}).get("table"))
+                table = _sidecar_table((parsed or {}).get("table")) or _unknown_table(
+                    (parsed or {}).get("table"))
                 if table:
                     entry = sidecar.setdefault(table, {"columns": [], "rows": []})
                     entry["columns"] = _united(entry["columns"], (parsed or {}).get("columns"))
@@ -652,21 +754,26 @@ class InterchangeBundleWriter:
         return extensions, attributes, sidecar, metadata
 
     def _write_passthrough(self, conn, extensions):
-        """Write back everything that stays an extension row (spec section 8)."""
+        """Write back everything that stays an extension row (spec section 8).
+
+        Every column a row arrived with goes back, including one a later 1.x
+        version adds to ``fq_extension`` -- the six this version defines were
+        all that used to.
+        """
         written = 0
         for row in extensions or []:
-            payload = row.get("payload_json")
+            values = dict(row)
+            payload = values.get("payload_json")
+            if payload is not None and not isinstance(payload, str):
+                values["payload_json"] = json.dumps(payload)
+            columns = _ensure_columns(conn, "fq_extension", [[k, ""] for k in values])
+            names = [c for c in columns if c.lower() in {k.lower() for k in values}]
+            folded = {k.lower(): v for k, v in values.items()}
+            # The table is the format's own; the column names are quoted.
             conn.execute(
-                "INSERT OR REPLACE INTO fq_extension "
-                "(uuid, owner_uuid, kind, namespace, payload_json, produced_by) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (
-                    row.get("uuid"), row.get("owner_uuid"), row.get("kind"),
-                    row.get("namespace"),
-                    payload if isinstance(payload, str) else json.dumps(payload),
-                    row.get("produced_by"),
-                ),
-            )
+                f'INSERT OR REPLACE INTO fq_extension ({", ".join(_quoted(c) for c in names)}) '  # nosec B608
+                f'VALUES ({", ".join("?" for _ in names)})',
+                [ic.from_json_safe(folded.get(c.lower())) for c in names])
             written += 1
         return written
 
@@ -687,21 +794,35 @@ class InterchangeBundleWriter:
         written, problems = 0, []
         for table, entry in (sidecar or {}).items():
             rows = entry.get("rows") if isinstance(entry, dict) else entry
+            recorded = (entry.get("columns") if isinstance(entry, dict) else None) or []
             if not rows:
                 continue
-            columns = [r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')]  # nosec B608
-            if not columns:
-                continue
-            placeholders = ", ".join("?" for _ in columns)
-            quoted = ", ".join(_quoted(c) for c in columns)
-            # The table is one of ic.SIDECAR_TABLES and the column names come
-            # from its own schema, quoted; nothing here is row data.
-            sql = f'INSERT OR REPLACE INTO "{table}" ({quoted}) VALUES ({placeholders})'  # nosec B608
             conn.execute("SAVEPOINT fiberq_kept")
             try:
+                if table not in ic.SIDECAR_TABLES:
+                    _create_carried_table(conn, table, recorded, rows)
+                # A column the rows carry that the table lacks: one a later 1.x
+                # version added (the WP3 known limit "a column added by a newer
+                # minor format version survives in the project but not into the
+                # next bundle"). Used to be dropped here, silently.
+                wanted = list(recorded) + [[k, ""] for row in rows for k in row]
+                columns = _ensure_columns(conn, table, wanted)
+                keyed = any(r[5] for r in conn.execute(f'PRAGMA table_info("{table}")'))  # nosec B608
+                quoted = ", ".join(_quoted(c) for c in columns)
+                placeholders = ", ".join("?" for _ in columns)
+                # The table name is validated (a format table, or fq_ and word
+                # characters) and every column name is quoted.
+                insert = f'INSERT OR REPLACE INTO "{table}" ({quoted}) VALUES ({placeholders})'  # nosec B608
+                same = f'DELETE FROM "{table}" WHERE ' + " AND ".join(  # nosec B608
+                    f"{_quoted(c)} IS ?" for c in columns)
                 for row in rows:
                     folded = {str(k).lower(): v for k, v in row.items()}
-                    conn.execute(sql, [ic.from_json_safe(folded.get(c.lower())) for c in columns])
+                    values = [ic.from_json_safe(folded.get(c.lower())) for c in columns]
+                    if not keyed:
+                        # No key to REPLACE on: an equal row from an earlier export
+                        # over this file would be doubled every time.
+                        conn.execute(same, values)
+                    conn.execute(insert, values)
                 conn.execute("RELEASE fiberq_kept")
                 written += len(rows)
             except (sqlite3.Error, sqlite3.Warning) as e:

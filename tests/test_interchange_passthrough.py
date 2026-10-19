@@ -321,7 +321,9 @@ def _carried_extras(path):
 
 def test_extras_from_a_newer_version_are_re_emitted(tmp_path, target_project):
     """Characterisation, and the plan's first "limit" -- which turned out not to
-    be one.
+    be one for feature columns. It was one for side-car tables: a column a
+    newer version adds there was dropped on export until FiberQ 1.6.0
+    (tests/test_interchange_sidecar_kept.py).
 
     Measured against the parent commit: this already worked.
     ``_load_passthrough`` collects the stored ``feature_attributes`` rows and
