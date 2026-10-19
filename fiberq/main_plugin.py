@@ -681,9 +681,9 @@ class FiberQPlugin:
             question = QT_TRANSLATE_NOOP(
                 'FiberQPlugin', 'Replace the bundle {name}?')
             detail = self.tr(
-                'Its FiberQ layers are rewritten from this project. Anything another '
-                'tool stored in the file -- its own metadata keys and relational '
-                'tables -- is kept, not discarded.')
+                'Its FiberQ layers, relations and pass-through elements are rewritten '
+                'from this project. Anything another tool stored in the file -- its own '
+                'metadata keys, tables and rows -- is kept, not discarded.')
 
         confirm = QMessageBox(self.iface.mainWindow())
         confirm.setIcon(QMessageBox.Icon.Question)

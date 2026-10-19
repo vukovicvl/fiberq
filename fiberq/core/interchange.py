@@ -46,9 +46,16 @@ STORAGE_EPSG = 4326
 
 #: Metadata keys this implementation owns and may overwrite on export. Any key
 #: NOT in this set was written by another tool and must survive untouched.
+#: FiberQ's own record, in a bundle it wrote, of the relations and cables whose
+#: rows it wrote there, so that exporting over the same file again can remove the
+#: rows of a relation or a cable the project no longer has (and nobody else's).
+#: Trusted only while its ``produced_at`` is the file's own: a tool that copies
+#: the key into another file, as section 7 asks it to, does not make it true there.
+WRITTEN_KEY = "fiberq_written"
+
 OWNED_METADATA_KEYS = frozenset({
     "format", "format_version", "schema_version", "produced_by", "produced_at",
-    "crs_epsg", "color_standard", "color_catalog_json", "profile",
+    "crs_epsg", "color_standard", "color_catalog_json", "profile", WRITTEN_KEY,
     # Legacy keys this plugin has always written; kept for backward compat.
     "project_version", "export_timestamp", "relations_json",
     "latent_elements_json", "plugin_settings_json",
@@ -516,3 +523,34 @@ def merge_kept_rows(existing, incoming, key_columns=()):
             where[key] = len(merged)
             merged.append(row)
     return merged
+
+
+# ---------------------------------------------------------------------------
+# Relations: identity
+# ---------------------------------------------------------------------------
+
+def is_uuid(value) -> bool:
+    try:
+        _uuid.UUID(str(value))
+        return True
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+
+def relation_identity(relation, project_key: str = "") -> str:
+    """The ``fiberq_uuid`` a project relation is written under.
+
+    Its own ``uuid`` when it has one (FiberQ 1.6.0 stores it on import); else its
+    ``id`` when that is a UUID, which every relation the Relations dialog makes
+    is; else, for an integer id (a FiberQ 1.5.0 import), the identity derived
+    from the project file, the relation's id and its name -- what every bundle
+    before 1.6.0 carried, so a re-import still matches it. Only that last one
+    changes when the project is saved under another name.
+    """
+    own = relation.get("uuid")
+    if own and str(own).strip():
+        return str(own).strip()
+    rid = relation.get("id")
+    if is_uuid(rid):
+        return str(rid)
+    return stable_uuid("relation", project_key, rid, relation.get("name", "") or "")

@@ -32,6 +32,7 @@ import os
 import re
 import sqlite3
 from contextlib import closing
+from uuid import uuid4
 
 from qgis.core import (
     QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsFeature, QgsFeatureRequest,
@@ -66,9 +67,23 @@ def _safe_table(name):
 
 LATENT_ENTRY = ("StuboviPlugin", "LatentElements/latent_v1")
 
+#: The columns of ``fq_relation`` and ``fq_relation_member`` this format version
+#: defines; any other a row carries travels in the record's ``extra``.
+_RELATION_COLUMNS = frozenset({"uuid", "name", "category"})
+_MEMBER_COLUMNS = frozenset({"relation_uuid", "member_uuid", "order_index", "role"})
+
 #: The columns of ``fq_path_stop`` this format version defines; any other a row
 #: carries travels in the stop's ``extra``.
 _PATH_STOP_COLUMNS = frozenset({"cable_uuid", "element_uuid", "order_index", "is_latent"})
+
+
+def _same_unidentified(relation, name, wanted, member_uuids):
+    """Whether a relation with no identity of its own has this name and these members."""
+    if relation.get("uuid") or ic.is_uuid(relation.get("id")):
+        return False
+    if (relation.get("name") or "") != (name or ""):
+        return False
+    return member_uuids(relation) == wanted
 
 
 def _flag(value):
@@ -689,38 +704,113 @@ class InterchangeBundleReader:
             }, 0
 
     def _restore_relations(self, gpkg_path, uuid_index, result):
-        """Rebuild the project's relations from the uuid-keyed side-car."""
-        relations = self._table_rows(gpkg_path, "fq_relation")
-        if not relations:
+        """Add the bundle's relations to the project's.
+
+        This used to write the bundle's relations over the project's entry, so
+        an import replaced every relation the user had, and it dropped what it
+        could not use: each relation's uuid and category, every member's role
+        and order, and a member the project cannot draw. Now a relation the
+        project already has -- by its identity (``interchange.relation_identity``),
+        or, for a relation with none of its own, by the same name and the same
+        members -- is left as the project has it (a warning counts those that
+        differ), and a new one is appended with its uuid as its id, its
+        category, its members' roles and order, the members kept by uuid, and
+        any column a later 1.x version added.
+        """
+        bundle_relations = self._table_rows(gpkg_path, "fq_relation")
+        if not bundle_relations:
             return
         members = {}
         for row in self._table_rows(gpkg_path, "fq_relation_member"):
-            members.setdefault(row.get("relation_uuid"), []).append(row)
+            folded = {str(k).lower(): v for k, v in row.items()}
+            members.setdefault(str(folded.get("relation_uuid")), []).append(row)
 
-        out = []
-        unresolved = 0
-        for index, relation in enumerate(relations, start=1):
-            cables = []
-            for member in sorted(members.get(relation.get("uuid"), []),
-                                 key=lambda m: m.get("order_index") or 0):
-                target = uuid_index.get(str(member.get("member_uuid")))
+        data = read_json_entry(
+            "StuboviPlugin", "Relacije/relations_v1", {"relations": []},
+            QCoreApplication.translate('FiberQStore', "Optical relations"),
+            expect="relations", project=self.project)
+        relations = [r for r in data.get("relations") or [] if isinstance(r, dict)]
+        located = {value: key for key, value in uuid_index.items()}
+        project_key = self.project.fileName() or self.project.title() or ""
+
+        def member_uuids(relation):
+            found = {located.get((c.get("layer_id"), _integer(c.get("fid"))))
+                     for c in relation.get("cables") or [] if isinstance(c, dict)}
+            found |= {k.get("member_uuid") for k in relation.get("kept_members") or []
+                      if isinstance(k, dict)}
+            return {m for m in found if m}
+
+        by_identity = {}
+        for relation in relations:
+            by_identity.setdefault(ic.relation_identity(relation, project_key), relation)
+
+        differing = kept = 0
+        for row in bundle_relations:
+            folded = {str(k).lower(): v for k, v in row.items()}
+            relation_uuid = str(folded.get("uuid") or "").strip() or str(uuid4())
+            incoming = sorted(members.get(relation_uuid, []),
+                              key=lambda m: _integer({str(k).lower(): v for k, v in m.items()}
+                                                     .get("order_index")) or 0)
+            wanted = {str({str(k).lower(): v for k, v in m.items()}.get("member_uuid"))
+                      for m in incoming}
+            match = by_identity.get(relation_uuid)
+            if match is None and wanted:
+                # A relation with no identity of its own (a 1.5.0 import's integer
+                # id) saved somewhere else since: the same name and members.
+                match = next((r for r in relations if _same_unidentified(
+                    r, folded.get("name"), wanted, member_uuids)), None)
+            if match is not None:
+                if not match.get("uuid") and not ic.is_uuid(match.get("id")):
+                    match["uuid"] = relation_uuid
+                by_identity[relation_uuid] = match
+                if member_uuids(match) != wanted:
+                    differing += 1
+                continue
+
+            relation = {"id": relation_uuid, "uuid": relation_uuid,
+                        "name": folded.get("name"), "category": folded.get("category"),
+                        "cables": [], "kept_members": []}
+            extra = {k: v for k, v in row.items() if str(k).lower() not in _RELATION_COLUMNS}
+            if extra:
+                relation["extra"] = extra
+            for member in incoming:
+                fields = {str(k).lower(): v for k, v in member.items()}
+                entry = {"order_index": _integer(fields.get("order_index")),
+                         "role": fields.get("role")}
+                extra = {k: v for k, v in member.items() if str(k).lower() not in _MEMBER_COLUMNS}
+                if extra:
+                    entry["extra"] = extra
+                target = uuid_index.get(str(fields.get("member_uuid")))
                 if target is None:
-                    unresolved += 1
-                    continue
-                cables.append({"layer_id": target[0], "fid": target[1]})
-            out.append({
-                "id": index,
-                "name": relation.get("name") or f"Relation {index}",
-                "cables": cables,
-            })
+                    entry["member_uuid"] = str(fields.get("member_uuid"))
+                    relation["kept_members"].append(entry)
+                    kept += 1
+                else:
+                    entry.update({"layer_id": target[0], "fid": target[1]})
+                    relation["cables"].append(entry)
+            if not relation["kept_members"]:
+                del relation["kept_members"]
+            relations.append(relation)
+            by_identity[relation_uuid] = relation
+
+        data["relations"] = relations
         self.project.writeEntry(
-            "StuboviPlugin", "Relacije/relations_v1",
-            json.dumps({"relations": out}, ensure_ascii=False))
-        result.relations = len(out)
-        if unresolved:
-            result.warnings.append(
-                f"{unresolved} relation member(s) name a feature that is not in this "
-                "bundle and were left out.")
+            "StuboviPlugin", "Relacije/relations_v1", json.dumps(data, ensure_ascii=False))
+        result.relations = len(bundle_relations)
+        if differing:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "{count} relation(s) already in this project were left as they are; the "
+                "bundle's version of them has other members.")
+            result.warnings.append(safe_format(
+                QCoreApplication.translate('FiberQInterchange', src), src, count=differing))
+        if kept:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "{count} relation member(s) name a feature FiberQ does not draw; they are kept "
+                "and written out again with the next bundle.")
+            result.warnings.append(safe_format(
+                QCoreApplication.translate('FiberQInterchange', src), src, count=kept))
 
     def _restore_path_stops(self, gpkg_path, uuid_index, result, passthrough):
         """Add the bundle's pass-through elements to the project's, as the dialog stores them.

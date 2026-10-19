@@ -57,13 +57,15 @@ with the environment variable `FIBERQ_LOG_LEVEL=DEBUG` and they are listed in
 If the file already exists, FiberQ asks first, and says what replacing it does:
 
 > **Replace the bundle design.gpkg?**
-> Its FiberQ layers are rewritten from this project. Anything another tool
-> stored in the file — its own metadata keys and relational tables — is kept,
-> not discarded.
+> Its FiberQ layers, relations and pass-through elements are rewritten from this
+> project. Anything another tool stored in the file — its own metadata keys,
+> tables and rows — is kept, not discarded.
 
 That is the honest description of the operation, and it is worth reading once.
 Exporting over a file a colleague's tool also writes to does **not** wipe their
-half of it.
+half of it. FiberQ's own half is brought up to date: the rows it wrote there last
+time for a relation, a relation member or a pass-through element the project no
+longer has are removed.
 
 ---
 
@@ -127,10 +129,12 @@ count: a project holding nothing but rasters (an XYZ or WMS basemap, say), vecto
 tiles, meshes or point clouds is treated as empty, and its CRS switches too. A
 basemap loaded as a vector layer counts as your work.
 
-**An import adds; it never replaces.** A cable the project already records
-pass-through elements for keeps its own, and a warning counts the cables where the
-bundle's differ; a cable with none gets the bundle's. A feature already in the
-project is not updated either. To see a colleague's version exactly as they sent it,
+**An import adds; it never replaces.** A relation the project already has keeps
+its own members, and a cable the project already records pass-through elements for
+keeps its own; a warning counts those where the bundle's differ. A relation or a
+cable the project does not have yet gets the bundle's, with the relation's own
+identity, category, member roles and order. A feature already in the project is not
+updated either. To see a colleague's version exactly as they sent it,
 import it into a new project.
 
 **A bundle it cannot read is refused before anything is imported.** A bundle
@@ -215,9 +219,10 @@ queryable, not as an opaque blob. That includes a table or a column a later
 version of the format adds, and the rows several imported bundles brought: a
 second import adds to what the first kept.
 
-**A pass-through element FiberQ does not draw** — a stop on a splitter it keeps
-only in the passthrough store, or on a cable that is not in the project — is kept
-and written out again, though the pass-through dialog does not list it.
+**A pass-through element or a relation member FiberQ does not draw** — a stop on
+a splitter it keeps only in the passthrough store, a stop on a cable that is not in
+the project, a relation member it cannot place — is kept and written out again,
+though the dialogs do not list it.
 
 **Metadata keys another tool wrote** are merged into the next bundle, never
 replaced.

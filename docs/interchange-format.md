@@ -290,7 +290,8 @@ The `_fiberq_metadata` table is `key TEXT PRIMARY KEY, value TEXT`.
 
 A writer **must not** delete metadata keys it did not write. Rebuilding this table from
 scratch on every export silently discards whatever another tool recorded. Merge; do not
-replace.
+replace. A key outside the table above belongs to the writer that recorded it, and
+every other writer carries it unchanged; the FiberQ plugin's own is described in §12.
 
 ## 8. The passthrough store
 
@@ -334,7 +335,8 @@ A **conformant writer** must:
 
 A **conformant round trip** is the real test: import a bundle, change nothing, export it,
 and every object, attribute and relation is still present — *including everything the
-tool does not support*. The FiberQ plugin asserts exactly this in CI.
+tool does not support*. The FiberQ plugin runs this round trip in CI for the data
+listed in §12.
 
 ## 10. What v1 deliberately does not cover
 
@@ -391,7 +393,7 @@ plugin** and exports it again, then checks that all of the following survived:
 | `fq_splice_point`, `fq_fiber_connection` | Kept verbatim and written back **as rows**, so they are still queryable |
 | A passthrough row from a third tool | Untouched |
 | A `_fiberq_metadata` key FiberQ did not write | Carried through the project into the next bundle |
-| Relations | Out as `fiberq_uuid` references, back as project data, out again |
+| Relations | Out under their own uuid with their category, member roles and order, back as project data, out again unchanged |
 | Path stops | Out with `is_latent` 1 or 0 in the cable's order, back into the project, out again with the same order and marks |
 
 It runs on **QGIS 3 / Qt5 and QGIS 4 / Qt6** in CI. Import is also idempotent: importing
@@ -408,9 +410,9 @@ In the FiberQ QGIS plugin: **Plugins → FiberQ → Export interchange bundle…
 | Feature layers, canonical names, `fq_type` + `placement` | written |
 | Canonical field names and values (§6.3) | written |
 | Storage CRS (§5), `crs_epsg` restore target | written |
-| Identity preserved, never regenerated (§4) | written |
+| Identity preserved, never regenerated (§4) | written; a relation that a FiberQ 1.5.0 import brought in keeps an identity derived from the project file until its bundle is imported again |
 | Metadata merged, foreign keys preserved (§7) | written |
-| `fq_relation` / `fq_relation_member` from project relations | written |
+| `fq_relation` / `fq_relation_member` from project relations | written, with the category, member roles and order they came with |
 | `fq_path_stop` from recorded pass-through elements | written |
 | `fq_extension` passthrough store (§8) | written |
 | GeoJSON profile (§3) | written |
@@ -426,6 +428,13 @@ The writer resolves them to `fiberq_uuid` on the way out. A project-local refere
 cannot resolve is **reported and left out**, never mapped to the nearest plausible
 object. A `fiberq_uuid` that arrived in a bundle is different: a path stop naming a cable
 or an element the plugin does not draw is kept as it came and written out again.
+
+An export over a bundle the plugin wrote before replaces the `fq_relation`,
+`fq_relation_member` and `fq_path_stop` rows of the relations and cables it writes,
+and removes the rows it wrote there last time for a relation or a cable the project no
+longer has. It records which ones in the metadata key `fiberq_written`, its
+own (§7), tied to that export's `produced_at`: a copy of the key in another file is
+not trusted. Every other row stays.
 
 In FiberQ, `is_latent` 0 means an element the pass-through dialog lists along the cable
 but the user has not marked as passed through, which is every element's default there.

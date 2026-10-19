@@ -183,6 +183,63 @@ def _united(before, columns):
     return united
 
 
+def _extra_columns(conn, table, defined, extras):
+    """``defined`` plus every column the records' ``extra`` names, added to ``table``.
+
+    The extras are what an import kept of a column a later 1.x version added to
+    a modelled table (``fq_relation``, ``fq_relation_member``).
+    """
+    names = []
+    for extra in extras:
+        for name in (extra or {}):
+            if str(name).lower() not in {d.lower() for d in defined} and name not in names:
+                names.append(name)
+    if names:
+        present = {c.lower() for c in _ensure_columns(conn, table, [[n, ""] for n in names])}
+        names = [n for n in names if n.lower() in present]
+    return list(defined) + names
+
+
+def _insert_sql(table, columns):
+    # The format's own table; every column name is quoted.
+    return (f'INSERT OR REPLACE INTO "{table}" ({", ".join(_quoted(c) for c in columns)}) '  # nosec B608
+            f'VALUES ({", ".join("?" for _ in columns)})')
+
+
+def _with_extra(values, record, extra_columns):
+    extra = (record or {}).get("extra") or {}
+    return list(values) + [ic.from_json_safe(extra.get(c)) for c in extra_columns]
+
+
+def _previously_written(file_metadata):
+    """The relation and cable uuids FiberQ's last export wrote rows for in this file.
+
+    Only while the record's ``produced_at`` is the file's own: another tool that
+    copied the key into a different file, as section 7 asks, does not make it
+    true there, and a malformed record is ignored rather than trusted.
+    """
+    raw = (file_metadata or {}).get(ic.WRITTEN_KEY)
+    if not raw:
+        return {}
+    try:
+        record = json.loads(raw)
+    except (TypeError, ValueError):
+        logger.debug("FiberQ's record of written rows is not valid JSON; nothing removed")
+        return {}
+    if not isinstance(record, dict) or record.get("produced_at") != file_metadata.get("produced_at"):
+        return {}
+    return record
+
+
+def _forget(conn, previous, relations_now, cables_now):
+    """Remove the rows FiberQ wrote here last time for what the project no longer has."""
+    for relation in set(previous.get("fq_relation") or []) - set(relations_now):
+        conn.execute("DELETE FROM fq_relation_member WHERE relation_uuid = ?", (relation,))
+        conn.execute("DELETE FROM fq_relation WHERE uuid = ?", (relation,))
+    for cable in set(previous.get("fq_path_stop") or []) - set(cables_now):
+        conn.execute("DELETE FROM fq_path_stop WHERE cable_uuid = ?", (cable,))
+
+
 def _order(record, position):
     """A row's own ``order_index`` when an import recorded one, else its position."""
     try:
@@ -609,42 +666,83 @@ class InterchangeBundleWriter:
     def _write_relations(self, conn, index):
         """Emit the project's cable relations as uuid-keyed side-car rows.
 
+        Returns ``(relations, members written, unresolved, uuids written)``.
+
         The plugin stores relations as ``{"relations": [{"id", "name",
-        "cables": [{"layer_id", "fid"}]}]}``. Cables whose identity cannot be
-        resolved are counted, not guessed at.
+        "cables": [{"layer_id", "fid"}]}]}``. Before FiberQ 1.6.0 every
+        relation left as a uuid derived from the project file's path -- a new
+        identity on Save As, and a foreign relation's own uuid thrown away on
+        import -- with category ``cable_group`` and every member's role
+        ``cable``. Now each leaves under :func:`interchange.relation_identity`,
+        with the category, member roles, member order and any column a later
+        1.x version added that it came with, and the members the project
+        cannot draw (``kept_members``) go back too. Cables whose identity
+        cannot be resolved are counted, not guessed at.
         """
         raw = self.project.readEntry("StuboviPlugin", "Relacije/relations_v1", "")[0]
         if not raw:
-            return 0, 0, 0
+            return 0, 0, 0, set()
         try:
             data = json.loads(raw)
         except ValueError as e:
             logger.debug(f"Relations entry is not valid JSON, not exported: {e}")
-            return 0, 0, 0
+            return 0, 0, 0, set()
+        relations_list = [r for r in data.get("relations", []) or [] if isinstance(r, dict)]
+
+        relation_columns = _extra_columns(conn, "fq_relation", ("uuid", "name", "category"),
+                                          [r.get("extra") for r in relations_list])
+        member_columns = _extra_columns(
+            conn, "fq_relation_member", ("relation_uuid", "member_uuid", "order_index", "role"),
+            [m.get("extra") for r in relations_list
+             for m in (r.get("cables") or []) + (r.get("kept_members") or []) if isinstance(m, dict)])
+        insert_relation = _insert_sql("fq_relation", relation_columns)
+        insert_member = _insert_sql("fq_relation_member", member_columns)
 
         project_key = self.project.fileName() or self.project.title() or ""
         relations = written_members = unresolved = 0
-        for relation in data.get("relations", []) or []:
-            rid = relation.get("id")
-            name = relation.get("name", "") or ""
-            relation_uuid = ic.stable_uuid("relation", project_key, rid, name)
-            conn.execute(
-                "INSERT OR REPLACE INTO fq_relation (uuid, name, category) VALUES (?, ?, ?)",
-                (relation_uuid, name, "cable_group"),
-            )
+        written = set()
+        for relation in relations_list:
+            relation_uuid = ic.relation_identity(relation, project_key)
+            # A category the relation came with is kept, NULL included; one made
+            # before 1.6.0 without any keeps the writer's old default.
+            category = relation["category"] if "category" in relation else "cable_group"
+            conn.execute(insert_relation, _with_extra(
+                [relation_uuid, relation.get("name", ""), category], relation, relation_columns[3:]))
             relations += 1
-            for order, cable in enumerate(relation.get("cables", []) or []):
+            written.add(relation_uuid)
+            # This relation's rows are rewritten from the project: a member
+            # removed since the last export over this file must not stay.
+            conn.execute("DELETE FROM fq_relation_member WHERE relation_uuid = ?", (relation_uuid,))
+            members = [m for m in relation.get("cables", []) or [] if isinstance(m, dict)]
+            orders = [_order(m, None) for m in members]
+            following = max((o for o in orders if o is not None), default=-1) + 1
+            emitted = set()
+            for position, cable in enumerate(members):
                 member = self._resolve(index, cable.get("layer_id"), cable.get("fid"))
                 if member is None:
                     unresolved += 1
                     continue
-                conn.execute(
-                    "INSERT OR REPLACE INTO fq_relation_member "
-                    "(relation_uuid, member_uuid, order_index, role) VALUES (?, ?, ?, ?)",
-                    (relation_uuid, member, order, "cable"),
-                )
+                order = _order(cable, None)
+                if order is None:
+                    # One the dialog added to a relation an import brought in
+                    # with its own numbering: after the rest, not in the middle.
+                    order = position if following == 0 else following
+                    following += 1 if following else 0
+                conn.execute(insert_member, _with_extra(
+                    [relation_uuid, member, order, cable.get("role", "cable")],
+                    cable, member_columns[4:]))
+                emitted.add(member)
                 written_members += 1
-        return relations, written_members, unresolved
+            for kept in relation.get("kept_members") or []:
+                member = (kept or {}).get("member_uuid")
+                if not member or member in emitted:
+                    continue
+                conn.execute(insert_member, _with_extra(
+                    [relation_uuid, member, kept.get("order_index"), kept.get("role")],
+                    kept, member_columns[4:]))
+                emitted.add(member)
+                written_members += 1
+        return relations, written_members, unresolved, written
 
     def _write_path_stops(self, conn, index):
         """Emit the elements each cable passes as ``fq_path_stop`` rows, in order.
@@ -662,12 +760,12 @@ class InterchangeBundleWriter:
         """
         raw = self.project.readEntry("StuboviPlugin", "LatentElements/latent_v1", "")[0]
         if not raw:
-            return 0, 0
+            return 0, 0, set()
         try:
             data = json.loads(raw)
         except ValueError as e:
             logger.debug(f"Latent elements entry is not valid JSON, not exported: {e}")
-            return 0, 0
+            return 0, 0, set()
 
         records = ic.latent_records(data)
         # A column a later 1.x version added to fq_path_stop rides in each stop's
@@ -689,12 +787,17 @@ class InterchangeBundleWriter:
                   f'VALUES ({", ".join("?" for _ in columns)})')
 
         written = unresolved = 0
+        cables = set()
         for key, elements in records.items():
             layer_id, _, fid = key.rpartition(":")
             cable_uuid = self._resolve(index, layer_id, fid)
             if cable_uuid is None:
                 unresolved += len(elements)
                 continue
+            # This cable's stops are rewritten from the project, so one removed
+            # since the last export over this file goes.
+            conn.execute("DELETE FROM fq_path_stop WHERE cable_uuid = ?", (cable_uuid,))
+            cables.add(cable_uuid)
             for position, element in enumerate(elements):
                 element_uuid = self._resolve(index, element.get("layer_id"), element.get("fid"))
                 if element_uuid is None and "layer_id" not in element:
@@ -710,7 +813,7 @@ class InterchangeBundleWriter:
                 values.extend(ic.from_json_safe(extra.get(c)) for c in columns[4:])
                 conn.execute(insert, values)
                 written += 1
-        return written, unresolved
+        return written, unresolved, cables
 
     def _load_passthrough(self, passthrough=None):
         """The passthrough store, split by what each row must become on the way out.
@@ -865,8 +968,12 @@ class InterchangeBundleWriter:
 
     # -- metadata ----------------------------------------------------------
 
-    def _write_metadata(self, conn, existing, timestamp):
-        """Write the merged metadata table, keeping every foreign key intact."""
+    def _write_metadata(self, conn, existing, timestamp, written=None):
+        """Write the merged metadata table, keeping every foreign key intact.
+
+        ``written`` is FiberQ's record of the relation and cable rows it wrote
+        (``interchange.WRITTEN_KEY``); without one, an older record is removed.
+        """
         crs = self.project.crs()
         epsg = ""
         if crs.isValid():
@@ -880,7 +987,11 @@ class InterchangeBundleWriter:
             timestamp=timestamp,
             color_standard=self._color_standard(),
         )
+        if written:
+            produced[ic.WRITTEN_KEY] = json.dumps(written, sort_keys=True)
         merged = ic.merge_metadata(existing, produced)
+        if not written:
+            merged.pop(ic.WRITTEN_KEY, None)
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS _fiberq_metadata "
@@ -896,6 +1007,8 @@ class InterchangeBundleWriter:
         except sqlite3.Error as e:
             logger.debug(f"Could not register _fiberq_metadata in gpkg_contents: {e}")
 
+        if not written:
+            conn.execute("DELETE FROM _fiberq_metadata WHERE key = ?", (ic.WRITTEN_KEY,))
         for key, value in merged.items():
             conn.execute(
                 "INSERT OR REPLACE INTO _fiberq_metadata (key, value) VALUES (?, ?)",
@@ -941,6 +1054,7 @@ class InterchangeBundleWriter:
         # Read first: a half-written file no longer knows what another tool put
         # in it, and this is the merge's only chance to find out.
         existing = read_bundle_metadata(gpkg_path)
+        file_metadata = dict(existing)
         index = self.build_uuid_index(mapped)
 
         missing_identity = [
@@ -1000,8 +1114,10 @@ class InterchangeBundleWriter:
             conn = sqlite3.connect(gpkg_path)
             self._create_sidecar(conn, timestamp)
 
-            relations, members, unresolved_members = self._write_relations(conn, index)
-            stops, unresolved_stops = self._write_path_stops(conn, index)
+            previous = _previously_written(file_metadata)
+            relations, members, unresolved_members, relation_uuids = self._write_relations(conn, index)
+            stops, unresolved_stops, cable_uuids = self._write_path_stops(conn, index)
+            _forget(conn, previous, relation_uuids, cable_uuids)
             written_extensions = self._write_passthrough(conn, extensions)
             result.sidecar_rows = {
                 "fq_relation": relations,
@@ -1022,7 +1138,11 @@ class InterchangeBundleWriter:
                 )
 
             result.preserved = ic.foreign_keys(existing)
-            result.metadata = self._write_metadata(conn, existing, timestamp)
+            written = None
+            if relation_uuids or cable_uuids:
+                written = {"produced_at": timestamp, "fq_relation": sorted(relation_uuids),
+                           "fq_path_stop": sorted(cable_uuids)}
+            result.metadata = self._write_metadata(conn, existing, timestamp, written)
             conn.commit()
         except (sqlite3.Error, sqlite3.Warning) as e:
             # sqlite3.Warning too: Python 3.10's sqlite3 (QGIS 3.22) raises it,
@@ -1087,6 +1207,8 @@ class InterchangeBundleWriter:
 
             dropped = sum(staged.sidecar_rows.values())
             metadata = dict(staged.metadata)
+            # It records rows of a GeoPackage this profile has no side-car for.
+            metadata.pop(ic.WRITTEN_KEY, None)
             if dropped:
                 # Only when something is actually lost. Marking a complete
                 # bundle lossy is as misleading as not marking a lossy one.
