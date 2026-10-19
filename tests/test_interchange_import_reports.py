@@ -99,3 +99,11 @@ def test_a_clean_bundle_reports_none_of_this(project, tmp_path):
     result = _import(project, _bundle(tmp_path / "b.gpkg"))
     for phrase in ("not a JSON object", "no fiberq_uuid", "name no relation"):
         assert not any(phrase in w for w in result.warnings), result.warnings
+
+
+def test_the_summary_counts_what_a_reimport_left_alone(project, tmp_path):
+    """An import adds and never updates; the summary used to say only "0 feature(s)"."""
+    bundle = _bundle(tmp_path / "b.gpkg")
+    _import(project, bundle)
+    again = _import(project, bundle)
+    assert "1 already in the project, left as they are" in again.summary(), again.summary()

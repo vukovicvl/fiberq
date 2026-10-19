@@ -203,6 +203,10 @@ class ImportResult:
 
     def summary(self):
         parts = [f"{len(self.layers)} layer(s), {self.feature_count} feature(s)"]
+        if self.already_present:
+            # An import adds and never updates. Saying how many it left alone
+            # is what tells a re-import from a bundle with nothing in it.
+            parts.append(f"{self.already_present} already in the project, left as they are")
         carried = sum(self.unsupported.values())
         if carried:
             parts.append(f"{carried} unsupported element(s) carried through")

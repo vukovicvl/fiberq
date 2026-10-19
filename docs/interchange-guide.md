@@ -151,8 +151,9 @@ Three behaviours are worth knowing before you rely on it.
 
 **Importing the same bundle twice changes nothing.** Identity is permanent, so a
 feature whose `fiberq_uuid` is already in the project is the *same* feature, not
-a second one. The second import reports `0 feature(s)` — it does not duplicate
-your design, and it does not disturb the relationships the first one restored.
+a second one. The second import reports `0 feature(s), 46 already in the
+project, left as they are` — it does not duplicate your design, and it does not
+disturb the relationships the first one restored.
 
 **Into an empty project, the authoring CRS comes back.** Import into a project
 you have just created and it switches to the CRS the design was drawn in. Import
