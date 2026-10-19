@@ -185,3 +185,26 @@ def test_the_length_recalculation_uses_the_projects_tolerance(mercator):
     assert not plan_recalculation(mercator).changes
     d3 = [i for i in vm.run_validation(mercator).issues if i.rule_id == "D3"]
     assert d3 == [], "D3 and the recalculation must read the same tolerance"
+
+
+# -- found in the final review of the 1.6.0 branch ----------------------------------------
+
+@pytest.mark.parametrize("raw", [
+    '{"tol": 1' + "0" * 400 + "}",          # an integer too large for a float
+    "[" * 100000 + "]" * 100000,             # nesting deep enough to stop the parser
+], ids=["huge-integer", "deep-nesting"])
+def test_a_setting_that_breaks_the_reader_is_a_problem_not_a_crash(raw):
+    """``math.isfinite`` raised OverflowError and ``json.loads`` RecursionError,
+    so run_validation raised although it is documented never to."""
+    config = vm.ValidationConfig.from_project(_Entries(raw))
+    assert config.problems
+    assert config.tol == vm.ValidationConfig().tol
+
+
+def test_recalculate_says_which_settings_it_could_not_use(mercator):
+    """It used the defaults for them without a word, while the validation run
+    over the same project reported them."""
+    mercator.writeEntry(*vm.CONFIG_ENTRY, json.dumps({"length_rel_tol": "five"}))
+    plan = plan_recalculation(mercator)
+    assert any("length_rel_tol" in problem for problem in plan.config_problems), (
+        plan.config_problems)

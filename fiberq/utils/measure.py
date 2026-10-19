@@ -114,28 +114,7 @@ def ground_length(geom, layer=None, crs=None, project=None) -> float:
     Falls back to the planar length rather than raising -- a slightly wrong number
     beats losing the attribute -- and says so in the log.
     """
-    if geom is None:
-        return 0.0
-    try:
-        if geom.isEmpty():
-            return 0.0
-    except Exception:
-        return 0.0
-
-    if crs is None and layer is not None:
-        try:
-            crs = layer.crs()
-        except Exception:
-            crs = None
-
-    try:
-        return float(distance_area(crs, project).measureLength(geom))
-    except Exception as e:
-        logger.debug(f"Ellipsoidal measurement failed, using planar length: {e}")
-        try:
-            return float(geom.length())
-        except Exception:
-            return 0.0
+    return _measure(geom, layer, crs, project, "measureLength", "length")
 
 
 def ground_area(geom, layer=None, crs=None, project=None) -> float:
@@ -172,7 +151,10 @@ def _measure(geom, layer, crs, project, measurer, planar):
     try:
         return float(getattr(distance_area(crs, project), measurer)(geom))
     except Exception as e:
-        logger.debug(f"Ellipsoidal measurement failed, using the planar {planar}: {e}")
+        # At warning: the planar figure is in map units, which is the very thing
+        # these measurements exist to avoid, so it must be visible in the log.
+        logger.warning(f"Ellipsoidal measurement failed, using the planar {planar} "
+                       f"(map units): {e}")
         try:
             return float(getattr(geom, planar)())
         except Exception:

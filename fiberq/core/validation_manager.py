@@ -138,7 +138,7 @@ class ValidationConfig:
             return config
         try:
             data = json.loads(raw)
-        except ValueError as e:
+        except (ValueError, RecursionError) as e:
             config.problems.append(f"the entry is not valid JSON ({e})")
             return config
         if not isinstance(data, dict):
@@ -194,7 +194,10 @@ class ValidationConfig:
 def _usable_number(value) -> bool:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return False
-    return math.isfinite(value) and value >= 0
+    try:
+        return math.isfinite(value) and value >= 0
+    except OverflowError:
+        return False  # an integer too large for a float: "Never raises" held
 
 
 @dataclass

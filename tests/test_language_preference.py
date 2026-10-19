@@ -117,9 +117,15 @@ os._exit(0)
 '''
 
 
-def _run(tmp_path, locale, preset=None, marker=False):
+#: A compiled catalogue that translates nothing, for the language "zz": the
+#: .qm magic, a language tag and the numerus rules, as lrelease writes one for a
+#: .ts nobody has translated (the shipped French one was exactly this).
+EMPTY_QM = bytes.fromhex("3cb86418caef9c95cd211cbf60a1bddd" "a7000000027a7a" "88000000020301")
+
+
+def _run(tmp_path, locale, preset=None, marker=False, repo=REPO_ROOT):
     script = tmp_path / "language_preference.py"
-    script.write_text(DRIVER.format(repo=REPO_ROOT, locale=locale, preset=preset,
+    script.write_text(DRIVER.format(repo=repo, locale=locale, preset=preset,
                                     marker=marker), encoding="utf-8")
     home = tmp_path / "home"
     home.mkdir()
@@ -178,11 +184,20 @@ def test_a_real_choice_of_english_is_kept(tmp_path):
 
 
 def test_a_language_with_nothing_translated_is_not_offered(tmp_path):
-    """The French catalogue ships empty: French QGIS, English FiberQ, and the
-    button and menu must say so."""
+    """A catalogue that translates nothing -- the shipped French one did, at 30
+    bytes -- names no language the interface is in, so the button and the menu
+    must not offer it. Built here, on a copy of the plugin, rather than relying
+    on a shipped catalogue staying empty."""
+    import shutil
+
     from fiberq.i18n import language_name
 
-    result = _run(tmp_path, "fr")
+    copy = tmp_path / "plugin"
+    shutil.copytree(os.path.join(REPO_ROOT, "fiberq"), copy / "fiberq",
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    (copy / "fiberq" / "i18n" / "fiberq_zz.qm").write_bytes(EMPTY_QM)
+
+    result = _run(tmp_path, "zz", repo=str(copy))
     assert result["button"] == language_name("en")
     assert result["checked"] == ["en"]
-    assert "fr" not in result["menu"]
+    assert "zz" not in result["menu"]

@@ -85,6 +85,9 @@ class RecalcPlan:
     layers_seen: List[str] = field(default_factory=list)
     #: Layers that raised while being planned, so "nothing to do" is never a lie.
     failed_layers: List[str] = field(default_factory=list)
+    #: The project's validation settings this plan could not use (the defaults
+    #: stood in), as for a validation run.
+    config_problems: List[str] = field(default_factory=list)
 
     def __bool__(self) -> bool:
         return bool(self.changes)
@@ -305,7 +308,7 @@ def plan_recalculation(project=None, config: Optional[ValidationConfig] = None) 
     # validate" clears every D3 finding there too.
     config = config or ValidationConfig.from_project(project)
     ctx = ValidationContext(project, config)
-    plan = RecalcPlan()
+    plan = RecalcPlan(config_problems=list(config.problems))
 
     for canonical, length_field in STORED_LENGTH_FIELD.items():
         for layer in ctx.layers_for(canonical):

@@ -94,7 +94,7 @@ _UNKNOWN_TABLE = re.compile(r"^fq_[A-Za-z0-9_]{1,60}$")
 def _column_type(declared):
     """A declared type safe to write into DDL, keeping its SQLite affinity."""
     text = str(declared or "").strip()
-    if not text or _SAFE_TYPE.match(text):
+    if not text or _SAFE_TYPE.fullmatch(text):
         return text.upper()
     upper = text.upper()
     if "INT" in upper:
@@ -177,7 +177,7 @@ def _create_carried_table(conn, table, recorded, rows):
 def _unknown_table(name):
     """``name`` as a carried ``fq_*`` table this format version does not define, or None."""
     text = str(name or "")
-    return text if _UNKNOWN_TABLE.match(text) and _sidecar_table(text) is None else None
+    return text if _UNKNOWN_TABLE.fullmatch(text) and _sidecar_table(text) is None else None
 
 
 def _sidecar_table(name):
@@ -461,6 +461,7 @@ class InterchangeBundleWriter:
         self._carried_columns = []
         self._unreadable_entries = []
         self._unavailable = []
+        self._replaced_keys = 0
 
     @staticmethod
     def _detect_version():
@@ -944,12 +945,14 @@ class InterchangeBundleWriter:
                 if value is not None:
                     values[name] = value
             if values:
-                combined = self._combined_extras(payload, values, feature.attribute(extra_index))
+                combined, replaced = self._combined_extras(
+                    payload, values, feature.attribute(extra_index))
                 if combined is None:
                     uncarried += 1
                 else:
                     feature.setAttribute(extra_index, combined)
                     payload = None
+                    self._replaced_keys += replaced
 
             if payload and extra_index >= 0 and self._is_blank(feature.attribute(extra_index)):
                 feature.setAttribute(extra_index, payload if isinstance(
@@ -993,20 +996,29 @@ class InterchangeBundleWriter:
 
     @staticmethod
     def _combined_extras(kept, values, live):
-        """fq_extra_json for a feature that has columns carried in it, or ``None``.
+        """``(fq_extra_json, keys replaced)`` for a feature with columns carried in it.
 
-        What an import kept, then the carried columns, then the feature's own
-        fq_extra_json, each winning over the one before: what the project holds
-        now beats what an import kept. ``None`` when the kept or the feature's
-        own value is not a JSON object, so there is nothing to add them to.
+        What an import kept, then the feature's own fq_extra_json, then the
+        carried columns, each winning over the one before: what the project
+        holds now beats what an import kept, and a column the user can see and
+        edit beats a key of the same name inside an opaque JSON column -- each
+        such key it replaces is counted, so the export can say so. ``(None, 0)``
+        when the kept or the feature's own value is not a JSON object, so there
+        is nothing to add them to.
         """
-        combined = {}
-        for part in (kept, values, live):
-            part = _json_object(part)
+        combined, replaced = {}, 0
+        own = _json_object(live)
+        for part in (_json_object(kept), own):
             if part is None:
-                return None
+                return None, 0
             combined.update(part)
-        return json.dumps(combined, sort_keys=True)
+        for key, value in values.items():
+            # What an import kept yields to the project by design; a key of the
+            # feature's own fq_extra_json is the user's too, so it is counted.
+            if key in own and own[key] != value:
+                replaced += 1
+            combined[key] = value
+        return json.dumps(combined, sort_keys=True), replaced
 
     # -- side-car ----------------------------------------------------------
 
@@ -1358,7 +1370,12 @@ class InterchangeBundleWriter:
             except (sqlite3.Error, sqlite3.Warning) as e:
                 conn.execute("ROLLBACK TO fiberq_kept")
                 conn.execute("RELEASE fiberq_kept")
-                problems.append(f"{len(rows)} kept row(s) of {table} could not be written back: {e}")
+                src = QT_TRANSLATE_NOOP(
+                    'FiberQInterchange',
+                    "{count} kept row(s) of {table} could not be written back: {details}")
+                problems.append(safe_format(
+                    QCoreApplication.translate('FiberQInterchange', src), src,
+                    count=len(rows), table=table, details=e))
         return written, problems
 
     @staticmethod
@@ -1544,6 +1561,7 @@ class InterchangeBundleWriter:
         self._uncarried = 0
         self._carried_columns = []
         self._unreadable_entries = []
+        self._replaced_keys = 0
 
         file_exists = os.path.exists(gpkg_path)
         for lyr, canonical, fq_type, placement in mapped:
@@ -1580,6 +1598,14 @@ class InterchangeBundleWriter:
             result.warnings.append(safe_format(
                 QCoreApplication.translate('FiberQInterchange', src), src,
                 columns=", ".join(self._carried_columns)))
+        if self._replaced_keys:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "{count} key(s) of a feature's own fq_extra_json were replaced by the column "
+                "of the same name, whose value the bundle now carries under that key.")
+            result.warnings.append(safe_format(
+                QCoreApplication.translate('FiberQInterchange', src), src,
+                count=self._replaced_keys))
         if self._uncarried:
             src = QT_TRANSLATE_NOOP(
                 'FiberQInterchange',

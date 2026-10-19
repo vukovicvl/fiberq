@@ -285,3 +285,11 @@ def test_a_kept_stop_yields_to_the_projects_record_of_its_cable(project, tmp_pat
 
     assert _rows(out, "SELECT cable_uuid, element_uuid, is_latent FROM fq_path_stop "
                       "ORDER BY cable_uuid") == [("c-elsewhere", "p1", 1), ("c1", "p1", 0)]
+
+
+def test_a_carried_table_name_is_matched_whole(qgis_app):
+    """``$`` also matches before a final newline, so "fq_tray\\n" passed for a name."""
+    from fiberq.core.interchange_bundle import _unknown_table
+
+    assert _unknown_table("fq_tray") == "fq_tray"
+    assert _unknown_table("fq_tray\n") is None

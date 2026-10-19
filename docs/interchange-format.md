@@ -256,9 +256,7 @@ Two rules govern it:
 
 A writer's own column with no canonical name is written as a column under its own name
 (the [field mapping](interchange-mapping.md#a-column-with-no-canonical-name) states the
-rule), so a reader must expect columns outside the canonical set. One whose name, compared
-regardless of letter case as SQLite compares column names, is already a column of that
-table travels in the feature's own `fq_extra_json` under its own name instead. An attribute a
+rule), so a reader must expect columns outside the canonical set. An attribute a
 *reader* has no column for travels in the feature's own `fq_extra_json` on its next
 write rather than being dropped (§8).
 
@@ -484,12 +482,20 @@ outdoors and on a pole, and for `to` in a joint closure (§6.1). Any other place
 reads is kept in the feature's `fq_extra_json`, so the feature's `placement` column is
 empty when the plugin writes it again.
 
+A column of the plugin's own whose name, compared regardless of letter case as SQLite
+compares column names, is one the writer fills on that layer cannot be a column of the
+same table. The plugin writes its values into the feature's `fq_extra_json` under the
+column's own name instead; the [field mapping](interchange-mapping.md#a-column-with-no-canonical-name)
+lists the cases.
+
 JSON has no date type, so a date or time the plugin carries in `fq_extra_json` or in an
 `fq_extension` payload travels as text. From FiberQ 1.6.0, one that arrived in a bundle's
 `DATE` or `DATETIME` column travels as the text that column stored, character for
 character, in whatever form the writer chose. One the plugin formats itself, from a field
-of a project layer, is ISO 8601 with milliseconds and, where QGIS reports one, the offset
-from UTC (`2026-01-02T03:04:05.678Z`); QGIS 3.22 reports none.
+of a project layer, is ISO 8601: a date-time with milliseconds and, where QGIS reports
+one, its offset from UTC (`2026-01-02T03:04:05.678Z`); a time with milliseconds when it
+has some; a date as `YYYY-MM-DD`. For a GeoPackage `DATETIME`, QGIS 3.22 reports no
+offset.
 
 ## 13. Corrections to this text
 

@@ -61,7 +61,7 @@ _SAFE_TABLE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_ .\-]{0,62}$")
 
 def _safe_table(name):
     """Return ``name`` if it is a table name safe to quote into SQL, else ``None``."""
-    return name if name and _SAFE_TABLE_NAME.match(str(name)) else None
+    return name if name and _SAFE_TABLE_NAME.fullmatch(str(name)) else None
 
 
 def _quoted(identifier):
@@ -249,8 +249,9 @@ class InterchangeBundleReader:
     def _feature_tables(gpkg_path, result):
         """The bundle's feature layers, from the GeoPackage's own contents table.
 
-        Any name OGR can open: a feature table's name reaches only the
-        ``path|layername=`` URI, never SQL, and the element type comes from each
+        Any name OGR can open: a feature table's name reaches the
+        ``path|layername=`` URI, and SQL only quoted (the raw date text, by
+        _stored_dates), and the element type comes from each
         feature's ``fq_type``, not from the name. The SQL-safe pattern this used
         silently skipped "Optički kablovi", "Kabelschächte" and "Poles (2024)".
         A name with ``|`` or a control character cannot be opened that way and
@@ -825,9 +826,13 @@ class InterchangeBundleReader:
             detached = sum(1 for identity in self._detached.get(canonical, [])
                            if not identity or identity in self._added)
             if detached:
-                result.warnings.append(
-                    f"{detached} {canonical} row(s) in the bundle carry no cable_uuid column, so "
-                    "they were imported without being attached to a cable.")
+                src = QT_TRANSLATE_NOOP(
+                    'FiberQInterchange',
+                    "{count} {layer} row(s) in the bundle carry no cable_uuid column, so they "
+                    "were imported without being attached to a cable.")
+                result.warnings.append(safe_format(
+                    QCoreApplication.translate('FiberQInterchange', src), src,
+                    count=detached, layer=canonical))
             if uuid_idx < 0:
                 continue
             referenced = []
@@ -842,10 +847,14 @@ class InterchangeBundleReader:
                 # On a pre-1.0 project the pair is kabl_layer_id / kabl_fid, so
                 # this used to leave every imported loop detached -- with no
                 # warning, which is the part that made it hard to notice.
-                result.warnings.append(
-                    f"'{layer.name()}' has no cable reference columns, so the "
-                    f"imported {canonical} loops were left unattached to a cable; "
-                    "their cable_uuid is kept and written out again.")
+                src = QT_TRANSLATE_NOOP(
+                    'FiberQInterchange',
+                    "'{layer}' has no cable reference columns, so the imported {kind} loops "
+                    "were left unattached to a cable; their cable_uuid is kept and written out "
+                    "again.")
+                result.warnings.append(safe_format(
+                    QCoreApplication.translate('FiberQInterchange', src), src,
+                    layer=layer.name(), kind=canonical))
                 for _feature, identity, cable_uuid in referenced:
                     self._keep_extra(passthrough, identity, {fm.CABLE_REFERENCE_FIELD: cable_uuid}, result)
                 continue
@@ -867,10 +876,14 @@ class InterchangeBundleReader:
             if changes:
                 layer.dataProvider().changeAttributeValues(changes)
             if unresolved:
-                result.warnings.append(
-                    f"{unresolved} {canonical} reference(s) name a cable that is not "
-                    "in this project; they were left empty rather than pointed at "
-                    "another cable, and are kept and written out again.")
+                src = QT_TRANSLATE_NOOP(
+                    'FiberQInterchange',
+                    "{count} {layer} reference(s) name a cable that is not in this project; they "
+                    "were left empty rather than pointed at another cable, and are kept and "
+                    "written out again.")
+                result.warnings.append(safe_format(
+                    QCoreApplication.translate('FiberQInterchange', src), src,
+                    count=unresolved, layer=canonical))
 
     def _note_cable_reference(self, feature, canonical):
         """Record a slack loop's or fibre break's ``cable_uuid`` by its identity."""
@@ -1164,13 +1177,16 @@ class InterchangeBundleReader:
             # reader carries it, and it used to be left behind unread.
             tables += self._unknown_sidecar_tables(gpkg_path, result)
         except (sqlite3.Error, sqlite3.Warning) as e:
-            result.warnings.append(f"The bundle's own tables could not be listed: {e}")
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange', "The bundle's own tables could not be listed: {details}")
+            result.warnings.append(safe_format(
+                QCoreApplication.translate('FiberQInterchange', src), src, details=e))
         for table in tables:
             try:
                 _name, columns = self._table_info(gpkg_path, table)
                 rows = self._table_rows(gpkg_path, table)
             except (sqlite3.Error, sqlite3.Warning) as e:
-                result.warnings.append(f"The bundle's table {table} could not be read: {e}")
+                self._unreadable_table(result, table, e)
                 continue
             if not rows:
                 continue
@@ -1182,10 +1198,19 @@ class InterchangeBundleReader:
         try:
             extensions = self._table_rows(gpkg_path, "fq_extension")
         except (sqlite3.Error, sqlite3.Warning) as e:
-            result.warnings.append(f"The bundle's table fq_extension could not be read: {e}")
+            self._unreadable_table(result, "fq_extension", e)
             extensions = []
         for row in extensions:
             passthrough.append(dict(row))
+
+    @staticmethod
+    def _unreadable_table(result, table, error):
+        src = QT_TRANSLATE_NOOP(
+            'FiberQInterchange',
+            "The bundle's table {table} could not be read, so it is not kept: {details}")
+        result.warnings.append(safe_format(
+            QCoreApplication.translate('FiberQInterchange', src), src,
+            table=table, details=error))
 
     @staticmethod
     def _unknown_sidecar_tables(gpkg_path, result):
@@ -1229,10 +1254,13 @@ class InterchangeBundleReader:
                     continue
                 if registered.get(folded, "attributes") != "attributes":
                     continue
-                if not _UNKNOWN_SIDECAR_NAME.match(str(name)):
-                    result.warnings.append(
-                        f"The bundle's table '{name}' has a name FiberQ cannot carry safely, "
-                        "so it is not in the next bundle.")
+                if not _UNKNOWN_SIDECAR_NAME.fullmatch(str(name)):
+                    src = QT_TRANSLATE_NOOP(
+                        'FiberQInterchange',
+                        "The bundle's table '{table}' has a name FiberQ cannot carry safely, so "
+                        "it is not in the next bundle.")
+                    result.warnings.append(safe_format(
+                        QCoreApplication.translate('FiberQInterchange', src), src, table=name))
                     continue
                 found.append(str(name))
         return found

@@ -362,7 +362,9 @@ the canonical name another column is renamed to (a column of your own called `na
 case, `cable_uuid` on a slack or fibre-break layer, `geom`, or a `fid` that is not the layer's
 own row id — or differs only in case from the name of a column before it, its values are
 written into the feature's `fq_extra_json` under its own name instead, and the export says
-which columns went there. Nothing is merged, overwritten or dropped. A column named exactly
+which columns went there. Nothing is merged or dropped; where the feature's own
+`fq_extra_json` already has a key of that name, the column's value replaces it, and the
+export says so. A column named exactly
 `fq_type`, `placement` or `fq_extra_json` is the bundle's own column and keeps its values,
 and a GeoPackage layer's own `fid` stays the row id. A reader with no column for a column FiberQ wrote
 must still carry it
@@ -375,7 +377,8 @@ feature’s `fq_extra_json`, keyed by the identity of the feature it belongs to,
 emitted again on the next write ([rule 1](interchange-format.md#2-the-four-rules),
 [section 8](interchange-format.md#8-the-passthrough-store)). Nothing is dropped because
 this implementation has no field for it — an empty value included, and a `cable_uuid` on
-an element type the plugin does not link to a cable.
+an element type the plugin does not link to a cable — except on a feature with no
+`fiberq_uuid`, which has nothing to keep it against; the import says how many.
 
 One field in the table above is marked **on demand**: the plugin's own tools create that
 column only when a feature needs it, so a layer they create does not carry it (a cable layer

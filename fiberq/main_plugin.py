@@ -492,6 +492,14 @@ class FiberQPlugin:
             bar.pushWarning('FiberQ', safe_format(self.tr(src), src, details=e))
             return
 
+        if plan.config_problems:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                "Some of this project's validation settings could not be used, and the "
+                "defaults stood in for them: {details}")
+            bar.pushWarning('FiberQ', safe_format(
+                self.tr(src), src, details='; '.join(plan.config_problems)))
+
         if plan.skipped_layers:
             src = QT_TRANSLATE_NOOP(
                 'FiberQPlugin',

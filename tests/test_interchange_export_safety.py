@@ -272,6 +272,8 @@ def test_a_column_that_failed_the_export_is_carried_instead(project, tmp_path, r
     assert result.ok, result.errors
     assert _extras(out, "ODF") == {"u1": carried}
     assert _rows(out, 'SELECT fq_type FROM "ODF"') == [("odf",)]
+    if "Owner" in row:
+        assert _rows(out, 'SELECT "Owner" FROM "ODF"') == [("A",)], "the first one stays a column"
 
 
 def test_an_integer_fid_column_of_the_users_is_carried_too(project, tmp_path):
@@ -324,12 +326,17 @@ def test_carried_values_join_what_an_import_kept_and_the_features_own(project, t
             for uuid in ("u1", "u2")]
     out = tmp_path / "b.gpkg"
 
-    assert _write(project, out, [odf], passthrough=kept).ok
+    result = _write(project, out, [odf], passthrough=kept)
 
+    assert result.ok, result.errors
+    # The column the user sees and edits wins over a key of its name inside
+    # the feature's own fq_extra_json, and the export says how many it replaced.
     assert _extras(out, "ODF") == {
         "u1": {"a": 1, "Name": "own", "b": 2},
-        "u2": {"a": 1, "Name": "the feature's own"},
+        "u2": {"a": 1, "Name": "own"},
     }
+    assert any("1 key(s) of a feature's own fq_extra_json were replaced" in w
+               for w in result.warnings), result.warnings
 
 
 def test_a_carried_column_survives_an_import_and_the_next_export(project, tmp_path):

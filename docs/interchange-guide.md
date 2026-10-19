@@ -69,7 +69,9 @@ Three things are reported in a warning as well, by name:
   regardless of letter case, so a column of your own called `Name` or `name`
   beside FiberQ's `naziv`, say, cannot be a column of the bundle. Its values go
   into the feature's `fq_extra_json` under the column's own name, and the warning
-  lists the columns. Nothing is merged, overwritten or dropped; the
+  lists the columns. Nothing is merged or dropped. Where the feature's own
+  `fq_extra_json` already has a key of that name, the column's value replaces it,
+  and the export says so. The
   [field mapping](interchange-mapping.md#a-column-with-no-canonical-name) lists
   the names this applies to.
 
@@ -179,7 +181,8 @@ basemap loaded as a vector layer counts as your work.
 
 **An import adds; it never replaces.** A relation the project already has keeps
 its own members, and a cable the project already records pass-through elements for
-keeps its own; a warning counts those where the bundle's differ. A relation or a
+keeps its own; a warning counts those where the bundle's has members or elements
+the project's lacks. A relation or a
 cable the project does not have yet gets the bundle's, with the relation's own
 identity, category, member roles and order. A feature already in the project is not
 updated either — not even a slack loop's cable, which stays as you left it. A row
@@ -274,7 +277,8 @@ bundle that names only TIA-598-C does not replace one that named something else.
 **An attribute with no column** is kept against the feature it belongs to and
 restored on export, an empty value included. So is a `cable_uuid` on an element
 FiberQ does not link to a cable, and a slack loop's or fibre break's `cable_uuid`
-that names a cable the project does not have.
+that names a cable the project does not have. A feature with no `fiberq_uuid` has
+nothing to keep them against, so they are not kept for it; the import says how many.
 
 **Feature tables are read whatever their name or language.** The element type comes
 from each feature's `fq_type`, not from the table name, so a bundle that keeps its

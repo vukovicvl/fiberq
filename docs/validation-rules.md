@@ -260,8 +260,9 @@ This is not hypothetical: opening a project saved by QGIS 4.2 in QGIS 3.40 drops
 the project CRS (QGIS reports "could not be completely loaded"), while the layers
 keep theirs. QGIS 3 cannot read the project's other FiberQ settings either —
 relations, colour catalogues, latent elements, picture and drawing links, the
-auto-save path, and data an interchange import carried for other tools (the
-passthrough store) — and from 1.6.0 FiberQ warns on open that saving the project there
+auto-save path, the validation settings, and data an interchange import carried for
+other tools (the passthrough store) — and from 1.6.0 FiberQ warns on open that saving
+the project there
 removes them permanently. Reopen it in QGIS 4 to keep working. If you only need to
 look at it in QGIS 3, set the CRS in **Project → Properties → CRS** for that session
 and do not save.
@@ -340,7 +341,7 @@ They are stored as one JSON object in the project entry `FiberQPlugin/validation
 A value FiberQ cannot use, or a rule id no rule has, is named in a warning when
 validation runs, and the default stands in for it; the other settings still apply.
 **Recalculate lengths** reads the same two length tolerances as D3, so recalculating
-and then validating clears every D3 finding.
+and then validating clears every stored-length mismatch D3 reports.
 
 A rule that fails to run is reported as such rather than passing silently — if a
 rule crashes on your data, the run continues and the panel says how many rules gave
