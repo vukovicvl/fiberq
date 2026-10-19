@@ -878,7 +878,12 @@ class InterchangeBundleWriter:
 
             built.append(feature)
 
-        if built and not clone.dataProvider().addFeatures(built):
+        # addFeatures() answers a tuple, (ok, features), and a non-empty tuple
+        # is always true: tested whole, a provider that refused every feature
+        # went unnoticed and an empty bundle table was reported as written.
+        # Unclaimed (WP3 code; WP5-FU-6, pulled into v1.6.0).
+        ok, _added = clone.dataProvider().addFeatures(built) if built else (True, [])
+        if not ok:
             return None, f"could not fill the bundle copy of '{canonical}'"
         self._unresolved_cable_refs += unresolved
         self._unreprojectable += unreprojectable

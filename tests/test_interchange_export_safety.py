@@ -349,3 +349,47 @@ def test_a_carried_column_survives_an_import_and_the_next_export(project, tmp_pa
         assert _extras(second, "ODF") == {"u1": {"Name": "own"}}
     finally:
         fresh.clear()
+
+
+def test_a_bundle_copy_that_cannot_be_filled_is_an_error(project, tmp_path, monkeypatch):
+    """WP5-FU-6. ``addFeatures()`` answers ``(ok, features)``; the old check
+    tested the tuple, which is always true, so a refused fill went on to be
+    written as if it had worked."""
+    from qgis.core import QgsMemoryProviderUtils
+
+    from fiberq.core import interchange_bundle as ib
+
+    class _RefusingProvider:
+        def __init__(self, provider):
+            self._provider = provider
+
+        def __getattr__(self, name):
+            return getattr(self._provider, name)
+
+        def addFeatures(self, features, *args):
+            return False, []
+
+    class _RefusingCopy:
+        """The bundle copy, except that its provider refuses every feature."""
+
+        def __init__(self, layer):
+            self._layer = layer
+
+        def __getattr__(self, name):
+            return getattr(self._layer, name)
+
+        def dataProvider(self):
+            return _RefusingProvider(self._layer.dataProvider())
+
+    class _Copies:
+        @staticmethod
+        def createMemoryLayer(name, fields, wkb, crs):
+            return _RefusingCopy(QgsMemoryProviderUtils.createMemoryLayer(name, fields, wkb, crs))
+
+    poles = _layer(project, UUID, "Poles", [{"fiberq_uuid": "p1"}])
+    monkeypatch.setattr(ib, "QgsMemoryProviderUtils", _Copies)
+
+    result = _write(project, tmp_path / "b.gpkg", [poles])
+
+    assert not result.ok
+    assert any("could not fill" in error for error in result.errors), result.errors
