@@ -61,6 +61,27 @@ def _text_field(name):
         return QgsField(name, QVariant.String)
 
 
+def _quoted(identifier):
+    """An SQL identifier in double quotes, with any quote inside doubled."""
+    return '"' + str(identifier).replace('"', '""') + '"'
+
+
+def _sidecar_table(name):
+    """``name`` as one of the format's side-car tables, regardless of case, or None."""
+    folded = str(name or "").lower()
+    return next((table for table in ic.SIDECAR_TABLES if table == folded), None)
+
+
+def _united(before, columns):
+    """Recorded ``[name, type, pk]`` column lists, one entry per name regardless of case."""
+    united, seen = [], set()
+    for column in list(before or []) + list(columns or []):
+        if isinstance(column, (list, tuple)) and column and str(column[0]).lower() not in seen:
+            seen.add(str(column[0]).lower())
+            united.append(list(column))
+    return united
+
+
 def _order(record, position):
     """A row's own ``order_index`` when an import recorded one, else its position."""
     try:
@@ -460,18 +481,21 @@ class InterchangeBundleWriter:
 
     @staticmethod
     def _create_sidecar(conn, timestamp):
-        """Create the ``fq_*`` tables and register them so GDAL lists them."""
+        """Create the ``fq_*`` tables and register them so GDAL lists them.
+
+        Only this format's own tables, and only when they are not registered
+        yet. This used to re-register every table whose name starts ``fq_``
+        with INSERT OR REPLACE: another tool's *feature* table named that way
+        became an attributes table with no CRS, and QGIS opened it without its
+        geometry; and the REPLACE settled a clash on the unique identifier by
+        deleting the other table's registration (measured on 3.22, 3.44, 4.2).
+        """
         for statement in ic.SIDECAR_DDL:
             conn.execute(statement)
-        names = [
-            row[0] for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'fq\\_%' ESCAPE '\\'"
-            )
-        ]
-        for name in names:
+        for name in ic.SIDECAR_TABLES:
             try:
                 conn.execute(
-                    "INSERT OR REPLACE INTO gpkg_contents "
+                    "INSERT OR IGNORE INTO gpkg_contents "
                     "(table_name, data_type, identifier, description, last_change, srs_id) "
                     "VALUES (?, 'attributes', ?, ?, ?, 0)",
                     (name, name, f"FiberQ interchange side-car table {name}", timestamp),
@@ -606,16 +630,21 @@ class InterchangeBundleWriter:
                     extensions.append(row)
             elif kind == ic.EXTENSION_KIND_ATTRIBUTES and row.get("owner_uuid"):
                 attributes[str(row["owner_uuid"])] = payload
-            elif kind == ic.EXTENSION_KIND_SIDECAR:
+            elif kind == ic.EXTENSION_KIND_SIDECAR and row.get("namespace") == ic.EXTENSION_NAMESPACE:
+                # Only FiberQ's own store rows are table writes. Another tool's
+                # fq_extension row that happens to use the same kind is that
+                # tool's data, written back as the row it is.
                 try:
                     parsed = json.loads(payload) if isinstance(payload, str) else payload
                 except ValueError as e:
                     logger.debug(f"Kept side-car payload is not valid JSON: {e}")
                     extensions.append(row)
                     continue
-                table = (parsed or {}).get("table")
-                if table in ic.SIDECAR_TABLES:
-                    sidecar.setdefault(table, []).extend((parsed or {}).get("rows", []))
+                table = _sidecar_table((parsed or {}).get("table"))
+                if table:
+                    entry = sidecar.setdefault(table, {"columns": [], "rows": []})
+                    entry["columns"] = _united(entry["columns"], (parsed or {}).get("columns"))
+                    entry["rows"] = ic.merge_kept_rows(entry["rows"], (parsed or {}).get("rows"))
                 else:
                     extensions.append(row)
             else:
@@ -645,26 +674,41 @@ class InterchangeBundleWriter:
     def _write_kept_sidecar(conn, sidecar):
         """Write kept side-car rows back into the tables they came from.
 
-        Columns are taken from the bundle's own tables rather than from the
-        kept rows, so a row that arrived with a column this DDL does not have
-        cannot break the insert -- and the rest of it still lands.
+        Returns ``(rows written, problems)``. Each table goes in under its own
+        SAVEPOINT. The rows are another tool's data, so a constraint this
+        bundle's table has and theirs had not, or anything else SQLite refuses,
+        costs that table's rows and a warning naming it -- it used to abort the
+        whole side-car phase before ``_fiberq_metadata`` was written, leaving a
+        file the importer refused as "not a FiberQ interchange bundle".
+
+        A row's keys meet the table's columns regardless of case, as SQLite
+        compares them; a tagged blob goes back in as bytes.
         """
-        written = 0
-        for table, rows in (sidecar or {}).items():
+        written, problems = 0, []
+        for table, entry in (sidecar or {}).items():
+            rows = entry.get("rows") if isinstance(entry, dict) else entry
             if not rows:
                 continue
-            columns = [r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')]
+            columns = [r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')]  # nosec B608
             if not columns:
                 continue
             placeholders = ", ".join("?" for _ in columns)
-            quoted = ", ".join(f'"{c}"' for c in columns)
-            # Table and column names come from ic.SIDECAR_TABLES and the
-            # bundle's own schema, never from the row data.
+            quoted = ", ".join(_quoted(c) for c in columns)
+            # The table is one of ic.SIDECAR_TABLES and the column names come
+            # from its own schema, quoted; nothing here is row data.
             sql = f'INSERT OR REPLACE INTO "{table}" ({quoted}) VALUES ({placeholders})'  # nosec B608
-            for row in rows:
-                conn.execute(sql, [row.get(c) for c in columns])
-                written += 1
-        return written
+            conn.execute("SAVEPOINT fiberq_kept")
+            try:
+                for row in rows:
+                    folded = {str(k).lower(): v for k, v in row.items()}
+                    conn.execute(sql, [ic.from_json_safe(folded.get(c.lower())) for c in columns])
+                conn.execute("RELEASE fiberq_kept")
+                written += len(rows)
+            except (sqlite3.Error, sqlite3.Warning) as e:
+                conn.execute("ROLLBACK TO fiberq_kept")
+                conn.execute("RELEASE fiberq_kept")
+                problems.append(f"{len(rows)} kept row(s) of {table} could not be written back: {e}")
+        return written, problems
 
     @staticmethod
     def _resolve(index, layer_id, fid):
@@ -701,7 +745,7 @@ class InterchangeBundleWriter:
         )
         try:
             conn.execute(
-                "INSERT OR REPLACE INTO gpkg_contents "
+                "INSERT OR IGNORE INTO gpkg_contents "
                 "(table_name, data_type, identifier, description, last_change, srs_id) "
                 "VALUES ('_fiberq_metadata', 'attributes', '_fiberq_metadata', ?, ?, 0)",
                 ("FiberQ interchange bundle metadata", timestamp),
@@ -822,9 +866,10 @@ class InterchangeBundleWriter:
                 "fq_path_stop": stops,
                 "fq_extension": written_extensions,
             }
-            for table, rows in kept_sidecar.items():
-                result.sidecar_rows[table] = len(rows)
-            self._write_kept_sidecar(conn, kept_sidecar)
+            _written, kept_problems = self._write_kept_sidecar(conn, kept_sidecar)
+            for table, entry in kept_sidecar.items():
+                result.sidecar_rows[table] = len(entry["rows"])
+            result.warnings.extend(kept_problems)
             result.inlined_extras = len(extras)
             unresolved_members += self._unresolved_cable_refs
             if unresolved_members or unresolved_stops:
@@ -836,7 +881,9 @@ class InterchangeBundleWriter:
             result.preserved = ic.foreign_keys(existing)
             result.metadata = self._write_metadata(conn, existing, timestamp)
             conn.commit()
-        except sqlite3.Error as e:
+        except (sqlite3.Error, sqlite3.Warning) as e:
+            # sqlite3.Warning too: Python 3.10's sqlite3 (QGIS 3.22) raises it,
+            # not an Error, for a statement it refuses to run.
             result.errors.append(f"Side-car and metadata write failed: {e}")
             logger.debug(f"Bundle side-car write failed for {gpkg_path}: {e}")
         finally:

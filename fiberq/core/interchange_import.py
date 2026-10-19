@@ -31,6 +31,7 @@ import json
 import os
 import re
 import sqlite3
+from contextlib import closing
 
 from qgis.core import (
     QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsFeature, QgsField,
@@ -57,6 +58,23 @@ _SAFE_TABLE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_ .\-]{0,62}$")
 def _safe_table(name):
     """Return ``name`` if it is a table name safe to quote into SQL, else ``None``."""
     return name if name and _SAFE_TABLE_NAME.match(str(name)) else None
+
+
+def _united_columns(before, columns):
+    """``[name, declared type, pk position]`` lists of two imports, one per name.
+
+    Compared regardless of case, as SQLite compares column names; the first
+    declaration of a column wins.
+    """
+    united, seen = [], set()
+    for column in list(before or []) + [list(c) for c in columns or []]:
+        if not isinstance(column, (list, tuple)) or not column:
+            continue
+        folded = str(column[0]).lower()
+        if folded not in seen:
+            seen.add(folded)
+            united.append(list(column))
+    return united
 
 
 #: Columns a bundle adds that are not part of any FiberQ layer.
@@ -145,21 +163,44 @@ class InterchangeBundleReader:
         return [name for name in names if _safe_table(name)]
 
     @staticmethod
-    def _table_rows(gpkg_path, table):
-        """Every row of a side-car table as dicts, or ``[]`` if it is not there."""
+    def _table_info(gpkg_path, table):
+        """``(name as stored, [(column, declared type, pk position)])``, or ``(None, [])``.
+
+        Looked up regardless of case, as SQLite itself resolves table names: a
+        tool that wrote ``FQ_Splice_Point`` wrote the same table, and looking for
+        the exact spelling left its rows behind.
+        """
         if _safe_table(table) is None:
-            return []
-        with sqlite3.connect(gpkg_path) as conn:
-            present = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            return None, []
+        with closing(sqlite3.connect(gpkg_path)) as conn:
+            found = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND lower(name)=lower(?)",
                 (table,)).fetchone()
-            if present is None:
-                return []
-            # Table names cannot be bound as parameters; the name is validated
-            # by _safe_table above and exists in sqlite_master.
-            cursor = conn.execute(f'SELECT * FROM "{table}"')  # nosec B608
+            if found is None:
+                return None, []
+            # Differs from `table` (validated by _safe_table) only in case, and
+            # exists in sqlite_master.
+            columns = [(row[1], row[2] or "", int(row[5] or 0))
+                       for row in conn.execute(f'PRAGMA table_info("{found[0]}")')]  # nosec B608
+        return found[0], columns
+
+    @classmethod
+    def _table_rows(cls, gpkg_path, table):
+        """Every row of a side-car table as JSON-safe dicts, or ``[]`` if it is not there.
+
+        Through :func:`interchange.json_safe`: a BLOB comes back from sqlite3 as
+        ``bytes``, and ``json.dumps`` raised on it mid-import -- after features
+        had been added and before the passthrough store was saved.
+        """
+        name, _columns = cls._table_info(gpkg_path, table)
+        if name is None:
+            return []
+        with closing(sqlite3.connect(gpkg_path)) as conn:
+            # Validated and present: see _table_info.
+            cursor = conn.execute(f'SELECT * FROM "{name}"')  # nosec B608
             columns = [d[0] for d in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+            return [{column: ic.json_safe(value) for column, value in zip(columns, row)}
+                    for row in cursor.fetchall()]
 
     # -- target layers -----------------------------------------------------
 
@@ -677,18 +718,11 @@ class InterchangeBundleReader:
         for table in ic.SIDECAR_TABLES:
             if table in ic.MODELLED_SIDECAR_TABLES or table == "fq_extension":
                 continue
+            _name, columns = self._table_info(gpkg_path, table)
             rows = self._table_rows(gpkg_path, table)
             if not rows:
                 continue
-            passthrough.append({
-                "uuid": ic.stable_uuid("sidecar", table),
-                "owner_uuid": None,
-                "kind": ic.EXTENSION_KIND_SIDECAR,
-                "namespace": ic.EXTENSION_NAMESPACE,
-                "payload_json": json.dumps(
-                    {"table": table, "rows": rows}, ensure_ascii=False, sort_keys=True),
-                "produced_by": self._producer(result),
-            })
+            self._keep_rows(passthrough, table, columns, rows, result)
             result.sidecar_kept[table] = len(rows)
 
         # Whatever the bundle itself was already carrying for other tools.
@@ -701,6 +735,44 @@ class InterchangeBundleReader:
                 "payload_json": row.get("payload_json"),
                 "produced_by": row.get("produced_by"),
             })
+
+    def _keep_rows(self, passthrough, table, columns, rows, result):
+        """Add one table's rows to what the store keeps for it.
+
+        One store row per table, whose uuid is derived from the table's name,
+        so a second import used to *replace* the first one's rows: importing a
+        second bundle dropped the fibre splices the first had brought, and
+        nothing said so. The rows are now added together, keyed by the table's
+        primary key (``interchange.merge_kept_rows``).
+        """
+        uuid = ic.stable_uuid("sidecar", table)
+        keys = [name for name, _type, position in sorted(columns, key=lambda c: c[2]) if position]
+        for kept in passthrough:
+            if kept.get("uuid") != uuid:
+                continue
+            try:
+                before = json.loads(kept.get("payload_json") or "{}")
+            except ValueError as e:
+                logger.warning(f"Kept rows of {table} are not readable JSON and are replaced: {e}")
+                before = {}
+            payload = {
+                "table": table,
+                "columns": _united_columns(before.get("columns"), columns),
+                "rows": ic.merge_kept_rows(before.get("rows"), rows, keys),
+            }
+            kept["payload_json"] = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+            kept["produced_by"] = self._producer(result)
+            return
+        passthrough.append({
+            "uuid": uuid,
+            "owner_uuid": None,
+            "kind": ic.EXTENSION_KIND_SIDECAR,
+            "namespace": ic.EXTENSION_NAMESPACE,
+            "payload_json": json.dumps(
+                {"table": table, "columns": [list(c) for c in columns], "rows": rows},
+                ensure_ascii=False, sort_keys=True),
+            "produced_by": self._producer(result),
+        })
 
     def _keep_foreign_metadata(self, metadata, passthrough, result):
         """Keep the metadata keys another tool wrote, so the next bundle has them.

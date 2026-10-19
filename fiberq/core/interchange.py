@@ -18,6 +18,9 @@ Three rules from the spec drive the code here:
   ``_fiberq_metadata`` from scratch destroys whatever another tool recorded.
   This is not hypothetical -- it is the defect this module exists to not repeat.
 """
+import base64
+import binascii
+import json
 import uuid as _uuid
 from typing import Dict, Optional, Tuple
 
@@ -225,6 +228,10 @@ _ISO_PATTERNS = {
     "QDateTime": "yyyy-MM-ddTHH:mm:ss.zzz",
 }
 
+#: How a binary value travels in JSON: ``{"$blob": "<base64>"}``, turned back
+#: into bytes by :func:`from_json_safe` when it is written into SQLite again.
+BLOB_KEY = "$blob"
+
 #: Qt.TimeSpec values, compared as integers: PyQt5 hands back an int-like enum,
 #: PyQt6 a Python enum whose ``.value`` is the same number.
 _LOCAL_TIME, _UTC = 0, 1
@@ -271,8 +278,15 @@ def json_safe(value):
     """
     if value is None or isinstance(value, (str, bool, int, float)):
         return value
+    if isinstance(value, (bytes, bytearray)):
+        # A BLOB in a kept side-car row, or a binary attribute. json.dumps
+        # raised on it -- in the middle of an import, after features had been
+        # added and before the passthrough store was saved.
+        return {BLOB_KEY: base64.b64encode(bytes(value)).decode("ascii")}
 
     name = type(value).__name__
+    if name == "QByteArray":
+        return json_safe(bytes(value.data()))
 
     if name == "QVariant":
         # The provider hands a NULL back as Python None on every supported
@@ -457,3 +471,48 @@ def latent_records(data) -> Dict[str, list]:
             continue
         out[str(key)] = elements
     return out
+
+
+# ---------------------------------------------------------------------------
+# Kept side-car rows
+# ---------------------------------------------------------------------------
+
+def from_json_safe(value):
+    """A kept value as SQLite should get it back: a tagged blob becomes bytes."""
+    if isinstance(value, dict) and len(value) == 1 and isinstance(value.get(BLOB_KEY), str):
+        try:
+            return base64.b64decode(value[BLOB_KEY].encode("ascii"), validate=True)
+        except (binascii.Error, ValueError):
+            return value
+    return value
+
+
+def _row_key(row, key_columns):
+    if key_columns:
+        key = tuple(row.get(column) for column in key_columns)
+        if all(part is not None for part in key):
+            return ("key",) + key
+    # No primary key, or a NULL in it (SQLite lets a TEXT PRIMARY KEY be NULL):
+    # the whole row is the identity, so equal rows still collapse into one.
+    return ("row", json.dumps(row, sort_keys=True, ensure_ascii=False, default=str))
+
+
+def merge_kept_rows(existing, incoming, key_columns=()):
+    """One kept side-car table's rows from several imports, added together.
+
+    Every import used to replace the table's whole store row, so importing a
+    second bundle dropped the fibre splices the first one had brought. Rows are
+    keyed by the table's primary key (whole rows when it has none); on an equal
+    key the incoming row wins, in place. Nothing is removed: an import adds.
+    """
+    merged, where = [], {}
+    for row in list(existing or []) + list(incoming or []):
+        if not isinstance(row, dict):
+            continue
+        key = _row_key(row, key_columns)
+        if key in where:
+            merged[where[key]] = row
+        else:
+            where[key] = len(merged)
+            merged.append(row)
+    return merged
