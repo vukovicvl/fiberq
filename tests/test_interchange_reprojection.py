@@ -361,10 +361,12 @@ def test_a_slack_table_with_no_cable_column_is_reported(tmp_path, target_project
     """A bundle whose slack table carries no ``cable_uuid`` left every loop
     detached and said nothing.
 
-    ``_bundle_cable_uuids`` answered ``{}`` for three different reasons -- an
+    The reader's cable lookup answered ``{}`` for three different reasons -- an
     unsafe name, no such table, and the table being there without the column --
     and the caller treated all three as "nothing to do". The first two are
-    ordinary; only the third is a bundle the user should hear about.
+    ordinary; only the third is a bundle the user should hear about. (Since
+    FiberQ 1.6.0 each feature's ``cable_uuid`` is recorded as it is read, from
+    whatever table it came from; a loop read without the column is counted.)
     """
     source_project = QgsProject()
     source_project.setCrs(QgsCoordinateReferenceSystem(f"EPSG:{ic.STORAGE_EPSG}"))

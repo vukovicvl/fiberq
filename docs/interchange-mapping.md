@@ -370,7 +370,8 @@ often — finds it exactly where it left it.
 feature’s `fq_extra_json`, keyed by the identity of the feature it belongs to, and is
 emitted again on the next write ([rule 1](interchange-format.md#2-the-four-rules),
 [section 8](interchange-format.md#8-the-passthrough-store)). Nothing is dropped because
-this implementation has no field for it.
+this implementation has no field for it -- an empty value included, and a `cable_uuid` on
+an element type the plugin does not link to a cable.
 
 One field in the table above is marked **on demand**: the plugin's own tools create that
 column only when a feature needs it, so a layer they create does not carry it (a cable layer

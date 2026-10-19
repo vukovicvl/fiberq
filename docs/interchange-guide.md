@@ -210,7 +210,15 @@ It is never reclassified to the nearest familiar type. Filing a splitter as an
 OTB cannot be undone, and the import would look like it worked.
 
 **An attribute with no column** is kept against the feature it belongs to and
-restored on export.
+restored on export, an empty value included. So is a `cable_uuid` on an element
+FiberQ does not link to a cable, and a slack loop's or fibre break's `cable_uuid`
+that names a cable the project does not have.
+
+**Feature tables are read whatever their name or language.** The element type comes
+from each feature's `fq_type`, not from the table name, so a bundle that keeps its
+loops in a table called "Slack loops", or its cables in "Optički kablovi", imports
+like any other. A name QGIS cannot open (one with `|` or a control character) is
+named in a warning instead.
 
 **Relational data FiberQ does not implement** — fibre splices, trays, duct
 occupancy — is kept as the rows it arrived as, and written back into the real

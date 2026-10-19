@@ -116,6 +116,12 @@ def _agrees(project_elements, bundle_elements):
     return all(marks.get(ident(e)) == bool(e.get("latent")) for e in bundle_elements)
 
 
+def _openable(name):
+    """Whether OGR can open a table by this name through ``path|layername=``."""
+    text = str(name or "")
+    return bool(text) and "|" not in text and all(ord(ch) >= 32 for ch in text)
+
+
 def _united_columns(before, columns):
     """``[name, declared type, pk position]`` lists of two imports, one per name.
 
@@ -212,15 +218,33 @@ class InterchangeBundleReader:
     # -- bundle inspection -------------------------------------------------
 
     @staticmethod
-    def _feature_tables(gpkg_path):
-        """The bundle's feature layers, from the GeoPackage's own contents table."""
-        with sqlite3.connect(gpkg_path) as conn:
+    def _feature_tables(gpkg_path, result):
+        """The bundle's feature layers, from the GeoPackage's own contents table.
+
+        Any name OGR can open: a feature table's name reaches only the
+        ``path|layername=`` URI, never SQL, and the element type comes from each
+        feature's ``fq_type``, not from the name. The SQL-safe pattern this used
+        silently skipped "Optički kablovi", "Kabelschächte" and "Poles (2024)".
+        A name with ``|`` or a control character cannot be opened that way and
+        is named in a warning instead.
+        """
+        with closing(sqlite3.connect(gpkg_path)) as conn:
             names = [
                 row[0] for row in conn.execute(
                     "SELECT table_name FROM gpkg_contents WHERE data_type = 'features' "
                     "ORDER BY table_name")
             ]
-        return [name for name in names if _safe_table(name)]
+        usable = [name for name in names if _openable(name)]
+        skipped = [str(name) for name in names if name not in usable]
+        if skipped:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQInterchange',
+                "{count} table(s) of the bundle could not be opened by name and were not "
+                "imported: {names}")
+            result.warnings.append(safe_format(
+                QCoreApplication.translate('FiberQInterchange', src), src,
+                count=len(skipped), names=", ".join(repr(n) for n in skipped)))
+        return usable
 
     @staticmethod
     def _table_info(gpkg_path, table):
@@ -324,10 +348,14 @@ class InterchangeBundleReader:
             if name == FIBERQ_UUID_FIELD:
                 attributes[FIBERQ_UUID_FIELD] = value
                 continue
-            if name == fm.CABLE_REFERENCE_FIELD:
-                # Resolved to the project-local pair in a second pass, once
-                # every feature exists and has somewhere to point.
-                continue
+            if name.lower() == fm.CABLE_REFERENCE_FIELD:
+                if fm.cable_link_fields(target_fields.names())[0]:
+                    # Resolved to the project-local pair in a second pass, once
+                    # every feature exists and has somewhere to point.
+                    continue
+                # An element FiberQ does not link to a cable (an outlet, say):
+                # the reference is its data, kept like any other extra column.
+                # It used to be dropped for every type.
             stored = fm.stored_field(roster, name) if roster else None
             # Through the pre-1.0 names: an old cable layer's installation type
             # lives in polaganje_kabla, and asking only for cable_laying found
@@ -336,7 +364,8 @@ class InterchangeBundleReader:
             # that was sitting right there holding the old value.
             actual = fm.actual_field(target_fields.names(), stored) if stored else ""
             if not actual:
-                if value is not None and str(value) != "":
+                # An empty string is a value, not an absence: only NULL is left out.
+                if value is not None:
                     # U19 / FU-9. The raw provider value used to go in here and
                     # json.dumps raised on a QDate, ending the import halfway.
                     extras[name] = ic.json_safe(value)
@@ -408,13 +437,16 @@ class InterchangeBundleReader:
         storage_crs = QgsCoordinateReferenceSystem.fromEpsgId(ic.STORAGE_EPSG)
         passthrough = self._load_passthrough()
         uuid_index = {}
+        # Per import: each feature's cable_uuid by its identity, the identities
+        # this import added, and the slack/break rows with no cable_uuid column.
+        self._cable_refs, self._added, self._detached = {}, set(), {}
 
-        for table in self._feature_tables(gpkg_path):
+        for table in self._feature_tables(gpkg_path, result):
             self._import_table(
                 gpkg_path, table, storage_crs, passthrough, uuid_index, result)
 
         self._index_project(uuid_index)
-        self._restore_cable_references(gpkg_path, uuid_index, result)
+        self._restore_cable_references(gpkg_path, uuid_index, result, passthrough)
         self._restore_relations(gpkg_path, uuid_index, result)
         self._restore_path_stops(gpkg_path, uuid_index, result, passthrough)
         self._keep_unmodelled_sidecar(gpkg_path, passthrough, result)
@@ -477,6 +509,8 @@ class InterchangeBundleReader:
             # trip instead of vanishing into a NULL column.
             kept = None if ic.placement_is_modelled(fq_type, placement) else placement
             by_target.setdefault(canonical, []).append((feature, kept))
+            if canonical in ("Optical slack", "Fiber break"):
+                self._note_cable_reference(feature, canonical)
 
         for canonical, features in by_target.items():
             target = self._ensure_layer(canonical, result)
@@ -542,6 +576,7 @@ class InterchangeBundleReader:
                 identity = feature.attribute(FIBERQ_UUID_FIELD)
                 if identity:
                     uuid_index[str(identity)] = (target.id(), int(feature.id()))
+                    self._added.add(str(identity))
 
             for identity, extras in extras_by_uuid.items():
                 passthrough.append({
@@ -619,12 +654,22 @@ class InterchangeBundleReader:
 
     # -- side-car ----------------------------------------------------------
 
-    def _restore_cable_references(self, gpkg_path, uuid_index, result):
+    def _restore_cable_references(self, gpkg_path, uuid_index, result, passthrough):
         """Point slack loops and fibre breaks back at their cable.
 
         The bundle carries ``cable_uuid``; the plugin wants the local
         ``(cable_layer_id, cable_fid)`` pair. Done after every feature exists,
         because before that there is nothing to point at.
+
+        From each feature's own ``cable_uuid``, recorded as the feature was read
+        (``self._cable_refs``), whatever table it came from: this used to read
+        the column only from a bundle table named exactly "Optical slack" or
+        "Fiber break", so a bundle keeping its loops in any other table
+        imported them unattached and said nothing. A reference is set only on a
+        feature this import added, or on one with no cable yet -- re-importing
+        a bundle used to re-point a loop the user had moved since. A reference
+        to a cable the project does not have is kept, not dropped, and written
+        out again.
         """
         for canonical in ("Optical slack", "Fiber break"):
             layer = self._find_layer(canonical)
@@ -635,31 +680,43 @@ class InterchangeBundleReader:
             layer_idx = layer.fields().indexFromName(layer_id_field) if layer_id_field else -1
             fid_idx = layer.fields().indexFromName(fid_field) if fid_field else -1
             uuid_idx = layer.fields().indexFromName(FIBERQ_UUID_FIELD)
-            if min(layer_idx, fid_idx, uuid_idx) < 0:
+            detached = self._detached.get(canonical, 0)
+            if detached:
+                result.warnings.append(
+                    f"{detached} {canonical} row(s) in the bundle carry no cable_uuid column, so "
+                    "they were imported without being attached to a cable.")
+            if uuid_idx < 0:
+                continue
+            referenced = []
+            for feature in layer.getFeatures():
+                identity = feature.attribute(uuid_idx)
+                cable_uuid = self._cable_refs.get(str(identity)) if identity else None
+                if cable_uuid:
+                    referenced.append((feature, str(identity), cable_uuid))
+            if not referenced:
+                continue
+            if min(layer_idx, fid_idx) < 0:
                 # On a pre-1.0 project the pair is kabl_layer_id / kabl_fid, so
                 # this used to leave every imported loop detached -- with no
                 # warning, which is the part that made it hard to notice.
                 result.warnings.append(
                     f"'{layer.name()}' has no cable reference columns, so the "
-                    f"imported {canonical} loops were left unattached to a cable.")
-                continue
-            wanted, detached = self._bundle_cable_uuids(gpkg_path, canonical)
-            if detached:
-                result.warnings.append(
-                    f"{detached} {canonical} row(s) in the bundle carry no cable_uuid column, so "
-                    "they were imported without being attached to a cable.")
-            if not wanted:
+                    f"imported {canonical} loops were left unattached to a cable; "
+                    "their cable_uuid is kept and written out again.")
+                for _feature, identity, cable_uuid in referenced:
+                    self._keep_extra(passthrough, identity, {fm.CABLE_REFERENCE_FIELD: cable_uuid}, result)
                 continue
             changes = {}
             unresolved = 0
-            for feature in layer.getFeatures():
-                identity = feature.attribute(uuid_idx)
-                cable_uuid = wanted.get(str(identity)) if identity else None
-                if not cable_uuid:
+            for feature, identity, cable_uuid in referenced:
+                no_layer = self._blank(feature.attribute(layer_idx))
+                no_fid = self._blank(feature.attribute(fid_idx))
+                if identity not in self._added and not (no_layer or no_fid):
                     continue
-                target = uuid_index.get(str(cable_uuid))
+                target = uuid_index.get(cable_uuid)
                 if target is None:
                     unresolved += 1
+                    self._keep_extra(passthrough, identity, {fm.CABLE_REFERENCE_FIELD: cable_uuid}, result)
                     continue
                 changes[feature.id()] = {layer_idx: target[0], fid_idx: target[1]}
             if changes:
@@ -667,41 +724,49 @@ class InterchangeBundleReader:
             if unresolved:
                 result.warnings.append(
                     f"{unresolved} {canonical} reference(s) name a cable that is not "
-                    "in this bundle; they were left empty rather than pointed at "
-                    "another cable.")
+                    "in this project; they were left empty rather than pointed at "
+                    "another cable, and are kept and written out again.")
 
-    def _bundle_cable_uuids(self, gpkg_path, table):
-        """``(feature uuid -> cable_uuid, detached)`` as recorded in the bundle.
+    def _note_cable_reference(self, feature, canonical):
+        """Record a slack loop's or fibre break's ``cable_uuid`` by its identity."""
+        identity = self._text(feature, FIBERQ_UUID_FIELD)
+        index = feature.fields().lookupField(fm.CABLE_REFERENCE_FIELD)
+        if index < 0:
+            self._detached[canonical] = self._detached.get(canonical, 0) + 1
+            return
+        value = feature.attribute(index)
+        if identity and not self._blank(value):
+            self._cable_refs[identity] = str(value).strip()
 
-        ``detached`` is how many rows the bundle holds that cannot be linked
-        because the table carries no ``cable_uuid`` column -- a bundle written
-        by a tool that models slack loops without a cable reference. It is
-        reported separately because an empty mapping has three very different
-        causes and only this one is worth telling the user about: a bundle with
-        no such table at all is ordinary, and so is a table with no rows.
-        """
-        if _safe_table(table) is None:
-            return {}, 0
-        with sqlite3.connect(gpkg_path) as conn:
-            present = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-                (table,)).fetchone()
-            if present is None:
-                return {}, 0
-            columns = {row[1] for row in conn.execute(f'PRAGMA table_info("{table}")')}
-            if not {FIBERQ_UUID_FIELD, fm.CABLE_REFERENCE_FIELD} <= columns:
-                # Both names are module constants; the table name is validated
-                # by _safe_table above and exists in sqlite_master.
-                rows = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()  # nosec B608
-                return {}, int(rows[0]) if rows else 0
-            # Both column names are module constants; the table name is
-            # validated by _safe_table above and exists in sqlite_master.
-            sql = f'SELECT {FIBERQ_UUID_FIELD}, {fm.CABLE_REFERENCE_FIELD} FROM "{table}"'  # nosec B608
-            return {
-                str(identity): cable
-                for identity, cable in conn.execute(sql)
-                if identity and cable
-            }, 0
+    def _keep_extra(self, passthrough, identity, values, result):
+        """Add ``values`` to what the store keeps for one feature's extra attributes."""
+        uuid = ic.stable_uuid("extras", identity)
+        for row in passthrough:
+            if row.get("uuid") == uuid:
+                try:
+                    payload = json.loads(row.get("payload_json") or "{}")
+                except ValueError:
+                    payload = {}
+                if isinstance(payload, dict):
+                    payload.update(values)
+                    row["payload_json"] = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+                return
+        passthrough.append({
+            "uuid": uuid,
+            "owner_uuid": identity,
+            "kind": ic.EXTENSION_KIND_ATTRIBUTES,
+            "namespace": ic.EXTENSION_NAMESPACE,
+            "payload_json": json.dumps(values, ensure_ascii=False, sort_keys=True),
+            "produced_by": self._producer(result),
+        })
+
+    @staticmethod
+    def _blank(value):
+        if value is None:
+            return True
+        if hasattr(value, "isNull") and value.isNull():
+            return True
+        return str(value).strip() == ""
 
     def _restore_relations(self, gpkg_path, uuid_index, result):
         """Add the bundle's relations to the project's.

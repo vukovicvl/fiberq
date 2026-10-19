@@ -67,6 +67,14 @@ def _quoted(identifier):
     return '"' + str(identifier).replace('"', '""') + '"'
 
 
+def _parsed(text):
+    """JSON text as the value it encodes, or the text itself when it is not JSON."""
+    try:
+        return json.loads(text)
+    except ValueError:
+        return text
+
+
 #: Declared types FiberQ re-creates a carried column with. Anything else maps to
 #: the type with the same SQLite affinity: a type is SQL text from someone else's
 #: file, and one such as ``TEXT NOT NULL`` or ``x); DROP ...`` must never be
@@ -611,12 +619,9 @@ class InterchangeBundleWriter:
                 feature.setAttribute(place_index, placement)
 
             identity = source_feature.attribute(uuid_index) if uuid_index >= 0 else None
-            if extras and extra_index >= 0 and identity and self._is_blank(
-                    feature.attribute(extra_index)):
-                payload = extras.get(str(identity))
-                if payload:
-                    feature.setAttribute(extra_index, payload if isinstance(
-                        payload, str) else json.dumps(payload))
+            payload = extras.get(str(identity)) if extras and identity else None
+            if isinstance(payload, str):
+                payload = _parsed(payload)
 
             if cable_index >= 0 and cable_layer_index >= 0 and cable_fid_index >= 0:
                 resolved = self._resolve(
@@ -624,8 +629,18 @@ class InterchangeBundleWriter:
                     source_feature.attribute(cable_fid_index))
                 if resolved is not None:
                     feature.setAttribute(cable_index, resolved)
+                elif isinstance(payload, dict) and payload.get(fm.CABLE_REFERENCE_FIELD):
+                    # A reference the import could not resolve, kept with the
+                    # feature's extras: back into its own column, where a reader
+                    # looks for it, not into fq_extra_json.
+                    payload = dict(payload)
+                    feature.setAttribute(cable_index, payload.pop(fm.CABLE_REFERENCE_FIELD))
                 elif not self._is_blank(source_feature.attribute(cable_fid_index)):
                     unresolved += 1
+
+            if payload and extra_index >= 0 and self._is_blank(feature.attribute(extra_index)):
+                feature.setAttribute(extra_index, payload if isinstance(
+                    payload, str) else json.dumps(payload))
 
             built.append(feature)
 
