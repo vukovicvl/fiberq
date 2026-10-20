@@ -45,7 +45,7 @@ import uuid
 from qgis.core import (QgsFeatureRequest, QgsLineString, QgsMultiLineString, QgsMultiPoint, QgsPoint, QgsRectangle,
                        QgsSpatialIndex, QgsWkbTypes)
 
-from .geopackage import table_facts
+from .geopackage import file_stamp, layer_file, table_facts
 
 
 #: The largest bound a box may have and still go into the index, or be asked
@@ -77,8 +77,59 @@ def box_around(point, radius):
                         point.x() + radius, point.y() + radius)
 
 
-def _box_answers_exactly(layer):
+#: ``(provider, source, filter) -> (answer, path, stamp)``: ``_box_answers_exactly``'s
+#: last answer for a layer source. The geometry type, the provider and its storage
+#: type follow from the provider and the source, so for every layer but a
+#: GeoPackage one the key fixes the answer. A GeoPackage's tables can change under
+#: the same source, so its answer is kept with the file's stamp, read again on every
+#: call, exactly as ``geopackage.table_facts`` reads it. An answer the file could not
+#: give (locked, unreadable) is never kept, so it is asked again, as before, and
+#: neither is anything for a layer that is not valid: its file may come back
+#: under the same source. Working the answer out on every call cost ~47 us a
+#: layer, about 0.25 ms of each mouse move of a tool snapping to five layers
+#: (probe on the release benchmark's S city, QGIS 3.44).
+_EXACT_BOXES = {}
+
+
+def _box_answers_exactly(layer, stamps=None):
     """True when a box query on ``layer``, sorted by ``_scan_position``, is its whole scan inside the box.
+
+    Remembered per layer source in ``_EXACT_BOXES``; ``_decide_box_answers_exactly``
+    is the check itself, and says what is behind the decision. ``stamps`` is
+    ``features_near``'s: a file read once per search.
+    """
+    if not layer.isValid():
+        return _decide_box_answers_exactly(layer)[0]
+    key = (layer.providerType(), layer.source(), layer.subsetString())
+    known = _EXACT_BOXES.get(key)
+    if known is not None:
+        answer, path, stamp = known
+        if path is None or _stamp_now(path, stamps) == stamp:
+            return answer
+    answer, path, stamp = _decide_box_answers_exactly(layer)
+    if path is None or stamp is not None:
+        _EXACT_BOXES[key] = (answer, path, stamp)
+    return answer
+
+
+def _stamp_now(path, stamps):
+    """``file_stamp(path)``, looked at once per search when the caller hands in ``stamps``."""
+    if stamps is None:
+        return file_stamp(path)
+    if path not in stamps:
+        stamps[path] = file_stamp(path)
+    return stamps[path]
+
+
+def _decide_box_answers_exactly(layer):
+    """``(answer, path, stamp)`` for ``_box_answers_exactly``.
+
+    ``path`` is the GeoPackage file the answer rests on, else None; ``stamp`` is
+    that file's stamp, read before its tables were, or None when the answer must
+    not be kept.
+
+    The answer: whether a box query on ``layer``, sorted by ``_scan_position``, is
+    its whole scan inside the box.
 
     The order first. A search that reads only part of a layer needs the
     whole scan's order to settle a tie the way the scan did. Measured on
@@ -115,22 +166,30 @@ def _box_answers_exactly(layer):
     the placement snaps read such a layer whole (``features_within``).
     """
     if QgsWkbTypes.displayString(QgsWkbTypes.flatType(layer.wkbType())) not in _BOXED_TYPES:
-        return False
+        return False, None, None
     provider = layer.dataProvider()
     if provider is None:
-        return False
+        return False, None, None
     if provider.name() == "memory":
-        return True
+        return True, None, None
     if provider.name() != "ogr" or layer.subsetString():
-        return False
+        return False, None, None
     if provider.storageType() == "ESRI Shapefile":
-        return True
+        return True, None, None
     if provider.storageType() != "GPKG":
-        return False
+        return False, None, None
+    source = layer_file(layer)
+    if source is None:
+        return False, None, None
+    path = source[0]
+    stamp = file_stamp(path)
     facts = table_facts(layer)
-    if facts is None or facts.view or not facts.keyed:
-        return False
-    return not (facts.curves and layer.geometryType() == QgsWkbTypes.GeometryType.LineGeometry)
+    if facts is None or stamp is None:
+        return False, path, None
+    if facts.view or not facts.keyed:
+        return False, path, stamp
+    lines = layer.geometryType() == QgsWkbTypes.GeometryType.LineGeometry
+    return not (facts.curves and lines), path, stamp
 
 
 #: The geometry types a box query answers exactly. See ``_box_answers_exactly``.
@@ -143,8 +202,17 @@ def _scan_position(feature):
     return (0, -fid) if fid < 0 else (1, fid)
 
 
-def features_near(layer, point, reach):
+def features_near(layer, point, reach, geometry_only=False, stamps=None):
     """The layer's features whose box comes within ``reach`` of ``point``, in scan order.
+
+    ``geometry_only`` reads each feature's geometry and id and none of its
+    attributes, for a caller that uses no more: the same features, and in the
+    same order, because the answer is sorted into scan order below (about a
+    third less time on the benchmark's 32-column cable tables).
+    ``stamps`` is a dict a caller makes for one search -- one mouse move -- and
+    hands to every layer it asks: a GeoPackage several of those layers live in
+    is then looked at once for the search, not once per layer. Nothing writes
+    to the file between the layers of one search.
 
     For a search that used to read the whole layer (WP4 PF-4, PF-5): it keeps its own
     test and runs it over these instead, in the order the whole scan met them,
@@ -168,15 +236,15 @@ def features_near(layer, point, reach):
     well (``_changes_a_box_may_drop``).
     """
     box = box_around(point, reach)
-    if not indexable_box(box) or not _box_answers_exactly(layer):
+    if not indexable_box(box) or not _box_answers_exactly(layer, stamps):
         return None
-    found = list(layer.getFeatures(QgsFeatureRequest().setFilterRect(box)))
+    found = list(layer.getFeatures(_request(geometry_only).setFilterRect(box)))
     if layer.isEditable():
         have = {feature.id() for feature in found}
         missing = [fid for fid, vertex in _changes_a_box_may_drop(layer)
                    if fid not in have and (vertex is None or _holds(box, vertex))]
         if missing:
-            found += list(layer.getFeatures(QgsFeatureRequest().setFilterFids(missing)))
+            found += list(layer.getFeatures(_request(geometry_only).setFilterFids(missing)))
     if any(f.id() < 0 for f in found):
         buffer = layer.editBuffer() if layer.isEditable() else None
         if buffer is None or any(f.id() < 0 and not buffer.isFeatureAdded(f.id()) for f in found):
@@ -185,13 +253,21 @@ def features_near(layer, point, reach):
     return found
 
 
+def _request(geometry_only):
+    """A ``QgsFeatureRequest``, reading no attributes when ``geometry_only``."""
+    request = QgsFeatureRequest()
+    if geometry_only:
+        request.setNoAttributes()
+    return request
+
+
 def _holds(box, vertex):
     """True when the ``QgsRectangle`` ``box``, edges included, holds the point ``(x, y)``; never for a NaN."""
     x, y = vertex
     return box.xMinimum() <= x <= box.xMaximum() and box.yMinimum() <= y <= box.yMaximum()
 
 
-def features_within(layer, point, tolerance):
+def features_within(layer, point, tolerance, geometry_only=False, stamps=None):
     """``features_near`` sized for a search that uses only answers within ``tolerance`` of ``point``.
 
     For the placement snaps (WP4 PF-5). Every vertex, segment point or
@@ -215,13 +291,21 @@ def features_within(layer, point, tolerance):
     finite, and keep main's narrowed read there (round-5 review: reading it
     whole made the click ~400 times slower).
     """
-    provider = layer.dataProvider()
-    # SpatialIndexPresent is 2 on QGIS 3.22 to 4.2, whatever the enum is called.
-    if provider is not None and provider.name() == "memory" and int(provider.hasSpatialIndex()) == 2:
-        return None
+    # The provider's key straight off the layer: asking for the provider object
+    # costs ~10 us a call, and the snaps make this call for every layer on every
+    # mouse move. The key is kept as the layer was created with it, and QGIS
+    # matches keys whatever their case ("Memory" is a memory layer too). Only a
+    # memory layer is asked, because an index can be given to one at any time.
+    memory = (layer.providerType() or "").lower() == "memory"
+    if memory:
+        provider = layer.dataProvider()
+        # SpatialIndexPresent is 2 on QGIS 3.22 to 4.2, whatever the enum is called.
+        if provider is not None and int(provider.hasSpatialIndex()) == 2:
+            return None
     lines = layer.geometryType() == QgsWkbTypes.GeometryType.LineGeometry
-    arcs = lines and (layer.isEditable() or (provider is not None and provider.name() == "memory"))
-    return features_near(layer, point, tolerance * (2.0 if arcs else 1.000001))
+    arcs = lines and (layer.isEditable() or memory)
+    return features_near(layer, point, tolerance * (2.0 if arcs else 1.000001),
+                         geometry_only=geometry_only, stamps=stamps)
 
 
 #: ``key -> (generation, [(fid, (x, y) or None), ...])``: per layer object,
