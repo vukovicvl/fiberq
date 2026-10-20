@@ -142,6 +142,20 @@ def _schema(path):
     return kinds, curved, keyed
 
 
+def layer_file(layer):
+    """``(path, table)`` of an OGR GeoPackage layer read from a plain file, else None."""
+    return _source(layer)
+
+
+def file_stamp(path):
+    """The stamp ``table_facts`` keys its cache by: size and modification time of the file and its WAL.
+
+    None when they cannot be read. Equal stamps mean the file's tables are the
+    ones ``table_facts`` last read; a write to the file changes it.
+    """
+    return _stamp(path)
+
+
 def table_facts(layer):
     """The ``TableFacts`` of a GeoPackage layer's table, or None when the file cannot tell."""
     source = _source(layer)

@@ -159,6 +159,9 @@ class PlacementSnapper:
         self.segments = segments
         self.extra_point_layers = tuple(extra_point_layers)
         self.indicator = QgsSnapIndicator(canvas)
+        #: What ``_candidate_layers`` last worked out, and for which layers.
+        self._candidate_key = None
+        self._candidate_slots = []
 
     # -- the tool-facing calls ------------------------------------------------
 
@@ -243,11 +246,29 @@ class PlacementSnapper:
         The name travels with the layer because the caller's error handler needs
         it *after* the wrapper may already be gone, and asking the dead wrapper
         for it there would raise the very error being handled.
+
+        Which layers qualify is worked out again only when the project's vector
+        layers change: one added, removed, renamed, made valid or invalid, or of
+        another geometry type -- everything the decision reads. Listing them cost
+        ~0.19 ms a mouse move when every move worked it all out; reading the key
+        that tells whether anything changed costs about a quarter of that (probe on
+        the release benchmark's S city, QGIS 3.44). The layers themselves are
+        taken from the project on every call, never kept: a project read in again
+        has new layer objects under the same ids.
         """
+        layers = [layer for layer in QgsProject.instance().mapLayers().values()
+                  if isinstance(layer, QgsVectorLayer)]
+        key = tuple((layer.id(), layer.name(), layer.isValid(), layer.geometryType()) for layer in layers)
+        if key != self._candidate_key:
+            self._candidate_slots = list(self._qualifying(layers))
+            self._candidate_key = key
+        for index, is_line, name in self._candidate_slots:
+            yield layers[index], is_line, name
+
+    def _qualifying(self, layers):
+        """``(index, is_line, name)`` of each layer in ``layers`` this tool snaps to."""
         canonical_layer_name = get_canonical_layer_name()
-        for layer in QgsProject.instance().mapLayers().values():
-            if not isinstance(layer, QgsVectorLayer):
-                continue
+        for index, layer in enumerate(layers):
             if not layer.isValid():
                 continue
             name = layer.name() or ''
@@ -255,12 +276,12 @@ class PlacementSnapper:
             geometry_type = layer.geometryType()
             if geometry_type == QgsWkbTypes.GeometryType.PointGeometry:
                 if canonical in self.point_layers:
-                    yield layer, False, name
+                    yield index, False, name
                 elif self._is_extra_point_layer(name):
-                    yield layer, False, name
+                    yield index, False, name
             elif geometry_type == QgsWkbTypes.GeometryType.LineGeometry:
                 if canonical in self.line_layers:
-                    yield layer, True, name
+                    yield index, True, name
 
     def _is_extra_point_layer(self, name):
         """Whether ``name`` matches one of the non-schema point layers."""
@@ -300,9 +321,18 @@ class PlacementSnapper:
         best_vertex = None
         best_edge = None
 
+        # Geometry and id are all this snap reads of a feature, so a box read
+        # fetches no attribute: features_near sorts its answer into scan order,
+        # so no query plan can reorder it (about a third less time on the
+        # benchmark's 32-column cable tables). A whole read keeps every
+        # attribute: without them SQLite may answer a GeoPackage view through a
+        # covering index, in another order, and a tie would go to another
+        # feature (release review, QGIS 3.40 to 4.2). A GeoPackage the layers
+        # share is looked at once per move (``stamps``).
+        stamps = {}
         for layer, is_line, name in self._candidate_layers():
             try:
-                near = features_within(layer, point, tolerance)
+                near = features_within(layer, point, tolerance, geometry_only=True, stamps=stamps)
                 features = layer.getFeatures() if near is None else near
             except RuntimeError as exc:
                 # A layer pulled out from under a live mouse move. One bad layer

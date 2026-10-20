@@ -28,6 +28,8 @@ import json
 import math
 import random
 import shutil
+import sqlite3
+from contextlib import closing
 
 import pytest
 from qgis.core import (
@@ -853,9 +855,9 @@ def test_each_search_asks_for_its_own_tolerance_and_twice_it_where_an_arc_can_hi
     asked = []
     real = spatial.features_near
 
-    def spy(layer, point, reach):
+    def spy(layer, point, reach, **options):
         asked.append((layer.name(), round(reach, 9)))
-        return real(layer, point, reach)
+        return real(layer, point, reach, **options)
 
     searches = _Searches(_canvas(QgsPointXY(41, 1), 0.5))
     with pytest.MonkeyPatch.context() as patch:
@@ -931,3 +933,413 @@ def test_a_locked_geopackage_gives_up_at_once_and_is_not_asked_again_at_once(qgi
         writer.execute("ROLLBACK")
     assert first is None and second is None and third is None
     assert elapsed < 0.05, elapsed
+
+
+# ---------------------------------------------------------------------------
+# What a move no longer repeats (v1.6.0 release benchmark, 2026-10-20)
+# ---------------------------------------------------------------------------
+# The final A/B/A run measured the joint-closure tool 33% slower than v1.5.0: about
+# 0.5 ms more a move, at every size. v1.5.0's tool already asked each layer for a
+# box, and the shared snap worked out again, on every move, which layers it snaps to,
+# whether each layer's box can be trusted, and each layer's provider; and it read
+# every attribute of features of which it uses only the geometry. These pin what
+# took that away, without the snap answering anything differently.
+
+def _gpkg_street(project, tmp_path, n=2, storage="gpkg"):
+    _street(project, n)
+    folder = tmp_path / "files"
+    folder.mkdir()
+    _to_files(project, folder, storage)
+    return folder / "layers.gpkg"
+
+
+def test_the_layers_a_snap_uses_are_worked_out_once_per_layer_set(project, tmp_path):
+    """Again only when a layer is added, removed, renamed, made valid or invalid, or
+    of another geometry type -- everything that decides whether a layer qualifies.
+    Change Data Source keeps a layer's id and name, so validity and geometry type
+    have to be in the key themselves (release review: either could be dropped from it
+    with every other test green)."""
+    _street(project, 2)
+    snapper = PlacementSnapper(_canvas(QgsPointXY(0, 0), 0.5), point_layers=SNAP_NODE_LAYERS,
+                               line_layers=SNAP_ROUTE_LAYERS, pixels=10)
+    worked = []
+    real = snapper._qualifying
+
+    def qualifying(layers):
+        worked.append(len(layers))
+        return list(real(layers))
+
+    snapper._qualifying = qualifying
+
+    def names():
+        return sorted(name for _layer, _is_line, name in snapper._candidate_layers())
+
+    assert names() == ["Manholes", "Poles", "Route"]
+    for _ in range(5):
+        names()
+    assert len(worked) == 1
+    project.mapLayersByName("Manholes")[0].setName("Something else")
+    assert names() == ["Poles", "Route"]
+    _memory(project, "Point", "Stubovi", [_pt(5, 5)])          # the pre-1.0 name of Poles
+    assert names() == ["Poles", "Route", "Stubovi"]
+    project.removeMapLayer(project.mapLayersByName("Route")[0].id())
+    assert names() == ["Poles", "Stubovi"]
+    assert len(worked) == 4
+    stubovi = project.mapLayersByName("Stubovi")[0]
+    stubovi.setDataSource("LineString?crs=EPSG:3857", "Stubovi", "memory")   # same id and name, now lines
+    assert stubovi.geometryType() == QgsWkbTypes.GeometryType.LineGeometry
+    assert names() == ["Poles"]
+    poles = project.mapLayersByName("Poles")[0]
+    poles.setDataSource(f"{tmp_path / 'not-there.gpkg'}|layername=Poles", "Poles", "ogr")
+    assert not poles.isValid()
+    assert names() == []
+    poles.setDataSource("Point?crs=EPSG:3857", "Poles", "memory")
+    assert poles.isValid()
+    assert names() == ["Poles"]
+    assert len(worked) == 7
+
+
+def test_a_project_read_again_is_snapped_through_its_new_layers(project, tmp_path):
+    """A project read in again has new layer objects under the same ids, names and
+    types. The snap takes them from the project on every move, so the move after the
+    read finds the same vertex instead of asking a deleted layer."""
+    _gpkg_street(project, tmp_path, 1)
+    path = str(tmp_path / "again.qgs")
+    assert project.write(path)
+    searches = _Searches(_canvas(QgsPointXY(40, 0), 0.5))
+    before = searches.fallback(QgsPointXY(40.5, 0.5))
+    assert before is not None
+    project.clear()
+    assert project.read(path)
+    assert searches.fallback(QgsPointXY(40.5, 0.5)) == before
+
+
+def test_a_box_answer_is_kept_until_the_file_changes(project, tmp_path):
+    """Kept per layer source; a write to the file -- here another program registering
+    an arc extension for the Route table, which makes its box untrustworthy -- is seen
+    on the next call, as geopackage.table_facts sees it."""
+    gpkg = _gpkg_street(project, tmp_path)
+    route = project.mapLayersByName("Route")[0]
+    decided = []
+    real = spatial._decide_box_answers_exactly
+
+    def decide(layer):
+        decided.append(layer.name())
+        return real(layer)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(spatial, "_decide_box_answers_exactly", decide)
+        patch.setattr(spatial, "_EXACT_BOXES", {})
+        for _ in range(3):
+            assert spatial._box_answers_exactly(route) is True
+        assert decided == ["Route"]
+        with closing(sqlite3.connect(str(gpkg))) as db:
+            db.execute("CREATE TABLE IF NOT EXISTS gpkg_extensions (table_name TEXT, column_name TEXT, "
+                       "extension_name TEXT NOT NULL, definition TEXT NOT NULL, scope TEXT NOT NULL)")
+            db.execute("INSERT INTO gpkg_extensions VALUES ('Route', 'geom', 'gpkg_geom_CIRCULARSTRING', "
+                       "'Annex J', 'read-write')")
+            db.commit()
+        assert spatial._box_answers_exactly(route) is False
+        assert decided == ["Route", "Route"]
+
+
+def test_a_filter_is_a_new_answer(project, tmp_path):
+    """A filtered GeoPackage layer is read whole (SQLite may answer through an index
+    of its own order); dropping the filter gives the box back."""
+    _gpkg_street(project, tmp_path)
+    route = project.mapLayersByName("Route")[0]
+    assert spatial._box_answers_exactly(route) is True
+    assert route.setSubsetString("fid > 0")
+    assert spatial._box_answers_exactly(route) is False
+    assert route.setSubsetString("")
+    assert spatial._box_answers_exactly(route) is True
+
+
+def test_a_file_that_cannot_be_read_is_asked_again(project, tmp_path):
+    """A locked or unreadable file only means "cannot tell": that answer is never
+    kept, so the box comes back as soon as the file can be read."""
+    _gpkg_street(project, tmp_path)
+    route = project.mapLayersByName("Route")[0]
+    decided = []
+    real = spatial._decide_box_answers_exactly
+
+    def decide(layer):
+        decided.append(layer.name())
+        return real(layer)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(spatial, "_decide_box_answers_exactly", decide)
+        patch.setattr(spatial, "_EXACT_BOXES", {})
+        patch.setattr(spatial, "table_facts", lambda layer: None)
+        assert spatial._box_answers_exactly(route) is False
+        assert spatial._box_answers_exactly(route) is False
+        assert decided == ["Route", "Route"]
+        patch.undo()
+    assert spatial._box_answers_exactly(route) is True
+
+
+@pytest.mark.parametrize("key", ["memory", "Memory"])
+def test_a_memory_layer_given_an_index_later_is_read_whole(project, key):
+    """Anyone can give a memory layer a spatial index at any time (Layer Properties,
+    Processing), and such an index drops what the snaps measure (round-6 review), so
+    that one question is still asked of the layer itself on every call. QGIS takes the
+    provider key in any case, and the layer keeps it as written (release review)."""
+    poles = QgsVectorLayer("Point?crs=EPSG:3857&field=naziv:string", "Poles", key)
+    feature = QgsFeature(poles.fields())
+    feature.setGeometry(_pt(0, 0))
+    assert poles.dataProvider().addFeatures([feature])[0]
+    project.addMapLayer(poles)
+    assert poles.providerType() == key
+    assert spatial.features_within(poles, QgsPointXY(0, 0), 5) is not None
+    assert poles.dataProvider().createSpatialIndex()
+    assert spatial.features_within(poles, QgsPointXY(0, 0), 5) is None
+
+
+@pytest.mark.parametrize("storage", ["memory", "gpkg", "shp"])
+def test_geometry_only_reads_the_same_features_in_the_same_order(project, tmp_path, storage):
+    """The shared snap reads no attribute: the same features, in the same order, with
+    the same geometry, also through an edit buffer holding a changed geometry and an
+    added feature, which a box query and a whole read order differently."""
+    _street(project, 3)
+    if storage != "memory":
+        folder = tmp_path / "files"
+        folder.mkdir()
+        _to_files(project, folder, storage)
+    route = project.mapLayersByName("Route")[0]
+    assert route.startEditing()
+    try:
+        first = min(feature.id() for feature in route.getFeatures())
+        assert route.changeGeometry(first, _line((0, 0), (20, 10)))
+        added = QgsFeature(route.fields())
+        added.setGeometry(_line((5, 0), (15, 5)))
+        assert route.addFeature(added)
+        for point in (QgsPointXY(0, 0), QgsPointXY(10, 4), QgsPointXY(140, 0)):
+            full = spatial.features_near(route, point, 50)
+            light = spatial.features_near(route, point, 50, geometry_only=True)
+            assert full is not None and light is not None
+            assert [f.id() for f in light] == [f.id() for f in full]
+            assert [f.geometry().asWkt() for f in light] == [f.geometry().asWkt() for f in full]
+    finally:
+        route.rollBack()
+
+
+def test_one_move_looks_at_a_shared_file_once(project, tmp_path):
+    """Four layers in one GeoPackage: one look at the file on every move, not one per
+    layer -- and not one for the snapper's whole life, which would miss a write: one
+    between two moves is seen by the next. A caller with no search to share still gets
+    one look per call."""
+    gpkg = _gpkg_street(project, tmp_path)
+    searches = _Searches(_canvas(QgsPointXY(40, 0), 0.5))
+    searches.fallback(QgsPointXY(40.5, 0.5))
+    looked = []
+    decided = []
+    real_stamp = geopackage._stamp
+    real_decide = spatial._decide_box_answers_exactly
+
+    def stamp(path):
+        looked.append(path)
+        return real_stamp(path)
+
+    def decide(layer):
+        decided.append(layer.name())
+        return real_decide(layer)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(geopackage, "_stamp", stamp)
+        patch.setattr(spatial, "_decide_box_answers_exactly", decide)
+        for _ in range(2):
+            looked.clear()
+            searches.fallback(QgsPointXY(40.5, 0.5))
+            assert len(looked) == 1, looked
+        assert decided == []
+        with closing(sqlite3.connect(str(gpkg))) as db:
+            db.execute("CREATE TABLE written_by_another_program (x INTEGER)")
+            db.commit()
+        searches.fallback(QgsPointXY(40.5, 0.5))
+        assert sorted(decided) == ["Manholes", "Poles", "Route", "Underground cables"]
+        looked.clear()
+        layers = list(project.mapLayers().values())
+        for layer in layers:
+            spatial.features_within(layer, QgsPointXY(40.5, 0.5), 5)
+        assert len(looked) == len(layers)
+
+
+@pytest.mark.parametrize("storage", ["gpkg", "shp"])
+def test_a_move_asks_no_layer_for_its_provider_once_its_answers_are_known(project, tmp_path, storage):
+    """Asking a layer for its provider object cost ~10 us, and a move asked every
+    file layer twice. The provider's key is read off the layer instead."""
+    _gpkg_street(project, tmp_path, storage=storage)
+    searches = _Searches(_canvas(QgsPointXY(40, 0), 0.5))
+    first = searches.fallback(QgsPointXY(40.5, 0.5))
+    asked = []
+    real = QgsVectorLayer.dataProvider
+
+    def provider(self):
+        asked.append(self.name())
+        return real(self)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(QgsVectorLayer, "dataProvider", provider)
+        again = searches.fallback(QgsPointXY(40.5, 0.5))
+    assert asked == []
+    assert again == first
+
+
+def test_a_memory_layer_is_worked_out_once(project):
+    """A memory layer is still asked about its spatial index on every call, but whether
+    its box can be trusted is worked out once."""
+    _street(project, 2)
+    searches = _Searches(_canvas(QgsPointXY(40, 0), 0.5))
+    searches.fallback(QgsPointXY(40.5, 0.5))
+    decided = []
+    real = spatial._decide_box_answers_exactly
+
+    def decide(layer):
+        decided.append(layer.name())
+        return real(layer)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(spatial, "_decide_box_answers_exactly", decide)
+        for _ in range(3):
+            searches.fallback(QgsPointXY(40.5, 0.5))
+    assert decided == []
+
+
+def test_a_layer_whose_file_comes_back_gets_its_box_back(project, tmp_path):
+    """Asked while its GeoPackage was missing, a layer used to be read whole for the
+    rest of the session, even once the file was back under the same source (release
+    review): nothing is kept for a layer that is not valid."""
+    _gpkg_street(project, tmp_path)
+    away = tmp_path / "elsewhere.gpkg"
+    source = f"{away}|layername=Route"
+    missing = QgsVectorLayer(source, "Route", "ogr")
+    assert not missing.isValid()
+    assert spatial.features_within(missing, QgsPointXY(40, 0), 5) is None
+    # The file comes back, written whole (a plain copy of the open file can miss what
+    # its WAL still holds, and QGIS 3.22 then cannot open it at all).
+    options = QgsVectorFileWriter.SaveVectorOptions()
+    options.driverName = "GPKG"
+    options.layerName = "Route"
+    written = QgsVectorFileWriter.writeAsVectorFormatV3(project.mapLayersByName("Route")[0], str(away),
+                                                        QgsCoordinateTransformContext(), options)
+    assert written[0] == QgsVectorFileWriter.WriterError.NoError, written
+    back = QgsVectorLayer(source, "Route", "ogr")
+    assert back.isValid()
+    assert spatial.features_within(back, QgsPointXY(40, 0), 5) is not None
+
+
+def test_a_new_data_source_under_the_same_id_is_a_new_answer(project, tmp_path):
+    """Change Data Source keeps the layer's id and name; the answer follows the source.
+    Keyed by the layer instead, a GeoPackage table's box would stay on for the GeoJSON
+    file that replaced it, which must be read whole, in its own order."""
+    _gpkg_street(project, tmp_path)
+    route = project.mapLayersByName("Route")[0]
+    assert spatial.features_within(route, QgsPointXY(40, 0), 5) is not None
+    geojson = tmp_path / "route.geojson"
+    options = QgsVectorFileWriter.SaveVectorOptions()
+    options.driverName = "GeoJSON"
+    written = QgsVectorFileWriter.writeAsVectorFormatV3(route, str(geojson), QgsCoordinateTransformContext(), options)
+    assert written[0] == QgsVectorFileWriter.WriterError.NoError, written
+    layer_id = route.id()
+    route.setDataSource(str(geojson), "Route", "ogr")
+    assert route.isValid() and route.id() == layer_id
+    assert spatial.features_within(route, QgsPointXY(40, 0), 5) is None
+
+
+def test_the_shared_snap_reads_no_attribute_on_its_box_reads_only(project, tmp_path):
+    """Its box reads fetch geometry and id alone, so the work the fix removed cannot come
+    back unseen; a layer read whole -- here a memory layer someone gave an index -- is
+    read with every attribute, so its order stays the provider's own."""
+    _gpkg_street(project, tmp_path)
+    indexed = _memory(project, "Point", "Poles", [_pt(40.2, 0.2)])
+    assert indexed.dataProvider().createSpatialIndex()
+    searches = _Searches(_canvas(QgsPointXY(40, 0), 0.5))
+    reads = []
+    real_get = QgsVectorLayer.getFeatures
+
+    def get(self, *args, **kwargs):
+        reads.append((self.providerType(), args[0] if args else kwargs.get("request")))
+        return real_get(self, *args, **kwargs)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(QgsVectorLayer, "getFeatures", get)
+        assert searches.fallback(QgsPointXY(40.5, 0.5)) is not None
+    boxed = [request for key, request in reads if key == "ogr"]
+    assert boxed, reads
+    for request in boxed:
+        assert request.flags() & QgsFeatureRequest.Flag.SubsetOfAttributes
+        assert request.subsetOfAttributes() == []
+    assert [request for key, request in reads if key == "memory"] == [None]
+
+
+def _tie_view(path):
+    """A GeoPackage feature view over a point table and an attribute table stored out of
+    fid order, with an index on the join key: poles 1 and 5 lie 1 m either side of (0, 0)."""
+    points = {1: (0, 1), 2: (100, 0), 3: (200, 0), 4: (300, 0), 5: (0, -1), 6: (500, 0), 7: (600, 0), 8: (700, 0)}
+    source = QgsVectorLayer("Point?crs=EPSG:3857&field=naziv:string", "g", "memory")
+    features = []
+    for fid in sorted(points):
+        feature = QgsFeature(source.fields())
+        feature.setGeometry(_pt(*points[fid]))
+        feature.setAttributes(["n%d" % fid])
+        features.append(feature)
+    assert source.dataProvider().addFeatures(features)[0]
+    options = QgsVectorFileWriter.SaveVectorOptions()
+    options.driverName = "GPKG"
+    options.layerName = "geom_t"
+    written = QgsVectorFileWriter.writeAsVectorFormatV3(source, str(path), QgsCoordinateTransformContext(), options)
+    assert written[0] == QgsVectorFileWriter.WriterError.NoError, written
+    with closing(sqlite3.connect(str(path))) as db, db:
+        db.execute("CREATE TABLE info_t (id INTEGER PRIMARY KEY, ref INTEGER, owner TEXT)")
+        db.executemany("INSERT INTO info_t (ref, owner) VALUES (?, ?)",
+                       [(fid, "o%d" % fid) for fid in (5, 2, 8, 1, 7, 3, 6, 4)])
+        db.execute("CREATE INDEX info_ref ON info_t (ref)")
+        db.execute("CREATE VIEW v AS SELECT g.fid AS fid, g.geom AS geom, i.owner AS owner "
+                   "FROM info_t i JOIN geom_t g ON g.fid = i.ref")
+        db.execute("INSERT INTO gpkg_contents (table_name, data_type, identifier, srs_id) "
+                   "VALUES ('v', 'features', 'v', 3857)")
+        db.execute("INSERT INTO gpkg_geometry_columns VALUES ('v', 'geom', 'POINT', 3857, 0, 0)")
+
+
+def test_a_view_read_whole_breaks_a_tie_in_its_own_order(project, tmp_path):
+    """A GeoPackage view is never boxed, so the snap reads it whole, and on a tie the
+    first feature of that read wins, as on v1.5.0. Read without attributes, SQLite
+    answers this view through the covering index on QGIS 3.40 to 4.2, in fid order,
+    and the tie went to the other pole (release review): the whole read keeps every
+    attribute. Compared with layer.getFeatures() directly, not through _whole_layers,
+    which runs the very read under test."""
+    path = tmp_path / "view.gpkg"
+    _tie_view(path)
+    view = QgsVectorLayer(f"{path}|layername=v", "Poles", "ogr")
+    assert view.isValid()
+    project.addMapLayer(view)
+    assert spatial.features_within(view, QgsPointXY(0, 0), 10) is None
+    order = [feature.id() for feature in view.getFeatures()]
+    where = {feature.id(): feature.geometry().asPoint() for feature in view.getFeatures()}
+    tie = [fid for fid in order if (where[fid].x(), where[fid].y()) in ((0.0, 1.0), (0.0, -1.0))]
+    snapper = PlacementSnapper(_canvas(QgsPointXY(0, 0), 0.5), point_layers=SNAP_NODE_LAYERS,
+                               line_layers=(), pixels=20, segments=False)
+    match = snapper._fallback(QgsPointXY(0, 0))
+    assert match.isValid()
+    assert match.featureId() == tie[0], (order, match.featureId())
+
+
+def test_a_write_held_in_the_wal_changes_the_stamp(tmp_path):
+    """In WAL mode a write can sit in the -wal file while the main file is untouched;
+    the stamp covers both, so an answer kept for the file is worked out again."""
+    path = tmp_path / "wal.gpkg"
+    with closing(sqlite3.connect(str(path))) as db:
+        assert db.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+        db.execute("CREATE TABLE t (x INTEGER)")
+        db.commit()
+    before = geopackage.file_stamp(str(path))
+    writer = sqlite3.connect(str(path))
+    try:
+        writer.execute("PRAGMA wal_autocheckpoint=0")
+        writer.execute("INSERT INTO t VALUES (1)")
+        writer.commit()
+        after = geopackage.file_stamp(str(path))
+    finally:
+        writer.close()
+    assert before is not None and after is not None
+    assert after[1] != before[1], (before, after)
