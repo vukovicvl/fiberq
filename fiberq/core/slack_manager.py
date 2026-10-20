@@ -10,7 +10,8 @@ This module provides slack (optical reserve) management functionality:
 
 from typing import Optional
 
-from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, QVariant
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
+from ..utils.compat import FieldType
 from qgis.PyQt.QtWidgets import QDialog, QMessageBox
 
 from qgis.core import (
@@ -186,13 +187,13 @@ class SlackManager:
         vl = QgsVectorLayer(f"Point?crs={crs}", "Optical slacks", "memory")  # Issue #2: Use plural name
         pr = vl.dataProvider()
         pr.addAttributes([
-            QgsField("tip", QVariant.String),
-            QgsField("duzina_m", QVariant.Double),
-            QgsField("lokacija", QVariant.String),
-            QgsField("cable_layer_id", QVariant.String),
-            QgsField("cable_fid", QVariant.Int),
-            QgsField("strana", QVariant.String),
-            QgsField("napomena", QVariant.String),
+            QgsField("tip", FieldType.String),
+            QgsField("duzina_m", FieldType.Double),
+            QgsField("lokacija", FieldType.String),
+            QgsField("cable_layer_id", FieldType.String),
+            QgsField("cable_fid", FieldType.Int),
+            QgsField("strana", FieldType.String),
+            QgsField("napomena", FieldType.String),
         ])
         vl.updateFields()
         # WP1b identity invariant: ensure the fiberq_uuid column exists.

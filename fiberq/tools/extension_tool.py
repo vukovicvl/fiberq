@@ -6,7 +6,8 @@ Phase 2.1: Extracted from extracted_classes.py
 Phase 5.2: Added logging infrastructure
 """
 
-from qgis.PyQt.QtCore import Qt, QVariant
+from qgis.PyQt.QtCore import Qt
+from ..utils.compat import FieldType
 from qgis.PyQt.QtWidgets import QMessageBox, QInputDialog
 
 from qgis.core import (
@@ -154,8 +155,8 @@ class ExtensionTool(QgsMapToolEmitPoint):
 
             pr = nastavak_layer.dataProvider()
             pr.addAttributes([
-                QgsField("naziv", QVariant.String),
-                QgsField("fiberq_uuid", QVariant.String),
+                QgsField("naziv", FieldType.String),
+                QgsField("fiberq_uuid", FieldType.String),
             ])
             nastavak_layer.updateFields()
 
@@ -194,7 +195,7 @@ class ExtensionTool(QgsMapToolEmitPoint):
         elif nastavak_layer.fields().indexFromName("naziv") == -1:
             nastavak_layer.startEditing()
             nastavak_layer.dataProvider().addAttributes(
-                [QgsField("naziv", QVariant.String)]
+                [QgsField("naziv", FieldType.String)]
             )
             nastavak_layer.updateFields()
             nastavak_layer.commitChanges()

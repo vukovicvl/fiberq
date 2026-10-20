@@ -12,7 +12,8 @@ Phase 5.2: Added logging infrastructure
 
 from typing import List, Dict, Any, Tuple
 
-from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, QVariant, Qt
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, Qt
+from ..utils.compat import FieldType
 from qgis.PyQt.QtWidgets import QMessageBox, QDialog
 from qgis.PyQt.QtGui import QColor
 
@@ -345,7 +346,7 @@ class CableManager:
             if layer.fields().indexFromName("branch_index") != -1:
                 return
             pr = layer.dataProvider()
-            pr.addAttributes([QgsField("branch_index", QVariant.Int)])
+            pr.addAttributes([QgsField("branch_index", FieldType.Int)])
             layer.updateFields()
         except Exception as e:
             logger.debug(f"Error in CableManager.ensure_branch_index_field: {e}")
@@ -754,38 +755,38 @@ class CableManager:
             pr = cables_layer.dataProvider()
 
             pr.addAttributes([
-                QgsField("tip", QVariant.String),
-                QgsField("podtip", QVariant.String),
-                QgsField("color_code", QVariant.String),
-                QgsField("broj_cevcica", QVariant.Int),
-                QgsField("broj_vlakana", QVariant.Int),
-                QgsField("tip_kabla", QVariant.String),
-                QgsField("vrsta_vlakana", QVariant.String),
-                QgsField("vrsta_omotaca", QVariant.String),
-                QgsField("vrsta_armature", QVariant.String),
-                QgsField("talasno_podrucje", QVariant.String),
-                QgsField("naziv", QVariant.String),
-                QgsField("slabljenje_dbkm", QVariant.Double),
-                QgsField("hrom_disp_ps_nmxkm", QVariant.Double),
-                QgsField("stanje_kabla", QVariant.String),
-                QgsField("cable_laying", QVariant.String),
-                QgsField("vrsta_mreze", QVariant.String),
-                QgsField("godina_ugradnje", QVariant.Int),
-                QgsField("konstr_vlakna_u_cevcicama", QVariant.Int),
-                QgsField("konstr_sa_uzlepljenim_elementom", QVariant.Int),
-                QgsField("konstr_punjeni_kabl", QVariant.Int),
-                QgsField("konstr_sa_arm_vlaknima", QVariant.Int),
-                QgsField("konstr_bez_metalnih", QVariant.Int),
-                QgsField("od", QVariant.String),
-                QgsField("do", QVariant.String),
-                QgsField("duzina_m", QVariant.Double),
-                QgsField("slack_m", QVariant.Double),
-                QgsField("total_len_m", QVariant.Double),
-                QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+                QgsField("tip", FieldType.String),
+                QgsField("podtip", FieldType.String),
+                QgsField("color_code", FieldType.String),
+                QgsField("broj_cevcica", FieldType.Int),
+                QgsField("broj_vlakana", FieldType.Int),
+                QgsField("tip_kabla", FieldType.String),
+                QgsField("vrsta_vlakana", FieldType.String),
+                QgsField("vrsta_omotaca", FieldType.String),
+                QgsField("vrsta_armature", FieldType.String),
+                QgsField("talasno_podrucje", FieldType.String),
+                QgsField("naziv", FieldType.String),
+                QgsField("slabljenje_dbkm", FieldType.Double),
+                QgsField("hrom_disp_ps_nmxkm", FieldType.Double),
+                QgsField("stanje_kabla", FieldType.String),
+                QgsField("cable_laying", FieldType.String),
+                QgsField("vrsta_mreze", FieldType.String),
+                QgsField("godina_ugradnje", FieldType.Int),
+                QgsField("konstr_vlakna_u_cevcicama", FieldType.Int),
+                QgsField("konstr_sa_uzlepljenim_elementom", FieldType.Int),
+                QgsField("konstr_punjeni_kabl", FieldType.Int),
+                QgsField("konstr_sa_arm_vlaknima", FieldType.Int),
+                QgsField("konstr_bez_metalnih", FieldType.Int),
+                QgsField("od", FieldType.String),
+                QgsField("do", FieldType.String),
+                QgsField("duzina_m", FieldType.Double),
+                QgsField("slack_m", FieldType.Double),
+                QgsField("total_len_m", FieldType.Double),
+                QgsField(FIBERQ_UUID_FIELD, FieldType.String),
                 # Phase 0.3: Fiber schema for FiberQ Designer
-                QgsField("fibers_per_tube", QVariant.Int),
-                QgsField("total_fibers", QVariant.Int),
-                QgsField("color_standard", QVariant.String),
+                QgsField("fibers_per_tube", FieldType.Int),
+                QgsField("total_fibers", FieldType.Int),
+                QgsField("color_standard", FieldType.String),
             ])
 
             cables_layer.updateFields()
@@ -793,38 +794,38 @@ class CableManager:
 
         # Ensure layer has all needed fields
         needed_fields = {
-            "tip": QVariant.String,
-            "podtip": QVariant.String,
-            "color_code": QVariant.String,
-            "broj_cevcica": QVariant.Int,
-            "broj_vlakana": QVariant.Int,
-            "tip_kabla": QVariant.String,
-            "vrsta_vlakana": QVariant.String,
-            "vrsta_omotaca": QVariant.String,
-            "vrsta_armature": QVariant.String,
-            "talasno_podrucje": QVariant.String,
-            "naziv": QVariant.String,
-            "slabljenje_dbkm": QVariant.Double,
-            "hrom_disp_ps_nmxkm": QVariant.Double,
-            "stanje_kabla": QVariant.String,
-            "cable_laying": QVariant.String,
-            "vrsta_mreze": QVariant.String,
-            "godina_ugradnje": QVariant.Int,
-            "konstr_vlakna_u_cevcicama": QVariant.Int,
-            "konstr_sa_uzlepljenim_elementom": QVariant.Int,
-            "konstr_punjeni_kabl": QVariant.Int,
-            "konstr_sa_arm_vlaknima": QVariant.Int,
-            "konstr_bez_metalnih": QVariant.Int,
-            "od": QVariant.String,
-            "do": QVariant.String,
-            "duzina_m": QVariant.Double,
-            "slack_m": QVariant.Double,
-            "total_len_m": QVariant.Double,
-            FIBERQ_UUID_FIELD: QVariant.String,
+            "tip": FieldType.String,
+            "podtip": FieldType.String,
+            "color_code": FieldType.String,
+            "broj_cevcica": FieldType.Int,
+            "broj_vlakana": FieldType.Int,
+            "tip_kabla": FieldType.String,
+            "vrsta_vlakana": FieldType.String,
+            "vrsta_omotaca": FieldType.String,
+            "vrsta_armature": FieldType.String,
+            "talasno_podrucje": FieldType.String,
+            "naziv": FieldType.String,
+            "slabljenje_dbkm": FieldType.Double,
+            "hrom_disp_ps_nmxkm": FieldType.Double,
+            "stanje_kabla": FieldType.String,
+            "cable_laying": FieldType.String,
+            "vrsta_mreze": FieldType.String,
+            "godina_ugradnje": FieldType.Int,
+            "konstr_vlakna_u_cevcicama": FieldType.Int,
+            "konstr_sa_uzlepljenim_elementom": FieldType.Int,
+            "konstr_punjeni_kabl": FieldType.Int,
+            "konstr_sa_arm_vlaknima": FieldType.Int,
+            "konstr_bez_metalnih": FieldType.Int,
+            "od": FieldType.String,
+            "do": FieldType.String,
+            "duzina_m": FieldType.Double,
+            "slack_m": FieldType.Double,
+            "total_len_m": FieldType.Double,
+            FIBERQ_UUID_FIELD: FieldType.String,
             # Phase 0.3: Fiber schema for FiberQ Designer
-            "fibers_per_tube": QVariant.Int,
-            "total_fibers": QVariant.Int,
-            "color_standard": QVariant.String,
+            "fibers_per_tube": FieldType.Int,
+            "total_fibers": FieldType.Int,
+            "color_standard": FieldType.String,
         }
         # U4: a pre-1.0 cable layer calls cable_laying "polaganje_kabla".
         # Asking only for the modern name finds nothing, so v1.5.0 added a

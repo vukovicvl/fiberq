@@ -9,7 +9,8 @@ Later phases will switch `extracted_classes.py` to import from here directly.
 """
 from __future__ import annotations
 
-from qgis.PyQt.QtCore import QSettings, QVariant
+from qgis.PyQt.QtCore import QSettings
+from .compat import FieldType
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QMessageBox
 
@@ -308,11 +309,11 @@ def _ensure_region_layer(core):
         region = QgsVectorLayer(f'Polygon?crs={crs}', 'Service Area', 'memory')
         pr = region.dataProvider()
         pr.addAttributes([
-            QgsField('name', QVariant.String),
-            QgsField('created_at', QVariant.String),
-            QgsField('area_m2', QVariant.Double),
-            QgsField('perim_m', QVariant.Double),
-            QgsField('count', QVariant.Int),
+            QgsField('name', FieldType.String),
+            QgsField('created_at', FieldType.String),
+            QgsField('area_m2', FieldType.Double),
+            QgsField('perim_m', FieldType.Double),
+            QgsField('count', FieldType.Int),
         ])
         region.updateFields()
 
@@ -376,13 +377,13 @@ def _ensure_objects_layer(core):
         layer = QgsVectorLayer(f"Polygon?crs={crs}", "Objects", "memory")
         pr = layer.dataProvider()
         pr.addAttributes([
-            QgsField("tip", QVariant.String),
-            QgsField("spratova", QVariant.Int),
-            QgsField("podzemnih", QVariant.Int),
-            QgsField("ulica", QVariant.String),
-            QgsField("broj", QVariant.String),
-            QgsField("naziv", QVariant.String),
-            QgsField("napomena", QVariant.String),
+            QgsField("tip", FieldType.String),
+            QgsField("spratova", FieldType.Int),
+            QgsField("podzemnih", FieldType.Int),
+            QgsField("ulica", FieldType.String),
+            QgsField("broj", FieldType.String),
+            QgsField("naziv", FieldType.String),
+            QgsField("napomena", FieldType.String),
         ])
         layer.updateFields()
 

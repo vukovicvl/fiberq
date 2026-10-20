@@ -23,7 +23,8 @@ from qgis.core import (
     QgsFeature, QgsGeometry,
     QgsFillSymbol, QgsLinePatternFillSymbolLayer, QgsSimpleFillSymbolLayer,
 )
-from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, QVariant
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
+from ..utils.compat import FieldType
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QMessageBox
 
@@ -211,21 +212,21 @@ def _ensure_element_layer_with_style(plugin, layer_name: str):
 
         fields = []
         for (key, label, kind, default, opts) in specs:
-            qt = QVariant.String
+            qt = FieldType.String
             if kind in ("int", "year"):
-                qt = QVariant.Int
+                qt = FieldType.Int
             elif kind == "double":
-                qt = QVariant.Double
+                qt = FieldType.Double
             elif kind == "enum":
-                qt = QVariant.String
+                qt = FieldType.String
             fields.append(QgsField(key, qt))
 
         if not any(f.name() == "naziv" for f in fields):
-            fields.insert(0, QgsField("naziv", QVariant.String))
+            fields.insert(0, QgsField("naziv", FieldType.String))
 
         # Phase 0.1: Add fiberq_uuid field for Designer compatibility
         if not any(f.name() == FIBERQ_UUID_FIELD for f in fields):
-            fields.append(QgsField(FIBERQ_UUID_FIELD, QVariant.String))
+            fields.append(QgsField(FIBERQ_UUID_FIELD, FieldType.String))
 
         pr.addAttributes(fields)
         elem_layer.updateFields()
@@ -376,9 +377,9 @@ def _copy_attributes(src_feat, dst_layer, errors):
             continue
         if key not in dst_map:
             try:
-                to_add.append(QgsField(f.name(), f.type() if hasattr(f, "type") else QVariant.String))
+                to_add.append(QgsField(f.name(), f.type() if hasattr(f, "type") else FieldType.String))
             except (AttributeError, TypeError, ValueError):
-                to_add.append(QgsField(f.name(), QVariant.String))
+                to_add.append(QgsField(f.name(), FieldType.String))
 
     if to_add and allow_schema_change:
         # No edit session: addAttributes goes straight to the provider, and the
@@ -450,12 +451,12 @@ def _ensure_region_layer(core):
         region = QgsVectorLayer(f'Polygon?crs={crs}', 'Service Area', 'memory')
         pr = region.dataProvider()
         pr.addAttributes([
-            QgsField('name', QVariant.String),
-            QgsField('created_at', QVariant.String),
-            QgsField('area_m2', QVariant.Double),
-            QgsField('perim_m', QVariant.Double),
-            QgsField('count', QVariant.Int),
-            QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+            QgsField('name', FieldType.String),
+            QgsField('created_at', FieldType.String),
+            QgsField('area_m2', FieldType.Double),
+            QgsField('perim_m', FieldType.Double),
+            QgsField('count', FieldType.Int),
+            QgsField(FIBERQ_UUID_FIELD, FieldType.String),
         ])
         region.updateFields()
 
@@ -717,14 +718,14 @@ def _ensure_objects_layer(core):
         layer = QgsVectorLayer(f"Polygon?crs={crs}", "Objects", "memory")
         pr = layer.dataProvider()
         pr.addAttributes([
-            QgsField("tip", QVariant.String),
-            QgsField("spratova", QVariant.Int),
-            QgsField("podzemnih", QVariant.Int),
-            QgsField("ulica", QVariant.String),
-            QgsField("broj", QVariant.String),
-            QgsField("naziv", QVariant.String),
-            QgsField("napomena", QVariant.String),
-            QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+            QgsField("tip", FieldType.String),
+            QgsField("spratova", FieldType.Int),
+            QgsField("podzemnih", FieldType.Int),
+            QgsField("ulica", FieldType.String),
+            QgsField("broj", FieldType.String),
+            QgsField("naziv", FieldType.String),
+            QgsField("napomena", FieldType.String),
+            QgsField(FIBERQ_UUID_FIELD, FieldType.String),
         ])
         layer.updateFields()
 
@@ -859,11 +860,11 @@ class LayerManager:
         layer = QgsVectorLayer(f"Point?crs={crs}", "Poles", "memory")
         pr = layer.dataProvider()
         pr.addAttributes([
-            QgsField("tip", QVariant.String),
-            QgsField("podtip", QVariant.String),
-            QgsField("visina", QVariant.Double),
-            QgsField("materijal", QVariant.String),
-            QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+            QgsField("tip", FieldType.String),
+            QgsField("podtip", FieldType.String),
+            QgsField("visina", FieldType.Double),
+            QgsField("materijal", FieldType.String),
+            QgsField(FIBERQ_UUID_FIELD, FieldType.String),
         ])
         layer.updateFields()
 
@@ -924,14 +925,14 @@ class LayerManager:
         vl = QgsVectorLayer(f"Point?crs={crs}", "Optical slacks", "memory")  # Issue #2: Use plural name
         pr = vl.dataProvider()
         pr.addAttributes([
-            QgsField("tip", QVariant.String),
-            QgsField("duzina_m", QVariant.Double),
-            QgsField("lokacija", QVariant.String),
-            QgsField("cable_layer_id", QVariant.String),
-            QgsField("cable_fid", QVariant.Int),
-            QgsField("strana", QVariant.String),
-            QgsField("napomena", QVariant.String),
-            QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+            QgsField("tip", FieldType.String),
+            QgsField("duzina_m", FieldType.Double),
+            QgsField("lokacija", FieldType.String),
+            QgsField("cable_layer_id", FieldType.String),
+            QgsField("cable_fid", FieldType.Int),
+            QgsField("strana", FieldType.String),
+            QgsField("napomena", FieldType.String),
+            QgsField(FIBERQ_UUID_FIELD, FieldType.String),
         ])
         vl.updateFields()
 
@@ -1002,24 +1003,24 @@ class LayerManager:
         layer = QgsVectorLayer(f"Point?crs={crs}", "Manholes", "memory")
         pr = layer.dataProvider()
         fields = [
-            QgsField("broj_okna", QVariant.String),
-            QgsField("tip_okna", QVariant.String),
-            QgsField("vrsta_okna", QVariant.String),
-            QgsField("polozaj_okna", QVariant.String),
-            QgsField("adresa", QVariant.String),
-            QgsField("stanje", QVariant.String),
-            QgsField("god_ugrad", QVariant.Int),
-            QgsField("opis", QVariant.String),
-            QgsField("dimenzije", QVariant.String),
-            QgsField("mat_zida", QVariant.String),
-            QgsField("mat_poklop", QVariant.String),
-            QgsField("odvodnj", QVariant.String),
-            QgsField("poklop_tes", QVariant.Bool),
-            QgsField("poklop_lak", QVariant.Bool),
-            QgsField("br_nosaca", QVariant.Int),
-            QgsField("debl_zida", QVariant.Double),
-            QgsField("lestve", QVariant.String),
-            QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+            QgsField("broj_okna", FieldType.String),
+            QgsField("tip_okna", FieldType.String),
+            QgsField("vrsta_okna", FieldType.String),
+            QgsField("polozaj_okna", FieldType.String),
+            QgsField("adresa", FieldType.String),
+            QgsField("stanje", FieldType.String),
+            QgsField("god_ugrad", FieldType.Int),
+            QgsField("opis", FieldType.String),
+            QgsField("dimenzije", FieldType.String),
+            QgsField("mat_zida", FieldType.String),
+            QgsField("mat_poklop", FieldType.String),
+            QgsField("odvodnj", FieldType.String),
+            QgsField("poklop_tes", FieldType.Bool),
+            QgsField("poklop_lak", FieldType.Bool),
+            QgsField("br_nosaca", FieldType.Int),
+            QgsField("debl_zida", FieldType.Double),
+            QgsField("lestve", FieldType.String),
+            QgsField(FIBERQ_UUID_FIELD, FieldType.String),
         ]
         pr.addAttributes(fields)
         layer.updateFields()
@@ -1116,13 +1117,13 @@ class LayerManager:
         layer = QgsVectorLayer(f"LineString?crs={crs}", name, "memory")
         pr = layer.dataProvider()
         pr.addAttributes([
-            QgsField("materijal", QVariant.String),
-            QgsField("kapacitet", QVariant.String),
-            QgsField("fi", QVariant.Int),
-            QgsField("od", QVariant.String),
-            QgsField("do", QVariant.String),
-            QgsField("duzina_m", QVariant.Double),
-            QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+            QgsField("materijal", FieldType.String),
+            QgsField("kapacitet", FieldType.String),
+            QgsField("fi", FieldType.Int),
+            QgsField("od", FieldType.String),
+            QgsField("do", FieldType.String),
+            QgsField("duzina_m", FieldType.Double),
+            QgsField(FIBERQ_UUID_FIELD, FieldType.String),
         ])
         layer.updateFields()
 
@@ -1240,12 +1241,12 @@ class LayerManager:
             region = QgsVectorLayer(f'Polygon?crs={crs}', 'Service Area', 'memory')
             pr = region.dataProvider()
             pr.addAttributes([
-                QgsField('name', QVariant.String),
-                QgsField('created_at', QVariant.String),
-                QgsField('area_m2', QVariant.Double),
-                QgsField('perim_m', QVariant.Double),
-                QgsField('count', QVariant.Int),
-                QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+                QgsField('name', FieldType.String),
+                QgsField('created_at', FieldType.String),
+                QgsField('area_m2', FieldType.Double),
+                QgsField('perim_m', FieldType.Double),
+                QgsField('count', FieldType.Int),
+                QgsField(FIBERQ_UUID_FIELD, FieldType.String),
             ])
             region.updateFields()
 
@@ -1300,14 +1301,14 @@ class LayerManager:
             layer = QgsVectorLayer(f"Polygon?crs={crs}", "Objects", "memory")
             pr = layer.dataProvider()
             pr.addAttributes([
-                QgsField("tip", QVariant.String),
-                QgsField("spratova", QVariant.Int),
-                QgsField("podzemnih", QVariant.Int),
-                QgsField("ulica", QVariant.String),
-                QgsField("broj", QVariant.String),
-                QgsField("naziv", QVariant.String),
-                QgsField("napomena", QVariant.String),
-                QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+                QgsField("tip", FieldType.String),
+                QgsField("spratova", FieldType.Int),
+                QgsField("podzemnih", FieldType.Int),
+                QgsField("ulica", FieldType.String),
+                QgsField("broj", FieldType.String),
+                QgsField("naziv", FieldType.String),
+                QgsField("napomena", FieldType.String),
+                QgsField(FIBERQ_UUID_FIELD, FieldType.String),
             ])
             layer.updateFields()
 
@@ -1394,19 +1395,19 @@ class LayerManager:
 
         fields = []
         for (key, label, kind, default, opts) in specs:
-            qt = QVariant.String
+            qt = FieldType.String
             if kind in ("int", "year"):
-                qt = QVariant.Int
+                qt = FieldType.Int
             elif kind == "double":
-                qt = QVariant.Double
+                qt = FieldType.Double
             fields.append(QgsField(key, qt))
 
         if not any(f.name() == "naziv" for f in fields):
-            fields.insert(0, QgsField("naziv", QVariant.String))
+            fields.insert(0, QgsField("naziv", FieldType.String))
 
         # Phase 0.1: Add fiberq_uuid field for Designer compatibility
         if not any(f.name() == FIBERQ_UUID_FIELD for f in fields):
-            fields.append(QgsField(FIBERQ_UUID_FIELD, QVariant.String))
+            fields.append(QgsField(FIBERQ_UUID_FIELD, FieldType.String))
 
         return fields
 
@@ -1484,11 +1485,11 @@ class LayerManager:
         layer = QgsVectorLayer(f"LineString?crs={crs}", "Route", "memory")
         pr = layer.dataProvider()
         pr.addAttributes([
-            QgsField("naziv", QVariant.String),
-            QgsField("duzina", QVariant.Double),
-            QgsField("duzina_km", QVariant.Double),
-            QgsField("tip_trase", QVariant.String),
-            QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+            QgsField("naziv", FieldType.String),
+            QgsField("duzina", FieldType.Double),
+            QgsField("duzina_km", FieldType.Double),
+            QgsField("tip_trase", FieldType.String),
+            QgsField(FIBERQ_UUID_FIELD, FieldType.String),
         ])
         layer.updateFields()
 

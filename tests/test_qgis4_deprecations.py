@@ -1,44 +1,83 @@
-"""Constructors QGIS 4 has deprecated must not reappear in the package.
+"""Calls that print into QGIS's Python warning log must not reappear in the package.
 
 FiberQ targets QGIS 3.22 LTR through QGIS 4 / Qt6. A deprecated call still
-works, so nothing fails -- it emits a DeprecationWarning into the Python
-warning log, which is exactly where it goes unnoticed until the removal lands
-and the plugin breaks for everyone at once.
+works, so nothing fails -- it emits a warning into the Python warning log,
+which is exactly where it goes unnoticed until the removal lands and the
+plugin breaks for everyone at once, and where it buries a warning that matters.
 
-Found in field QA on QGIS 4.2: the locator dialog logged a traceback on every
-search because QgsCoordinateReferenceSystem(4326) is deprecated. The authid
-string form works identically on both QGIS 3 and 4.
+Found in field QA:
+
+* QGIS 4.2: the locator dialog logged a traceback on every search because
+  QgsCoordinateReferenceSystem(4326) is deprecated. The authid string form
+  works identically on both QGIS 3 and 4.
+* QGIS 3.40, the v1.6.0 QA: "QgsField constructor is deprecated", once for every
+  place FiberQ builds a field. ``fiberq/utils/compat.py`` picks the call each
+  QGIS takes, so it is the one file allowed the old one.
 """
 import pathlib
 import re
 
+import pytest
+
 PACKAGE = pathlib.Path(__file__).resolve().parent.parent / "fiberq"
 
-#: pattern -> what to write instead. Keep the message actionable.
-FORBIDDEN = {
-    r"QgsCoordinateReferenceSystem\(\s*\d":
-        "QgsCoordinateReferenceSystem('EPSG:<code>') -- the integer "
-        "constructor is deprecated in QGIS 4",
-}
+#: The module that decides between an old call and its replacement.
+COMPAT = "utils/compat.py"
 
 
-def test_no_deprecated_qgis4_constructors():
+class Rule:
+    """A pattern, what to write instead, and a line each way to prove it fires."""
+
+    def __init__(self, name, pattern, advice, caught, passed, allowed=()):
+        self.name = name
+        self.pattern = re.compile(pattern)
+        self.advice = advice
+        self.caught = caught
+        self.passed = passed
+        self.allowed = allowed
+
+
+#: Keep the advice actionable.
+FORBIDDEN = [
+    Rule("crs-integer",
+         r"QgsCoordinateReferenceSystem\(\s*\d",
+         "QgsCoordinateReferenceSystem('EPSG:<code>') -- the integer "
+         "constructor is deprecated in QGIS 4",
+         "crs = QgsCoordinateReferenceSystem(4326)",
+         "crs = QgsCoordinateReferenceSystem('EPSG:4326')"),
+    Rule("field-qvariant",
+         r"\bQVariant\.(String|Int|LongLong|Double|Bool)\b",
+         "FieldType.<type> from fiberq.utils.compat -- QgsField's QVariant "
+         "constructor prints 'QgsField constructor is deprecated' on QGIS 3.38-3.44",
+         'field = QgsField("naziv", QVariant.String)',
+         'field = QgsField("naziv", FieldType.String)',
+         allowed=(COMPAT,)),
+]
+
+
+def test_no_call_that_prints_a_warning():
     problems = []
     for path in sorted(PACKAGE.rglob("*.py")):
+        relative = path.relative_to(PACKAGE).as_posix()
         for number, line in enumerate(
                 path.read_text(encoding="utf-8").splitlines(), start=1):
-            for pattern, advice in FORBIDDEN.items():
-                if re.search(pattern, line):
+            for rule in FORBIDDEN:
+                if relative not in rule.allowed and rule.pattern.search(line):
                     problems.append(
-                        f"{path.relative_to(PACKAGE.parent)}:{number}: "
-                        f"{line.strip()}\n    use {advice}")
+                        f"fiberq/{relative}:{number}: {line.strip()}\n"
+                        f"    use {rule.advice}")
     assert not problems, "\n".join(problems)
 
 
-def test_the_scan_would_catch_a_reintroduction(tmp_path):
-    """A check that has never fired is not a check."""
-    seeded = tmp_path / "seeded.py"
-    seeded.write_text("crs = QgsCoordinateReferenceSystem(4326)\n", encoding="utf-8")
-    pattern = next(iter(FORBIDDEN))
-    assert re.search(pattern, seeded.read_text(encoding="utf-8"))
-    assert not re.search(pattern, "crs = QgsCoordinateReferenceSystem('EPSG:4326')")
+@pytest.mark.parametrize("rule", FORBIDDEN, ids=lambda rule: rule.name)
+def test_the_scan_would_catch_a_reintroduction(rule):
+    """A check that has never fired is not a check -- and that holds for every rule."""
+    assert rule.pattern.search(rule.caught)
+    assert not rule.pattern.search(rule.passed)
+
+
+def test_the_exemption_names_a_real_file():
+    """An exemption for a file that moved would exempt nothing and say nothing."""
+    for rule in FORBIDDEN:
+        for relative in rule.allowed:
+            assert (PACKAGE / relative).is_file(), relative

@@ -329,6 +329,45 @@ def get_wkb_type(type_name: str):
 
 
 # =============================================================================
+# FIELD TYPES
+# =============================================================================
+# QGIS 3.38 gave QgsField a constructor that takes a QMetaType.Type and
+# deprecated the one that takes a QVariant.Type, so on 3.38-3.44 every
+# QgsField(name, QVariant.String) prints "QgsField constructor is deprecated"
+# into the Python warning log, once per call site (measured on 3.40.15: 49
+# lines in one QA session). QGIS 3.22 has only the QVariant.Type constructor,
+# and on QGIS 4 QVariant.String already *is* QMetaType.Type.QString. So the
+# form is asked of QgsField itself, once, instead of read off a version number.
+
+def _field_types():
+    """``(String, Int, LongLong, Double, Bool)`` in the form this QgsField takes."""
+    try:
+        from qgis.PyQt.QtCore import QVariant
+    except ImportError:
+        return (None,) * 5
+    try:
+        from qgis.PyQt.QtCore import QMetaType
+        from qgis.core import QgsField
+        QgsField("probe", QMetaType.Type.QString)
+    except (ImportError, AttributeError, TypeError):
+        return QVariant.String, QVariant.Int, QVariant.LongLong, QVariant.Double, QVariant.Bool
+    return (QMetaType.Type.QString, QMetaType.Type.Int, QMetaType.Type.LongLong,
+            QMetaType.Type.Double, QMetaType.Type.Bool)
+
+
+class FieldType:
+    """The types to build a :class:`QgsField` with: ``QgsField("naziv", FieldType.String)``.
+
+    Never ``QVariant.String`` -- see the block comment above; the package scan
+    in ``tests/test_qgis4_deprecations.py`` refuses it. Qt numbers its built-in
+    types the same in ``QVariant`` and ``QMetaType`` (Bool 1, Int 2, LongLong 4,
+    Double 6, String 10), so a comparison such as ``field.type() == FieldType.Int``
+    holds on every supported QGIS as well.
+    """
+    String, Int, LongLong, Double, Bool = _field_types()
+
+
+# =============================================================================
 # DEPRECATED API WARNINGS
 # =============================================================================
 
@@ -505,6 +544,8 @@ __all__ = [
     # Wrapper classes
     'UnitTypes',
     'RenderUnit',
+    # Field types
+    'FieldType',
     # Utilities
     'has_feature',
     'safe_import_qgis_core',

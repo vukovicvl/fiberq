@@ -44,6 +44,7 @@ from . import interchange as ic
 from . import interchange_fields as fm
 from ..i18n import safe_format
 from ..models.schema import SCHEMA_VERSION, canonical_layer_name
+from ..utils.compat import FieldType
 from ..utils.geometry import transformed
 from ..utils.logger import get_logger
 from ..utils.uuid_utils import FIBERQ_UUID_FIELD
@@ -52,19 +53,9 @@ logger = get_logger(__name__)
 
 
 def _text_field(name):
-    """A text :class:`QgsField`, built with the constructor this QGIS accepts.
-
-    QGIS 3.38 deprecated the ``QVariant``-typed constructor in favour of
-    ``QMetaType``; QGIS 3.22 LTR, which this plugin still targets, only has the
-    old one. Older modules in this package still use ``QVariant`` directly --
-    that is deferred debt, not the pattern to copy.
-    """
-    try:
-        from qgis.PyQt.QtCore import QMetaType
-        return QgsField(name, QMetaType.Type.QString)
-    except (ImportError, AttributeError, TypeError):
-        from qgis.PyQt.QtCore import QVariant
-        return QgsField(name, QVariant.String)
+    """A text :class:`QgsField`, built with the constructor this QGIS accepts
+    (:class:`fiberq.utils.compat.FieldType` says which)."""
+    return QgsField(name, FieldType.String)
 
 
 def _quoted(identifier):

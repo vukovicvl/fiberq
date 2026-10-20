@@ -15,7 +15,7 @@ from qgis.core import (
     QgsProject, QgsVectorLayer, QgsField, QgsMessageLog,
     Qgis
 )
-from qgis.PyQt.QtCore import QVariant
+from .compat import FieldType
 
 from .logger import get_logger
 
@@ -186,7 +186,7 @@ def ensure_uuid_field(layer):
         provider_type = (layer.dataProvider().name() if layer.dataProvider() else "unknown")
         _log(f"ensure_uuid_field: '{layer.name()}' provider={provider_type}, fields={len(current_fields)}, attempting to add...")
 
-        new_field = QgsField(FIBERQ_UUID_FIELD, QVariant.String)
+        new_field = QgsField(FIBERQ_UUID_FIELD, FieldType.String)
 
         # Method 1: Direct provider add (best for memory/ogr layers)
         if layer.dataProvider():

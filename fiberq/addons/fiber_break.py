@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, Qt, QVariant
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, Qt
+from ..utils.compat import FieldType
 from qgis.PyQt.QtWidgets import QMessageBox
 from qgis.core import (
     QgsDistanceArea,
@@ -185,13 +186,13 @@ class FiberBreakTool(QgsMapTool):
         pr = vl.dataProvider()
         pr.addAttributes(
             [
-                QgsField("naziv", QVariant.String),
-                QgsField("cable_layer_id", QVariant.String),
-                QgsField("cable_fid", QVariant.Int),
-                QgsField("distance_m", QVariant.Double),
-                QgsField("segments_hit", QVariant.Int),
-                QgsField("vreme", QVariant.String),
-                QgsField("fiberq_uuid", QVariant.String),
+                QgsField("naziv", FieldType.String),
+                QgsField("cable_layer_id", FieldType.String),
+                QgsField("cable_fid", FieldType.Int),
+                QgsField("distance_m", FieldType.Double),
+                QgsField("segments_hit", FieldType.Int),
+                QgsField("vreme", FieldType.String),
+                QgsField("fiberq_uuid", FieldType.String),
             ]
         )
         vl.updateFields()

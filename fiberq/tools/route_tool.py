@@ -7,12 +7,13 @@ Tool for manually drawing routes by clicking points on the map.
 import math
 
 from .base import (
-    Qt, QVariant, QColor, QMessageBox, QInputDialog,
+    Qt, QColor, QMessageBox, QInputDialog,
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
     QgsPointXY, QgsField, QgsWkbTypes, QgsRubberBand,
     QgsMapTool,
     get_element_defs, get_joint_closure_def, get_route_type_options
 )
+from ..utils.compat import FieldType
 
 # Phase 5.2: Logging
 from ..utils.geometry import held_by_its_box, polylines
@@ -282,13 +283,13 @@ class ManualRouteTool(QgsMapTool):
         # Ensure required fields exist
         route_layer.startEditing()
         if route_layer.fields().indexFromName("naziv") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("naziv", QVariant.String)])
+            route_layer.dataProvider().addAttributes([QgsField("naziv", FieldType.String)])
         if route_layer.fields().indexFromName("duzina") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("duzina", QVariant.Double)])
+            route_layer.dataProvider().addAttributes([QgsField("duzina", FieldType.Double)])
         if route_layer.fields().indexFromName("duzina_km") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("duzina_km", QVariant.Double)])
+            route_layer.dataProvider().addAttributes([QgsField("duzina_km", FieldType.Double)])
         if route_layer.fields().indexFromName("tip_trase") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("tip_trase", QVariant.String)])
+            route_layer.dataProvider().addAttributes([QgsField("tip_trase", FieldType.String)])
         route_layer.updateFields()
         route_layer.commitChanges()
 

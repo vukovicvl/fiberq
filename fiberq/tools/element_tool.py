@@ -5,7 +5,8 @@ Map tools for placing and managing FiberQ elements (ODF, TB, OTB, etc.)
 Phase 2.1: Extracted from extracted_classes.py
 """
 
-from qgis.PyQt.QtCore import Qt, QVariant
+from qgis.PyQt.QtCore import Qt
+from ..utils.compat import FieldType
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QMessageBox, QInputDialog, QDialog
 
@@ -158,18 +159,18 @@ class PlaceElementTool(QgsMapToolEmitPoint):
 
             fields = []
             for (key, label, kind, default, opts) in specs:
-                qt = QVariant.String
+                qt = FieldType.String
                 if kind in ("int", "year"):
-                    qt = QVariant.Int
+                    qt = FieldType.Int
                 elif kind == "double":
-                    qt = QVariant.Double
+                    qt = FieldType.Double
                 elif kind == "enum":
-                    qt = QVariant.String
+                    qt = FieldType.String
                 fields.append(QgsField(key, qt))
 
             # Always ensure 'naziv' exists
             if not any(f.name() == "naziv" for f in fields):
-                fields.insert(0, QgsField("naziv", QVariant.String))
+                fields.insert(0, QgsField("naziv", FieldType.String))
 
             pr.addAttributes(fields)
             elem_layer.updateFields()
@@ -216,13 +217,13 @@ class PlaceElementTool(QgsMapToolEmitPoint):
             to_add = []
             for (key, label, kind, default, opts) in specs:
                 if elem_layer.fields().indexFromName(key) == -1:
-                    qt = QVariant.String
+                    qt = FieldType.String
                     if kind in ("int", "year"):
-                        qt = QVariant.Int
+                        qt = FieldType.Int
                     elif kind == "double":
-                        qt = QVariant.Double
+                        qt = FieldType.Double
                     elif kind == "enum":
-                        qt = QVariant.String
+                        qt = FieldType.String
                     to_add.append(QgsField(key, qt))
 
             if to_add:

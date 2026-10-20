@@ -12,7 +12,8 @@ Phase 5.2: Added logging infrastructure
 
 from typing import Optional, List, Dict, Any
 
-from qgis.PyQt.QtCore import Qt, QVariant
+from qgis.PyQt.QtCore import Qt
+from ..utils.compat import FieldType
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QMessageBox, QDialog
 
@@ -245,12 +246,12 @@ class PipeManager:
         layer = QgsVectorLayer(f"LineString?crs={crs}", name, "memory")
         pr = layer.dataProvider()
         pr.addAttributes([
-            QgsField("materijal", QVariant.String),
-            QgsField("kapacitet", QVariant.String),
-            QgsField("fi", QVariant.Int),
-            QgsField("od", QVariant.String),
-            QgsField("do", QVariant.String),
-            QgsField("duzina_m", QVariant.Double),
+            QgsField("materijal", FieldType.String),
+            QgsField("kapacitet", FieldType.String),
+            QgsField("fi", FieldType.Int),
+            QgsField("od", FieldType.String),
+            QgsField("do", FieldType.String),
+            QgsField("duzina_m", FieldType.Double),
         ])
         layer.updateFields()
 

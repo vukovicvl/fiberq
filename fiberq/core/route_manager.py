@@ -13,7 +13,8 @@ Phase 5.2: Added logging infrastructure
 
 from typing import Optional, List, Tuple
 
-from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, QVariant, Qt
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, Qt
+from ..utils.compat import FieldType
 from qgis.PyQt.QtWidgets import QMessageBox, QInputDialog, QFileDialog
 
 from qgis.core import (
@@ -266,16 +267,16 @@ class RouteManager:
         added_fields = []
 
         if route_layer.fields().indexFromName("naziv") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("naziv", QVariant.String)])
+            route_layer.dataProvider().addAttributes([QgsField("naziv", FieldType.String)])
             added_fields.append("naziv")
         if route_layer.fields().indexFromName("duzina") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("duzina", QVariant.Double)])
+            route_layer.dataProvider().addAttributes([QgsField("duzina", FieldType.Double)])
             added_fields.append("duzina")
         if route_layer.fields().indexFromName("duzina_km") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("duzina_km", QVariant.Double)])
+            route_layer.dataProvider().addAttributes([QgsField("duzina_km", FieldType.Double)])
             added_fields.append("duzina_km")
         if route_layer.fields().indexFromName("tip_trase") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("tip_trase", QVariant.String)])
+            route_layer.dataProvider().addAttributes([QgsField("tip_trase", FieldType.String)])
             added_fields.append("tip_trase")
 
         if added_fields:

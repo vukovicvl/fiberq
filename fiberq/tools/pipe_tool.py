@@ -9,11 +9,12 @@ Phase 5.2: Added logging infrastructure
 import math
 
 from .base import (
-    Qt, QVariant, QColor,
+    Qt, QColor,
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
     QgsPointXY, QgsField, QgsWkbTypes, QgsRubberBand,
     QgsMapTool, QgsVertexMarker
 )
+from ..utils.compat import FieldType
 
 # Phase 5.2: Logging
 from ..utils.geometry import held_by_its_box, polylines
@@ -405,7 +406,7 @@ class PipePlaceTool(QgsMapTool):
         # Ensure duzina_m field exists
         try:
             if 'duzina_m' not in layer.fields().names():
-                layer.addAttribute(QgsField('duzina_m', QVariant.Double))
+                layer.addAttribute(QgsField('duzina_m', FieldType.Double))
                 layer.updateFields()
         except Exception as e:
             logger.debug(f"Error in PipePlaceTool._finish: {e}")

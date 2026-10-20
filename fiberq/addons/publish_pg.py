@@ -1,4 +1,5 @@
-from qgis.PyQt.QtCore import Qt, QVariant
+from qgis.PyQt.QtCore import Qt
+from ..utils.compat import FieldType
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
     QLineEdit, QPushButton, QMessageBox
@@ -142,7 +143,7 @@ def _choose_pk_field(layer: QgsVectorLayer):
     if len(own_key) == 1:
         candidates.append(own_key[0])
     for index in dict.fromkeys(candidates):
-        if fields.at(index).type() in (QVariant.Int, QVariant.LongLong) and _holds_distinct_integers(layer, index):
+        if fields.at(index).type() in (FieldType.Int, FieldType.LongLong) and _holds_distinct_integers(layer, index):
             return fields.at(index).name(), False
 
     taken = {f.name().lower() for f in fields}
