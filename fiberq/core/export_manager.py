@@ -28,6 +28,7 @@ from .schema_version import mark_project_current
 
 # Phase 5.2: Logging
 from ..i18n import safe_format
+from ..utils.compat import save_style_to_database
 from ..utils.errors import OperationErrors, check_commit, describe
 from ..utils.logger import get_logger
 from .gpkg_target import table_in_use, table_name_for
@@ -481,7 +482,7 @@ class ExportManager:
     def _save_style(self, layer, errors):
         """Store the layer's style in the GeoPackage, and say so if it will not."""
         try:
-            problem = layer.saveStyleToDatabase("default", "auto-saved by FiberQ", True, "")
+            problem = save_style_to_database(layer, "default", "auto-saved by FiberQ", True, "")
         except (AttributeError, RuntimeError) as exc:
             errors.add(layer.name(), exc)
             return

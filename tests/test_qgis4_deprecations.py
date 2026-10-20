@@ -11,8 +11,9 @@ Found in field QA:
   QgsCoordinateReferenceSystem(4326) is deprecated. The authid string form
   works identically on both QGIS 3 and 4.
 * QGIS 3.40, the v1.6.0 QA: "QgsField constructor is deprecated", once for every
-  place FiberQ builds a field. ``fiberq/utils/compat.py`` picks the call each
-  QGIS takes, so it is the one file allowed the old one.
+  place FiberQ builds a field, and "saveStyleToDatabase() is deprecated" from
+  auto-save. ``fiberq/utils/compat.py`` picks the call each QGIS takes, so it is
+  the one file allowed the old ones.
 """
 import pathlib
 import re
@@ -51,6 +52,12 @@ FORBIDDEN = [
          "constructor prints 'QgsField constructor is deprecated' on QGIS 3.38-3.44",
          'field = QgsField("naziv", QVariant.String)',
          'field = QgsField("naziv", FieldType.String)',
+         allowed=(COMPAT,)),
+    Rule("style-v1",
+         r"\.saveStyleToDatabase\(",
+         "save_style_to_database() from fiberq.utils.compat -- deprecated from QGIS 3.40",
+         'problem = layer.saveStyleToDatabase("default", "", True, "")',
+         'problem = save_style_to_database(layer, "default", "", True, "")',
          allowed=(COMPAT,)),
 ]
 

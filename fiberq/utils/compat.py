@@ -329,7 +329,7 @@ def get_wkb_type(type_name: str):
 
 
 # =============================================================================
-# FIELD TYPES
+# FIELD TYPES AND STYLE STORAGE
 # =============================================================================
 # QGIS 3.38 gave QgsField a constructor that takes a QMetaType.Type and
 # deprecated the one that takes a QVariant.Type, so on 3.38-3.44 every
@@ -365,6 +365,22 @@ class FieldType:
     holds on every supported QGIS as well.
     """
     String, Int, LongLong, Double, Bool = _field_types()
+
+
+def save_style_to_database(layer, name, description, use_as_default, ui_file_content=""):
+    """Store ``layer``'s style in its own database: the error text, or ``""``.
+
+    ``saveStyleToDatabase`` prints a deprecation into the Python warning log
+    from QGIS 3.40, whose ``saveStyleToDatabaseV2`` QGIS 3.22 does not have.
+    Both say what went wrong the same way, as the provider's message (measured
+    on 3.40.15 and 4.2.3: ``""`` on a GeoPackage, "Provider memory has no
+    saveStyle method" on a memory layer).
+    """
+    save = getattr(layer, "saveStyleToDatabaseV2", None)
+    if save is None:
+        return layer.saveStyleToDatabase(name, description, use_as_default, ui_file_content)
+    _results, message = save(name, description, use_as_default, ui_file_content)
+    return message
 
 
 # =============================================================================
@@ -544,8 +560,9 @@ __all__ = [
     # Wrapper classes
     'UnitTypes',
     'RenderUnit',
-    # Field types
+    # Field types and style storage
     'FieldType',
+    'save_style_to_database',
     # Utilities
     'has_feature',
     'safe_import_qgis_core',

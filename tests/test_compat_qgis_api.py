@@ -1,17 +1,25 @@
-"""The QGIS call FiberQ makes through ``utils.compat`` so that it does not print.
+"""The two QGIS calls FiberQ makes through ``utils.compat`` so that neither prints.
 
 Found in the v1.6.0 QA on QGIS 3.40 LTR: the Python warning tab filled with
 "QgsField constructor is deprecated", one line per place FiberQ builds a field
-(49 in one session). It still worked; it is the kind of noise that hides a real
-warning.
+(49 in one session), and auto-save added "saveStyleToDatabase() is deprecated".
+Both still worked; both are the kind of noise that hides a real warning.
 """
+import sqlite3
 import warnings
+from contextlib import closing
 
 import pytest
-from qgis.core import Qgis, QgsField, QgsVectorLayer
+from qgis.core import (
+    Qgis,
+    QgsCoordinateTransformContext,
+    QgsField,
+    QgsVectorFileWriter,
+    QgsVectorLayer,
+)
 from qgis.PyQt.QtCore import QMetaType
 
-from fiberq.utils.compat import FieldType
+from fiberq.utils.compat import FieldType, save_style_to_database
 
 #: Qt's number for each built-in type, the same in QVariant and QMetaType.
 NUMBERS = {"Bool": 1, "Int": 2, "LongLong": 4, "Double": 6, "String": 10}
@@ -53,3 +61,35 @@ def test_adding_the_identity_field_prints_no_deprecation(qgis_app):
         assert ensure_uuid_field(layer)
     assert _deprecations(caught) == []
     assert layer.fields().indexOf(FIBERQ_UUID_FIELD) >= 0
+
+
+def _geopackage(tmp_path):
+    path = tmp_path / "styles.gpkg"
+    source = QgsVectorLayer("Point?crs=EPSG:4326&field=naziv:string", "Poles", "memory")
+    options = QgsVectorFileWriter.SaveVectorOptions()
+    options.driverName = "GPKG"
+    options.layerName = "Poles"
+    result = QgsVectorFileWriter.writeAsVectorFormatV3(
+        source, str(path), QgsCoordinateTransformContext(), options)
+    assert result[0] == QgsVectorFileWriter.WriterError.NoError, result
+    layer = QgsVectorLayer(f"{path}|layername=Poles", "Poles", "ogr")
+    assert layer.isValid()
+    return path, layer
+
+
+def test_a_style_is_saved_into_its_geopackage_without_a_deprecation(qgis_app, tmp_path):
+    path, layer = _geopackage(tmp_path)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        problem = save_style_to_database(layer, "default", "auto-saved by FiberQ", True, "")
+    assert problem == ""
+    assert _deprecations(caught) == []
+    with closing(sqlite3.connect(str(path))) as conn:
+        saved = conn.execute("SELECT COUNT(*) FROM layer_styles WHERE f_table_name = 'Poles'").fetchone()[0]
+    assert saved == 1
+
+
+def test_a_style_that_cannot_be_saved_says_why(qgis_app):
+    """The provider's own message, on either call: what auto-save reports."""
+    layer = QgsVectorLayer("Point?crs=EPSG:4326", "scratch", "memory")
+    assert save_style_to_database(layer, "default", "", True, "")
