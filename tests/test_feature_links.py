@@ -20,10 +20,14 @@ back rather than by asserting on the key shape.
 
 Two limits, both deliberate and both measured:
 
-* **No listing-based migration.** ``QgsProject.subkeyList`` answered ``[]`` for
-  three layers whose entries ``readEntry`` then returned correctly, so any
-  sweep over the old keys would silently skip links. The fallback is per
-  feature instead, where the layer and the feature id are already known.
+* **Lazy migration, listed first.** The fallback is per feature, where the
+  layer and the feature id are already known, and it lists the layer's old
+  keys with ``entryList`` before reading one: QGIS 3 logs a Critical "Entry
+  token invalid" for every *read* of a numeric key segment, found or not, and
+  the picture watcher asks about every feature under every click (v1.6.0 QA
+  on 3.40). ``subkeyList`` is not the listing call -- it answers ``[]`` here,
+  which an earlier version of this note took to mean the keys could not be
+  listed at all.
 * **A link already destroyed cannot come back.** After a QGIS 3 round trip the
   old key is not in the file at all, so there is nothing left to read. Links
   made or re-attached from v1.6.0 on are safe; older ones must be attached
@@ -33,7 +37,7 @@ import json
 import os
 
 import pytest
-from qgis.core import QgsProject, QgsVectorLayer
+from qgis.core import Qgis, QgsApplication, QgsMessageLog, QgsProject, QgsVectorLayer
 
 from fiberq.core import feature_links as fl
 
@@ -193,7 +197,7 @@ def test_the_pre_1_0_scope_is_still_read(project, layer, kind, prefix):
 
 
 def test_reading_an_old_key_migrates_it(project, layer):
-    """Lazy on purpose: the old keys cannot be listed. See the module docstring."""
+    """Lazy on purpose: see the module docstring."""
     project.writeEntry(fl.SCOPE, f"image_map/{layer.id()}/7", "/old.jpg")
     assert fl.link_get(fl.IMAGES, layer.id(), 7, project) == "/old.jpg"
 
@@ -398,3 +402,193 @@ def test_attaching_a_picture_to_a_selection_goes_through_the_batch(project, laye
 
     for fid in (4, 5, 6):
         assert fl.link_get(fl.IMAGES, layer.id(), fid, project) == "/shared.jpg"
+
+
+# ---------------------------------------------------------------------------
+# Nothing in QGIS's log for a feature that has no old key
+# ---------------------------------------------------------------------------
+
+INVALID_TOKEN = "Entry token invalid"
+_PROBE = "FiberQ test: can the message log be watched here?"
+
+
+def _line_signals(log):
+    """``(name, signal)`` for each signal a logged line can arrive on, newest first.
+
+    ``messageReceived[str, str, Qgis.MessageLevel]`` is the overload that
+    carries the line; ``messageReceived(bool)`` only says one arrived. QGIS 4
+    still declares the three-argument one but no longer emits it, and a QGIS
+    that drops it answers the look-up with KeyError ("there is no matching
+    overloaded signal", what PyQt says for any signature a signal lacks on
+    3.40.15 and 4.2.3): it is left out, so the fixture listens on
+    ``messageReceivedWithFormat`` instead of erroring.
+    """
+    signals = []
+    if hasattr(log, "messageReceivedWithFormat"):
+        signals.append(("messageReceivedWithFormat", log.messageReceivedWithFormat))
+    try:
+        signals.append(("messageReceived", log.messageReceived[str, str, Qgis.MessageLevel]))
+    except (AttributeError, KeyError):
+        pass  # no three-argument overload on this QGIS
+    return signals
+
+
+def _listener(lines):
+    def take(message, tag, level, *_format):
+        lines.append((tag, level, message))
+    return take
+
+
+@pytest.fixture
+def qgis_log(qgis_app):
+    """Every line QGIS logs while the test runs, as ``(tag, level, message)``.
+
+    QGIS 4 logs a line through ``messageReceivedWithFormat``, which adds the
+    line's format, and no longer emits the three-argument ``messageReceived``
+    it still declares. Measured with one ``QgsMessageLog.logMessage``: 4.0.3
+    and 4.2.3 deliver it on ``messageReceivedWithFormat`` alone, and QGIS's
+    own log panel still shows it; 3.22.16, 3.40.15 and 3.44.15 have no
+    ``messageReceivedWithFormat`` and deliver it on ``messageReceived``. So
+    the fixture logs a line of its own and listens on the first signal that
+    delivered it, and on that one only, so that a QGIS emitting both cannot
+    count a line twice. It skips where none delivers it, because a "logs
+    nothing" check would pass there whatever happened.
+    """
+    connected = []
+    for name, signal in _line_signals(QgsApplication.messageLog()):
+        lines = []
+        take = _listener(lines)
+        signal.connect(take)
+        connected.append((name, signal, take, lines))
+    try:
+        QgsMessageLog.logMessage(_PROBE, "FiberQ tests", Qgis.MessageLevel.Info)
+        heard = [entry for entry in connected
+                 if any(message == _PROBE for _tag, _level, message in entry[3])]
+        if not heard:
+            names = " or ".join(entry[0] for entry in connected)
+            pytest.skip(f"QGIS {Qgis.QGIS_VERSION} delivered no line logged through "
+                        f"QgsMessageLog.logMessage on {names}, so a 'logs nothing' "
+                        "check cannot be observed")
+        others = [entry for entry in connected if entry is not heard[0]]
+        connected = heard[:1]
+        for _name, signal, take, _lines in others:
+            signal.disconnect(take)
+        seen = heard[0][3]
+        seen.remove(next(line for line in seen if line[2] == _PROBE))
+        yield seen
+    finally:
+        for _name, signal, take, _lines in connected:
+            signal.disconnect(take)
+
+
+class _OnlyTheBoolOverload:
+    """``messageReceived`` on a QGIS that keeps only ``messageReceived(bool)``."""
+
+    def __getitem__(self, signature):
+        raise KeyError("there is no matching overloaded signal")
+
+
+class _LogWithoutTheThreeArgumentSignal:
+    messageReceived = _OnlyTheBoolOverload()
+    messageReceivedWithFormat = object()
+
+
+def test_the_log_fixture_listens_where_the_three_argument_signal_is_gone():
+    """Such a QGIS leaves the fixture on messageReceivedWithFormat, not in a KeyError."""
+    log = _LogWithoutTheThreeArgumentSignal()
+
+    assert _line_signals(log) == [("messageReceivedWithFormat", log.messageReceivedWithFormat)]
+
+
+def _complaints(seen):
+    return [line for line in seen if INVALID_TOKEN in line[2]]
+
+
+class _CountingReads:
+    """A project that remembers which keys were read from it."""
+
+    def __init__(self, inner):
+        self.inner = inner
+        self.reads = []
+
+    def readEntry(self, scope, key, default=""):
+        self.reads.append(key)
+        return self.inner.readEntry(scope, key, default)
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+
+def test_the_log_check_sees_a_blind_read_on_qgis_3(project, qgis_log):
+    """A check that has never fired is not a check."""
+    project.readEntry(fl.SCOPE, "image_map/Poles_x/12", "")
+    if Qgis.QGIS_VERSION_INT < 40000:
+        assert _complaints(qgis_log), qgis_log
+    else:
+        # QGIS 4 dropped the complaint -- it is not in 4.2.3's libqgis_core --
+        # and 4.0.3 and 4.2.3 log nothing at all for this read (measured).
+        assert not qgis_log, "this QGIS 4 logs a line for a numeric key segment: measure again"
+
+
+@pytest.mark.parametrize("kind,prefix", LEGACY_KINDS)
+def test_asking_about_a_feature_without_a_link_logs_nothing(project, layer, qgis_log, kind, prefix):
+    """The picture watcher asks this about every feature under every click (QA on 3.40).
+
+    Nothing at all, not only no "Entry token invalid": QGIS 4 has no such
+    complaint to log, so there these checks catch a line of FiberQ's own.
+    """
+    for fid in (1, 2, 12):
+        fl.link_get(kind, layer.id(), fid, project)
+    assert not qgis_log, qgis_log
+
+
+def test_setting_and_clearing_links_logs_nothing(project, layer, qgis_log):
+    fl.link_set(fl.IMAGES, layer.id(), 12, "/a.jpg", project)
+    fl.link_set_many(fl.IMAGES, layer.id(), {1: "/b.jpg", 2: "/c.jpg"}, project)
+    fl.link_clear(fl.IMAGES, layer.id(), 12, project)
+    assert not qgis_log, qgis_log
+
+
+def test_only_a_feature_with_an_old_key_gets_its_key_read(project, layer):
+    project.writeEntry(fl.SCOPE, f"image_map/{layer.id()}/7", "/old.jpg")
+    counting = _CountingReads(project)
+
+    assert fl.link_get(fl.IMAGES, layer.id(), 8, counting) == ""
+    assert not [key for key in counting.reads if key.startswith("image_map/")], counting.reads
+
+    assert fl.link_get(fl.IMAGES, layer.id(), 7, counting) == "/old.jpg"
+    assert f"image_map/{layer.id()}/7" in counting.reads
+
+
+def _survey_layer(project):
+    """A layer named "2024 survey": its id starts with a digit, which QGIS 3
+    would log as an invalid token too."""
+    survey = QgsVectorLayer("Point?crs=EPSG:3857", "2024 survey", "memory")
+    project.addMapLayer(survey)
+    assert survey.id()[0].isdigit(), survey.id()
+    return survey
+
+
+def test_a_layer_id_that_starts_with_a_digit_still_links(project):
+    """The links work on every QGIS; the log half is the next test."""
+    survey = _survey_layer(project)
+    assert fl.link_get(fl.IMAGES, survey.id(), 3, project) == ""
+    fl.link_set(fl.IMAGES, survey.id(), 4, "/a.jpg", project)
+    assert fl.link_get(fl.IMAGES, survey.id(), 4, project) == "/a.jpg"
+
+
+def test_a_layer_id_that_starts_with_a_digit_logs_nothing(project, qgis_log):
+    survey = _survey_layer(project)
+    fl.link_get(fl.IMAGES, survey.id(), 3, project)
+    fl.link_set(fl.IMAGES, survey.id(), 4, "/a.jpg", project)
+    fl.link_get(fl.IMAGES, survey.id(), 4, project)
+    assert not qgis_log, qgis_log
+
+
+@pytest.mark.skipif(Qgis.QGIS_VERSION_INT < 40000,
+                    reason="QGIS 3 cannot have saved a key under such an id")
+def test_qgis_4_still_migrates_an_old_key_under_such_an_id(project):
+    survey = QgsVectorLayer("Point?crs=EPSG:3857", "2024 survey", "memory")
+    project.addMapLayer(survey)
+    project.writeEntry(fl.SCOPE, f"image_map/{survey.id()}/3", "/old.jpg")
+    assert fl.link_get(fl.IMAGES, survey.id(), 3, project) == "/old.jpg"
