@@ -361,9 +361,9 @@ def test_e2_flags_a_bowtie_polygon(qgis_app):
 # ---------------------------------------------------------------------------
 
 def test_d1_accepts_the_english_labels_the_plugin_actually_stores(qgis_app):
-    """The cable dialog offers "Optical"/"Copper" and maps them to themselves, so
-    real projects store the English label where schema.py declares opticki /
-    bakarnI. Both sides of value_map must pass, or every cable is flagged."""
+    """FiberQ stores "Optical"/"Copper"; older projects hold opticki / bakarnI until
+    the layer is restyled (schema.py ``legacy_values``). All four must pass, or
+    every cable in one project or the other is flagged."""
     project = QgsProject()
     project.addMapLayer(_layer(
         "Underground cables", "LineString",

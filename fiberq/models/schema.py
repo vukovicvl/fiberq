@@ -64,6 +64,10 @@ class FieldDefinition:
     options: Optional[List[str]] = None
     units: str = ""
     value_map: Optional[Dict[str, str]] = None
+    #: Values older projects still store, as ``{old: today's}``. Read wherever
+    #: the field is (validation rule D1 accepts them); FiberQ rewrites them to
+    #: today's value when it restyles the layer. Not offered in the form.
+    legacy_values: Optional[Dict[str, str]] = None
     #: True for a column the plugin adds only when a feature needs it, rather
     #: than when the layer is created. Such a field is part of the schema and
     #: is published in the interchange mapping, but a freshly created layer
@@ -111,8 +115,17 @@ SLACK_SIDE_VALUE_MAP: Dict[str, str] = {
     "MID SPAN": "sredina",
 }
 CABLE_TYPE_VALUE_MAP: Dict[str, str] = {
-    "Optical": "opticki",
-    "Copper": "bakarnI",  # NOTE: as-built typo (capital I); preserved, see docs/schema.md
+    "Optical": "Optical",
+    "Copper": "Copper",
+}
+#: The cable types older projects store. FiberQ writes ``Optical`` / ``Copper``,
+#: and rewrites these whenever it restyles a cable layer
+#: (``utils.field_aliases._migrate_cable_type_values``), so until 1.6.0 the
+#: value map above -- which still named these -- showed every cable's type as
+#: "(Optical)" in the attribute form. ``bakarnI`` keeps its as-built capital I.
+CABLE_TYPE_LEGACY_VALUES: Dict[str, str] = {
+    "opticki": "Optical",
+    "bakarnI": "Copper",
 }
 CABLE_SUBTYPE_VALUE_MAP: Dict[str, str] = {
     "Backbone": "glavni",
@@ -413,7 +426,8 @@ OBJECTS_FIELDS: List[FieldDefinition] = [
 # it, so the benchmark dataset's content digest does not move and the v1.5.0
 # performance baseline stays comparable.
 CABLE_FIELDS: List[FieldDefinition] = [
-    FieldDefinition("tip", "Cable type", "text", "", value_map=CABLE_TYPE_VALUE_MAP),
+    FieldDefinition("tip", "Cable type", "text", "", value_map=CABLE_TYPE_VALUE_MAP,
+                    legacy_values=CABLE_TYPE_LEGACY_VALUES),
     FieldDefinition("podtip", "Segment type", "text", "", value_map=CABLE_SUBTYPE_VALUE_MAP),
     FieldDefinition("color_code", "Color code", "text", ""),
     FieldDefinition("broj_cevcica", "Number of ducts", "int", 0),

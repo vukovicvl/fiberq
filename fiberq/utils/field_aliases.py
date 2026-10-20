@@ -194,10 +194,10 @@ SLACK_SIDE_VALUE_MAP: Dict[str, str] = {
     "MID SPAN": "sredina",
 }
 
-# Cable type value map
+# Cable type value map: the value FiberQ stores (models/schema.py says why).
 CABLE_TYPE_VALUE_MAP: Dict[str, str] = {
-    "Optical": "opticki",
-    "Copper": "bakarnI",
+    "Optical": "Optical",
+    "Copper": "Copper",
 }
 
 # Cable subtype value map

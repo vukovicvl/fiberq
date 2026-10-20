@@ -16,7 +16,7 @@ apart. A field added to the plugin without a canonical name fails CI.
 
 FiberQ's stored field names are the original Serbian database names — `duzina_m`,
 `slabljenje_dbkm`, `vrsta_omotaca` — and several stored *values* are Serbian too
-(`vazdusna`, `opticki`). That is the plugin's schema, it is what is on disk in every
+(`vazdusna`, `glavni`). That is the plugin's schema, it is what is on disk in every
 existing project, and it is not changing: renaming a stored field is a data migration,
 not a cosmetic change.
 
@@ -307,8 +307,8 @@ worth discarding what the user recorded.
 
 | Canonical value | Stored by FiberQ | Also accepted |
 |---|---|---|
-| `optical` | `opticki` | `Optical` |
-| `copper` | `bakarnI` | `Copper`, `bakarni` |
+| `optical` | `Optical` | `opticki` |
+| `copper` | `Copper` | `bakarnI`, `bakarni` |
 
 ### `cable_subtype` — cables
 

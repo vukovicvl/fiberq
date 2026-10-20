@@ -273,9 +273,13 @@ VALUE_DOMAINS: Dict[str, Dict[str, str]] = {
         "sredina": "mid_span",
     },
     "cable/cable_type": {
+        # What FiberQ stores, first: an import writes the first match back.
+        "Optical": "optical",
+        "Copper": "copper",
+        # What older projects store until FiberQ restyles the layer
+        # (models/schema.py CABLE_TYPE_LEGACY_VALUES). The capital I is the
+        # as-built typo, present in real projects: mapped, not corrected.
         "opticki": "optical",
-        # As-built typo (capital I), preserved in the plugin's schema and
-        # therefore present in real projects. Mapped, not corrected.
         "bakarnI": "copper",
         "bakarni": "copper",
     },
@@ -304,7 +308,6 @@ ENGLISH_ALIASES: Dict[str, Dict[str, str]] = {
     },
     "slack/location": {"Manhole": "manhole", "Pole": "pole", "Object": "building"},
     "slack/side": {"FROM": "from", "TO": "to", "MID SPAN": "mid_span"},
-    "cable/cable_type": {"Optical": "optical", "Copper": "copper"},
     "cable/cable_subtype": {
         "Backbone": "backbone", "Distribution": "distribution", "Drop": "drop",
     },
