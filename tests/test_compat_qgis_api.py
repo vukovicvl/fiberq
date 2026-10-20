@@ -14,12 +14,13 @@ from qgis.core import (
     Qgis,
     QgsCoordinateTransformContext,
     QgsField,
+    QgsGeometry,
     QgsVectorFileWriter,
     QgsVectorLayer,
 )
 from qgis.PyQt.QtCore import QMetaType
 
-from fiberq.utils.compat import FieldType, save_style_to_database
+from fiberq.utils.compat import FieldType, geometries_equal, save_style_to_database
 
 #: Qt's number for each built-in type, the same in QVariant and QMetaType.
 NUMBERS = {"Bool": 1, "Int": 2, "LongLong": 4, "Double": 6, "String": 10}
@@ -93,3 +94,14 @@ def test_a_style_that_cannot_be_saved_says_why(qgis_app):
     """The provider's own message, on either call: what auto-save reports."""
     layer = QgsVectorLayer("Point?crs=EPSG:4326", "scratch", "memory")
     assert save_style_to_database(layer, "default", "", True, "")
+
+
+def test_two_geometries_compare_exactly_without_a_deprecation(qgis_app):
+    """QGIS 4.2 deprecates ``equals``; the terminal-slack bookkeeping used it (v1.6.0 QA suite logs)."""
+    line = QgsGeometry.fromWkt("LineString(0 0, 1 1)")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        same = geometries_equal(line, QgsGeometry.fromWkt("LineString(0 0, 1 1)"))
+        reversed_ = geometries_equal(line, QgsGeometry.fromWkt("LineString(1 1, 0 0)"))
+    assert (same, reversed_) == (True, False), "an exact comparison: vertex order counts"
+    assert _deprecations(caught) == []

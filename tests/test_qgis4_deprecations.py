@@ -15,7 +15,8 @@ Found in field QA:
   auto-save. ``fiberq/utils/compat.py`` picks the call each QGIS takes, so it is
   the one file allowed the old ones.
 * QGIS 4.2, the v1.6.0 QA's suite logs: "unclosed database", from a sqlite3
-  connection whose own ``with`` was taken to close it.
+  connection whose own ``with`` was taken to close it, and "QgsGeometry.equals()
+  is deprecated" from the terminal-slack bookkeeping.
 """
 import pathlib
 import re
@@ -67,6 +68,13 @@ FORBIDDEN = [
          "commits but never closes, and Python 3.13 (QGIS 4) logs 'unclosed database'",
          "with sqlite3.connect(path) as conn:",
          "with closing(sqlite3.connect(path)) as conn:"),
+    Rule("geometry-equals",
+         r"\.equals\(",
+         "geometries_equal() from fiberq.utils.compat -- QgsGeometry.equals() is "
+         "deprecated in QGIS 4.2",
+         "same = a.geometry().equals(b.geometry())",
+         "same = geometries_equal(a.geometry(), b.geometry())",
+         allowed=(COMPAT,)),
 ]
 
 

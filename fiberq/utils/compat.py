@@ -329,7 +329,7 @@ def get_wkb_type(type_name: str):
 
 
 # =============================================================================
-# FIELD TYPES AND STYLE STORAGE
+# FIELD TYPES, STYLE STORAGE AND GEOMETRY EQUALITY
 # =============================================================================
 # QGIS 3.38 gave QgsField a constructor that takes a QMetaType.Type and
 # deprecated the one that takes a QVariant.Type, so on 3.38-3.44 every
@@ -381,6 +381,19 @@ def save_style_to_database(layer, name, description, use_as_default, ui_file_con
         return layer.saveStyleToDatabase(name, description, use_as_default, ui_file_content)
     _results, message = save(name, description, use_as_default, ui_file_content)
     return message
+
+
+def geometries_equal(first, second):
+    """True when two geometries are exactly equal: type, vertices and vertex order.
+
+    ``QgsGeometry.equals`` prints a deprecation from QGIS 4.2, whose
+    ``isExactlyEqual`` is the same strict check (measured on 4.2.3: both say a
+    reversed line differs); 3.22 to 4.0 have only ``equals``.
+    """
+    exactly = getattr(first, "isExactlyEqual", None)
+    if exactly is None:
+        return first.equals(second)
+    return exactly(second)
 
 
 # =============================================================================
@@ -563,6 +576,7 @@ __all__ = [
     # Field types and style storage
     'FieldType',
     'save_style_to_database',
+    'geometries_equal',
     # Utilities
     'has_feature',
     'safe_import_qgis_core',

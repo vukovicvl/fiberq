@@ -11,7 +11,7 @@ This module provides slack (optical reserve) management functionality:
 from typing import Optional
 
 from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
-from ..utils.compat import FieldType
+from ..utils.compat import FieldType, geometries_equal
 from qgis.PyQt.QtWidgets import QDialog, QMessageBox
 
 from qgis.core import (
@@ -698,7 +698,7 @@ class SlackManager:
             return
         has_uuid = vl.fields().indexOf("fiberq_uuid") != -1
         for f, row in zip(slacks, saved):
-            same = f["fiberq_uuid"] == row["fiberq_uuid"] if has_uuid else f.geometry().equals(row.geometry())
+            same = f["fiberq_uuid"] == row["fiberq_uuid"] if has_uuid else geometries_equal(f.geometry(), row.geometry())
             if not same:
                 return
         for f, row in zip(slacks, saved):
