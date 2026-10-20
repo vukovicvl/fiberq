@@ -14,6 +14,8 @@ Found in field QA:
   place FiberQ builds a field, and "saveStyleToDatabase() is deprecated" from
   auto-save. ``fiberq/utils/compat.py`` picks the call each QGIS takes, so it is
   the one file allowed the old ones.
+* QGIS 4.2, the v1.6.0 QA's suite logs: "unclosed database", from a sqlite3
+  connection whose own ``with`` was taken to close it.
 """
 import pathlib
 import re
@@ -59,6 +61,12 @@ FORBIDDEN = [
          'problem = layer.saveStyleToDatabase("default", "", True, "")',
          'problem = save_style_to_database(layer, "default", "", True, "")',
          allowed=(COMPAT,)),
+    Rule("sqlite-with",
+         r"\bwith\s+sqlite3\.connect\(",
+         "with closing(sqlite3.connect(...)) as conn: -- a connection's own `with` "
+         "commits but never closes, and Python 3.13 (QGIS 4) logs 'unclosed database'",
+         "with sqlite3.connect(path) as conn:",
+         "with closing(sqlite3.connect(path)) as conn:"),
 ]
 
 

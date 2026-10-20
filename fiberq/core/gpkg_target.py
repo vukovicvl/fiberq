@@ -39,6 +39,7 @@ layers" and a PostGIS dump produce.
 """
 import os
 import sqlite3
+from contextlib import closing
 from urllib.parse import quote
 
 #: The first 16 bytes of any SQLite database.
@@ -131,7 +132,9 @@ def existing_tables(path):
     # quote() leaves "/" alone, so the path still resolves.
     uri = "file:" + quote(os.path.abspath(str(path))) + "?mode=ro"
     try:
-        with sqlite3.connect(uri, uri=True) as conn:
+        # closing(): a connection's own ``with`` ends a transaction, never the
+        # connection, which Python 3.13 (QGIS 4) reports as "unclosed database".
+        with closing(sqlite3.connect(uri, uri=True)) as conn:
             rows = conn.execute("SELECT table_name FROM gpkg_contents").fetchall()
     except sqlite3.Error:
         return set()

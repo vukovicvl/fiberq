@@ -278,3 +278,46 @@ def test_reading_the_tables_does_not_create_the_file(tmp_path):
     missing = tmp_path / "absent.gpkg"
     gt.existing_tables(missing)
     assert not missing.exists(), "the check must not create what it is checking"
+
+
+# ---------------------------------------------------------------------------
+# v1.6.0 QA: the read closes the file it opened
+# ---------------------------------------------------------------------------
+
+def test_reading_the_table_names_closes_the_file(tmp_path, monkeypatch):
+    """A sqlite3 connection's own ``with`` ends a transaction, never the connection.
+
+    Python 3.13 (QGIS 4) reports one left open as "unclosed database" in the
+    Python warning log -- found in the v1.6.0 QA's suite logs on 4.2.
+    """
+    target = _make_gpkg(tmp_path / "t.gpkg", ["Poles"])
+    closed = []
+
+    class Tracked:
+        def __init__(self, conn):
+            self.conn = conn
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False    # sqlite3.Connection's own exit commits; it never closes
+
+        def execute(self, *args):
+            return self.conn.execute(*args)
+
+        def close(self):
+            closed.append(True)
+            self.conn.close()
+
+    class Sqlite:
+        Error = sqlite3.Error
+
+        @staticmethod
+        def connect(*args, **kwargs):
+            return Tracked(sqlite3.connect(*args, **kwargs))
+
+    monkeypatch.setattr(gt, "sqlite3", Sqlite)
+
+    assert gt.existing_tables(target) == {"Poles"}
+    assert closed == [True]
