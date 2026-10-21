@@ -9,8 +9,8 @@ import math
 import sys
 from array import array
 from typing import Optional, Tuple, List, Dict
-from qgis.core import (QgsCurvePolygon, QgsGeometry, QgsGeometryCollection, QgsGeometryUtils, QgsPointXY,
-                       QgsVectorLayer, QgsWkbTypes)
+from qgis.core import (QgsCurvePolygon, QgsGeometry, QgsGeometryCollection, QgsGeometryUtils, QgsLineString,
+                       QgsPointXY, QgsVectorLayer, QgsWkbTypes)
 
 # Phase 5.2: Logging
 from .logger import get_logger
@@ -440,7 +440,18 @@ def held_by_its_box(geom: QgsGeometry, slack: float = 0.0) -> bool:
     high_x, high_y = box.xMaximum() + slack, box.yMaximum() + slack
     if not all(math.isfinite(value) for value in (low_x, low_y, high_x, high_y)):
         return False
-    for piece in _pieces(geom.constGet()):
+    shape = geom.constGet()
+    if type(shape) is QgsLineString:
+        # The walk below, for its commonest shape: one part, no arc, so one
+        # piece and nothing curved to check after it. Half the cost of a short
+        # route, and the snaps ask it on every mouse move that finds one.
+        coordinates = _xy_of(shape)
+        if coordinates is not None:
+            xs, ys = coordinates
+            if not (all(map(math.isfinite, xs)) and all(map(math.isfinite, ys))):
+                return False
+            return not xs or (low_x <= min(xs) and max(xs) <= high_x and low_y <= min(ys) and max(ys) <= high_y)
+    for piece in _pieces(shape):
         coordinates = None
         if QgsWkbTypes.displayString(QgsWkbTypes.flatType(piece.wkbType())) == "LineString":
             coordinates = _xy_of(piece)

@@ -88,6 +88,18 @@ def no_match():
     return QgsPointLocator.Match()
 
 
+def _shown_as(match):
+    """What a snap indicator shows of ``match``: None when nothing, else its kind,
+    place, layer, feature and vertex. The distance is left out: it changes with
+    every move while the marker does not."""
+    if not match.isValid():
+        return None
+    point = match.point()
+    layer = match.layer()
+    return (match.type(), point.x(), point.y(), layer.id() if layer is not None else None,
+            match.featureId(), match.vertexIndex())
+
+
 def snap_match(point, layer=None, fid=-1, distance=0.0, on_edge=False, vertex_index=0):
     """Build a ``QgsPointLocator.Match`` for a point FiberQ's own snap found.
 
@@ -162,6 +174,18 @@ class PlacementSnapper:
         #: What ``_candidate_layers`` last worked out, and for which layers.
         self._candidate_key = None
         self._candidate_slots = []
+        #: What the indicator shows now (``_shown_as``), so ``show`` can skip
+        #: sending the same match again.
+        self._shown = None
+        #: Python wrappers kept alive between mouse moves, never used: the
+        #: project's layers as the last move listed them, and the canvas'
+        #: snapping utils. QGIS builds a new wrapper whenever none is alive --
+        #: ~9-16 us for a layer, a provider or the snapping utils, against
+        #: ~0.15 us for one that is (3.22.16, 3.40.15, 4.2.3) -- and every move
+        #: asks for all of them again. What each move uses is still what it
+        #: has just asked for.
+        self._alive_layers = ()
+        self._alive_utils = None
 
     # -- the tool-facing calls ------------------------------------------------
 
@@ -202,12 +226,25 @@ class PlacementSnapper:
         return cursor, match
 
     def show(self, match):
-        """Put the indicator on ``match``, or clear it if the match is invalid."""
+        """Put the indicator on ``match``, or clear it if the match is invalid.
+
+        A match the indicator is already showing is not sent again. On QGIS 3
+        ``QgsSnapIndicator.setMatch`` reads the snap colour from the settings
+        and places the marker and its tooltip afresh on every call -- ~55 us on
+        3.40.15, a sixth of a mouse move on a scratch project, against 2 us on
+        4.2.3 -- and a hover stays on one vertex for many moves.
+        """
+        shown = _shown_as(match)
+        if shown == self._shown:
+            return
         try:
             self.indicator.setMatch(match)
         except (AttributeError, RuntimeError) as exc:
             # The canvas outlives the tool, so this only fires on teardown.
             logger.debug(f"snap indicator could not be updated: {exc}")
+            self._shown = None
+            return
+        self._shown = shown
 
     def clear(self):
         """Hide the indicator: for deactivate(), ESC and right-click.
@@ -234,6 +271,7 @@ class PlacementSnapper:
         except (AttributeError, RuntimeError) as exc:
             logger.debug(f"canvas exposes no snapping utils: {exc}")
             return False
+        self._alive_utils = utils
         if utils is None:
             return False
         return bool(utils.config().enabled())
@@ -258,6 +296,7 @@ class PlacementSnapper:
         """
         layers = [layer for layer in QgsProject.instance().mapLayers().values()
                   if isinstance(layer, QgsVectorLayer)]
+        self._alive_layers = layers
         key = tuple((layer.id(), layer.name(), layer.isValid(), layer.geometryType()) for layer in layers)
         if key != self._candidate_key:
             self._candidate_slots = list(self._qualifying(layers))
