@@ -53,12 +53,12 @@ class ExtensionTool(QgsMapToolEmitPoint):
             point_layers=SNAP_NODE_LAYERS,
             line_layers=SNAP_ROUTE_LAYERS + SNAP_CABLE_LAYERS,
             pixels=20,
-            # Vertices only, which is what this tool always did: a closure
-            # marks a splice, so it belongs on a node or on the cut vertex of a
-            # cable, never at an arbitrary point along one. Letting it land
-            # mid-span would be a new behaviour, not one of the three fixes the
-            # fallback is here to make.
-            segments=False,
+            # Along a span as well as on a vertex, like the other placement
+            # tools. Until 1.6.0 a closure snapped to vertices and nodes only,
+            # so on a straight two-vertex route there was nothing to land on
+            # between its ends (v1.6.0 QA, section B; the maintainer's call,
+            # 2026-10-21). A vertex or a node within reach still wins: the
+            # fallback returns the nearest vertex before any segment point.
             # A joint closure also belongs on a user's infrastructure-cut
             # marker layer, which is not part of the FiberQ schema and so has
             # no canonical name to resolve.
