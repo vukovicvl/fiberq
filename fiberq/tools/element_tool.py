@@ -36,7 +36,7 @@ from ..utils.legacy_bridge import (
 from ..dialogs.element_dialog import PrePlaceAttributesDialog
 
 # Phase 5.2: Logging
-from ..utils.errors import OperationErrors, add_columns
+from ..utils.errors import OperationErrors, add_and_save, add_columns
 from ..utils.logger import get_logger
 from ..utils.uuid_utils import ensure_uuid_field
 logger = get_logger(__name__)
@@ -277,15 +277,21 @@ class PlaceElementTool(QgsMapToolEmitPoint):
         except Exception as e:
             logger.debug(f"Error setting UUID on element: {e}")
 
-        elem_layer.startEditing()
-        elem_layer.addFeature(feat)
-        elem_layer.commitChanges()
+        # Each answer checked (utils.errors.add_and_save): all three used to be
+        # thrown away, so "Element placed!" was said over a locked file and over
+        # a read-only database login that kept the element out entirely.
+        placed = False
+        with OperationErrors(_place_element(), None, absorb=True) as errors:
+            placed = add_and_save(elem_layer, [feat], errors)
 
         elem_layer.triggerRepaint()
         self.snapper.clear()
         self._last_snap_point = None
+        if not placed:
+            return
 
-        # Record for undo (v1.2 — Feature 2)
+        # Record for undo (v1.2 — Feature 2). Only now: an undo entry for an
+        # element that never reached the layer would undo somebody else's work.
         try:
             _plugin = getattr(self, 'plugin', None)
             if _plugin and hasattr(_plugin, 'undo_manager') and _plugin.undo_manager:

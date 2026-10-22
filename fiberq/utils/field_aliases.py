@@ -9,9 +9,11 @@ backward compatibility with existing Serbian database schemas.
 """
 
 from typing import Dict
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
 from qgis.core import QgsEditorWidgetSetup, QgsExpression, QgsFeatureRequest, QgsVectorLayer
 
 # Phase 5.2: Logging
+from .errors import OperationErrors, check_commit
 from .logger import get_logger
 logger = get_logger(__name__)
 
@@ -417,19 +419,33 @@ def _migrate_cable_type_values(layer: QgsVectorLayer) -> None:
             # met them; an attribute index on "tip" may hand them back by value.
             todo.sort()
 
+        # Every answer checked: the session, each change and the commit used to
+        # be thrown away. A layer that cannot be edited -- read-only, a database
+        # login without the right to update -- keeps its old values, which the
+        # form still shows correctly (schema.py declares them as legacy
+        # values), so that is logged rather than pushed at every restyle.
         started_edit = False
         if not layer.isEditable():
-            layer.startEditing()
+            if not layer.startEditing():
+                logger.warning(f"Cable types in '{layer.name()}' stay opticki/bakarnI: the layer "
+                               f"could not be opened for editing")
+                return
             started_edit = True
 
-        for fid, new_val in todo:
-            layer.changeAttributeValue(fid, tip_idx, new_val)
+        refused = sum(1 for fid, new_val in todo if not layer.changeAttributeValue(fid, tip_idx, new_val))
+        if refused:
+            logger.warning(f"{refused} cable(s) in '{layer.name()}' would not take their English type")
 
         if started_edit:
-            layer.commitChanges()
+            # A refused commit leaves the layer in edit mode with the rewrite
+            # pending (utils.errors.check_commit never rolls back), so the user
+            # is told why it is in edit mode.
+            src = QT_TRANSLATE_NOOP('FiberQErrors', "Cable types")
+            with OperationErrors(QCoreApplication.translate('FiberQErrors', src)) as errors:
+                check_commit(layer, errors)
 
     except Exception as e:
-        logger.debug(f"Error in _migrate_cable_type_values: {e}")
+        logger.warning(f"Could not migrate the cable types in '{layer.name()}': {e}")
 
 
 def _old_cable_types_can_be_queried(layer: QgsVectorLayer) -> bool:

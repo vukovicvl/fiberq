@@ -63,7 +63,14 @@ _NOT_EDITABLE = QT_TRANSLATE_NOOP(
 _NO_LENGTH = QT_TRANSLATE_NOOP(
     'FiberQCables',
     "the cable layer has no {columns} column, so this cable was laid without its length recorded")
+_MISSING_COLUMNS = QT_TRANSLATE_NOOP(
+    'FiberQCables',
+    "Cable layer '{layer}' is missing fields ({columns}). Add them in the database schema.")
 _BRANCH_TITLE = QT_TRANSLATE_NOOP('FiberQCables', "Branch cables")
+_BRANCH_NOT_EDITABLE = QT_TRANSLATE_NOOP(
+    'FiberQCables', "the cable layer could not be opened for editing, so no branch index was written")
+_BRANCH_REFUSED = QT_TRANSLATE_NOOP(
+    'FiberQCables', "{count} cable(s) would not take their branch index")
 
 # Phase 0.1: UUID support for FiberQ Designer
 from ..utils.uuid_utils import FIBERQ_UUID_FIELD, generate_uuid  # noqa: E402
@@ -362,17 +369,35 @@ class CableManager:
             if own_errors:
                 errors.report()
 
-    def compute_branch_indices_for_layer(self, layer: QgsVectorLayer, tol_m: float = 0.3) -> Tuple[int, int]:
+    def compute_branch_indices_for_layer(self, layer: QgsVectorLayer, tol_m: float = 0.3,
+                                         errors=None) -> Tuple[int, int]:
         """
         Assign branch_index for cables with same endpoints (direction-independent).
 
         Args:
             layer: Cable layer
             tol_m: Tolerance for grouping in meters
+            errors: The :class:`OperationErrors` to report into. ``None`` builds
+                a collector of its own and reports before returning.
 
         Returns:
-            Tuple of (groups_count, updated_count)
+            Tuple of (groups_count, updated_count). ``updated_count`` counts
+            only values that were saved: the edit session, every
+            changeAttributeValue and the commit used to be unchecked, so a
+            read-only layer came back "updated cables: 2" with nothing written.
         """
+        own_errors = errors is None
+        if own_errors:
+            errors = OperationErrors(
+                QCoreApplication.translate('FiberQCables', _BRANCH_TITLE), self.iface)
+        try:
+            return self._write_branch_indices(layer, tol_m, errors)
+        finally:
+            if own_errors:
+                errors.report()
+
+    def _write_branch_indices(self, layer, tol_m, errors) -> Tuple[int, int]:
+        """The body of :meth:`compute_branch_indices_for_layer`, with a collector."""
         if layer is None or layer.geometryType() != QgsWkbTypes.GeometryType.LineGeometry:
             return 0, 0
 
@@ -395,7 +420,9 @@ class CableManager:
                 else:
                     line = g.asPolyline()
             except Exception as e:
-                logger.debug(f"Skipping feature; could not read cable geometry: {e}")
+                # Left out of the branching, and so of the count it reports.
+                logger.warning(f"Branch cables: cable {f.id()} in '{layer.name()}' was left out, its "
+                               f"geometry could not be read: {e}")
                 continue
 
             if len(line) < 2:
@@ -413,37 +440,36 @@ class CableManager:
             return 0, 0
 
         # Write branch_index values
-        self.ensure_branch_index_field(layer)
+        self.ensure_branch_index_field(layer, errors)
         idx = layer.fields().indexFromName("branch_index")
         if idx == -1:
             return 0, 0
 
-        layer.startEditing()
+        # A session the user already had open is saved with the indices, as
+        # this always has done; one that cannot be opened writes nothing.
+        if not layer.isEditable() and not layer.startEditing():
+            errors.add(layer.name(), QCoreApplication.translate('FiberQCables', _BRANCH_NOT_EDITABLE))
+            return len(groups), 0
         updated = 0
+        refused = 0
 
         for key, ids in groups.items():
             ids_sorted = sorted(ids)
             n = len(ids_sorted)
-
-            if n == 1:
-                # Single cable between these nodes - no offset
-                try:
-                    layer.changeAttributeValue(ids_sorted[0], idx, 0)
-                    updated += 1
-                except Exception as e:
-                    logger.debug(f"Error in CableManager.round_key: {e}")
-                continue
-
-            # n >= 2 - assign symmetric values around zero
+            # One cable between these nodes: no offset. Two or more: symmetric
+            # values around zero.
             for i, fid in enumerate(ids_sorted):
-                pos = i * 2 - (n - 1)
-                try:
-                    layer.changeAttributeValue(fid, idx, int(pos))
+                if layer.changeAttributeValue(fid, idx, int(i * 2 - (n - 1))):
                     updated += 1
-                except Exception as e:
-                    logger.debug(f"Error in CableManager.round_key: {e}")
+                else:
+                    refused += 1
 
-        layer.commitChanges()
+        if refused:
+            errors.add(layer.name(), safe_format(
+                QCoreApplication.translate('FiberQCables', _BRANCH_REFUSED), _BRANCH_REFUSED,
+                count=refused))
+        if not check_commit(layer, errors):
+            return len(groups), 0
         return len(groups), updated
 
     def apply_branch_offset_style(self, layer: QgsVectorLayer, offset_mm: float = 2.0) -> None:
@@ -534,18 +560,24 @@ class CableManager:
                 logger.debug(f"Error in CableManager.branch_cables_offset: {e}")
             return
 
-        groups, updated = self.compute_branch_indices_for_layer(layer, tol_m=1.3)
+        with OperationErrors(QCoreApplication.translate('FiberQCables', _BRANCH_TITLE),
+                             self.iface) as errors:
+            groups, updated = self.compute_branch_indices_for_layer(layer, tol_m=1.3, errors=errors)
         self.apply_branch_offset_style(layer, offset_mm=2.0)
 
-        try:
-            msg = (
-                f"Branching complete – groups: {groups}, "
-                f"updated cables: {updated}. "
-                "If you don't see separation, refresh view (Ctrl+R)."
-            )
-            self.iface.messageBar().pushInfo("Branch cables", msg)
-        except Exception as e:
-            logger.debug(f"Error in CableManager.branch_cables_offset: {e}")
+        # Only when the indices were saved: the collector has said why not, and
+        # "Branching complete -- updated cables: 2" was said over a read-only
+        # layer that took none of them.
+        if not errors.failed:
+            try:
+                msg = (
+                    f"Branching complete – groups: {groups}, "
+                    f"updated cables: {updated}. "
+                    "If you don't see separation, refresh view (Ctrl+R)."
+                )
+                self.iface.messageBar().pushInfo("Branch cables", msg)
+            except Exception as e:
+                logger.debug(f"Error in CableManager.branch_cables_offset: {e}")
 
         try:
             layer.triggerRepaint()
@@ -859,10 +891,14 @@ class CableManager:
                                      self.iface) as column_errors:
                     add_columns(cables_layer, to_add, column_errors)
             else:
-                self.iface.messageBar().pushWarning(
-                    "FiberQ",
-                    "Cable layer is missing fields (slack_m/total_len_m). Add them in the database schema."
-                )
+                # The columns this layer lacks. The warning used to name
+                # slack_m/total_len_m whatever was missing -- measured live on
+                # an Aerial cables table that has both, where the missing ones
+                # were fiberq_uuid, fibers_per_tube, total_fibers and
+                # color_standard.
+                self.iface.messageBar().pushWarning("FiberQ", safe_format(
+                    QCoreApplication.translate('FiberQCables', _MISSING_COLUMNS), _MISSING_COLUMNS,
+                    layer=cables_layer.name(), columns=", ".join(field.name() for field in to_add)))
 
         self.stylize_cable_layer(cables_layer)
 

@@ -6,6 +6,8 @@ Tool for splitting routes at a click point.
 
 import math
 
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
+
 from .base import (
     Qt, QColor, QMessageBox,
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
@@ -13,11 +15,35 @@ from .base import (
     QgsMapToolEmitPoint
 )
 
+from ..utils.errors import OperationErrors, add_and_save, check_commit
 from ..utils.geometry import held_by_its_box
 from ..utils.spatial import features_within
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
+
+#: The split's user-facing strings, in the FiberQTools context.
+_SPLIT_TITLE = QT_TRANSLATE_NOOP('FiberQTools', "Split route")
+_SPLIT_REFUSED = QT_TRANSLATE_NOOP(
+    'FiberQTools', "the layer refused the split, so the route was left as it was")
+_SPLIT_NOT_EDITABLE = QT_TRANSLATE_NOOP(
+    'FiberQTools', "the layer could not be opened for editing again to remove the original route")
+_SPLIT_NOT_REMOVED = QT_TRANSLATE_NOOP(
+    'FiberQTools', "the layer would not remove the original route")
+_SPLIT_LEFTOVER = QT_TRANSLATE_NOOP(
+    'FiberQTools',
+    "The two halves were saved, but the original route could not be removed. Delete it by hand so"
+    " the network is not counted twice.")
+_SPLIT_UNSAVED = QT_TRANSLATE_NOOP(
+    'FiberQTools',
+    "The Route layer was already in edit mode, so this split is not saved yet. Use Layer > Save"
+    " Layer Edits when you are ready.")
+
+#: What _write_split managed to do, as RouteManager._write_merged_route says it.
+_SAVED = 'saved'
+_IN_BUFFER = 'in-buffer'
+_NOT_WRITTEN = 'not-written'
+_DUPLICATED = 'duplicated'
 
 
 class BreakpointTool(QgsMapToolEmitPoint):
@@ -61,6 +87,55 @@ class BreakpointTool(QgsMapToolEmitPoint):
             feat.setAttribute(name, value)
         field = length_field_for(route_layer)
         return float(values.get(field, 0.0)) if field else 0.0
+
+    @staticmethod
+    def _write_split(route_layer, original_fid, halves, errors):
+        """Save the two halves, then remove the route they replace.
+
+        Returns ``_SAVED``, ``_IN_BUFFER`` (the user's own edit session took the
+        split, unsaved), ``_NOT_WRITTEN`` (nothing changed) or ``_DUPLICATED``
+        (the halves are saved and so is the original).
+
+        **The halves are committed before the original is deleted** -- the
+        order RouteManager._write_merged_route uses, for the same reason. A
+        GeoPackage commit is not atomic across operations: with an insert
+        refused by a trigger, the old one-session code had its delete succeed
+        and its two inserts refused, so the route vanished from the file while
+        the modal said "The route has been split!" (measured on 4.2.3 and
+        3.40.15, two rows to one). The worst a refusal can now cost is a
+        duplicate the user can see and delete.
+
+        A session the user already had open takes the whole split, unsaved, in
+        one edit command, as a merge does: committing it would save their own
+        unsaved work too, and an original that only their buffer holds would
+        change its id under the delete.
+        """
+        name = route_layer.name()
+        if route_layer.isEditable():
+            route_layer.beginEditCommand(QCoreApplication.translate('FiberQTools', _SPLIT_TITLE))
+            if all(route_layer.addFeature(half) for half in halves) and route_layer.deleteFeature(original_fid):
+                route_layer.endEditCommand()
+                return _IN_BUFFER
+            # Undoes this split's own edits and nothing else of the user's.
+            route_layer.destroyEditCommand()
+            errors.add(name, QCoreApplication.translate('FiberQTools', _SPLIT_REFUSED))
+            return _NOT_WRITTEN
+
+        if not add_and_save(route_layer, halves, errors):
+            # The original is untouched on disk.
+            return _NOT_WRITTEN
+
+        # The halves are in the file. Only now the original.
+        if not route_layer.startEditing():
+            errors.add(name, QCoreApplication.translate('FiberQTools', _SPLIT_NOT_EDITABLE))
+            return _DUPLICATED
+        if not route_layer.deleteFeature(original_fid):
+            errors.add(name, QCoreApplication.translate('FiberQTools', _SPLIT_NOT_REMOVED))
+            route_layer.rollBack()
+            return _DUPLICATED
+        if not check_commit(route_layer, errors):
+            return _DUPLICATED
+        return _SAVED
 
     def _find_route_layer(self):
         """Find the Route layer in the project."""
@@ -226,10 +301,6 @@ class BreakpointTool(QgsMapToolEmitPoint):
             self.rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
             return
 
-        # Perform the split
-        route_layer.startEditing()
-        route_layer.deleteFeature(min_feat.id())
-
         # Create first segment
         feat1 = QgsFeature(route_layer.fields())
         feat1.setGeometry(geom1)
@@ -252,20 +323,32 @@ class BreakpointTool(QgsMapToolEmitPoint):
         except Exception as e:
             logger.debug(f"could not set uuid on new route segments: {e}")
 
-        route_layer.addFeatures([feat1, feat2])
-        route_layer.commitChanges()
+        # Perform the split: see _write_split for the order, and why. Every
+        # answer used to be thrown away, and the modal below said the route had
+        # been split over a file that had just lost it.
+        outcome = _NOT_WRITTEN
+        with OperationErrors(QCoreApplication.translate('FiberQTools', _SPLIT_TITLE),
+                             self.iface, absorb=True) as errors:
+            outcome = self._write_split(route_layer, min_feat.id(), [feat1, feat2], errors)
 
         # Re-apply styling
-        if self.plugin:
+        if self.plugin and outcome != _NOT_WRITTEN:
             self.plugin.stylize_route_layer(route_layer)
 
         self.rubber.reset(QgsWkbTypes.GeometryType.PointGeometry)
-        QMessageBox.information(
-            self.iface.mainWindow(),
-            "Split route",
-            f"The route has been split!\n"
-            f"First part: {duzina_m1:.2f} m, second part: {duzina_m2:.2f} m."
-        )
+        if outcome == _DUPLICATED:
+            # The one failure that needs more than the message bar: the halves
+            # ARE saved, and until the original goes the route is counted twice.
+            QMessageBox.warning(self.iface.mainWindow(), "Split route",
+                                QCoreApplication.translate('FiberQTools', _SPLIT_LEFTOVER))
+            return
+        if outcome == _NOT_WRITTEN:
+            return
+        message = (f"The route has been split!\n"
+                   f"First part: {duzina_m1:.2f} m, second part: {duzina_m2:.2f} m.")
+        if outcome == _IN_BUFFER:
+            message += "\n" + QCoreApplication.translate('FiberQTools', _SPLIT_UNSAVED)
+        QMessageBox.information(self.iface.mainWindow(), "Split route", message)
 
     def deactivate(self):
         """Clean up when tool is deactivated."""

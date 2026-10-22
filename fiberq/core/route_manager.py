@@ -31,7 +31,7 @@ from qgis.core import (
 
 # Phase 5.2: Logging
 from ..i18n import safe_format
-from ..utils.errors import OperationErrors, add_columns, check_commit, describe
+from ..utils.errors import OperationErrors, add_and_save, add_columns, check_commit, describe
 from ..utils import file_filters
 from ..utils.geometry import line_parts, transformed
 from ..utils.logger import get_logger
@@ -64,6 +64,12 @@ def add_route_columns(route_layer, errors) -> bool:
 def _route_columns() -> str:
     """Title on the message-bar entry for Route columns that could not be added."""
     src = QT_TRANSLATE_NOOP('FiberQRoutes', "Route columns")
+    return QCoreApplication.translate('FiberQRoutes', src)
+
+
+def _create_route() -> str:
+    """Title on the message-bar entries Create route pushes."""
+    src = QT_TRANSLATE_NOOP('FiberQRoutes', "Create route")
     return QCoreApplication.translate('FiberQRoutes', src)
 
 
@@ -398,11 +404,16 @@ class RouteManager:
         except Exception as e:
             logger.debug(f"Could not set feature uuid on route: {e}")
 
-        route_layer.startEditing()
-        route_layer.addFeature(route_feature)
-        route_layer.commitChanges()
+        # Each answer checked (utils.errors.add_and_save): all three used to be
+        # thrown away, and "Route has been created!" followed regardless.
+        with OperationErrors(_create_route(), self.iface) as errors:
+            placed = add_and_save(route_layer, [route_feature], errors)
+        if not placed:
+            return
 
-        # Record for undo (v1.2 — Feature 2)
+        # Record for undo (v1.2 — Feature 2). Only after the save: an undo
+        # entry for a route that never reached the layer would undo somebody
+        # else's work.
         try:
             undo_mgr = getattr(self, 'undo_manager', None)
             if undo_mgr:

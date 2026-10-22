@@ -30,7 +30,7 @@ from qgis.PyQt.QtWidgets import QMessageBox
 
 # Phase 5.2: Logging
 from ..i18n import safe_format
-from ..utils.errors import OperationErrors, add_columns, describe
+from ..utils.errors import OperationErrors, add_and_save, add_columns, describe
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
@@ -52,6 +52,7 @@ _NO_COLUMNS_ADDED = QT_TRANSLATE_NOOP(
 _VALUE_UNREADABLE = QT_TRANSLATE_NOOP(
     'FiberQLayers', "could not read {column} from the element being moved, so it was left empty")
 _COPY_TITLE = QT_TRANSLATE_NOOP('FiberQLayers', "Change element type")
+_AREA_TITLE = QT_TRANSLATE_NOOP('FiberQLayers', "Create Service Area")
 
 # Phase 0.1: UUID support for FiberQ Designer
 from ..utils.uuid_utils import FIBERQ_UUID_FIELD, ensure_uuid_field, set_feature_uuid  # noqa: E402
@@ -615,10 +616,12 @@ def _create_region_from_selection(core, name: str, buf_m: float):
     from ..utils.measure import ground_area, ground_perimeter
     crs = QgsProject.instance().crs()
 
-    # Add features
-    added = 0
+    # Build the features, then save them through utils.errors.add_and_save:
+    # startEditing, every addFeature and commitChanges used to be unchecked, and
+    # "Created: N polygon(s)" counted what had been handed to the layer, not
+    # what it kept.
+    features = []
     try:
-        region.startEditing()
         for part in parts:
             if not part or part.isEmpty():
                 continue
@@ -641,24 +644,23 @@ def _create_region_from_selection(core, name: str, buf_m: float):
                 set_feature_uuid(f)
             except Exception as e:
                 logger.debug(f"Error in _create_region_from_selection: {e}")
-            region.addFeature(f)
-            added += 1
-        region.commitChanges()
-        region.triggerRepaint()
+            features.append(f)
     except Exception as e:
-        try:
-            region.rollBack()
-        except Exception as e:
-            logger.debug(f"Error in _create_region_from_selection: {e}")
         try:
             QMessageBox.critical(core.iface.mainWindow(), 'Create Service Area', f'Error: {e}')
         except Exception as e:
             logger.debug(f"Error in _create_region_from_selection: {e}")
         return False
 
+    with OperationErrors(QCoreApplication.translate('FiberQLayers', _AREA_TITLE), core.iface) as errors:
+        saved = add_and_save(region, features, errors)
+    region.triggerRepaint()
+    if not saved:
+        return False
+
     try:
         QMessageBox.information(core.iface.mainWindow(), 'Create Service Area',
-                                f'Created: {added} polygon(s) in "Service Area" layer.')
+                                f'Created: {len(features)} polygon(s) in "Service Area" layer.')
     except Exception as e:
         logger.debug(f"Error in _create_region_from_selection: {e}")
     return True

@@ -212,12 +212,17 @@ CRITICAL = {
     }),
     # R8. CableManager.lay_cable holds the whole cable-laying write path and was
     # never named here, so the gate watched the two main_plugin wrappers that
-    # swallowed its failures and not the code producing them.
+    # swallowed its failures and not the code producing them. Q13/Q14,
+    # unclaimed (v1.6.0 QA): Branch cables' column, its writes and its commit.
     "fiberq/core/cable_manager.py": frozenset({
         "CableManager.lay_cable",
+        "CableManager.ensure_branch_index_field",
+        "CableManager.compute_branch_indices_for_layer",
+        "CableManager._write_branch_indices",
     }),
-    # R6, R7
+    # R6, R7; and Q13, unclaimed: the Route columns every route path adds.
     "fiberq/core/route_manager.py": frozenset({
+        "RouteManager._ensure_route_fields",
         "RouteManager._add_imported_routes",
         "RouteManager._add_one_route",
         # The three the merge was split into. A new sibling method is a new
@@ -314,8 +319,27 @@ CRITICAL = {
     # Q13, unclaimed (v1.6.0 QA): the identity column every placement and the
     # project-open migration ask for. It answered True for a column only an
     # edit buffer held, so it is gated from here so nothing in it goes quiet.
+    # Q14, unclaimed: the backfill counted IDs that only an edit buffer held.
     "fiberq/utils/uuid_utils.py": frozenset({
         "ensure_uuid_field",
+        "migrate_layer_uuids",
+        "migrate_project_uuids",
+    }),
+    # Q13/Q14, unclaimed: the shared writes every placement tool, Split route
+    # and the column adds go through. Nothing in here may be silent, by the
+    # module's own rule; now the gate says so too.
+    "fiberq/utils/errors.py": frozenset({
+        "add_and_save",
+        "add_columns",
+        "check_commit",
+    }),
+    # Q14, unclaimed: the restyle's rewrite of the old cable types.
+    "fiberq/utils/field_aliases.py": frozenset({
+        "_migrate_cable_type_values",
+    }),
+    # Q14, unclaimed: Split route's two-phase write.
+    "fiberq/tools/breakpoint_tool.py": frozenset({
+        "BreakpointTool._write_split",
     }),
     # R2
     "fiberq/ui/routing_ui.py": frozenset({
@@ -416,8 +440,12 @@ ALLOWED_WRITES = {
 #: with the edit-session fallback it guarded, ensure_branch_index_field and
 #: the pipe tool's column add report through utils.errors.add_columns, and
 #: the eleven ``except Exception: logger.debug`` wrappers around
-#: ensure_uuid_field calls went, because it no longer raises.
-SILENCE_CEILING = 669
+#: ensure_uuid_field calls went, because it no longer raises. Q14 took seven:
+#: the branch-index writes check their answers instead of guarding them with
+#: two debug handlers, and a cable it cannot read, the Service Area rollback,
+#: the cable-type rewrite, the FiberQ ID backfill's rollback and the
+#: project-open identity backfill are logged at warning or gone.
+SILENCE_CEILING = 662
 
 
 # ---------------------------------------------------------------------------
@@ -705,8 +733,11 @@ def test_d_package_wide_silence_does_not_grow():
 #: _recompute_in_one_session and _terminal_slack: WP4 4.1's PF-4 moved part of
 #: R9's Generate terminal slacks into them, so R9 widens with them. The last
 #: one is uuid_utils.ensure_uuid_field (Q13, unclaimed), in a file of its own.
-HARDENED_FUNCTIONS = 131
-HARDENED_FILES = 22
+#: Then eleven, all unclaimed (Q13/Q14): the shared writes in utils/errors.py,
+#: the two FiberQ ID backfills, the cable-type rewrite, Split route's write,
+#: Branch cables' column, writes and wrapper, and the Route columns.
+HARDENED_FUNCTIONS = 142
+HARDENED_FILES = 25
 
 
 def test_the_hardened_set_is_not_quietly_narrowed():

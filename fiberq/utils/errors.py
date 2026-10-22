@@ -9,8 +9,9 @@ writes nothing, anywhere. The operation then reports success, and the user finds
 the missing features much later, or never.
 
 This module is the one place that decides what a failure looks like. Three
-pieces, and they exist together on purpose -- plus :func:`add_columns`, which is
-:func:`check_commit` for a new column:
+pieces, and they exist together on purpose -- plus :func:`add_columns` and
+:func:`add_and_save`, which are :func:`check_commit` for a new column and for a
+new feature:
 
 :class:`OperationErrors`
     A collector for one operation. Each failing part calls
@@ -432,4 +433,64 @@ def add_columns(layer, fields, errors, what=None) -> bool:
     return False
 
 
-__all__ = ['OperationErrors', 'add_columns', 'check_commit', 'describe', 'report_error']
+#: add_and_save's two refusals before the commit, said the way lay_cable's are.
+_NOT_EDITABLE = QT_TRANSLATE_NOOP(
+    'FiberQErrors', "the layer could not be opened for editing, so nothing was saved")
+_REFUSED = QT_TRANSLATE_NOOP(
+    'FiberQErrors', "the layer refused the new feature, so nothing was saved")
+
+
+def add_and_save(layer, features, errors, what=None, save_open_session=True) -> bool:
+    """Add ``features`` to ``layer`` and save them, with every refusal reported.
+
+    The placement tools' ``startEditing()`` / ``addFeature()`` /
+    ``commitChanges()`` threw all three answers away, and then said "Element
+    placed!" -- also when a locked GeoPackage, a read-only layer or a database
+    login without the right to insert kept every feature out of the file
+    (v1.6.0 QA, finding Q14). Each step is checked here, the reason is added to
+    ``errors``, and the caller says its success only when this answers True.
+
+    The session: one this call opens is rolled back when the layer refuses a
+    feature -- it holds nothing else -- and kept when the commit is refused, as
+    :func:`check_commit` keeps every refused commit, so the user can clear the
+    cause and save. A session the user already had open is saved with the
+    features, which is what every placement tool has always done; with
+    ``save_open_session=False`` the features join that session unsaved instead,
+    which is what the Objects tool has always done.
+
+    Args:
+        layer: The vector layer the features go into.
+        features: The new :class:`QgsFeature` objects. ``addFeature`` gives each
+            the id it has in the edit buffer, which the undo manager reads.
+        errors: The :class:`OperationErrors` collecting this operation.
+        what: What to call the layer in the message. Defaults to its own name.
+        save_open_session: See above.
+
+    Returns:
+        True when the features reached the data source -- or, with
+        ``save_open_session=False``, the user's open session.
+    """
+    name = what
+    try:
+        name = what or layer.name()
+        was_editing = layer.isEditable()
+        if not was_editing and not layer.startEditing():
+            errors.add(name, QCoreApplication.translate('FiberQErrors', _NOT_EDITABLE))
+            return False
+        for feature in features:
+            if not layer.addFeature(feature):
+                errors.add(name, QCoreApplication.translate('FiberQErrors', _REFUSED))
+                if not was_editing:
+                    layer.rollBack()
+                return False
+    except (AttributeError, RuntimeError) as exc:
+        # Not a vector layer, or one whose C++ object is already gone.
+        errors.add(name, exc)
+        return False
+    if was_editing and not save_open_session:
+        return True
+    return check_commit(layer, errors, what)
+
+
+__all__ = ['OperationErrors', 'add_and_save', 'add_columns', 'check_commit', 'describe',
+           'report_error']

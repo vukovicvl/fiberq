@@ -18,7 +18,7 @@ from .base import (
 from ..core.route_manager import add_route_columns
 
 # Phase 5.2: Logging
-from ..utils.errors import OperationErrors
+from ..utils.errors import OperationErrors, add_and_save
 from ..utils.geometry import held_by_its_box, polylines
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
@@ -340,7 +340,6 @@ class ManualRouteTool(QgsMapTool):
             tip_trase = TRASA_LABEL_TO_CODE.get(tip_label, TRASA_TYPE_OPTIONS[0])
 
         # Create feature
-        route_layer.startEditing()
         feat = QgsFeature(route_layer.fields())
         feat.setGeometry(line_geom)
         feat.setAttribute("naziv", f"Route {route_layer.featureCount() + 1}")
@@ -353,31 +352,38 @@ class ManualRouteTool(QgsMapTool):
             set_feature_uuid(feat)
         except Exception as e:
             logger.debug(f"failed to set uuid on route feature: {e}")
-        route_layer.addFeature(feat)
-        route_layer.commitChanges()
+        # Each answer checked (utils.errors.add_and_save): the edit session, the
+        # add and the commit all used to be unchecked, and the modal below said
+        # the route had been created over a locked file just the same.
+        placed = False
+        with OperationErrors(_draw_route(), self.iface, absorb=True) as errors:
+            placed = add_and_save(route_layer, [feat], errors)
 
-        # Record for undo (v1.2 — Feature 2)
-        try:
-            if self.plugin and hasattr(self.plugin, 'undo_manager') and self.plugin.undo_manager:
-                self.plugin.undo_manager.record_add(route_layer, feat)
-        except Exception as e:
-            logger.debug(f"Error recording undo for route: {e}")
+        if placed:
+            # Record for undo (v1.2 — Feature 2). Only after the save: an undo
+            # entry for a route that never reached the layer would undo
+            # somebody else's work.
+            try:
+                if self.plugin and hasattr(self.plugin, 'undo_manager') and self.plugin.undo_manager:
+                    self.plugin.undo_manager.record_add(route_layer, feat)
+            except Exception as e:
+                logger.debug(f"Error recording undo for route: {e}")
 
-        # Re-apply style
-        if self.plugin:
-            self.plugin.stylize_route_layer(route_layer)
+            # Re-apply style
+            if self.plugin:
+                self.plugin.stylize_route_layer(route_layer)
 
-        # Show message
-        nice_label = TRASA_TYPE_LABELS.get(tip_trase, tip_trase)
-        QMessageBox.information(
-            self.iface.mainWindow(),
-            "FiberQ",
-            f"Manual route has been created!\n"
-            f"Length: {duzina_m:.2f} m ({duzina_km:.2f} km)\n"
-            f"Type: {nice_label}"
-        )
+            # Show message
+            nice_label = TRASA_TYPE_LABELS.get(tip_trase, tip_trase)
+            QMessageBox.information(
+                self.iface.mainWindow(),
+                "FiberQ",
+                f"Manual route has been created!\n"
+                f"Length: {duzina_m:.2f} m ({duzina_km:.2f} km)\n"
+                f"Type: {nice_label}"
+            )
 
-        # Reset tool
+        # Reset tool, saved or not: the reason is on the message bar.
         self.points = []
         self.rb.reset(QgsWkbTypes.GeometryType.LineGeometry)
         self.canvas.unsetMapTool(self)

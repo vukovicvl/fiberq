@@ -30,7 +30,7 @@ from ..utils.legacy_bridge import (
 )
 
 # Phase 5.2: Logging
-from ..utils.errors import OperationErrors, add_columns
+from ..utils.errors import OperationErrors, add_and_save, add_columns
 from ..utils.logger import get_logger
 from ..utils.uuid_utils import ensure_uuid_field
 logger = get_logger(__name__)
@@ -229,13 +229,17 @@ class ExtensionTool(QgsMapToolEmitPoint):
         except Exception as e:
             logger.debug(f"Could not set UUID on joint closure feature: {e}")
 
-        nastavak_layer.startEditing()
-        nastavak_layer.addFeature(nastavak_feat)
-        nastavak_layer.commitChanges()
+        # Each answer checked (utils.errors.add_and_save): all three used to be
+        # thrown away, and "Joint closure placed!" followed regardless.
+        placed = False
+        with OperationErrors(_place_closure(), None, absorb=True) as errors:
+            placed = add_and_save(nastavak_layer, [nastavak_feat], errors)
         nastavak_layer.triggerRepaint()
         self.snapper.clear()
+        if not placed:
+            return
 
-        # Record for undo (v1.2 — Feature 2)
+        # Record for undo (v1.2 — Feature 2). Only after the save, as above.
         try:
             if hasattr(self, 'plugin') and self.plugin and hasattr(self.plugin, 'undo_manager') and self.plugin.undo_manager:
                 self.plugin.undo_manager.record_add(nastavak_layer, nastavak_feat)

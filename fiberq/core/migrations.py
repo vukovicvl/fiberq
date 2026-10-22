@@ -150,6 +150,10 @@ class MigrationReport:
     steps: List[str] = field(default_factory=list)
     details: Dict[str, dict] = field(default_factory=dict)
     errors: List[str] = field(default_factory=list)
+    #: The step that raised, when one did: the user has an upgrade that did not
+    #: finish, and project open says so. Empty for a marker the runner would
+    #: not touch (unrecognised, or newer than this plugin), which it logs.
+    failed_step: str = ""
 
     def __bool__(self) -> bool:
         return self.ran
@@ -248,6 +252,7 @@ def run_migrations(project=None) -> MigrationReport:
         except Exception as e:
             # Capture, log, and stop the chain; the stamp is withheld below.
             report.errors.append(f"{step.name}: {e}")
+            report.failed_step = step.name
             logger.warning(f"Schema migration step '{step.name}' failed: {e}")
             break
 

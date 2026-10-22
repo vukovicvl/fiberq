@@ -2779,29 +2779,45 @@ class FiberQPlugin:
         """
         prj = QgsProject.instance()
         steps_done = []
+        failed_step = ""
         try:
             from .core.migrations import run_migrations
             report = run_migrations(prj)
             steps_done = report.steps
+            failed_step = report.failed_step
             if report.ran:
                 self.iface.messageBar().pushInfo("FiberQ", report.summary())
                 logger.debug(f"Schema migration: {report}")
+            elif failed_step:
+                # Said once per open. It used to be logged at debug level, so a
+                # project whose FiberQ IDs could not be added or saved -- a
+                # locked or read-only GeoPackage, a database login that does not
+                # own the table -- was retried at every open with nothing said.
+                src = QT_TRANSLATE_NOOP(
+                    'FiberQPlugin',
+                    "FiberQ could not finish upgrading this project, and tries again the next time it"
+                    " is opened: {details}")
+                report_error(self.tr("Project upgrade"), None,
+                             safe_format(self.tr(src), src, details="; ".join(report.errors)),
+                             self.iface)
             elif report.errors:
                 logger.debug(f"Schema migration not applied: {report.summary()}")
         except Exception as e:
             logger.debug(f"Error running schema migrations: {e}")
 
         # Standing identity invariant -- heal any features still lacking a UUID.
-        # Skipped when the migration above already ran the uuid step this load.
+        # Skipped when the migration above ran the uuid step this load, saved or
+        # not: after a refusal the same backfill would only be refused again,
+        # after another wait on the same locked file.
         try:
             from .utils.uuid_utils import migrate_project_uuids
-            if "uuid-identity" not in steps_done:
+            if "uuid-identity" not in steps_done and failed_step != "uuid-identity":
                 healed = migrate_project_uuids(prj)
                 if healed:
                     total = sum(healed.values())
                     logger.debug(f"UUID invariant backfilled {total} features: {healed}")
         except Exception as e:
-            logger.debug(f"Error in UUID invariant backfill: {e}")
+            logger.warning(f"The FiberQ ID backfill did not finish: {e}")
 
     def unload(self):
         # WP1b: disconnect the schema-migration slot -- the same callable we
@@ -3197,11 +3213,20 @@ class FiberQPlugin:
 
         Deleting a slack loop also changes the cable it belonged to, so the
         cables behind the deleted features are re-totalled afterwards.
+
+        What it says is what happened (v1.6.0 QA, finding Q14). "Deleted N"
+        counts only the deletions saved to the data source. Deletions that went
+        into an edit session already open -- the user's own, or the one a
+        refused placement left behind -- are counted apart and called not saved
+        yet. A layer whose data source does not allow deleting is named, with
+        that reason, instead of passed over, and "No selected features to
+        delete." is said only when there was nothing to delete.
         """
         from qgis.core import QgsProject, QgsVectorLayer, QgsVectorDataProvider
 
         errors = OperationErrors(self.tr("Delete"), self.iface)
-        obrisano = 0
+        obrisano = 0   # deletions saved to the data source
+        pending = 0    # deletions left in a session the user already had open
         # set of cables affected by deleted slack
         affected_cables = set()   # (cable_layer_id, cable_fid)
 
@@ -3247,11 +3272,26 @@ class FiberQPlugin:
                                 'FiberQPlugin', "the layer refused to delete one of the features"))
                     # A layer the user already had open is theirs to save: the
                     # deletion joins their edit session instead of committing
-                    # their other unsaved work for them.
-                    if was_editing or check_commit(lyr, errors):
+                    # their other unsaved work for them. It is not saved, so it
+                    # is not counted with the deletions that were: after a
+                    # placement the file refused, that session holds the refused
+                    # feature and the dialog said "Deleted 2" with the row still
+                    # in the file.
+                    if was_editing:
+                        pending += buffered
+                    elif check_commit(lyr, errors):
                         obrisano += buffered
                     lyr.triggerRepaint()
                 lyr.removeSelection()
+            elif isinstance(lyr, QgsVectorLayer) and lyr.selectedFeatureCount():
+                # Passed over without a word, and the dialog then said there was
+                # nothing to delete: measured live with a database login that
+                # may only read. Its selection is left as it was.
+                src = QT_TRANSLATE_NOOP(
+                    'FiberQPlugin',
+                    "its data source does not allow deleting features; on a database, the login needs the"
+                    " right to delete from the table")
+                errors.add(lyr.name(), self.tr(src))
 
         # AFTER deleting slack – recalculate slack for affected cables
         for cable_layer_id, cable_fid in sorted(affected_cables):
@@ -3262,15 +3302,24 @@ class FiberQPlugin:
         # followed.
         errors.report()
 
-        if obrisano == 0:
-            QMessageBox.information(self.iface.mainWindow(), self.tr("Delete"),
-                                    self.tr("No selected features to delete."))
-        else:
-            QMessageBox.information(
-                self.iface.mainWindow(),
-                self.tr("Delete"),
-                self.tr("Deleted {count} selected features from all layers.").format(count=obrisano)
-            )
+        if not (obrisano or pending):
+            # After a refusal the warning has said why; "nothing to delete"
+            # would contradict it.
+            if not errors.failed:
+                QMessageBox.information(self.iface.mainWindow(), self.tr("Delete"),
+                                        self.tr("No selected features to delete."))
+            return
+        lines = []
+        if obrisano:
+            src = QT_TRANSLATE_NOOP('FiberQPlugin', "Deleted {count} selected features from all layers.")
+            lines.append(safe_format(self.tr(src), src, count=obrisano))
+        if pending:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                "{count} of the selected features were in layers that were already in edit mode, so their"
+                " deletion is not saved yet. Use Layer > Save Layer Edits when you are ready.")
+            lines.append(safe_format(self.tr(src), src, count=pending))
+        QMessageBox.information(self.iface.mainWindow(), self.tr("Delete"), "\n".join(lines))
 
     def _stylize_cable_layer(self, cables_layer):
         """Apply cable layer style."""

@@ -19,7 +19,7 @@ from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
 from ..utils.compat import FieldType, new_field
 
 # Phase 5.2: Logging
-from ..utils.errors import OperationErrors, add_columns
+from ..utils.errors import OperationErrors, add_and_save, add_columns
 from ..utils.geometry import held_by_its_box, polylines
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
@@ -420,10 +420,15 @@ class PipePlaceTool(QgsMapTool):
         except Exception as e:
             logger.debug(f"Error setting UUID on pipe: {e}")
 
-        # Add feature
-        layer.startEditing()
-        layer.addFeature(f)
-        layer.commitChanges()
+        # Add feature. Each answer checked (utils.errors.add_and_save): all
+        # three used to be thrown away, and "Pipe has been laid." followed
+        # regardless. A refusal resets the tool without that message.
+        placed = False
+        with OperationErrors(_lay_pipe(), self.iface, absorb=True) as errors:
+            placed = add_and_save(layer, [f], errors)
+        if not placed:
+            self._cleanup(cancel=True, stay_active=True)
+            return
         layer.updateExtents()
 
         # Record for undo (v1.2 — Feature 2)

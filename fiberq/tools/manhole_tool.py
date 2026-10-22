@@ -7,6 +7,8 @@ Supports auto-incrementing manhole IDs on repeated placement.
 
 import re
 
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
+
 from .base import (
     Qt,
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
@@ -16,8 +18,15 @@ from .base import (
 )
 
 # Phase 5.2: Logging
+from ..utils.errors import OperationErrors, add_and_save
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
+
+
+def _manholes() -> str:
+    """Title on the message-bar entries the manhole tool pushes."""
+    src = QT_TRANSLATE_NOOP('FiberQTools', "Manholes")
+    return QCoreApplication.translate('FiberQTools', src)
 
 
 def parse_id_parts(id_string):
@@ -253,16 +262,21 @@ class ManholePlaceTool(QgsMapToolEmitPoint):
             from ..utils.logger import get_logger
             get_logger(__name__).debug(f"Error setting UUID on manhole: {e}")
 
-        # Add feature
-        try:
-            layer.startEditing()
-            layer.addFeature(f)
-            layer.commitChanges()
-        except Exception:
-            layer.dataProvider().addFeatures([f])
-
-        layer.updateExtents()
+        # Add feature. Each answer checked (utils.errors.add_and_save): all
+        # three used to be thrown away, and "Manhole placed" was said over a
+        # locked file or a read-only login just the same. The fallback that
+        # wrote straight to the provider when one of them raised is gone with
+        # them: it went round the edit buffer and its answer was thrown away too.
+        # The ID counter stays where _get_next_id left it: a refused manhole
+        # stays in the layer's buffer under that ID, to be saved once the cause
+        # is cleared.
+        placed = False
+        with OperationErrors(_manholes(), self.iface, absorb=True) as errors:
+            placed = add_and_save(layer, [f], errors)
         layer.triggerRepaint()
+        if not placed:
+            return
+        layer.updateExtents()
 
         # Record for undo (v1.2 — Feature 2)
         try:

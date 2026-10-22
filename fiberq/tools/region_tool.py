@@ -7,7 +7,7 @@ Phase 2.1: Extracted from extracted_classes.py
 
 from datetime import datetime
 
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, Qt
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QInputDialog
 
@@ -21,9 +21,16 @@ from qgis.gui import QgsMapTool, QgsRubberBand
 from ..utils.legacy_bridge import _ensure_region_layer
 
 # Phase 5.2: Logging
+from ..utils.errors import OperationErrors, add_and_save
 from ..utils.logger import get_logger
 from ..utils.measure import ground_area, ground_perimeter
 logger = get_logger(__name__)
+
+
+def _service_area() -> str:
+    """Title on the message-bar entries the Service Area tool pushes."""
+    src = QT_TRANSLATE_NOOP('FiberQTools', "Service Area")
+    return QCoreApplication.translate('FiberQTools', src)
 
 
 class DrawRegionPolygonTool(QgsMapTool):
@@ -158,7 +165,6 @@ class DrawRegionPolygonTool(QgsMapTool):
             area = ground_area(geom, crs=crs)
             peri = ground_perimeter(geom, crs=crs)
 
-            region.startEditing()
             f = QgsFeature(region.fields())
             f.setGeometry(geom)
             f['name'] = (name or 'Rejon')
@@ -172,22 +178,25 @@ class DrawRegionPolygonTool(QgsMapTool):
                 set_feature_uuid(f)
             except Exception as e:
                 logger.debug(f"Failed to set uuid on region feature: {e}")
-            region.addFeature(f)
-            region.commitChanges()
+            # Each answer checked (utils.errors.add_and_save): all three used to
+            # be thrown away, and "Service Area added" followed regardless.
+            with OperationErrors(_service_area(), self.iface) as errors:
+                placed = add_and_save(region, [f], errors)
             region.triggerRepaint()
 
-            # Record for undo (v1.2 — Feature 2)
-            try:
-                _core = getattr(self, 'core', None) or getattr(self, 'plugin', None)
-                if _core and hasattr(_core, 'undo_manager') and _core.undo_manager:
-                    _core.undo_manager.record_add(region, f)
-            except Exception as e:
-                logger.debug(f"Error recording undo for region: {e}")
+            if placed:
+                # Record for undo (v1.2 — Feature 2). Only after the save.
+                try:
+                    _core = getattr(self, 'core', None) or getattr(self, 'plugin', None)
+                    if _core and hasattr(_core, 'undo_manager') and _core.undo_manager:
+                        _core.undo_manager.record_add(region, f)
+                except Exception as e:
+                    logger.debug(f"Error recording undo for region: {e}")
 
-            self.iface.messageBar().pushSuccess(
-                'Service Area',
-                'Service Area added to "Service Area" layer.'
-            )
+                self.iface.messageBar().pushSuccess(
+                    'Service Area',
+                    'Service Area added to "Service Area" layer.'
+                )
 
             # Reset for next polygon
             self.points = []

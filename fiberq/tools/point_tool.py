@@ -7,7 +7,7 @@ Phase 2.1: Extracted from extracted_classes.py
 
 from qgis.PyQt import sip
 
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, Qt
 from qgis.PyQt.QtWidgets import QMessageBox
 from qgis.core import QgsFeature, QgsGeometry, QgsSettings
 from qgis.gui import QgsMapToolEmitPoint
@@ -15,8 +15,15 @@ from qgis.gui import QgsMapToolEmitPoint
 from .base import PlacementSnapper, SNAP_ROUTE_LAYERS
 
 # Phase 5.2: Logging
+from ..utils.errors import OperationErrors, add_and_save
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
+
+
+def _place_pole() -> str:
+    """Title on the message-bar entries the pole tool pushes."""
+    src = QT_TRANSLATE_NOOP('FiberQTools', "Place pole")
+    return QCoreApplication.translate('FiberQTools', src)
 
 
 def snap_pixels():
@@ -93,13 +100,19 @@ class PointTool(QgsMapToolEmitPoint):
             set_feature_uuid(feature)
         except Exception as e:
             logger.debug(f"Could not set feature uuid on pole: {e}")
-        self.layer.startEditing()
-        self.layer.addFeature(feature)
-        self.layer.commitChanges()
+        # Each answer checked (utils.errors.add_and_save): the three used to be
+        # thrown away, so a pole a locked file or a read-only login kept out
+        # went unsaid -- this tool says nothing on success either.
+        placed = False
+        with OperationErrors(_place_pole(), None, absorb=True) as errors:
+            placed = add_and_save(self.layer, [feature], errors)
         self.layer.triggerRepaint()
         self.snapper.clear()
+        if not placed:
+            return
 
-        # Record for undo (v1.2 — Feature 2)
+        # Record for undo (v1.2 — Feature 2). Only now: an undo entry for a pole
+        # that never reached the layer would undo somebody else's work.
         try:
             if hasattr(self, 'plugin') and self.plugin and hasattr(self.plugin, 'undo_manager') and self.plugin.undo_manager:
                 self.plugin.undo_manager.record_add(self.layer, feature)
