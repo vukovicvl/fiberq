@@ -6,7 +6,7 @@ from qgis.PyQt.QtWidgets import (
     QFileDialog)
 from qgis.core import (
     QgsVectorLayer,
-    QgsProject, QgsField, QgsFeature, QgsFeatureRequest,
+    QgsProject, QgsFeature, QgsFeatureRequest,
     QgsGeometry, QgsPointXY, QgsWkbTypes,
     QgsSymbol, QgsUnitTypes, QgsCoordinateTransform
 )
@@ -101,7 +101,7 @@ from .core.layer_manager import (  # noqa: E402, F401
 # =============================================================================
 
 from qgis.gui import QgsVertexMarker  # noqa: E402
-from .utils.compat import FieldType  # noqa: E402
+from .utils.compat import FieldType, new_field  # noqa: E402
 from qgis.PyQt import sip  # noqa: E402
 import os  # noqa: E402
 
@@ -3514,7 +3514,7 @@ class FiberQPlugin:
                 # that refused it left a layer with no attributes at all, and
                 # the import then wrote points into it and reported success.
                 if not layer.dataProvider().addAttributes(
-                        [QgsField("naziv", FieldType.String)]):
+                        [new_field("naziv", FieldType.String)]):
                     report_error(self.tr("Import points"), new_layer_name,
                                  QCoreApplication.translate(
                                      'FiberQPlugin',
@@ -3556,7 +3556,7 @@ class FiberQPlugin:
             with OperationErrors(self.tr("Import points"), self.iface) as field_errors:
                 if not field_was_editing:
                     layer.startEditing()
-                if not layer.dataProvider().addAttributes([QgsField("tip", FieldType.String)]):
+                if not layer.dataProvider().addAttributes([new_field("tip", FieldType.String)]):
                     field_errors.add(layer.name(), QCoreApplication.translate(
                         'FiberQPlugin', "the layer would not take its 'tip' field"))
                     if not field_was_editing:

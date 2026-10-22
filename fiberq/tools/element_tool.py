@@ -5,14 +5,14 @@ Map tools for placing and managing FiberQ elements (ODF, TB, OTB, etc.)
 Phase 2.1: Extracted from extracted_classes.py
 """
 
-from qgis.PyQt.QtCore import Qt
-from ..utils.compat import FieldType
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, Qt
+from ..utils.compat import FieldType, new_field
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QMessageBox, QInputDialog, QDialog
 
 from qgis.core import (
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
-    QgsField, QgsWkbTypes, QgsMarkerSymbol,
+    QgsWkbTypes, QgsMarkerSymbol,
     QgsSvgMarkerSymbolLayer, QgsUnitTypes, QgsSimpleMarkerSymbolLayer,
     QgsPalLayerSettings, QgsVectorLayerSimpleLabeling
 )
@@ -36,8 +36,16 @@ from ..utils.legacy_bridge import (
 from ..dialogs.element_dialog import PrePlaceAttributesDialog
 
 # Phase 5.2: Logging
+from ..utils.errors import OperationErrors, add_columns
 from ..utils.logger import get_logger
+from ..utils.uuid_utils import ensure_uuid_field
 logger = get_logger(__name__)
+
+
+def _place_element() -> str:
+    """Title on the message-bar entries the element tool pushes."""
+    src = QT_TRANSLATE_NOOP('FiberQTools', "Place element")
+    return QCoreApplication.translate('FiberQTools', src)
 
 
 class PlaceElementTool(QgsMapToolEmitPoint):
@@ -166,11 +174,11 @@ class PlaceElementTool(QgsMapToolEmitPoint):
                     qt = FieldType.Double
                 elif kind == "enum":
                     qt = FieldType.String
-                fields.append(QgsField(key, qt))
+                fields.append(new_field(key, qt))
 
             # Always ensure 'naziv' exists
             if not any(f.name() == "naziv" for f in fields):
-                fields.insert(0, QgsField("naziv", FieldType.String))
+                fields.insert(0, new_field("naziv", FieldType.String))
 
             pr.addAttributes(fields)
             elem_layer.updateFields()
@@ -224,13 +232,17 @@ class PlaceElementTool(QgsMapToolEmitPoint):
                         qt = FieldType.Double
                     elif kind == "enum":
                         qt = FieldType.String
-                    to_add.append(QgsField(key, qt))
+                    to_add.append(new_field(key, qt))
 
             if to_add:
-                elem_layer.startEditing()
-                elem_layer.dataProvider().addAttributes(to_add)
-                elem_layer.updateFields()
-                elem_layer.commitChanges()
+                # Typed and straight to the provider (utils.errors.add_columns),
+                # so a database table takes them and a refusal is said. There is
+                # no edit session around it: addAttributes bypasses the buffer,
+                # so the startEditing()/commitChanges() pair that was here
+                # committed none of these columns -- only whatever else the
+                # layer had unsaved, before the element was even built.
+                with OperationErrors(_place_element(), None) as column_errors:
+                    add_columns(elem_layer, to_add, column_errors)
 
             _apply_element_aliases(elem_layer)
 
@@ -241,12 +253,11 @@ class PlaceElementTool(QgsMapToolEmitPoint):
         # WP1b identity invariant: ensure the fiberq_uuid column exists on the
         # element layer (covers both the newly created and found-existing
         # branches above) before building the feature, so set_feature_uuid()
-        # below actually stamps it instead of silently no-opping.
-        try:
-            from ..utils.uuid_utils import ensure_uuid_field
-            ensure_uuid_field(elem_layer)
-        except Exception as e:
-            logger.debug(f"Error ensuring fiberq_uuid on element layer: {e}")
+        # below actually stamps it instead of silently no-opping. Where the
+        # column cannot be added -- a read-only layer, a database login that
+        # does not own the table -- it answers False with the reason logged,
+        # and the element is placed without an ID.
+        ensure_uuid_field(elem_layer)
 
         # Write point
         feat = QgsFeature(elem_layer.fields())

@@ -14,13 +14,12 @@ Phase 5.2: Added logging infrastructure
 from typing import Optional, List, Tuple
 
 from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, Qt
-from ..utils.compat import FieldType
+from ..utils.compat import FieldType, new_field
 from qgis.PyQt.QtWidgets import QMessageBox, QInputDialog, QFileDialog
 
 from qgis.core import (
     QgsProject,
     QgsVectorLayer,
-    QgsField,
     QgsFeature,
     QgsGeometry,
     QgsPointXY,
@@ -32,12 +31,40 @@ from qgis.core import (
 
 # Phase 5.2: Logging
 from ..i18n import safe_format
-from ..utils.errors import OperationErrors, check_commit, describe
+from ..utils.errors import OperationErrors, add_columns, check_commit, describe
 from ..utils import file_filters
 from ..utils.geometry import line_parts, transformed
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
+from ..utils.uuid_utils import ensure_uuid_field
 logger = get_logger(__name__)
+
+#: The columns every Route layer FiberQ writes to is given, in this order.
+ROUTE_COLUMNS = (
+    ("naziv", FieldType.String),
+    ("duzina", FieldType.Double),
+    ("duzina_km", FieldType.Double),
+    ("tip_trase", FieldType.String),
+)
+
+
+def add_route_columns(route_layer, errors) -> bool:
+    """Give ``route_layer`` whichever of :data:`ROUTE_COLUMNS` it lacks.
+
+    Typed and straight to the provider (``utils.errors.add_columns``), with a
+    refusal added to ``errors``. True when the layer has all four. Shared by
+    every path that writes routes, the manual route tool included, which had
+    its own copy of these four adds inside an edit session it then committed.
+    """
+    missing = [new_field(name, kind) for name, kind in ROUTE_COLUMNS
+               if route_layer.fields().indexFromName(name) == -1]
+    return add_columns(route_layer, missing, errors)
+
+
+def _route_columns() -> str:
+    """Title on the message-bar entry for Route columns that could not be added."""
+    src = QT_TRANSLATE_NOOP('FiberQRoutes', "Route columns")
+    return QCoreApplication.translate('FiberQRoutes', src)
 
 
 def _route_import() -> str:
@@ -245,7 +272,7 @@ class RouteManager:
         self._ensure_route_fields(route_layer)
         return route_layer
 
-    def _ensure_route_fields(self, route_layer: QgsVectorLayer) -> None:
+    def _ensure_route_fields(self, route_layer: QgsVectorLayer, errors=None) -> None:
         """Ensure route layer has all required fields.
 
         Does not open or close an edit session the caller did not ask for. This
@@ -263,34 +290,28 @@ class RouteManager:
         commitChanges() was therefore never committing the fields -- they were
         already there -- it was only ever committing whatever else happened to be
         in the buffer, which is to say the user's work.
+
+        The columns are typed (:func:`add_route_columns`): untyped, a PostgreSQL
+        Route table refused every one of them, and the answer was thrown away.
+        A refusal goes to ``errors``; ``None`` builds a collector of its own and
+        reports before returning, for the callers that have none yet.
         """
-        added_fields = []
-
-        if route_layer.fields().indexFromName("naziv") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("naziv", FieldType.String)])
-            added_fields.append("naziv")
-        if route_layer.fields().indexFromName("duzina") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("duzina", FieldType.Double)])
-            added_fields.append("duzina")
-        if route_layer.fields().indexFromName("duzina_km") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("duzina_km", FieldType.Double)])
-            added_fields.append("duzina_km")
-        if route_layer.fields().indexFromName("tip_trase") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("tip_trase", FieldType.String)])
-            added_fields.append("tip_trase")
-
-        if added_fields:
-            route_layer.updateFields()
+        own_errors = errors is None
+        if own_errors:
+            errors = OperationErrors(_route_columns(), self.iface)
+        try:
+            add_route_columns(route_layer, errors)
+        finally:
+            if own_errors:
+                errors.report()
 
         # WP1b identity invariant: ensure the fiberq_uuid column exists on the
         # Route layer (both freshly created and found-existing layers reach here
         # via _ensure_route_layer), so the set_feature_uuid() calls at feature
-        # creation actually stamp a value instead of silently no-opping.
-        try:
-            from ..utils.uuid_utils import ensure_uuid_field
-            ensure_uuid_field(route_layer)
-        except Exception as e:
-            logger.debug(f"Error ensuring fiberq_uuid on route layer: {e}")
+        # creation actually stamp a value instead of silently no-opping. False
+        # where it cannot be added (reason logged): routes are then written
+        # without an ID.
+        ensure_uuid_field(route_layer)
 
     def _ask_route_type(self, title: str = "Route type",
                         label: str = "Select route type:") -> Optional[str]:

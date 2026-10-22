@@ -311,6 +311,12 @@ CRITICAL = {
         "SlackPlaceTool._slack_layer",
         "SlackPlaceTool.canvasReleaseEvent",
     }),
+    # Q13, unclaimed (v1.6.0 QA): the identity column every placement and the
+    # project-open migration ask for. It answered True for a column only an
+    # edit buffer held, so it is gated from here so nothing in it goes quiet.
+    "fiberq/utils/uuid_utils.py": frozenset({
+        "ensure_uuid_field",
+    }),
     # R2
     "fiberq/ui/routing_ui.py": frozenset({
         "RoutingUI._ask_for_auto_gpkg",
@@ -360,10 +366,11 @@ ALLOWED_SILENT = {
 #: one hides an exception, the other ignores an answer. Sharing one counter
 #: would let a branch "fix" a swallowed exception by checking a return value.
 ALLOWED_WRITES = {
-    # As above: two dataProvider().addAttributes() calls that build the cable
-    # layer's schema, neither of them R8's row. Gated so they cannot grow.
+    # As above: the dataProvider().addAttributes() call that builds a NEW
+    # memory cable layer's schema, not R8's row. Gated so it cannot grow. Its
+    # sibling, the add to an existing cable layer, is checked since Q13.
     ("fiberq/core/cable_manager.py",
-     "CableManager.lay_cable"): (2, "pre-award schema writes in the same function, not in R8's row"),
+     "CableManager.lay_cable"): (1, "pre-award schema write in the same function, not in R8's row"),
 }
 
 #: What test D pins the package-wide silent-handler count to. Test D asserts
@@ -403,8 +410,14 @@ ALLOWED_WRITES = {
 #: language at start-up, and the handler around that write went with it. The
 #: Service Area fix took two: the ellipsoid set-up both region tools wrote out
 #: by hand, each in a handler that logged at debug level, is
-#: ``utils.measure`` now.
-SILENCE_CEILING = 684
+#: ``utils.measure`` now. The snap commit before Q13 took one and left this
+#: number at 684 (the placement indicator's setMatch handler now resets what
+#: it shows). Q13 took fourteen: ensure_uuid_field's rollback swallow went
+#: with the edit-session fallback it guarded, ensure_branch_index_field and
+#: the pipe tool's column add report through utils.errors.add_columns, and
+#: the eleven ``except Exception: logger.debug`` wrappers around
+#: ensure_uuid_field calls went, because it no longer raises.
+SILENCE_CEILING = 669
 
 
 # ---------------------------------------------------------------------------
@@ -690,9 +703,10 @@ def test_d_package_wide_silence_does_not_grow():
 #: ran was the one this gate did not watch. No R-row moved. The last five are
 #: SlackManager's _batch_allowed, _generate_in_one_session, _take_saved_ids,
 #: _recompute_in_one_session and _terminal_slack: WP4 4.1's PF-4 moved part of
-#: R9's Generate terminal slacks into them, so R9 widens with them.
-HARDENED_FUNCTIONS = 130
-HARDENED_FILES = 21
+#: R9's Generate terminal slacks into them, so R9 widens with them. The last
+#: one is uuid_utils.ensure_uuid_field (Q13, unclaimed), in a file of its own.
+HARDENED_FUNCTIONS = 131
+HARDENED_FILES = 22
 
 
 def test_the_hardened_set_is_not_quietly_narrowed():

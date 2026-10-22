@@ -11,17 +11,26 @@ import math
 from .base import (
     Qt, QColor,
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
-    QgsPointXY, QgsField, QgsWkbTypes, QgsRubberBand,
+    QgsPointXY, QgsWkbTypes, QgsRubberBand,
     QgsMapTool, QgsVertexMarker
 )
-from ..utils.compat import FieldType
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
+
+from ..utils.compat import FieldType, new_field
 
 # Phase 5.2: Logging
+from ..utils.errors import OperationErrors, add_columns
 from ..utils.geometry import held_by_its_box, polylines
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
 from ..utils.spatial import features_within
 logger = get_logger(__name__)
+
+
+def _lay_pipe() -> str:
+    """Title on the message-bar entries the pipe tool pushes."""
+    src = QT_TRANSLATE_NOOP('FiberQTools', "Lay pipe")
+    return QCoreApplication.translate('FiberQTools', src)
 
 
 def _point_of(geom):
@@ -357,6 +366,15 @@ class PipePlaceTool(QgsMapTool):
             color_hex = "#D0FF00"  # Yellow
             width_mm = 2.2
 
+        # The length column, before the feature is built from the layer's
+        # columns. It used to be added after, inside the edit session -- which
+        # never happened: setting duzina_m below raises KeyError on a layer
+        # without it, so the add was unreachable. Typed and straight to the
+        # provider (utils.errors.add_columns), with a refusal said.
+        if 'duzina_m' not in layer.fields().names():
+            with OperationErrors(_lay_pipe(), self.iface) as column_errors:
+                add_columns(layer, [new_field('duzina_m', FieldType.Double)], column_errors)
+
         # Create feature
         f = QgsFeature(layer.fields())
         f.setGeometry(geom)
@@ -370,8 +388,10 @@ class PipePlaceTool(QgsMapTool):
 
         # Calculate length. This tool measured on the ellipsoid before the shared
         # helper existed, which is why pipes were right while routes and cables
-        # were 41% long in the same project (see fiberq/utils/measure.py).
-        f['duzina_m'] = ground_length(geom, layer)
+        # were 41% long in the same project (see fiberq/utils/measure.py). A
+        # layer that refused the column above gets the pipe without it.
+        if 'duzina_m' in layer.fields().names():
+            f['duzina_m'] = ground_length(geom, layer)
 
         # Find FROM/TO names
         node_names = {"Poles", "Stubovi", "OKNA", "Manholes"}
@@ -402,15 +422,6 @@ class PipePlaceTool(QgsMapTool):
 
         # Add feature
         layer.startEditing()
-
-        # Ensure duzina_m field exists
-        try:
-            if 'duzina_m' not in layer.fields().names():
-                layer.addAttribute(QgsField('duzina_m', FieldType.Double))
-                layer.updateFields()
-        except Exception as e:
-            logger.debug(f"Error in PipePlaceTool._finish: {e}")
-
         layer.addFeature(f)
         layer.commitChanges()
         layer.updateExtents()

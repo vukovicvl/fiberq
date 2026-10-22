@@ -6,21 +6,32 @@ Tool for manually drawing routes by clicking points on the map.
 
 import math
 
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
+
 from .base import (
     Qt, QColor, QMessageBox, QInputDialog,
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
-    QgsPointXY, QgsField, QgsWkbTypes, QgsRubberBand,
+    QgsPointXY, QgsWkbTypes, QgsRubberBand,
     QgsMapTool,
     get_element_defs, get_joint_closure_def, get_route_type_options
 )
-from ..utils.compat import FieldType
+from ..core.route_manager import add_route_columns
 
 # Phase 5.2: Logging
+from ..utils.errors import OperationErrors
 from ..utils.geometry import held_by_its_box, polylines
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
 from ..utils.spatial import features_within
+from ..utils.uuid_utils import ensure_uuid_field
 logger = get_logger(__name__)
+
+
+def _draw_route() -> str:
+    """Title on the message-bar entries the manual route tool pushes."""
+    src = QT_TRANSLATE_NOOP('FiberQTools', "Manual route")
+    return QCoreApplication.translate('FiberQTools', src)
+
 
 #: How near, in screen pixels, a click or a move must come to a node or a
 #: route to snap to it.
@@ -280,26 +291,20 @@ class ManualRouteTool(QgsMapTool):
             route_layer = QgsVectorLayer(f"LineString?crs={crs}", "Route", "memory")
             QgsProject.instance().addMapLayer(route_layer)
 
-        # Ensure required fields exist
-        route_layer.startEditing()
-        if route_layer.fields().indexFromName("naziv") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("naziv", FieldType.String)])
-        if route_layer.fields().indexFromName("duzina") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("duzina", FieldType.Double)])
-        if route_layer.fields().indexFromName("duzina_km") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("duzina_km", FieldType.Double)])
-        if route_layer.fields().indexFromName("tip_trase") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("tip_trase", FieldType.String)])
-        route_layer.updateFields()
-        route_layer.commitChanges()
+        # Ensure required fields exist: typed and straight to the provider, the
+        # same four adds as Import route's (core.route_manager.add_route_columns),
+        # with a refusal said. This copy added them untyped -- a PostgreSQL Route
+        # table refused every one -- inside a startEditing()/commitChanges() pair
+        # that committed none of the columns, only whatever else the layer had
+        # unsaved, before the route was even drawn into it.
+        with OperationErrors(_draw_route(), self.iface) as column_errors:
+            add_route_columns(route_layer, column_errors)
 
         # WP1b identity invariant: ensure the fiberq_uuid column exists before
         # features are added, so set_feature_uuid() below actually stamps it.
-        try:
-            from ..utils.uuid_utils import ensure_uuid_field
-            ensure_uuid_field(route_layer)
-        except Exception as e:
-            logger.debug(f"Error ensuring fiberq_uuid on route layer: {e}")
+        # False where it cannot be added (reason logged): the route is then
+        # written without an ID.
+        ensure_uuid_field(route_layer)
 
         # Apply style
         if self.plugin:

@@ -13,14 +13,13 @@ Phase 5.2: Added logging infrastructure
 from typing import Optional, List, Dict, Any
 
 from qgis.PyQt.QtCore import Qt
-from ..utils.compat import FieldType
+from ..utils.compat import FieldType, new_field
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QMessageBox, QDialog
 
 from qgis.core import (
     QgsProject,
     QgsVectorLayer,
-    QgsField,
     QgsWkbTypes,
     QgsSymbol,
     QgsSimpleLineSymbolLayer,
@@ -246,21 +245,18 @@ class PipeManager:
         layer = QgsVectorLayer(f"LineString?crs={crs}", name, "memory")
         pr = layer.dataProvider()
         pr.addAttributes([
-            QgsField("materijal", FieldType.String),
-            QgsField("kapacitet", FieldType.String),
-            QgsField("fi", FieldType.Int),
-            QgsField("od", FieldType.String),
-            QgsField("do", FieldType.String),
-            QgsField("duzina_m", FieldType.Double),
+            new_field("materijal", FieldType.String),
+            new_field("kapacitet", FieldType.String),
+            new_field("fi", FieldType.Int),
+            new_field("od", FieldType.String),
+            new_field("do", FieldType.String),
+            new_field("duzina_m", FieldType.Double),
         ])
         layer.updateFields()
 
         # WP1b identity invariant: ensure the fiberq_uuid column exists.
-        try:
-            from ..utils.uuid_utils import ensure_uuid_field
-            ensure_uuid_field(layer)
-        except Exception as e:
-            logger.debug(f"Error ensuring fiberq_uuid on pipe layer: {e}")
+        from ..utils.uuid_utils import ensure_uuid_field
+        ensure_uuid_field(layer)
 
         try:
             layer.setMapTipTemplate(

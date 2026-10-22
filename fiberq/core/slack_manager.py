@@ -11,7 +11,7 @@ This module provides slack (optical reserve) management functionality:
 from typing import Optional
 
 from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
-from ..utils.compat import FieldType, geometries_equal
+from ..utils.compat import FieldType, geometries_equal, new_field
 from qgis.PyQt.QtWidgets import QDialog, QMessageBox
 
 from qgis.core import (
@@ -19,7 +19,6 @@ from qgis.core import (
     QgsProject,
     QgsVectorLayer,
     QgsExpression,
-    QgsField,
     QgsFeature,
     QgsGeometry,
     QgsPointXY,
@@ -187,21 +186,18 @@ class SlackManager:
         vl = QgsVectorLayer(f"Point?crs={crs}", "Optical slacks", "memory")  # Issue #2: Use plural name
         pr = vl.dataProvider()
         pr.addAttributes([
-            QgsField("tip", FieldType.String),
-            QgsField("duzina_m", FieldType.Double),
-            QgsField("lokacija", FieldType.String),
-            QgsField("cable_layer_id", FieldType.String),
-            QgsField("cable_fid", FieldType.Int),
-            QgsField("strana", FieldType.String),
-            QgsField("napomena", FieldType.String),
+            new_field("tip", FieldType.String),
+            new_field("duzina_m", FieldType.Double),
+            new_field("lokacija", FieldType.String),
+            new_field("cable_layer_id", FieldType.String),
+            new_field("cable_fid", FieldType.Int),
+            new_field("strana", FieldType.String),
+            new_field("napomena", FieldType.String),
         ])
         vl.updateFields()
         # WP1b identity invariant: ensure the fiberq_uuid column exists.
-        try:
-            from ..utils.uuid_utils import ensure_uuid_field
-            ensure_uuid_field(vl)
-        except Exception as e:
-            logger.debug(f"Error ensuring fiberq_uuid on slack layer: {e}")
+        from ..utils.uuid_utils import ensure_uuid_field
+        ensure_uuid_field(vl)
         self.apply_slack_field_aliases(vl)
         QgsProject.instance().addMapLayer(vl)
         try:

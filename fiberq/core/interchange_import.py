@@ -35,7 +35,7 @@ from contextlib import closing
 
 from qgis.core import (
     QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsFeature, QgsFeatureRequest,
-    QgsField, QgsGeometry, QgsProject, QgsVectorLayer,
+    QgsGeometry, QgsProject, QgsVectorLayer,
 )
 
 from qgis.PyQt.QtCore import QT_TRANSLATE_NOOP, QCoreApplication
@@ -46,7 +46,7 @@ from .interchange_bundle import read_bundle_metadata
 from .project_store import read_json_entry
 from ..i18n import safe_format
 from ..models import schema as fq_schema
-from ..utils.compat import FieldType
+from ..utils.compat import FieldType, new_field
 from ..utils.geometry import transformed
 from ..utils.logger import get_logger
 from ..utils.uuid_utils import FIBERQ_UUID_FIELD
@@ -179,9 +179,9 @@ _FIELD_TYPES = {
 
 
 def _field(name, logical_type="text"):
-    """Build a :class:`QgsField`, with the constructor this QGIS accepts
-    (:class:`fiberq.utils.compat.FieldType` says which); an unknown type is text."""
-    return QgsField(name, _FIELD_TYPES.get(logical_type, FieldType.String))
+    """Build a :class:`QgsField` with :func:`fiberq.utils.compat.new_field`, which
+    picks the constructor this QGIS accepts and a type name; an unknown type is text."""
+    return new_field(name, _FIELD_TYPES.get(logical_type, FieldType.String))
 
 
 class ImportResult:

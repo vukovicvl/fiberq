@@ -356,7 +356,7 @@ def _field_types():
 
 
 class FieldType:
-    """The types to build a :class:`QgsField` with: ``QgsField("naziv", FieldType.String)``.
+    """The types to build a field with: ``new_field("naziv", FieldType.String)``.
 
     Never ``QVariant.String`` -- see the block comment above; the package scan
     in ``tests/test_qgis4_deprecations.py`` refuses it. Qt numbers its built-in
@@ -365,6 +365,48 @@ class FieldType:
     holds on every supported QGIS as well.
     """
     String, Int, LongLong, Double, Bool = _field_types()
+
+
+def _type_number(field_type):
+    """Qt's number for a type: a ``QVariant.Type`` is an int, a ``QMetaType.Type``
+    an enum member on PyQt6."""
+    try:
+        return int(field_type)
+    except TypeError:
+        return int(field_type.value)
+
+
+#: The column type each kind is created with, written into SQL as it stands by
+#: the PostgreSQL and SpatiaLite providers. QgsField's own default is an empty
+#: name, and the PostgreSQL provider then sends ``ALTER TABLE ... ADD COLUMN
+#: "fiberq_uuid"`` with nothing after it: a syntax error, for every kind
+#: (measured on 3.22.16, 3.40.15 and 4.2.3 against PostGIS 16). SpatiaLite
+#: accepts a column with no type and then reads numbers back as text. These
+#: five are valid SQL on both. ``float8`` is not: SpatiaLite reads it as text.
+#: A GeoPackage ignores the name and a memory layer only displays it, so the
+#: columns there are what they were.
+_TYPE_NAMES = {
+    _type_number(FieldType.String): "text",
+    _type_number(FieldType.Int): "integer",
+    _type_number(FieldType.LongLong): "bigint",
+    _type_number(FieldType.Double): "double precision",
+    _type_number(FieldType.Bool): "boolean",
+} if FieldType.String is not None else {}
+
+
+def new_field(name, field_type):
+    """A :class:`QgsField` that every provider FiberQ writes to can add as a column.
+
+    ``QgsField(name, FieldType.String)`` carries no type name, which is enough
+    for a memory layer or a GeoPackage and makes a PostgreSQL table refuse the
+    column (see :data:`_TYPE_NAMES`). Every field FiberQ builds goes through
+    here, so a field list written for a new memory layer stays right when it is
+    reused on a database table; ``tests/test_field_type_names.py`` refuses a
+    ``QgsField(name, type)`` anywhere else. A type outside the five keeps QGIS's
+    empty name, as before.
+    """
+    from qgis.core import QgsField
+    return QgsField(name, field_type, _TYPE_NAMES.get(_type_number(field_type), ""))
 
 
 def save_style_to_database(layer, name, description, use_as_default, ui_file_content=""):
@@ -575,6 +617,7 @@ __all__ = [
     'RenderUnit',
     # Field types and style storage
     'FieldType',
+    'new_field',
     'save_style_to_database',
     'geometries_equal',
     # Utilities

@@ -44,7 +44,7 @@ from . import interchange as ic
 from . import interchange_fields as fm
 from ..i18n import safe_format
 from ..models.schema import SCHEMA_VERSION, canonical_layer_name
-from ..utils.compat import FieldType
+from ..utils.compat import FieldType, new_field
 from ..utils.geometry import transformed
 from ..utils.logger import get_logger
 from ..utils.uuid_utils import FIBERQ_UUID_FIELD
@@ -53,9 +53,9 @@ logger = get_logger(__name__)
 
 
 def _text_field(name):
-    """A text :class:`QgsField`, built with the constructor this QGIS accepts
-    (:class:`fiberq.utils.compat.FieldType` says which)."""
-    return QgsField(name, FieldType.String)
+    """A text :class:`QgsField`, built by :func:`fiberq.utils.compat.new_field`
+    with the constructor this QGIS accepts and a type name."""
+    return new_field(name, FieldType.String)
 
 
 def _quoted(identifier):

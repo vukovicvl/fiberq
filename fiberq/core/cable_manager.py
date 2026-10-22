@@ -13,14 +13,13 @@ Phase 5.2: Added logging infrastructure
 from typing import List, Dict, Any, Tuple
 
 from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, Qt
-from ..utils.compat import FieldType
+from ..utils.compat import FieldType, new_field
 from qgis.PyQt.QtWidgets import QMessageBox, QDialog
 from qgis.PyQt.QtGui import QColor
 
 from qgis.core import (
     QgsProject,
     QgsVectorLayer,
-    QgsField,
     QgsFeature,
     QgsFeatureRequest,
     QgsGeometry,
@@ -42,7 +41,7 @@ from qgis.core import (
 # Phase 5.2: Logging
 from . import interchange_fields as fm
 from ..i18n import safe_format
-from ..utils.errors import OperationErrors, check_commit, describe
+from ..utils.errors import OperationErrors, add_columns, check_commit, describe
 from ..utils.geometry import line_parts
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
@@ -64,6 +63,7 @@ _NOT_EDITABLE = QT_TRANSLATE_NOOP(
 _NO_LENGTH = QT_TRANSLATE_NOOP(
     'FiberQCables',
     "the cable layer has no {columns} column, so this cable was laid without its length recorded")
+_BRANCH_TITLE = QT_TRANSLATE_NOOP('FiberQCables', "Branch cables")
 
 # Phase 0.1: UUID support for FiberQ Designer
 from ..utils.uuid_utils import FIBERQ_UUID_FIELD, generate_uuid  # noqa: E402
@@ -340,16 +340,27 @@ class CableManager:
     # Branch offset methods
     # -------------------------------------------------------------------------
 
-    def ensure_branch_index_field(self, layer: QgsVectorLayer) -> None:
-        """Ensure layer has INT field 'branch_index'."""
+    def ensure_branch_index_field(self, layer: QgsVectorLayer, errors=None) -> bool:
+        """Ensure layer has INT field 'branch_index'. True when it has.
+
+        Typed and straight to the provider (``utils.errors.add_columns``): the
+        untyped add was refused by every PostgreSQL table, made a SpatiaLite
+        column that read its numbers back as text, and its answer was thrown
+        away -- so the indices were then written to a column that was not
+        there. A refusal goes to ``errors``; ``None`` builds a collector of its
+        own and reports before returning.
+        """
+        if layer.fields().indexFromName("branch_index") != -1:
+            return True
+        own_errors = errors is None
+        if own_errors:
+            errors = OperationErrors(
+                QCoreApplication.translate('FiberQCables', _BRANCH_TITLE), self.iface)
         try:
-            if layer.fields().indexFromName("branch_index") != -1:
-                return
-            pr = layer.dataProvider()
-            pr.addAttributes([QgsField("branch_index", FieldType.Int)])
-            layer.updateFields()
-        except Exception as e:
-            logger.debug(f"Error in CableManager.ensure_branch_index_field: {e}")
+            return add_columns(layer, [new_field("branch_index", FieldType.Int)], errors)
+        finally:
+            if own_errors:
+                errors.report()
 
     def compute_branch_indices_for_layer(self, layer: QgsVectorLayer, tol_m: float = 0.3) -> Tuple[int, int]:
         """
@@ -755,38 +766,38 @@ class CableManager:
             pr = cables_layer.dataProvider()
 
             pr.addAttributes([
-                QgsField("tip", FieldType.String),
-                QgsField("podtip", FieldType.String),
-                QgsField("color_code", FieldType.String),
-                QgsField("broj_cevcica", FieldType.Int),
-                QgsField("broj_vlakana", FieldType.Int),
-                QgsField("tip_kabla", FieldType.String),
-                QgsField("vrsta_vlakana", FieldType.String),
-                QgsField("vrsta_omotaca", FieldType.String),
-                QgsField("vrsta_armature", FieldType.String),
-                QgsField("talasno_podrucje", FieldType.String),
-                QgsField("naziv", FieldType.String),
-                QgsField("slabljenje_dbkm", FieldType.Double),
-                QgsField("hrom_disp_ps_nmxkm", FieldType.Double),
-                QgsField("stanje_kabla", FieldType.String),
-                QgsField("cable_laying", FieldType.String),
-                QgsField("vrsta_mreze", FieldType.String),
-                QgsField("godina_ugradnje", FieldType.Int),
-                QgsField("konstr_vlakna_u_cevcicama", FieldType.Int),
-                QgsField("konstr_sa_uzlepljenim_elementom", FieldType.Int),
-                QgsField("konstr_punjeni_kabl", FieldType.Int),
-                QgsField("konstr_sa_arm_vlaknima", FieldType.Int),
-                QgsField("konstr_bez_metalnih", FieldType.Int),
-                QgsField("od", FieldType.String),
-                QgsField("do", FieldType.String),
-                QgsField("duzina_m", FieldType.Double),
-                QgsField("slack_m", FieldType.Double),
-                QgsField("total_len_m", FieldType.Double),
-                QgsField(FIBERQ_UUID_FIELD, FieldType.String),
+                new_field("tip", FieldType.String),
+                new_field("podtip", FieldType.String),
+                new_field("color_code", FieldType.String),
+                new_field("broj_cevcica", FieldType.Int),
+                new_field("broj_vlakana", FieldType.Int),
+                new_field("tip_kabla", FieldType.String),
+                new_field("vrsta_vlakana", FieldType.String),
+                new_field("vrsta_omotaca", FieldType.String),
+                new_field("vrsta_armature", FieldType.String),
+                new_field("talasno_podrucje", FieldType.String),
+                new_field("naziv", FieldType.String),
+                new_field("slabljenje_dbkm", FieldType.Double),
+                new_field("hrom_disp_ps_nmxkm", FieldType.Double),
+                new_field("stanje_kabla", FieldType.String),
+                new_field("cable_laying", FieldType.String),
+                new_field("vrsta_mreze", FieldType.String),
+                new_field("godina_ugradnje", FieldType.Int),
+                new_field("konstr_vlakna_u_cevcicama", FieldType.Int),
+                new_field("konstr_sa_uzlepljenim_elementom", FieldType.Int),
+                new_field("konstr_punjeni_kabl", FieldType.Int),
+                new_field("konstr_sa_arm_vlaknima", FieldType.Int),
+                new_field("konstr_bez_metalnih", FieldType.Int),
+                new_field("od", FieldType.String),
+                new_field("do", FieldType.String),
+                new_field("duzina_m", FieldType.Double),
+                new_field("slack_m", FieldType.Double),
+                new_field("total_len_m", FieldType.Double),
+                new_field(FIBERQ_UUID_FIELD, FieldType.String),
                 # Phase 0.3: Fiber schema for FiberQ Designer
-                QgsField("fibers_per_tube", FieldType.Int),
-                QgsField("total_fibers", FieldType.Int),
-                QgsField("color_standard", FieldType.String),
+                new_field("fibers_per_tube", FieldType.Int),
+                new_field("total_fibers", FieldType.Int),
+                new_field("color_standard", FieldType.String),
             ])
 
             cables_layer.updateFields()
@@ -838,12 +849,15 @@ class CableManager:
         to_add = []
         for fname, ftype in needed_fields.items():
             if not fm.actual_field(existing_names, fname):
-                to_add.append(QgsField(fname, ftype))
+                to_add.append(new_field(fname, ftype))
         if to_add:
             prov = (cables_layer.providerType() or "").lower()
             if prov in ("memory", "ogr", "spatialite"):
-                cables_layer.dataProvider().addAttributes(to_add)
-                cables_layer.updateFields()
+                # Typed, so a SpatiaLite layer stores numbers as numbers, and
+                # with a refusal said instead of thrown away.
+                with OperationErrors(QCoreApplication.translate('FiberQCables', _LAY_TITLE),
+                                     self.iface) as column_errors:
+                    add_columns(cables_layer, to_add, column_errors)
             else:
                 self.iface.messageBar().pushWarning(
                     "FiberQ",
