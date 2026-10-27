@@ -17,6 +17,9 @@ Found in field QA:
 * QGIS 4.2, the v1.6.0 QA's suite logs: "unclosed database", from a sqlite3
   connection whose own ``with`` was taken to close it, and "QgsGeometry.equals()
   is deprecated" from the terminal-slack bookkeeping.
+* QGIS 4.2 on Python 3.14, the v1.6.0 QA: "datetime.datetime.utcnow() is
+  deprecated" at every relation the Relations dialog made. Python 3.12
+  deprecates it, so QGIS 3.40 and QGIS 4 printed it too.
 """
 import pathlib
 import re
@@ -75,6 +78,12 @@ FORBIDDEN = [
          "same = a.geometry().equals(b.geometry())",
          "same = geometries_equal(a.geometry(), b.geometry())",
          allowed=(COMPAT,)),
+    Rule("utc-clock",
+         r"\butc(now|fromtimestamp)\(",
+         "datetime.now(timezone.utc) or datetime.fromtimestamp(seconds, timezone.utc) -- "
+         "utcnow() and utcfromtimestamp() are deprecated from Python 3.12 (QGIS 3.40, QGIS 4)",
+         'created = datetime.utcnow().isoformat() + "Z"',
+         'created = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")'),
 ]
 
 

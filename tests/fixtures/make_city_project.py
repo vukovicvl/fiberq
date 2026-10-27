@@ -1158,9 +1158,9 @@ def _add_relations(build, cables, sites):
     """One relation per joint closure, naming the cables that reach it.
 
     ``id`` is a string: the dialog writes ``str(uuid4())``
-    (dialogs/relations_dialog.py:67-74) while the unused
-    ``RelationsManager.add_relation`` would write ``max(ids) + 1``, and every
-    reader only compares for equality. ``cables`` entries are exactly
+    (``NewRelationDialog.values()`` in dialogs/relations_dialog.py) while the
+    unused ``RelationsManager.add_relation`` would write ``max(ids) + 1``, and
+    every reader only compares for equality. ``cables`` entries are exactly
     ``{"layer_id": str, "fid": int}`` because three readers call ``int(fid)``
     unguarded.
     """

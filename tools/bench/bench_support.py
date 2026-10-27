@@ -199,10 +199,11 @@ def patch_modals(save_path):
     accepted = QDialog.DialogCode.Accepted
     ok = QMessageBox.StandardButton.Ok
     #: A confirmation must answer Yes, not Ok. The plugin asks with Yes/No or
-    #: Yes/Cancel and compares against Yes (main_plugin.py:525,
-    #: license_manager.py:115, relations_dialog.py:173), so answering Ok would
-    #: silently take the cancel branch -- the scenario would then time the
-    #: refusal instead of the work, on both sides of the comparison.
+    #: Yes/Cancel and compares against Yes (FiberQPlugin.recalculate_lengths,
+    #: license_manager._fiberq_check_pro, RelationsDialog._on_delete_relation),
+    #: so answering Ok would silently take the cancel branch -- the scenario
+    #: would then time the refusal instead of the work, on both sides of the
+    #: comparison.
     yes = QMessageBox.StandardButton.Yes
 
     for name in ("information", "warning", "critical", "about"):
