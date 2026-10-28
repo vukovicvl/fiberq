@@ -425,6 +425,24 @@ def save_style_to_database(layer, name, description, use_as_default, ui_file_con
     return message
 
 
+def save_file_name(parent, caption, directory, filters):
+    """``QFileDialog.getSaveFileName`` without the dialog's own "replace?": ``(path, filter)``.
+
+    For a file FiberQ writes *into* and never replaces -- a GeoPackage keeps
+    every table FiberQ does not write -- "already exists, replace?" misdescribes
+    what happens, and whatever the user answers, FiberQ does the same thing.
+    FiberQ asks its own question where one is needed. Qt5 has the flag on
+    QFileDialog, Qt6 on QFileDialog.Option; a binding without it gets the plain
+    dialog, which then asks as well.
+    """
+    from qgis.PyQt.QtWidgets import QFileDialog
+
+    no_confirm = getattr(getattr(QFileDialog, 'Option', QFileDialog), 'DontConfirmOverwrite', None)
+    if no_confirm is None:
+        return QFileDialog.getSaveFileName(parent, caption, directory, filters)
+    return QFileDialog.getSaveFileName(parent, caption, directory, filters, '', no_confirm)
+
+
 def geometries_equal(first, second):
     """True when two geometries are exactly equal: type, vertices and vertex order.
 
@@ -620,6 +638,8 @@ __all__ = [
     'new_field',
     'save_style_to_database',
     'geometries_equal',
+    # File dialogs
+    'save_file_name',
     # Utilities
     'has_feature',
     'safe_import_qgis_core',

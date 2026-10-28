@@ -39,6 +39,8 @@ class FakeBar:
     def __init__(self):
         self.warnings = []
         self.successes = []
+        #: Lines of their own a save adds after its success (v1.6.0 QA Q18).
+        self.notes = []
 
     def pushWarning(self, title, text):
         self.warnings.append(text)
@@ -48,6 +50,9 @@ class FakeBar:
 
     def pushCritical(self, title, text):
         self.warnings.append(text)
+
+    def pushMessage(self, title, text, level=None, duration=-1):
+        self.notes.append(text)
 
 
 class FakeIface:

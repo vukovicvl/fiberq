@@ -5,19 +5,22 @@ Toolbar group for route creation and management.
 """
 
 import os
+import sqlite3
 
+from qgis.core import Qgis
 from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, QTimer
 
 from .base import (
-    QAction, QMenu, QToolButton, QFileDialog, QgsProject,
+    QAction, QMenu, QToolButton, QgsProject,
     QgsVectorLayer, load_icon
 )
 
-from ..core.gpkg_target import gpkg_target_problem
+from ..core.gpkg_target import flatten_name, gpkg_target_problem, table_name_for, unambiguous
 from ..i18n import safe_format
+from ..utils.compat import save_file_name
 
 # Phase 5.2: Logging
-from ..utils.errors import OperationErrors
+from ..utils.errors import OperationErrors, describe
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
@@ -173,13 +176,14 @@ class RoutingUI:
         ``FiberQPlugin``; projects saved by older versions -- and this feature
         itself, until now -- carry it under ``TelecomPlugin``. Reading only the
         older key is why picking a file in Save all never reached the auto-save
-        checkbox.
+        checkbox. A path whose ".." QGIS 3.22 would read as another file comes
+        back resolved (``gpkg_target.unambiguous``).
         """
         project = QgsProject.instance()
         path = project.readEntry("FiberQPlugin", "gpkg_path", "")[0]
         if not path:
             path = project.readEntry("TelecomPlugin", "gpkg_path", "")[0]
-        return path or ""
+        return unambiguous(path) or ""
 
     def _set_project_gpkg_path(self, path):
         """Remember the auto-save GeoPackage, under both keys.
@@ -218,10 +222,22 @@ class RoutingUI:
         five separate failures at debug level, which in a default install is the
         same as not noticing them. Now the collector absorbs what escapes and
         says so in one line.
-        """
-        from ..core.export_manager import export_one_layer_to_gpkg
 
-        with OperationErrors(self.tr("Auto GPKG"), self.core.iface, absorb=True) as errors:
+        Before the memory layers are written, the file is looked at the way
+        "Save all layers to GeoPackage" looks at it: a table nothing in the
+        project reads, named like one of them, is a question for the user
+        (``export_manager.plan_gpkg_tables``), and Cancel leaves auto-save off
+        with nothing written and the project's entries as they were. So does a
+        file that cannot be saved into or whose tables cannot be read, and a
+        file or project that changed while the question was open, with one
+        warning saying which. Meanwhile the layer hook is held
+        (``export_manager.hold_auto_save``), as Save all holds it.
+        """
+        from ..core.export_manager import (
+            action_title, export_planned_layers, hold_auto_save, plan_gpkg_tables, push_saved,
+        )
+
+        with hold_auto_save(), OperationErrors(self.tr("Auto GPKG"), self.core.iface, absorb=True) as errors:
             prj = QgsProject.instance()
             if not enabled:
                 self._stop_watching_for_new_layers(prj)
@@ -233,6 +249,7 @@ class RoutingUI:
                 return
 
             gpkg = self._project_gpkg_path()
+            chosen = False
             problem = gpkg_target_problem(gpkg)
             if problem is not None:
                 # One sentence naming the path, before the user is asked
@@ -245,28 +262,48 @@ class RoutingUI:
                 if not gpkg:
                     self._untick()
                     return
-                self._set_project_gpkg_path(gpkg)
+                chosen = True
 
             # Memory layers hold their features in RAM and lose them when the
             # project closes, so they are what auto-save exists to rescue.
             in_memory = [layer for layer in prj.mapLayers().values()
                          if isinstance(layer, QgsVectorLayer) and self._is_memory_vector(layer)]
-            converted = sum(
-                1 for layer in in_memory
-                if export_one_layer_to_gpkg(layer, gpkg, self.core.iface, errors))
-            if converted < len(in_memory):
-                logger.warning(f"Auto-save converted {converted} of {len(in_memory)} layers into {gpkg}")
+            title = action_title(
+                self.core.action_auto_gpkg,
+                #: Title of the question asked when the auto-save GeoPackage
+                #: already has tables named like this project's temporary layers
+                #: that no layer uses, where the toolbar button's own text cannot
+                #: be read: the same words. "GeoPackage" is the file format (.gpkg).
+                self.tr("Auto save to GeoPackage"))
+            plan = plan_gpkg_tables(in_memory, gpkg, self.core.iface, title, self.tr("Auto GPKG"))
+            if plan is None:
+                self._untick()
+                return
+            if chosen:
+                self._set_project_gpkg_path(gpkg)
+
+            saved = export_planned_layers(in_memory, gpkg, self.core.iface, errors, plan)
+            if len(saved) < len(in_memory):
+                logger.warning(f"Auto-save converted {len(saved)} of {len(in_memory)} layers into {gpkg}")
 
             prj.layerWasAdded.connect(self._on_layer_added_auto_gpkg)
             self._auto_gpkg_connected = True
 
-            if not errors.failed:
+            # A failure has no green line -- the collector says it as it
+            # closes -- but the notes on where the saved layers went still do.
+            outcome = None if errors.failed else (
+                #: Shown when auto-save has just been switched on and every
+                #: temporary layer reached the GeoPackage: autosaving is now
+                #: ENABLED, into the GeoPackage chosen for this project.
+                self.tr("Autosave on GeoPackage."))
+            push_saved(
+                self.core.iface.messageBar(),
                 #: Message-bar heading, reused for both the on and the off message.
                 #: "Auto GPKG" = automatic saving to a GeoPackage; GPKG is that
                 #: format's file extension. Keep "GPKG" as-is. The message beside it
                 #: ("Autosave on GeoPackage.") means autosaving is now ENABLED.
-                self.core.iface.messageBar().pushSuccess(
-                    self.tr("Auto GPKG"), self.tr("Autosave on GeoPackage."))
+                self.tr("Auto GPKG"),
+                outcome, plan, [layer.name() for layer in in_memory], saved=saved)
 
     def _target_problem_text(self, problem, path):
         """One sentence for a :mod:`fiberq.core.gpkg_target` problem code.
@@ -337,9 +374,14 @@ class RoutingUI:
             self.tr("Autosave off: this project has no GeoPackage chosen yet."))
 
     def _ask_for_auto_gpkg(self, project):
-        """Ask where to keep the auto-saved copy. Empty when the user cancels."""
+        """Ask where to keep the auto-saved copy. Empty when the user cancels.
+
+        Without the file dialog's own "replace?": auto-save writes into the
+        file and never replaces it. Tables of the same names are FiberQ's own
+        question, asked by :meth:`_toggle_auto_gpkg`.
+        """
         default_dir = os.path.dirname(project.fileName()) if project.fileName() else os.path.expanduser("~")
-        gpkg, _ = QFileDialog.getSaveFileName(
+        gpkg, _ = save_file_name(
             self.core.iface.mainWindow(),
             #: Title of the file-save dialog. "GeoPackage" is the OGC file
             #: format (.gpkg) - keep the format name untranslated.
@@ -351,7 +393,7 @@ class RoutingUI:
             return ""
         if not gpkg.lower().endswith(".gpkg"):
             gpkg += ".gpkg"
-        return gpkg
+        return unambiguous(gpkg)
 
     def _untick(self):
         """Put the checkbox back without re-entering this slot."""
@@ -384,20 +426,84 @@ class RoutingUI:
         now it did not by wrapping its whole body in a debug-level swallow. A
         layer that failed to save simply stayed in memory, and the user found
         out when the project was reopened without it.
+
+        It asks nothing: a modal question inside this signal would stop
+        whatever is adding the layer. A table already holding the layer's name
+        is never written over here; the layer goes beside it under a free name,
+        and one line says so, which stays until closed.
+
+        While Save all or turning auto-save on plans, asks or writes, the hook
+        is held (``export_manager.hold_auto_save``): the layer is put off, and
+        taken this same way once they are done (:meth:`_added_while_held`).
         """
-        from ..core.export_manager import export_one_layer_to_gpkg
+        from ..core.export_manager import auto_save_held, defer_auto_save, export_one_layer_to_gpkg
 
         if not isinstance(lyr, QgsVectorLayer) or not self._is_memory_vector(lyr):
-            return
+            return None
+        if auto_save_held():
+            layer_id = lyr.id()
+            defer_auto_save(lambda: self._added_while_held(layer_id))
+            return None
         gpkg = self._project_gpkg_path()
         if not gpkg:
-            return
+            return None
 
         with OperationErrors(self.tr("Auto GPKG"), self.core.iface, absorb=True) as errors:
+            try:
+                table = table_name_for(lyr.name(), lyr.source(), gpkg)
+            except sqlite3.Error as exc:
+                # The file's tables cannot be read. As none, every name in it
+                # would look free, and the writer replaces the table whose name
+                # it is given: the layer stays in memory, and says why.
+                #: Shown when auto-save could not store a new temporary layer,
+                #: because the tables of its GeoPackage could not be read --
+                #: another program holds the file, or it is damaged -- so FiberQ
+                #: could not choose a table name that is safe to write. {layer} is
+                #: the layer's name, {file} the GeoPackage's file name and
+                #: {reason} the database's own words; none is translated.
+                source = QT_TRANSLATE_NOOP(
+                    'RoutingUI',
+                    "{layer} was not saved: the tables of {file} could not be read ({reason}). "
+                    "It is still a temporary layer.")
+                text = safe_format(QCoreApplication.translate('RoutingUI', source), source,
+                                   layer=lyr.name(), file=os.path.basename(gpkg), reason=describe(exc))
+                logger.warning(f"{text} ({gpkg})")
+                self.core.iface.messageBar().pushWarning(self.tr("Auto GPKG"), text)
+                return False
+            wanted = flatten_name(lyr.name())
+            saved = export_one_layer_to_gpkg(lyr, gpkg, self.core.iface, errors, table)
+            if saved and table != wanted:
+                #: Shown when auto-save stores a new temporary layer in the
+                #: GeoPackage under another table name, because the file already
+                #: has a table with the layer's own. {layer} is the layer's name,
+                #: {table} the table it went to, {file} the GeoPackage's file
+                #: name and {wanted} the table already there; none is translated.
+                source = QT_TRANSLATE_NOOP(
+                    'RoutingUI',
+                    "{layer} is stored as table {table}, because {file} already has a table named {wanted}.")
+                self.core.iface.messageBar().pushMessage(self.tr("Auto GPKG"), safe_format(
+                    QCoreApplication.translate('RoutingUI', source), source,
+                    layer=lyr.name(), table=table, file=os.path.basename(gpkg), wanted=wanted),
+                    Qgis.MessageLevel.Info, 0)
             # Returned so the result is answered for rather than dropped; Qt
             # ignores a slot's return value, the collector is what reaches the
             # user, and a caller that wants to know can still ask.
-            return export_one_layer_to_gpkg(lyr, gpkg, self.core.iface, errors)
+            return saved
+
+    def _added_while_held(self, layer_id):
+        """The hook, for a layer added while Save all or turning auto-save on held it.
+
+        Run once the hold is released. The layer may be gone by then, or
+        auto-save off, and then there is nothing to do; otherwise it is taken
+        as if it had just been added -- Save all may have saved it already, and
+        then it is no longer a memory layer.
+        """
+        if not self._auto_gpkg_connected:
+            return None
+        layer = QgsProject.instance().mapLayer(layer_id)
+        if layer is None:
+            return None
+        return self._on_layer_added_auto_gpkg(layer)
 
 
 __all__ = ['RoutingUI']

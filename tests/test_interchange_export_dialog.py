@@ -26,12 +26,29 @@ SOURCE = inspect.getsource(FiberQPlugin.export_interchange_bundle)
 def test_the_native_overwrite_prompt_is_disabled():
     """Without this flag the dialog deletes the bundle before we can read it.
 
-    Asserts the flag is *passed to the dialog*, not merely looked up: reading it
-    into a variable and then not using it is exactly the shape a careless edit
-    would leave behind, and it would restore the bug in full.
+    The dialog is asked through ``utils.compat.save_file_name``, which Save
+    all and auto-save share (v1.6.0 QA Q18); the next test holds it to passing
+    the flag *to the dialog*, not merely looking it up.
     """
-    assert "DontConfirmOverwrite" in SOURCE
-    assert "getSaveFileName(*args, '', no_confirm)" in SOURCE
+    assert "save_file_name(" in SOURCE
+    assert "QFileDialog.getSaveFileName" not in SOURCE
+
+
+def test_the_shared_dialog_passes_the_flag(monkeypatch):
+    """Reading the flag into a variable and then not using it is exactly the
+    shape a careless edit would leave behind, and it would restore the bug in full."""
+    from qgis.PyQt.QtWidgets import QFileDialog
+
+    from fiberq.utils.compat import save_file_name
+
+    calls = []
+    monkeypatch.setattr(QFileDialog, "getSaveFileName",
+                        staticmethod(lambda *args, **kwargs: calls.append((args, kwargs)) or ("x.gpkg", "f")))
+
+    assert save_file_name(None, "caption", "dir", "GeoPackage (*.gpkg)") == ("x.gpkg", "f")
+
+    no_confirm = getattr(getattr(QFileDialog, "Option", QFileDialog), "DontConfirmOverwrite")
+    assert calls == [((None, "caption", "dir", "GeoPackage (*.gpkg)", "", no_confirm), {})]
 
 
 def test_the_flag_exists_in_this_qt_binding():

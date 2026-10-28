@@ -592,10 +592,9 @@ class FiberQPlugin:
         """
         import os
 
-        from qgis.PyQt.QtWidgets import QFileDialog
-
         from .core.interchange_bundle import InterchangeBundleWriter
         from .i18n import safe_format
+        from .utils.compat import save_file_name
 
         bar = self.iface.messageBar()
         prj = QgsProject.instance()
@@ -610,20 +609,14 @@ class FiberQPlugin:
         #: back, and a deleted bundle has no metadata left to merge -- so
         #: whatever another tool recorded in it is destroyed by the act of
         #: re-exporting, which is the exact defect this format exists to fix.
-        #: DontConfirmOverwrite keeps the file intact and the decision here.
-        no_confirm = getattr(
-            getattr(QFileDialog, 'Option', QFileDialog), 'DontConfirmOverwrite', None)
-        args = (
+        #: save_file_name passes DontConfirmOverwrite, which keeps the file
+        #: intact and the decision here.
+        path, chosen = save_file_name(
             self.iface.mainWindow(),
             self.tr('Export FiberQ interchange bundle'),
             os.path.join(default_dir, 'FiberQ_bundle.gpkg'),
             f'{gpkg_filter};;{json_filter}',
         )
-        if no_confirm is None:
-            # A binding without the flag still works; it just asks twice.
-            path, chosen = QFileDialog.getSaveFileName(*args)
-        else:
-            path, chosen = QFileDialog.getSaveFileName(*args, '', no_confirm)
         if not path:
             return
         if not self._confirm_bundle_overwrite(path, chosen == json_filter):
@@ -1164,8 +1157,9 @@ class FiberQPlugin:
         return _open_fiberq_web(self.iface)
 
     def save_all_layers_to_gpkg(self):
-        # Save all layers to GeoPackage
-        return save_all_layers_to_gpkg(self.iface)
+        # Save all layers to GeoPackage. The plugin goes along so the save can
+        # tell whether auto-save is on, and say so when it moves auto-save.
+        return save_all_layers_to_gpkg(self.iface, self)
 
     def run_create_service_area(self):
         try:

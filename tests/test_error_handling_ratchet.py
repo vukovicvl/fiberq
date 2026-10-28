@@ -155,14 +155,49 @@ CRITICAL = {
         "DataManager.save_latent",
         "DataManager.save_relations",
     }),
-    # U6: the pure pre-flight and naming rules both export paths depend on
+    # U6: the pure pre-flight and naming rules both export paths depend on;
+    # and Q18 (v1.6.0 QA, a follow-up of U6): the plan both make before they
+    # write -- the allow-list of what a layer reads (another file by the
+    # driver that opens it) and of the file a table may be offered from, which
+    # unused tables are offered, what the file holds, whether it changed while
+    # the question was open, a free name looked at again at its write, a path
+    # read two ways, and what a failed overwrite left of the old table.
     "fiberq/core/gpkg_target.py": frozenset({
+        "TablePlan",
+        "_ambiguous",
+        "_gdal_reads",
+        "_modules",
+        "_names_sql",
+        "_offerable",
+        "_ogr_reads",
+        "_other_file",
+        "_plain_local_file",
+        "_read_only",
+        "_reads_only_itself",
+        "_sqlite_reads_only_itself",
+        "_uri",
+        "_virtual_modules",
+        "_web_only",
         "existing_tables",
+        "file_identity",
         "flatten_name",
+        "free_at_write",
+        "free_name",
         "gpkg_target_problem",
         "is_geopackage",
+        "is_reserved",
+        "plan_tables",
+        "read_contents",
+        "same_file",
+        "sqlite_fold",
+        "styled_tables",
         "table_in_use",
         "table_name_for",
+        "table_state",
+        "tables_read",
+        "unambiguous",
+        "understood",
+        "used_tables",
     }),
     # R1, R2, R3. export_active_layer and _do_export are THE export path now
     # that main_plugin's duplicate is deleted; neither was named here before,
@@ -183,6 +218,40 @@ CRITICAL = {
         "ExportManager.export_one_layer_to_gpkg",
         "ExportManager.save_all_layers_to_gpkg",
         "_writer_result",
+        # Q18: the plan, the question about unused tables, the old styles of a
+        # replaced table, the stored path and what the success message says;
+        # the file read before the plan, and the overwrite that says what a
+        # failed write left of the old table; the file and the project looked
+        # at again after the answer, a free name again at its write, the
+        # project's layers as the plan reads them and the GDAL driver of
+        # another file one reads, and auto-save's hook held while a save
+        # plans, asks and writes.
+        "ExportManager._auto_save_moves",
+        "ExportManager._clear_styles",
+        "ExportManager._free_at_write",
+        "ExportManager._plan",
+        "ExportManager._remember_target",
+        "ExportManager._run_writer",
+        "ExportManager._table_state",
+        "ExportManager._target_contents",
+        "ExportManager._unchanged",
+        "ExportManager._write_over",
+        "_AutoSaveHold",
+        "_identify",
+        "_listed",
+        "_project_state",
+        "_reader",
+        "_release_held",
+        "action_title",
+        "ask_about_unused_tables",
+        "auto_save_held",
+        "defer_auto_save",
+        "export_planned_layers",
+        "hold_auto_save",
+        "plan_gpkg_tables",
+        "push_saved",
+        "saved_report",
+        "unused_tables_question",
     }),
     # R1, R2, R7
     "fiberq/core/layer_manager.py": frozenset({
@@ -343,6 +412,7 @@ CRITICAL = {
     }),
     # R2
     "fiberq/ui/routing_ui.py": frozenset({
+        "RoutingUI._added_while_held",
         "RoutingUI._ask_for_auto_gpkg",
         "RoutingUI._project_gpkg_path",
         "RoutingUI._set_project_gpkg_path",
@@ -738,7 +808,27 @@ def test_d_package_wide_silence_does_not_grow():
 #: Then eleven, all unclaimed (Q13/Q14): the shared writes in utils/errors.py,
 #: the two FiberQ ID backfills, the cable-type rewrite, Split route's write,
 #: Branch cables' column, writes and wrapper, and the Route columns.
-HARDENED_FUNCTIONS = 142
+#: Then seventeen (Q18, a follow-up of U6): Save all and auto-save plan their
+#: tables before writing and ask about unused ones -- nine in gpkg_target.py
+#: (the plan and what a layer reads) and eight in export_manager.py (the
+#: question, the old styles of a replaced table, the stored path, the report).
+#: Then thirteen more for Q18's second round: six in gpkg_target.py (the file
+#: read before the plan, a table's state, and the parts of a source a reader is
+#: judged by) and eight in export_manager.py (the pre-flight before the plan,
+#: the overwrite and what it left, and the message-bar lines), with
+#: plan_report gone into saved_report. Then twenty-four more for its third
+#: round, an allow-list where the second searched for readers: sixteen in
+#: gpkg_target.py (what a layer reads, by provider and by file; the file a
+#: table may be offered from; its identity while the question is open; a free
+#: name at its write; a path read two ways), with three of the second round's
+#: gone into them; ten in export_manager.py (the re-check after the answer,
+#: the free name at its write, the project's layers as the plan reads them,
+#: auto-save's hook held meanwhile, auto-save's planned writes); and the
+#: hook's own taking of a layer it was held from, in routing_ui.py. Then two
+#: more for its fourth round, another file judged by the GDAL driver that
+#: opens it: the SQLite file's own check in gpkg_target.py, and the driver
+#: GDAL names in export_manager.py.
+HARDENED_FUNCTIONS = 198
 HARDENED_FILES = 25
 
 
