@@ -444,8 +444,10 @@ ALLOWED_WRITES = {
 #: the branch-index writes check their answers instead of guarding them with
 #: two debug handlers, and a cable it cannot read, the Service Area rollback,
 #: the cable-type rewrite, the FiberQ ID backfill's rollback and the
-#: project-open identity backfill are logged at warning or gone.
-SILENCE_CEILING = 662
+#: project-open identity backfill are logged at warning or gone. Q19 took
+#: one: initGui's handler around its call to ``_ensure_global_shortcuts``, a
+#: method gone since v1.2.2 that raised at every start, went with the call.
+SILENCE_CEILING = 661
 
 
 # ---------------------------------------------------------------------------

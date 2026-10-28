@@ -2072,12 +2072,6 @@ class FiberQPlugin:
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.initGui: {e}")
 
-        # Fallback: global shortcuts
-        try:
-            self._ensure_global_shortcuts()
-        except Exception as e:
-            logger.debug(f"Error in FiberQPlugin.initGui: {e}")
-
         # Re-apply cable style/aliases when layer added to project (npr. export iz Preview Map)
         try:
             QgsProject.instance().layersAdded.disconnect(self._on_layers_added)
