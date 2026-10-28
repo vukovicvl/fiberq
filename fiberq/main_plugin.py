@@ -3030,11 +3030,18 @@ class FiberQPlugin:
     def _on_layers_added(self, layers):
         from qgis.core import QgsVectorLayer, QgsWkbTypes
 
+        from .utils.field_aliases import clear_wrong_fid_alias
+
         cable_names = {"Aerial cables", "Underground cables", "Kablovi_vazdusni", "Kablovi_podzemni"}
 
         for layer in layers:
             if not isinstance(layer, QgsVectorLayer) or not layer.isValid():
                 continue
+
+            # Ahead of the branches, which each end in `continue`, so it reaches
+            # every layer: the fid alias branch 3 gave up to 1.5.0 is kept in
+            # saved projects and in GeoPackage default styles.
+            clear_wrong_fid_alias(layer)
 
             lname = (layer.name() or "")
             lname_l = lname.lower().strip()
@@ -3078,9 +3085,10 @@ class FiberQPlugin:
                 or lname_l.startswith("nastav")  # noqa: W503
                 or fset.issubset({"id", "fid", "naziv"})  # noqa: W503
             ):
+                # No alias for fid: in a GeoPackage it is the table's key, not a
+                # cable (utils.field_aliases.WRONG_FID_ALIAS).
                 alias_map = {
                     "id": "ID",
-                    "fid": "Cable feature ID",
                     "naziv": "Name",
                 }
                 fields = layer.fields()

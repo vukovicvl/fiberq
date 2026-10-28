@@ -8,6 +8,10 @@ The aliases provide an English user interface while maintaining
 backward compatibility with existing Serbian database schemas.
 """
 
+import os
+import re
+import sqlite3
+from contextlib import closing
 from typing import Dict
 from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
 from qgis.core import QgsEditorWidgetSetup, QgsExpression, QgsFeatureRequest, QgsVectorLayer
@@ -531,6 +535,112 @@ def apply_joint_closure_aliases(layer: QgsVectorLayer) -> None:
         layer: Joint closure layer
     """
     apply_field_aliases(layer, JOINT_CLOSURE_FIELD_ALIASES)
+
+
+#: The alias FiberQ up to 1.5.0 gave ``fid`` on every point layer it took for a
+#: joint closure layer (``FiberQPlugin._on_layers_added``): one named Joint
+#: Closures, or one whose fields are among id, fid and naziv -- which takes in a
+#: GeoPackage layer with no field but its key. In a GeoPackage ``fid`` is the
+#: table's primary key, never a cable's; a cable's feature id is ``cable_fid``.
+WRONG_FID_ALIAS = "Cable feature ID"
+
+
+def clear_wrong_fid_alias(layer: QgsVectorLayer) -> None:
+    """Take :data:`WRONG_FID_ALIAS` off a field named ``fid``.
+
+    Save all and auto-save stored it in the GeoPackage's default style, and a
+    saved project stored it too, so it comes back with the layer: FiberQ runs
+    this on every layer added to the project. Only that exact alias, and only
+    on ``fid``: an alias the user gave it is left alone, and so is the right
+    "Cable feature ID" on ``cable_fid``. Neither this nor setting an alias
+    marks a project modified (measured on 3.22.16, 3.40.15 and 4.2.3), so a
+    project opened with the alias in it still opens unmodified.
+    """
+    idx = layer.fields().indexFromName("fid")
+    if idx != -1 and layer.attributeAlias(idx) == WRONG_FID_ALIAS:
+        layer.removeFieldAlias(idx)
+
+
+#: One ``<alias .../>`` element of a QML style. QGIS writes its attributes in
+#: no fixed order: a Qt 5 build (3.22.16, 3.40.15) changes the order from one
+#: run to the next, and 4.2.3 writes ``field index name`` (measured), so they
+#: are read as a set, never matched in a row.
+_ALIAS_ELEMENT = re.compile(r"<alias\b[^<>]*>")
+_ATTRIBUTE = re.compile(r"""([A-Za-z_][\w.:-]*)\s*=\s*("[^"]*"|'[^']*')""")
+_WRONG_NAME = re.compile(r"""(\bname\s*=\s*)(["'])""" + re.escape(WRONG_FID_ALIAS) + r"\2")
+
+
+def without_wrong_fid_alias(qml: str) -> str:
+    """``qml`` with :data:`WRONG_FID_ALIAS` taken off the field named ``fid``.
+
+    Only an ``<alias/>`` whose ``field`` is exactly ``fid`` and whose ``name``
+    is exactly that alias loses it (``name=""``); every other byte is kept,
+    the right "Cable feature ID" on ``cable_fid`` included.
+    """
+    def cleaned(match):
+        element = match.group(0)
+        attributes = {name: value[1:-1] for name, value in _ATTRIBUTE.findall(element)}
+        if attributes.get("field") != "fid" or attributes.get("name") != WRONG_FID_ALIAS:
+            return element
+        return _WRONG_NAME.sub(lambda found: found.group(1) + found.group(2) * 2, element, count=1)
+
+    return _ALIAS_ELEMENT.sub(cleaned, qml)
+
+
+def clear_wrong_fid_alias_in_styles(gpkg_path):
+    """Take :data:`WRONG_FID_ALIAS` off ``fid`` in the styles a GeoPackage stores.
+
+    :func:`clear_wrong_fid_alias` takes it off a layer in the project, and the
+    next save writes that layer's style -- but Save all does not write the
+    style of a layer already living in its file, so a default style saved
+    before 1.6.0 kept the alias, and QGIS without FiberQ still showed it.
+    Save all and auto-save therefore run this on the file they write into.
+
+    Straight SQL on ``layer_styles``, in one transaction, never QGIS's style
+    API: on QGIS 3.22 saving over an existing default style opens a modal
+    "overwrite?" box. Each ``styleQML`` changes only as
+    :func:`without_wrong_fid_alias` says; no other column is touched.
+
+    Returns:
+        ``(changed, reason)``: how many stored styles changed, and sqlite's own
+        words when the file refused, empty otherwise.
+    """
+    if not gpkg_path or not os.path.isfile(gpkg_path):
+        return 0, ""
+    changed = 0
+    try:
+        # closing(): a connection's own ``with`` ends a transaction, never the
+        # connection. isolation_level=None puts the transaction in our hands.
+        with closing(sqlite3.connect(gpkg_path, isolation_level=None)) as conn:
+            if not conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' "
+                                "AND name = 'layer_styles' COLLATE NOCASE").fetchone():
+                return 0, ""
+            # Looked for before the write lock is taken: nearly always there is
+            # nothing to do, and a save should not lock the file for nothing.
+            if not conn.execute("SELECT 1 FROM layer_styles WHERE instr(styleQML, ?) > 0 LIMIT 1",
+                                (WRONG_FID_ALIAS,)).fetchone():
+                return 0, ""
+            conn.execute("BEGIN IMMEDIATE")
+            try:
+                rows = conn.execute("SELECT rowid, styleQML FROM layer_styles WHERE instr(styleQML, ?) > 0",
+                                    (WRONG_FID_ALIAS,)).fetchall()
+                for rowid, qml in rows:
+                    if not isinstance(qml, str):
+                        continue
+                    fixed = without_wrong_fid_alias(qml)
+                    if fixed != qml:
+                        conn.execute("UPDATE layer_styles SET styleQML = ? WHERE rowid = ?", (fixed, rowid))
+                        changed += 1
+                conn.execute("COMMIT")
+            except sqlite3.Error:
+                try:
+                    conn.execute("ROLLBACK")
+                except sqlite3.Error as rollback_exc:
+                    logger.warning(f"Could not roll back the fid alias clean-up: {rollback_exc}")
+                raise
+    except sqlite3.Error as exc:
+        return 0, f"{type(exc).__name__}: {exc}"
+    return changed, ""
 
 
 def apply_fiber_break_aliases(layer: QgsVectorLayer) -> None:

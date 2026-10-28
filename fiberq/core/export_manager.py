@@ -364,6 +364,7 @@ class ExportManager:
 
             # Phase 0.2: metadata table for Designer compatibility
             self._write_metadata(gpkg_path, errors)
+            self._clean_stored_aliases(gpkg_path)
 
             if not errors.failed:
                 self.iface.messageBar().pushSuccess(
@@ -490,6 +491,23 @@ class ExportManager:
             # The style is cosmetic, the data is not: reported, never fatal.
             errors.add(layer.name(), f"the style was not saved ({problem})")
 
+    def _clean_stored_aliases(self, gpkg_path):
+        """Take the "Cable feature ID" FiberQ up to 1.5.0 gave ``fid`` out of the file's styles.
+
+        v1.6.0 QA Q17: the alias now comes off a layer in the project, but the
+        default style a GeoPackage already holds for a layer living in it is
+        not written again, so QGIS without FiberQ still showed it. See
+        ``utils.field_aliases.clear_wrong_fid_alias_in_styles``. Cosmetic: a
+        file that refuses is logged, and the save goes on.
+        """
+        from ..utils.field_aliases import clear_wrong_fid_alias_in_styles
+
+        changed, reason = clear_wrong_fid_alias_in_styles(gpkg_path)
+        if reason:
+            logger.warning(f"Could not take the old fid alias out of the styles in {gpkg_path}: {reason}")
+        elif changed:
+            logger.info(f"Took the old fid alias out of {changed} style(s) in {gpkg_path}")
+
     def _write_metadata(self, gpkg_path, errors):
         """Write the Designer metadata table, and report it when it will not go."""
         try:
@@ -539,7 +557,10 @@ class ExportManager:
         name = table_name_for(layer.name(), layer.source(), gpkg_path)
         if not self._write_layer(layer, gpkg_path, name, errors):
             return False
-        return self._repoint(layer, QgsProject.instance(), f"{gpkg_path}|layername={name}", errors)
+        if not self._repoint(layer, QgsProject.instance(), f"{gpkg_path}|layername={name}", errors):
+            return False
+        self._clean_stored_aliases(gpkg_path)
+        return True
 
     # =========================================================================
     # PHASE 0.2: FIBERQ METADATA TABLE
