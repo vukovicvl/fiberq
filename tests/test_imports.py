@@ -224,16 +224,14 @@ def _route_manager(project, iface):
 
 def _import_routes(project, manager, path, route_layer):
     """Drive the importer with the file dialog and the type prompt answered."""
+    from fiberq.core.route_manager import _ImportSource
     from fiberq.utils.errors import OperationErrors
 
     imported = QgsVectorLayer(path, "Import_route_tmp", "ogr")
     assert imported.isValid(), path
-    transform = QgsCoordinateTransform(
-        imported.crs(), route_layer.crs(), QgsProject.instance())
     with OperationErrors("Import route", manager.iface) as errors:
         result = manager._add_imported_routes(
-            imported, route_layer, imported.crs(), route_layer.crs(),
-            transform, "podzemna", errors)
+            [_ImportSource(imported, route_layer.crs())], route_layer, "podzemna", errors)
     return result
 
 
@@ -733,14 +731,14 @@ def test_a_layer_that_refuses_the_routes_is_still_named(project, tmp_path, monke
         _feature(_line([[21.0600, 44.7600], [21.0610, 44.7605]])),
     ])
     route = _route_layer(project)
-    route.setReadOnly(True)
+    monkeypatch.setattr(route, "addFeature", lambda *a, **k: False)
     manager = _route_manager(project, FakeIface())
 
     _from_the_menu(manager, path, monkeypatch)
 
     assert quiet_dialogs == [_NONE_IMPORTED.format(count=3)]
     assert manager.iface.bar.warnings == [
-        "Route: a route was rejected by the layer (+3 more). See Log Messages > FiberQ for the details."]
+        "Route: a route was rejected by the layer (+2 more). See Log Messages > FiberQ for the details."]
     assert route.featureCount() == 0
     assert not route.isEditable()
     assert modals == []
@@ -789,6 +787,594 @@ def test_an_import_into_the_users_open_session_still_leaves_it_to_them(
     assert _saved(route) == 0
     assert modals == []
     route.rollBack()
+
+
+# ---------------------------------------------------------------------------
+# v1.6.0 QA, Q24: every layer of the file, not only the first
+# ---------------------------------------------------------------------------
+#
+# QGIS opens a file by its path alone as its FIRST layer, and that was all
+# Import route read. A KML whose two folders held 1 and 2 lines imported 1
+# route and reported success, and a GPX, whose first layer is its waypoints,
+# never had its tracks or routes read (3.40.15 and 4.2.3). A cable plant's KMZ
+# has a folder for each kind of plant.
+#
+# OGR has two KML readers, and every leg's GDAL has both and reads with LIBKML
+# first. They do not type a folder alike -- LIBKML types every folder as
+# unknown, KML types a folder of points as points -- so the KML cases run
+# under each (kml_driver) and have to come to the same thing.
+
+_IMPORTED = "Imported {count} routes into the 'Route' layer!\n(All are of type: Aerial)"
+_LEFT_OUT = ("{count} {kind}(s) in the file hold no lines and were left out: {names}. See Log Messages"
+             " > FiberQ for the details.")
+_WAYPOINTS = ("{count} waypoint(s) in the file are points, not lines, and were left out. See Log"
+              " Messages > FiberQ for the details.")
+
+
+@pytest.fixture(params=["LIBKML", "KML"])
+def kml_driver(request, qgis_app):
+    """The KML reader QGIS's OGR provider opens a .kml with, for one test.
+
+    LIBKML is taken off GDAL's list and put back, never deleted. Skipping it
+    through QgsApplication.skipGdalDriver() deletes the driver, and a dataset
+    QGIS still holds open in its pool then closes through freed memory: a
+    segmentation fault a few tests later (3.22.16, 3.40.15, 4.0.3, 4.2.3).
+    """
+    from osgeo import gdal
+
+    libkml = gdal.GetDriverByName("LIBKML")
+    if request.param == "KML" and libkml is not None:
+        libkml.Deregister()
+    yield request.param
+    if request.param == "KML" and libkml is not None:
+        # Back in GDAL's own order: LIBKML put back alone would go after KML,
+        # and every later test would read its KML through KML.
+        kml = gdal.GetDriverByName("KML")
+        kml.Deregister()
+        libkml.Register()
+        kml.Register()
+
+
+def _read_with(path, driver):
+    """Fail unless QGIS reads ``path`` with ``driver``; skip where GDAL has no such driver."""
+    layer = QgsVectorLayer(path, "probe", "ogr")
+    found = layer.dataProvider().storageType()
+    if found != driver and driver == "LIBKML":
+        pytest.skip(f"this GDAL has no LIBKML: {path} is read by {found}")
+    assert found == driver
+
+
+def _kml_line(name, *coords):
+    vertices = " ".join(f"{x},{y}" for x, y in coords)
+    return f"<Placemark><name>{name}</name><LineString><coordinates>{vertices}</coordinates></LineString></Placemark>"
+
+
+def _kml_point(name, x, y):
+    return f"<Placemark><name>{name}</name><Point><coordinates>{x},{y}</coordinates></Point></Placemark>"
+
+
+def _kml_folder(name, *placemarks):
+    return f"<Folder><name>{name}</name>{''.join(placemarks)}</Folder>"
+
+
+def _kml(tmp_path, name, *folders):
+    path = os.path.join(str(tmp_path), name)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write('<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">'
+                 "<Document>" + "".join(folders) + "</Document></kml>")
+    return path
+
+
+def _gpx(tmp_path, name, body):
+    path = os.path.join(str(tmp_path), name)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write('<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="FiberQ tests"'
+                 ' xmlns="http://www.topografix.com/GPX/1/1">' + body + "</gpx>")
+    return path
+
+
+_AERIAL = _kml_folder("Aerial", _kml_line("A1", (21.060, 44.790), (21.062, 44.791)))
+_UNDERGROUND = _kml_folder("Underground", _kml_line("U1", (21.063, 44.792), (21.065, 44.793)),
+                           _kml_line("U2", (21.066, 44.794), (21.067, 44.795)))
+_POLES = _kml_folder("Poles", _kml_point("P1", 21.060, 44.790), _kml_point("P2", 21.062, 44.791))
+_WAYPOINT = '<wpt lat="44.790" lon="21.060"><name>W1</name></wpt>'
+_GPX_ROUTE = '<rte><name>R1</name><rtept lat="44.792" lon="21.063"/><rtept lat="44.793" lon="21.065"/></rte>'
+_GPX_TRACK = ('<trk><name>T1</name><trkseg><trkpt lat="44.790" lon="21.060"/>'
+              '<trkpt lat="44.791" lon="21.062"/></trkseg></trk>')
+
+
+def test_a_kml_of_two_folders_of_lines_imports_all_three_routes(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals, kml_driver):
+    """The finding: 1 route and a success box, the second folder never read."""
+    path = _kml(tmp_path, "two-folders.kml", _AERIAL, _UNDERGROUND)
+    _read_with(path, kml_driver)
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [_IMPORTED.format(count=3)]
+    assert manager.iface.bar.entries == []
+    route = _the_route_layer(project)
+    assert _saved(route) == 3
+    assert not route.isEditable()
+    assert modals == []
+
+
+def test_a_kml_folder_of_points_is_named_and_the_lines_beside_it_imported(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals, kml_driver):
+    """Poles first, as the first layer that was all the import read."""
+    path = _kml(tmp_path, "poles-and-cables.kml", _POLES, _AERIAL)
+    _read_with(path, kml_driver)
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [_IMPORTED.format(count=1)]
+    assert manager.iface.bar.entries == [
+        ("warning", "Import route", _LEFT_OUT.format(count=1, kind="folder", names='"Poles"'))]
+    assert _saved(_the_route_layer(project)) == 1
+    assert modals == []
+
+
+def test_a_kml_folder_of_points_and_lines_imports_its_lines_and_counts_its_points(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals, kml_driver):
+    """A folder that holds lines is read whole, and its point is counted as Q23 counts one."""
+    mixed = _kml_folder("Mixed", _kml_point("P1", 21.064, 44.796),
+                        _kml_line("L1", (21.063, 44.792), (21.065, 44.793)),
+                        _kml_line("L2", (21.066, 44.794), (21.067, 44.795)))
+    path = _kml(tmp_path, "mixed-folder.kml", _AERIAL, mixed)
+    _read_with(path, kml_driver)
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [_IMPORTED.format(count=3)]
+    assert manager.iface.bar.entries == [("warning", "Import route", _NOT_LINES.format(count=1))]
+    assert _saved(_the_route_layer(project)) == 3
+    assert modals == []
+
+
+def test_a_kmz_imports_as_the_kml_inside_it(project, tmp_path, monkeypatch, quiet_dialogs, modals):
+    """LIBKML reads a .kmz itself; OGR's KML driver does not open one at all,
+    before this change or after it (all five legs)."""
+    import zipfile
+
+    kml = _kml(tmp_path, "plant.kml", _POLES, _AERIAL, _UNDERGROUND)
+    kmz = os.path.join(str(tmp_path), "plant.kmz")
+    with zipfile.ZipFile(kmz, "w") as archive:
+        archive.write(kml, "doc.kml")
+    _read_with(kmz, "LIBKML")
+    outcomes = []
+    for path in (kml, kmz):
+        project.removeAllMapLayers()
+        del quiet_dialogs[:]
+        manager = _route_manager(project, FakeIface())
+        _from_the_menu(manager, path, monkeypatch)
+        route = _the_route_layer(project)
+        outcomes.append((list(quiet_dialogs), manager.iface.bar.entries,
+                         sorted(f.geometry().asWkt(2) for f in route.dataProvider().getFeatures())))
+
+    assert outcomes[1] == outcomes[0]
+    assert outcomes[0][0] == [_IMPORTED.format(count=3)]
+    assert outcomes[0][1] == [
+        ("warning", "Import route", _LEFT_OUT.format(count=1, kind="folder", names='"Poles"'))]
+    assert len(outcomes[0][2]) == 3
+    assert modals == []
+
+
+def test_a_gpx_imports_its_track_and_its_route_and_counts_its_waypoint(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals, reasons):
+    """route_points and track_points repeat the route and the track, so they
+    are not read, and are not mentioned."""
+    path = _gpx(tmp_path, "survey.gpx", _WAYPOINT + _GPX_ROUTE + _GPX_TRACK)
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [_IMPORTED.format(count=2)]
+    assert manager.iface.bar.entries == [("warning", "Import route", _WAYPOINTS.format(count=1))]
+    assert reasons == [(None, "1 waypoint(s) in the file are points, not lines, and were left out")]
+    route = _the_route_layer(project)
+    assert _saved(route) == 2
+    assert not route.isEditable()
+    assert modals == []
+
+
+def test_a_gpx_of_waypoints_only_imports_nothing_and_says_why(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals, reasons):
+    path = _gpx(tmp_path, "waypoints.gpx",
+                _WAYPOINT + '<wpt lat="44.791" lon="21.061"><name>W2</name></wpt>')
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [_NONE_IMPORTED.format(count=2)]
+    assert manager.iface.bar.entries == [("warning", "Import route", _WAYPOINTS.format(count=2))]
+    assert reasons == [(None, "2 waypoint(s) in the file are points, not lines, and were left out")]
+    route = _the_route_layer(project)
+    assert route.featureCount() == 0
+    assert not route.isEditable()
+    assert modals == []
+
+
+def test_a_file_of_several_layers_is_one_undo_step_in_the_users_session(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals):
+    path = _kml(tmp_path, "two-folders.kml", _AERIAL, _UNDERGROUND)
+    route = _route_layer(project)
+    route.startEditing()
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [
+        "3 route(s) of type Aerial were added to the Route layer. They are not saved yet, because you"
+        " already had the layer open for editing -- use Layer > Save Layer Edits when you are ready."]
+    assert route.undoStack().count() == 1, "one import, one undo step"
+    assert route.featureCount() == 3
+    assert _saved(route) == 0, "the user's session, theirs to save"
+    assert route.isEditable()
+    assert modals == []
+    route.rollBack()
+
+
+def test_a_file_of_several_layers_is_saved_once(project, tmp_path, monkeypatch, quiet_dialogs, modals):
+    path = _kml(tmp_path, "two-folders.kml", _AERIAL, _UNDERGROUND)
+    route = _route_layer(project)
+    commits = []
+    commit = route.commitChanges
+
+    def counted(*args, **kwargs):
+        commits.append(len(route.editBuffer().addedFeatures()))
+        return commit(*args, **kwargs)
+
+    monkeypatch.setattr(route, "commitChanges", counted)
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert commits == [3], "one commit, holding the routes of both folders"
+    assert quiet_dialogs == [_IMPORTED.format(count=3)]
+    assert _saved(route) == 3
+    assert modals == []
+
+
+def test_a_refused_save_of_several_layers_keeps_its_reason_first(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals, reasons):
+    path = _kml(tmp_path, "plant.kml", _POLES, _AERIAL, _UNDERGROUND)
+    route = _route_layer(project)
+    monkeypatch.setattr(route, "commitChanges", lambda *a, **k: False)
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [
+        "3 route(s) were added to the Route layer but could not be saved. Close any program holding"
+        " the file open, then use Layer > Save Layer Edits. The reason is in the message bar."]
+    assert manager.iface.bar.entries == [(
+        "warning", "Import route",
+        "Route: QGIS refused the commit without saying why (+1 more). See Log Messages > FiberQ for"
+        " the details.")]
+    assert reasons == [
+        ("Route", "QGIS refused the commit without saying why"),
+        (None, '1 folder(s) in the file hold no lines and were left out: "Poles"')]
+    assert modals == []
+    route.rollBack()
+
+
+def _gpkg_layers(path, layers):
+    """A GeoPackage of several layers, each ``(name, epsg, ogr geometry type, [wkt])``."""
+    from osgeo import ogr, osr
+
+    source = ogr.GetDriverByName("GPKG").CreateDataSource(path)
+    for name, epsg, geometry_type, shapes in layers:
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(epsg)
+        layer = source.CreateLayer(name, srs, geometry_type)
+        for wkt in shapes:
+            feature = ogr.Feature(layer.GetLayerDefn())
+            feature.SetGeometry(ogr.CreateGeometryFromWkt(wkt))
+            layer.CreateFeature(feature)
+    source = None
+
+
+def test_each_layer_is_reprojected_from_its_own_crs(project, tmp_path, monkeypatch, quiet_dialogs, modals):
+    """The same line twice, in degrees and in UTM 34N metres, in two layers of
+    one GeoPackage (a file of several CRSs), lands twice in the same place."""
+    from osgeo import ogr
+    from qgis.core import QgsCoordinateTransformContext
+
+    line = QgsGeometry.fromPolylineXY([QgsPointXY(21.060, 44.790), QgsPointXY(21.070, 44.800)])
+    utm = QgsGeometry(line)
+    utm.transform(QgsCoordinateTransform(QgsCoordinateReferenceSystem("EPSG:4326"),
+                                         QgsCoordinateReferenceSystem("EPSG:32634"),
+                                         QgsCoordinateTransformContext()))
+    path = os.path.join(str(tmp_path), "plant.gpkg")
+    _gpkg_layers(path, [
+        ("poles", 4326, ogr.wkbPoint, ["POINT (21.06 44.79)"]),
+        ("aerial", 4326, ogr.wkbLineString, [line.asWkt(9)]),
+        ("underground", 32634, ogr.wkbLineString, [utm.asWkt(6)]),
+    ])
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [_IMPORTED.format(count=2)]
+    assert manager.iface.bar.entries == [
+        ("warning", "Import route", _LEFT_OUT.format(count=1, kind="layer", names='"poles"'))]
+    first, second = [f.geometry() for f in _the_route_layer(project).getFeatures()]
+    assert first.hausdorffDistance(second) < 0.01, (first.asWkt(2), second.asWkt(2))
+    assert modals == []
+
+
+def test_a_layer_of_the_file_that_cannot_be_opened_is_named(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals):
+    from fiberq.core import route_manager
+
+    path = _kml(tmp_path, "two-folders.kml", _AERIAL, _UNDERGROUND)
+    opened = route_manager.QgsVectorLayer
+
+    def opening(uri, *args):
+        if uri.endswith("|layername=Underground"):
+            return opened(os.path.join(str(tmp_path), "not-there.kml"), *args)
+        return opened(uri, *args)
+
+    monkeypatch.setattr(route_manager, "QgsVectorLayer", opening)
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [_IMPORTED.format(count=1)]
+    assert manager.iface.bar.entries == [
+        ("warning", "Import route",
+         "Underground: could not be read and was left out. See Log Messages > FiberQ for the details.")]
+    assert modals == []
+
+
+def test_a_folder_with_a_bar_in_its_name_is_read(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals, kml_driver):
+    """QGIS's own |layername= does not survive a "|" in the name, so that
+    layer is opened by its number in the file."""
+    ducts = _kml_folder("Ducts A|B", _kml_line("D1", (21.063, 44.792), (21.065, 44.793)),
+                        _kml_line("D2", (21.066, 44.794), (21.067, 44.795)))
+    path = _kml(tmp_path, "bar-in-a-name.kml", _AERIAL, ducts)
+    _read_with(path, kml_driver)
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [_IMPORTED.format(count=3)]
+    assert manager.iface.bar.entries == []
+    assert modals == []
+
+
+def _two_lines_in(name):
+    """A folder ``name`` of two lines, apart from _AERIAL's."""
+    return _kml_folder(name, _kml_line("U1", (21.063, 44.792), (21.065, 44.793)),
+                       _kml_line("U2", (21.066, 44.794), (21.067, 44.795)))
+
+
+def _routes_imported(project):
+    """The routes in the Route layer, as text: a line read twice shows twice."""
+    return sorted(f.geometry().asWkt(1) for f in _the_route_layer(project).getFeatures())
+
+
+@pytest.mark.parametrize("first, unnamed", [
+    pytest.param("Aerial", "", id="empty-name"),
+    pytest.param("Aerial", "   ", id="name-of-spaces"),
+    pytest.param("Layer #1", "", id="beside-a-folder-layer-1"),
+])
+def test_a_kml_folder_with_no_name_is_read_and_not_taken_for_another(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals, kml_driver, first, unnamed):
+    """LIBKML reads <name></name>, or a name of spaces, as no name, and QGIS's
+    uri for a folder of no name is the file's bare path, which opens the FIRST
+    folder: its line went in twice, under "Imported 2 routes", and the unnamed
+    folder's two never. OGR's KML driver names that folder "Layer #1" after
+    its number, beside a folder of that name too, and one uri for both opened
+    the first."""
+    path = _kml(tmp_path, "unnamed-folder.kml",
+                _kml_folder(first, _kml_line("A1", (21.060, 44.790), (21.062, 44.791))), _two_lines_in(unnamed))
+    _read_with(path, kml_driver)
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [_IMPORTED.format(count=3)]
+    assert manager.iface.bar.entries == []
+    routes = _routes_imported(project)
+    assert len(set(routes)) == 3, routes
+    assert modals == []
+
+
+@pytest.mark.parametrize("container, name", [
+    pytest.param("kmz", "", id="kmz-empty-name"),
+    pytest.param("zip", "", id="zip-empty-name"),
+    pytest.param("zip", "Ducts A|B", id="zip-bar-in-a-name"),
+])
+def test_a_folder_opened_by_its_number_is_found_in_a_kmz_and_in_a_zip(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals, container, name):
+    """By its number in the KML that holds it. A .zip of a KML, picked through
+    "All files", is read as the KML inside, and a number on the .zip's own
+    path does not open at all."""
+    import zipfile
+
+    kml = _kml(tmp_path, "plant.kml", _AERIAL, _two_lines_in(name))
+    path = os.path.join(str(tmp_path), "plant." + container)
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.write(kml, "doc.kml")
+    _read_with(path, "LIBKML")
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [_IMPORTED.format(count=3)]
+    assert manager.iface.bar.entries == []
+    routes = _routes_imported(project)
+    assert len(set(routes)) == 3, routes
+    assert modals == []
+
+
+def test_a_zip_of_shapefiles_imports_the_lines_of_each(project, tmp_path, monkeypatch, quiet_dialogs, modals):
+    """Through "All files". Each shapefile in a .zip is a layer of it with a
+    uri of its own, and each one's layer number is 0."""
+    import zipfile
+
+    from osgeo import ogr, osr
+
+    srs = osr.SpatialReference()
+    srs.ImportFromEPSG(4326)
+    for name, geometry_type, shapes in (
+            ("poles", ogr.wkbPoint, ["POINT (21.06 44.79)"]),
+            ("aerial", ogr.wkbLineString, ["LINESTRING (21.060 44.790,21.062 44.791)"]),
+            ("underground", ogr.wkbLineString, ["LINESTRING (21.063 44.792,21.065 44.793)",
+                                                "LINESTRING (21.066 44.794,21.067 44.795)"])):
+        source = ogr.GetDriverByName("ESRI Shapefile").CreateDataSource(os.path.join(str(tmp_path), name + ".shp"))
+        layer = source.CreateLayer(name, srs, geometry_type)
+        for wkt in shapes:
+            feature = ogr.Feature(layer.GetLayerDefn())
+            feature.SetGeometry(ogr.CreateGeometryFromWkt(wkt))
+            layer.CreateFeature(feature)
+        source = None
+    path = os.path.join(str(tmp_path), "plant.zip")
+    with zipfile.ZipFile(path, "w") as archive:
+        for name in ("poles", "aerial", "underground"):
+            for extension in (".shp", ".shx", ".dbf", ".prj"):
+                archive.write(os.path.join(str(tmp_path), name + extension), name + extension)
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [_IMPORTED.format(count=3)]
+    assert manager.iface.bar.entries == [
+        ("warning", "Import route", _LEFT_OUT.format(count=1, kind="layer", names='"poles.shp"'))]
+    assert _saved(_the_route_layer(project)) == 3
+    assert modals == []
+
+
+def test_a_kml_folder_qgis_gives_no_crs_is_read_as_wgs84(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals, kml_driver):
+    """A folder whose first placemark is a MultiGeometry of mixed parts has no
+    CRS in QGIS, and the line after it went in unprojected, at (21, 45) in the
+    project's metres. A KML is in WGS 84, whatever QGIS makes of a folder."""
+    pole = ("<Placemark><name>Pole and plot</name><MultiGeometry>"
+            "<Point><coordinates>21.064,44.796</coordinates></Point>"
+            "<Polygon><outerBoundaryIs><LinearRing><coordinates>21.064,44.796 21.065,44.796 21.065,44.797"
+            " 21.064,44.796</coordinates></LinearRing></outerBoundaryIs></Polygon></MultiGeometry></Placemark>")
+    path = _kml(tmp_path, "pole-first.kml", _AERIAL,
+                _kml_folder("Feeder", pole, _kml_line("F1", (21.063, 44.792), (21.065, 44.793))))
+    _read_with(path, kml_driver)
+    assert not _has_a_crs(path + "|layername=Feeder"), "QGIS gives this folder a CRS now; the case is gone"
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [_IMPORTED.format(count=2)]
+    assert manager.iface.bar.entries == [("warning", "Import route", _NOT_LINES.format(count=1))]
+    expected = _in_the_project_crs((21.063, 44.792), (21.065, 44.793))
+    routes = [f.geometry() for f in _the_route_layer(project).getFeatures()]
+    assert [g for g in routes if g.hausdorffDistance(expected) < 0.01], [g.asWkt(0) for g in routes]
+    assert modals == []
+
+
+def _has_a_crs(uri):
+    """Whether QGIS gives the layer at ``uri`` a CRS. The layer goes with the
+    call: one kept in a failing test's frame until exit crashes QGIS 3.22."""
+    return QgsVectorLayer(uri, "probe", "ogr").crs().isValid()
+
+
+def _in_the_project_crs(*points):
+    """A line through WGS 84 ``points``, in the tests' project CRS, EPSG:3857."""
+    line = QgsGeometry.fromPolylineXY([QgsPointXY(x, y) for x, y in points])
+    line.transform(QgsCoordinateTransform(QgsCoordinateReferenceSystem("EPSG:4326"),
+                                          QgsCoordinateReferenceSystem("EPSG:3857"), QgsProject.instance()))
+    return line
+
+
+def test_a_route_layer_that_cannot_be_edited_is_the_reason_given(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals):
+    """Said as the merge says it, and nothing is read. startEditing()'s answer
+    went unchecked, and three lines into a read-only Route layer led the bar
+    with "a route was rejected by the layer (+3 more)": three rejections, then
+    "the layer was not in edit mode". The session code this change rewrote."""
+    path = _geojson(tmp_path, "three.geojson", [
+        _feature(_line([[21.0600, 44.7400], [21.0610, 44.7405]])),
+        _feature(_line([[21.0600, 44.7500], [21.0610, 44.7505]])),
+        _feature(_line([[21.0600, 44.7600], [21.0610, 44.7605]])),
+    ])
+    route = _route_layer(project)
+    route.setReadOnly(True)
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [_NONE_IMPORTED.format(count=3)]
+    assert manager.iface.bar.warnings == [
+        "Route: the Route layer could not be opened for editing, so nothing was changed. See Log"
+        " Messages > FiberQ for the details."]
+    assert route.featureCount() == 0
+    assert not route.isEditable()
+    assert modals == []
+
+
+def _one_layer_file(tmp_path, kind):
+    """A file of one layer, as each single-layer format holds two lines and a point."""
+    from osgeo import ogr, osr
+
+    lines = ["LINESTRING (21.060 44.740,21.061 44.7405)", "LINESTRING (21.062 44.741,21.063 44.7415)"]
+    point = "POINT (21.0605 44.7402)"
+    if kind == "geojson":
+        return _geojson(tmp_path, "mixed.geojson", [
+            _feature(_line([[21.060, 44.740], [21.061, 44.7405]])),
+            _feature(_point((21.0605, 44.7402))),
+            _feature(_line([[21.062, 44.741], [21.063, 44.7415]]))])
+    srs = osr.SpatialReference()
+    srs.ImportFromEPSG(4326)
+    if kind == "dxf":
+        # DXF keeps no CRS, so these are the project's own metres.
+        path = os.path.join(str(tmp_path), "mixed.dxf")
+        source = ogr.GetDriverByName("DXF").CreateDataSource(path)
+        layer = source.CreateLayer("entities")
+        shapes = ["LINESTRING (2344000 5592000,2344100 5592100)", "POINT (2344050 5592050)",
+                  "LINESTRING (2344200 5592200,2344300 5592300)"]
+    elif kind == "shapefile-lines":
+        path = os.path.join(str(tmp_path), "lines.shp")
+        source = ogr.GetDriverByName("ESRI Shapefile").CreateDataSource(path)
+        layer = source.CreateLayer("lines", srs, ogr.wkbLineString)
+        shapes = lines
+    else:
+        path = os.path.join(str(tmp_path), "points.shp")
+        source = ogr.GetDriverByName("ESRI Shapefile").CreateDataSource(path)
+        layer = source.CreateLayer("points", srs, ogr.wkbPoint)
+        shapes = [point, "POINT (21.0615 44.7408)"]
+    for wkt in shapes:
+        feature = ogr.Feature(layer.GetLayerDefn())
+        feature.SetGeometry(ogr.CreateGeometryFromWkt(wkt))
+        layer.CreateFeature(feature)
+    source = None
+    return path
+
+
+@pytest.mark.parametrize("kind, box, bar", [
+    pytest.param("geojson", _IMPORTED.format(count=2), [_NOT_LINES.format(count=1)], id="geojson"),
+    pytest.param("shapefile-lines", _IMPORTED.format(count=2), [], id="shapefile-lines"),
+    pytest.param("shapefile-points", _NONE_IMPORTED.format(count=2), [_NOT_LINES.format(count=2)],
+                 id="shapefile-points"),
+    pytest.param("dxf", _IMPORTED.format(count=2), [_NOT_LINES.format(count=1)], id="dxf"),
+])
+def test_a_file_of_one_layer_imports_as_it_did(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals, kind, box, bar):
+    """What a GeoJSON, a shapefile and a DXF came to before Q24, and still do."""
+    path = _one_layer_file(tmp_path, kind)
+    layer = QgsVectorLayer(path, "probe", "ogr")
+    assert layer.dataProvider().subLayerCount() == 1
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [box]
+    assert manager.iface.bar.warnings == bar
+    assert manager.iface.bar.infos == []
+    assert not _the_route_layer(project).isEditable()
+    assert modals == []
 
 
 # ---------------------------------------------------------------------------

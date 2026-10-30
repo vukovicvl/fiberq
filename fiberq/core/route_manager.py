@@ -11,6 +11,7 @@ This module provides route management functionality:
 Phase 5.2: Added logging infrastructure
 """
 
+from collections import Counter
 from typing import Optional, List, Tuple
 
 from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, Qt
@@ -27,6 +28,8 @@ from qgis.core import (
     QgsSymbol,
     QgsUnitTypes,
     QgsCoordinateTransform,
+    QgsCoordinateReferenceSystem,
+    QgsProviderRegistry,
 )
 
 # Phase 5.2: Logging
@@ -151,6 +154,54 @@ _CMD_RETAG = QT_TRANSLATE_NOOP('FiberQRoutes', "Change route type")
 
 _CMD_ADD = QT_TRANSLATE_NOOP('FiberQRoutes', "Add merged route")
 _CMD_REMOVE = QT_TRANSLATE_NOOP('FiberQRoutes', "Remove merged routes")
+
+#: How Import route's message bar speaks of a layer of the file: a KML's layers
+#: are the folders the user made, and a GPX's waypoints are counted in their
+#: own word.
+_FOLDER = 'folder'
+_LAYER = 'layer'
+_WAYPOINTS = 'waypoints'
+_KML_DRIVERS = frozenset({"LIBKML", "KML"})
+#: A GPX's route_points and track_points repeat its routes and tracks, one
+#: point per vertex: the lines are read from routes and tracks, and these two
+#: are never read or mentioned.
+_GPX_VERTICES = frozenset({"route_points", "track_points"})
+
+
+class _ImportSource:
+    """One layer of the file Import route reads, or names as left out.
+
+    ``name`` is None for a file of one layer -- a GeoJSON, a shapefile, a DXF
+    -- whose features are simply the file's. In a file of several it is the
+    layer's own name (a KML folder's, a GPX's "tracks"), and ``kind`` is how
+    the message bar speaks of it. ``read`` is False for a layer whose geometry
+    type can hold only points or areas: it is counted, not read.
+
+    The reprojection is the layer's own. Each layer of a file has a CRS of its
+    own, and those of a GeoPackage need not agree.
+    """
+
+    __slots__ = ("layer", "transform", "reproject", "name", "kind", "read")
+
+    def __init__(self, layer, dst_crs, name=None, kind=None, read=True):
+        self.layer = layer
+        crs = layer.crs()
+        if not crs.isValid() and layer.dataProvider().storageType() in _KML_DRIVERS:
+            # A KML has one CRS, WGS 84, but QGIS gives none to a folder whose
+            # first placemark is a MultiGeometry of mixed parts, and the lines
+            # after it went in unprojected: degrees taken for the project's
+            # metres (3.22.16, 3.40.15 and 4.2.3, under LIBKML and KML).
+            crs = QgsCoordinateReferenceSystem("EPSG:4326")
+        self.transform = QgsCoordinateTransform(crs, dst_crs, QgsProject.instance())
+        self.reproject = crs != dst_crs
+        self.name = name
+        self.kind = kind
+        self.read = read
+
+
+def _quoted(names) -> str:
+    """``"Poles", "Manholes"``: names as the user gave them, each in quotes."""
+    return ", ".join(f'"{name}"' for name in names)
 
 
 # Route type options and labels
@@ -711,14 +762,16 @@ class RouteManager:
             # handling as _add_one_route's.
             errors.add(None, f"could not give the merged route an identity: {describe(exc)}")
 
-    def _add_imported_routes(self, imported_layer, route_layer, src_crs, dst_crs,
-                             transform, tip_trase, errors):
-        """Copy every line in ``imported_layer`` into the Route layer.
+    def _add_imported_routes(self, sources, route_layer, tip_trase, errors):
+        """Copy every line in ``sources`` into the Route layer.
 
-        Returns ``(added, skipped, saved)``. ``saved`` is True when this call
-        opened the editing session and the commit went through, False when it
-        opened one and the commit was refused, and None when the user already
-        had the layer in edit mode -- their session, theirs to save.
+        ``sources`` are the layers of the chosen file, as
+        :meth:`_import_sources` lists them: the whole file when it has one
+        layer. Returns ``(added, skipped, saved)``, totals over every layer.
+        ``saved`` is True when this call opened the editing session and the
+        commit went through, False when it opened one and the commit was
+        refused, and None when the user already had the layer in edit mode --
+        their session, theirs to save.
 
         A refused commit never zeroes ``added``: "added" and "saved" are
         different facts, and saying one for the other is how a refused write came
@@ -742,7 +795,15 @@ class RouteManager:
         committed if this call opened the editing session. A user who already
         had unsaved edits keeps them: the import joins their undo stack instead
         of committing their buffer for them, and a failure destroys only the
-        import's own command.
+        import's own command. A file of several layers is still one command and
+        one commit, however many layers it has.
+
+        A Route layer that cannot be opened for editing is said so, as the
+        merge and Change route type say it, and nothing is read: every feature
+        of the file counts as left out. startEditing()'s answer used to go
+        unchecked, and three lines into a read-only Route layer led the bar
+        with "a route was rejected by the layer (+3 more)": three rejections,
+        then "the layer was not in edit mode".
 
         Everything counted in ``skipped`` has its reason in ``errors``. A
         route that could not be reprojected and one the layer refused are added
@@ -752,43 +813,78 @@ class RouteManager:
         rest, and a refused commit's reason is the one the caller's "could not
         be saved" box sends the user to. It used to be counted and nothing
         else, so a file of points ended under "The reason is in the message
-        bar" with no reason there (v1.6.0 QA, Q23).
+        bar" with no reason there (v1.6.0 QA, Q23). In a file of several
+        layers, a layer that holds no line at all -- its type rules lines out,
+        or it was read and found to hold none -- is named instead, once for all
+        of them, and a GPX's waypoints are counted in their own word (Q24).
+        Both go after the commit as well, ahead of that count.
         """
         was_editing = route_layer.isEditable()
-        if not was_editing:
-            route_layer.startEditing()
+        if not was_editing and not route_layer.startEditing():
+            errors.add(route_layer.name(), QCoreApplication.translate(
+                'FiberQRoutes', _NOT_EDITABLE))
+            # Every feature of the file was left out, and the caller's box
+            # says so of all of them.
+            return 0, sum(max(source.layer.featureCount(), 0) for source in sources), False
         route_layer.beginEditCommand(_route_import())
 
         added = 0
         skipped = 0
         not_lines = 0
+        no_lines = []
+        waypoints = 0
         try:
-            for feat in imported_layer.getFeatures():
-                parts = self._route_parts(feat.geometry())
-                if not parts:
-                    not_lines += 1
-                    skipped += 1
+            for source in sources:
+                if not source.read:
+                    # Its type can hold only points or areas: counted, not read.
+                    count = source.layer.featureCount()
+                    if count:
+                        skipped += max(count, 0)
+                        if source.kind == _WAYPOINTS and count > 0:
+                            waypoints += count
+                        else:
+                            no_lines.append(source)
                     continue
-                for polyline in parts:
-                    geom_line = QgsGeometry.fromPolylineXY(polyline)
-                    if src_crs != dst_crs:
-                        moved = transformed(geom_line, transform)
-                        if moved is None:
-                            errors.add(None, QCoreApplication.translate(
-                                'FiberQRoutes',
-                                "a route could not be reprojected and was left out"))
-                            skipped += 1
-                            continue
-                        geom_line = moved
-                    if self._add_one_route(route_layer, geom_line, tip_trase, errors):
-                        added += 1
-                    else:
-                        # A route the LAYER refuses was counted in neither
-                        # total, so it vanished from the report entirely: a
-                        # read-only Route layer took three routes, added none,
-                        # skipped none, and the user was told the file held no
-                        # lines (measured on 3.44.15).
+                lines_here = 0
+                not_lines_here = 0
+                for feat in source.layer.getFeatures():
+                    parts = self._route_parts(feat.geometry())
+                    if not parts:
+                        not_lines += 1
+                        not_lines_here += 1
                         skipped += 1
+                        continue
+                    lines_here += 1
+                    for polyline in parts:
+                        geom_line = QgsGeometry.fromPolylineXY(polyline)
+                        if source.reproject:
+                            moved = transformed(geom_line, source.transform)
+                            if moved is None:
+                                errors.add(None, QCoreApplication.translate(
+                                    'FiberQRoutes',
+                                    "a route could not be reprojected and was left out"))
+                                skipped += 1
+                                continue
+                            geom_line = moved
+                        if self._add_one_route(route_layer, geom_line, tip_trase, errors):
+                            added += 1
+                        else:
+                            # A route the LAYER refuses was counted in neither
+                            # total, so it vanished from the report entirely: a
+                            # read-only Route layer took three routes, added none,
+                            # skipped none, and the user was told the file held no
+                            # lines (measured on 3.44.15). A read-only layer now
+                            # stops at startEditing() above; a layer that edits
+                            # but refuses the insert still comes here.
+                            skipped += 1
+                if source.name is not None and not_lines_here and not lines_here:
+                    # Read because its type allowed lines -- every folder LIBKML
+                    # reads is of unknown type -- and found to hold none. Named,
+                    # as a layer whose type rules lines out is, so OGR's KML
+                    # driver, which types a folder of points as points, and
+                    # LIBKML say the same of the same file.
+                    not_lines -= not_lines_here
+                    no_lines.append(source)
         except (AttributeError, KeyError, RuntimeError, TypeError, ValueError) as exc:
             # KeyError, because QgsFeature.setAttribute RAISES it for a field
             # the layer does not have -- it does not answer False (measured on
@@ -817,13 +913,41 @@ class RouteManager:
                 # the file had held no lines, sending them to inspect a file
                 # that was fine.
                 outcome = added, skipped, check_commit(route_layer, errors)
+        self._say_left_out(no_lines, waypoints, not_lines, errors)
+        return outcome
+
+    @staticmethod
+    def _say_left_out(no_lines, waypoints, not_lines, errors):
+        """Add to ``errors`` what an import left out, each kind once, with its count.
+
+        ``no_lines`` are the layers of the file that hold no line: KML folders
+        are named as folders, any other file's layers as layers, each list in
+        the file's own order. ``waypoints`` counts a GPX's waypoints and
+        ``not_lines`` the features with no line in them among the lines read.
+        """
+        folders = [source.name for source in no_lines if source.kind == _FOLDER]
+        if folders:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQRoutes', "{count} folder(s) in the file hold no lines and were left out: {names}")
+            errors.add(None, safe_format(QCoreApplication.translate('FiberQRoutes', src), src,
+                                         count=len(folders), names=_quoted(folders)))
+        layers = [source.name for source in no_lines if source.kind != _FOLDER]
+        if layers:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQRoutes', "{count} layer(s) in the file hold no lines and were left out: {names}")
+            errors.add(None, safe_format(QCoreApplication.translate('FiberQRoutes', src), src,
+                                         count=len(layers), names=_quoted(layers)))
+        if waypoints:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQRoutes', "{count} waypoint(s) in the file are points, not lines, and were left out")
+            errors.add(None, safe_format(QCoreApplication.translate('FiberQRoutes', src), src,
+                                         count=waypoints))
         if not_lines:
             src = QT_TRANSLATE_NOOP(
                 'FiberQRoutes',
                 "{count} feature(s) in the file are not lines (points, areas or empty) and were left out")
             errors.add(None, safe_format(QCoreApplication.translate('FiberQRoutes', src), src,
                                          count=not_lines))
-        return outcome
 
     @staticmethod
     def _route_parts(geom):
@@ -863,8 +987,83 @@ class RouteManager:
             return False
         return True
 
+    def _import_sources(self, filename, imported_layer, dst_crs, errors):
+        """The layers of ``filename`` an import reads, and those it only counts.
+
+        ``imported_layer`` is the file as QGIS opens it by its path alone: the
+        whole of a GeoJSON, a shapefile or a DXF, and only the FIRST layer of a
+        file with more. A file of one layer is read through it, as before.
+
+        Of a file of several, every layer whose geometry type can hold a line
+        is read: a line type, or an unknown one -- every folder LIBKML reads,
+        and a folder of points and lines as OGR's KML driver reads it. A layer
+        whose type can hold only points or areas is not read; the import counts
+        its features and names it as left out, and so is a layer that does not
+        open. A layer with no geometry at all holds nothing a route could come
+        from and is passed over, and so are a GPX's route_points and
+        track_points, which repeat the routes and tracks point by point.
+
+        v1.6.0 QA, Q24: only ``imported_layer`` was read. A KML whose two
+        folders held 1 and 2 lines imported 1 route and reported success, and a
+        GPX, whose first layer is its waypoints, never had its tracks or routes
+        read (3.40.15 and 4.2.3).
+        """
+        if imported_layer.dataProvider().subLayerCount() < 2:
+            return [_ImportSource(imported_layer, dst_crs)]
+        registry = QgsProviderRegistry.instance()
+        found = registry.providerMetadata("ogr").querySublayers(filename)
+        if len(found) < 2:
+            return [_ImportSource(imported_layer, dst_crs)]
+        shared = Counter(sub.uri() for sub in found)
+        sources = []
+        for sub in found:
+            name = sub.name()
+            gpx = sub.driverName() == "GPX"
+            geometry = QgsWkbTypes.geometryType(sub.wkbType())
+            if (gpx and name in _GPX_VERTICES) or geometry == QgsWkbTypes.GeometryType.NullGeometry:
+                continue
+            uri = sub.uri()
+            if "|" in name or not name.strip() or shared[uri] > 1:
+                # QGIS's own uri opens a layer by its name, and three kinds of
+                # name do not lead back to their layer. A "|" breaks
+                # |layername=: a KML folder "A|B" did not open (3.22.16,
+                # 3.40.15 and 4.2.3). LIBKML reads <name></name>, or a name of
+                # spaces, as no name, and the uri of a layer of no name is the
+                # bare path, which opens the FIRST layer: its lines went in
+                # twice and the unnamed folder's never (all five legs). And
+                # OGR's KML driver names such a folder "Layer #1" after its
+                # number, beside a folder of that name too, and one uri for two
+                # opens the first. By its number in the file that holds it,
+                # then: a .zip's layers are the files inside it, and a number
+                # on the .zip's own path does not open. The name comes off the
+                # uri before decodeUri(), which would split it at its "|".
+                own = "|layername=" + name
+                parts = registry.decodeUri("ogr", uri[:-len(own)] if uri.endswith(own) else uri)
+                parts.pop("layerName", None)
+                parts["layerId"] = sub.layerNumber()
+                uri = registry.encodeUri("ogr", parts)
+            layer = QgsVectorLayer(uri, "Import_route_tmp", "ogr")
+            if not layer.isValid():
+                errors.add(name, QCoreApplication.translate(
+                    'FiberQRoutes', "could not be read and was left out"))
+                continue
+            if gpx and name == "waypoints":
+                kind = _WAYPOINTS
+            elif sub.driverName() in _KML_DRIVERS:
+                kind = _FOLDER
+            else:
+                kind = _LAYER
+            read = geometry in (QgsWkbTypes.GeometryType.LineGeometry,
+                                QgsWkbTypes.GeometryType.UnknownGeometry)
+            sources.append(_ImportSource(layer, dst_crs, name, kind, read))
+        return sources
+
     def import_route_from_file(self) -> None:
-        """Import routes from external file (KML/KMZ/DWG/GPX/Shape)."""
+        """Import routes from external file (KML/KMZ/DWG/GPX/Shape).
+
+        Every layer of the file that can hold lines is read, in one edit
+        command and one commit (see :meth:`_import_sources`).
+        """
         filename, _ = QFileDialog.getOpenFileName(
             self.iface.mainWindow(),
             QCoreApplication.translate('FiberQRoutes', "Choose a route file"), "",
@@ -886,29 +1085,26 @@ class RouteManager:
             return
 
         route_layer = self._ensure_route_layer()
-
-        # Coordinate transformation
-        src_crs = imported_layer.crs()
         dst_crs = self.iface.mapCanvas().mapSettings().destinationCrs()
-        transform = QgsCoordinateTransform(src_crs, dst_crs, QgsProject.instance())
 
         # Ask for route type
         tip_trase = self._ask_route_type("Imported route type")
 
         with OperationErrors(_route_import(), self.iface) as errors:
+            sources = self._import_sources(filename, imported_layer, dst_crs, errors)
             count_added, skipped, saved = self._add_imported_routes(
-                imported_layer, route_layer, src_crs, dst_crs, transform,
-                tip_trase, errors)
+                sources, route_layer, tip_trase, errors)
         # Every skipped feature has its reason in the one message-bar entry the
         # collector pushed on leaving the block: the first reason in full, any
         # others counted there and written out in Log Messages > FiberQ. A
-        # route that could not be reprojected and a feature with no line in it
-        # (once, with the count) were added by _add_imported_routes, a route
-        # the layer refused by _add_one_route, so no count of our own goes
-        # here. The "{count} feature(s) in the file could not be imported and
-        # were skipped." that stood here claimed every reason was written down
-        # already, but a feature with no line in it was only counted: for a
-        # file of points that count was all the bar said, under a box sending
+        # route that could not be reprojected, a feature with no line in it, a
+        # layer of the file that holds no lines and a GPX's waypoints (each
+        # kind once, with the count) were added by _add_imported_routes, a
+        # route the layer refused by _add_one_route, so no count of our own
+        # goes here. The "{count} feature(s) in the file could not be imported
+        # and were skipped." that stood here claimed every reason was written
+        # down already, but a feature with no line in it was only counted: for
+        # a file of points that count was all the bar said, under a box sending
         # the user to the bar for the reason (v1.6.0 QA, Q23).
         self.stylize_route_layer(route_layer)
 

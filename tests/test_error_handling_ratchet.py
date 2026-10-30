@@ -304,6 +304,10 @@ CRITICAL = {
         "RouteManager.change_route_type",
         "RouteManager.import_route_from_file",
         "RouteManager.merge_all_routes",
+        # Q24, unclaimed: Import route reads every layer of the file, listed
+        # by the first and reported on by the second.
+        "RouteManager._import_sources",
+        "RouteManager._say_left_out",
     }),
     # R9
     "fiberq/core/slack_manager.py": frozenset({
@@ -854,8 +858,10 @@ def test_d_package_wide_silence_does_not_grow():
 #: GDAL names in export_manager.py. Then sixteen, unclaimed (Q21): the
 #: fifteen in core/route_ends.py, a file of its own, that Route correction's
 #: check and Correct now share, and main_plugin's _show_route_finding, which
-#: Select on map calls.
-HARDENED_FUNCTIONS = 214
+#: Select on map calls. Then two, unclaimed (Q24): RouteManager._import_sources
+#: and ._say_left_out, which list the layers of a file Import route reads and
+#: say what it left out.
+HARDENED_FUNCTIONS = 216
 HARDENED_FILES = 26
 
 
