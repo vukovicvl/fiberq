@@ -6,8 +6,8 @@ fiber network topology with filtering, search, and export capabilities.
 """
 
 from qgis.PyQt import sip
-from qgis.PyQt.QtCore import Qt, QStringListModel, QTimer, QSize, QRect
-from qgis.PyQt.QtGui import QBrush, QPen, QColor, QPainterPath, QFont
+from qgis.PyQt.QtCore import Qt, QStringListModel, QTimer, QSize, QRect, QRectF, pyqtSignal
+from qgis.PyQt.QtGui import QBrush, QPen, QColor, QPainterPath, QFont, QTransform
 from qgis.PyQt.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -24,6 +24,8 @@ from qgis.PyQt.QtWidgets import (
     QGraphicsScene,
     QCompleter,
     QFileDialog,
+    QSizePolicy,
+    QApplication,
 )
 
 from qgis.core import (
@@ -45,6 +47,17 @@ logger = get_logger(__name__)
 #: The label grid's cell, in scene units: about one label wide (a 9 pt label
 #: measures about 60 x 25).
 _LABEL_CELL = 64.0
+
+#: The zoom Center brings an element to. At 1.0 the 9 pt labels are drawn at
+#: their own size; the fitted schematic layout of a 20-element project draws
+#: them at about 0.6 of it, too small to read. A closer zoom is kept.
+_READABLE_SCALE = 1.0
+
+#: How long the Center ring stays, in milliseconds.
+_RING_MS = 1500
+
+#: How far past half a viewport Center lets the view scroll, in pixels.
+_CENTER_MARGIN_PX = 20.0
 
 #: The layer signals the view refreshes on. One tuple, so that wiring a layer
 #: and unwiring it again cannot drift apart.
@@ -80,6 +93,11 @@ class SchematicView(QGraphicsView):
     - Wheel zoom centered on mouse
     """
 
+    #: The viewport changed size: the dialog was shown, or its window resized.
+    resized = pyqtSignal()
+    #: The user zoomed with the wheel, or a drag panned the view.
+    navigated = pyqtSignal()
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         from qgis.PyQt.QtGui import QPainter
@@ -105,10 +123,15 @@ class SchematicView(QGraphicsView):
         else:
             self.setCursor(Qt.CursorShape.ArrowCursor)
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.resized.emit()
+
     def wheelEvent(self, event):
         """Zoom with mouse wheel."""
         factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
         self.scale(factor, factor)
+        self.navigated.emit()
 
     def mousePressEvent(self, event):
         """Start panning on middle-button press, or on left-button press
@@ -131,8 +154,11 @@ class SchematicView(QGraphicsView):
             self._pan_start = cur
             hbar = self.horizontalScrollBar()
             vbar = self.verticalScrollBar()
+            before = (hbar.value(), vbar.value())
             hbar.setValue(hbar.value() - int(delta.x()))
             vbar.setValue(vbar.value() - int(delta.y()))
+            if (hbar.value(), vbar.value()) != before:
+                self.navigated.emit()
             event.accept()
         else:
             super().mouseMoveEvent(event)
@@ -147,6 +173,33 @@ class SchematicView(QGraphicsView):
             event.accept()
         else:
             super().mouseReleaseEvent(event)
+
+
+class _FitLabel(QLabel):
+    """One line of text, cut short with an ellipsis where its room ends.
+
+    Center's message gets the room left in its row, which a long name or a
+    large font can outgrow: 167 px at the default 1,200 px on 3.40.15
+    (offscreen), 229 px on 4.2.3. The whole message is in the tooltip.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._message = ""
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+
+    def set_message(self, text):
+        self._message = text
+        self.setToolTip(text)
+        self._show_what_fits()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._show_what_fits()
+
+    def _show_what_fits(self):
+        self.setText(self.fontMetrics().elidedText(
+            self._message, Qt.TextElideMode.ElideRight, self.width()))
 
 
 class OpticalSchematicDialog(QDialog):
@@ -167,14 +220,15 @@ class OpticalSchematicDialog(QDialog):
         #: in a closure so rebuild() can drop it. See _drop_highlight.
         self._highlight = None
         self.setWindowTitle("Optical Schematic View")
-        self.resize(1200, 760)
 
         # Scene & View
         self.scene = QGraphicsScene(self)
         self.view = SchematicView(self.scene, self)
-
-        # --- Top bar: controls ---
-        top = QHBoxLayout()
+        #: The drawing is refitted whenever the window changes size, until the
+        #: user zooms, pans, centres or fits by hand. See _view_resized.
+        self._follow_window = True
+        self.view.resized.connect(self._view_resized)
+        self.view.navigated.connect(self._stop_following)
 
         # Pan / Zoom controls
         self.btn_pan = QToolButton()
@@ -186,11 +240,11 @@ class OpticalSchematicDialog(QDialog):
         # before connect() does not emit toggled on either Qt5 or Qt6).
         self._toggle_pan(self.btn_pan.isChecked())
         self.btn_zoom_in = QPushButton("Zoom +")
-        self.btn_zoom_in.clicked.connect(lambda: self.view.scale(1.25, 1.25))
+        self.btn_zoom_in.clicked.connect(self._zoom_in)
         self.btn_zoom_out = QPushButton("Zoom −")
-        self.btn_zoom_out.clicked.connect(lambda: self.view.scale(0.8, 0.8))
+        self.btn_zoom_out.clicked.connect(self._zoom_out)
         self.btn_fit = QPushButton("Fit")
-        self.btn_fit.clicked.connect(self._fit)
+        self.btn_fit.clicked.connect(self._fit_by_hand)
 
         # Type filters
         self.chk_glavni = QCheckBox("Backbone")
@@ -228,6 +282,15 @@ class OpticalSchematicDialog(QDialog):
         self._completer = QCompleter([])
         self._completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.txt_search.setCompleter(self._completer)
+        # What Center says when the name matches nothing. It takes the room
+        # left in its row and never widens the dialog.
+        self.lbl_find = _FitLabel()
+        self.lbl_find.setStyleSheet("color: #e53935;")
+        self.txt_search.textChanged.connect(self._clear_find_message)
+        # Enter in the box runs Center, the list of names open or not: the
+        # list hands the key to the box, which by then holds the name the
+        # list highlights.
+        self.txt_search.returnPressed.connect(self._center_on_query)
 
         # Apply/refresh + export buttons
         self.btn_apply = QPushButton("Apply")
@@ -241,14 +304,24 @@ class OpticalSchematicDialog(QDialog):
         self.btn_svg = QPushButton("SVG")
         self.btn_svg.clicked.connect(self._export_svg)
 
-        for w in [self.btn_pan, self.btn_zoom_in, self.btn_zoom_out, self.btn_fit, self.chk_map_layout,
-                  self.chk_glavni, self.chk_distrib, self.chk_razvod,
-                  self.chk_podzemni, self.chk_vazdusni, self.chk_labels,
-                  self.cap_min, self.cap_max, self.txt_rel,
-                  self.txt_search, self.btn_center,
-                  self.btn_apply, self.btn_refresh, self.btn_png, self.btn_jpg, self.btn_svg]:
+        # --- Top bar: two rows ---
+        # The view and what to do with it, then what is drawn. One row of all
+        # 21 controls was 1,784 px wide at its narrowest on QGIS 4.2.3 and
+        # 2,070 px on 3.22.16 and 3.40.15 (offscreen), and on the QA desktop
+        # one end of it was off a 1,920 px screen.
+        top = QHBoxLayout()
+        for w in [self.btn_pan, self.btn_zoom_in, self.btn_zoom_out, self.btn_fit,
+                  self.txt_search, self.btn_center]:
             top.addWidget(w)
-        top.addStretch()
+        top.addWidget(self.lbl_find, 1)
+        for w in [self.btn_apply, self.btn_refresh, self.btn_png, self.btn_jpg, self.btn_svg]:
+            top.addWidget(w)
+        filters = QHBoxLayout()
+        for w in [self.chk_map_layout, self.chk_glavni, self.chk_distrib, self.chk_razvod,
+                  self.chk_podzemni, self.chk_vazdusni, self.chk_labels,
+                  self.cap_min, self.cap_max, self.txt_rel]:
+            filters.addWidget(w)
+        filters.addStretch(1)
 
         # --- Legend (small bar) ---
         legend = QHBoxLayout()
@@ -270,8 +343,25 @@ class OpticalSchematicDialog(QDialog):
 
         lay = QVBoxLayout(self)
         lay.addLayout(top)
+        lay.addLayout(filters)
         lay.addWidget(legend_w)
         lay.addWidget(self.view)
+
+        # The two text boxes keep room for their own hint, and the window opens
+        # wide enough for both rows at their natural width when the screen has
+        # it. At 1,200 px the second row left "Relation contains…" 41 px on
+        # QGIS 3.40.15 (offscreen, Qt5 fonts), so it read "R…".
+        for box in (self.txt_search, self.txt_rel):
+            box.setMinimumWidth(box.fontMetrics().horizontalAdvance(box.placeholderText()) + 16)
+        screen = QApplication.primaryScreen()
+        room = screen.availableGeometry().width() if screen is not None else 0
+        self.resize(max(1200, min(lay.sizeHint().width(), room)), 760)
+
+        # No button is the dialog's default, so Enter presses none. A dialog
+        # makes every QPushButton autoDefault, and with no default set it takes
+        # the first in the tab order: Enter in the Find box pressed Zoom +.
+        for button in self.findChildren(QPushButton):
+            button.setAutoDefault(False)
 
         # Debounce timer for automatic rebuild
         self._rebuild_timer = QTimer(self)
@@ -300,6 +390,40 @@ class OpticalSchematicDialog(QDialog):
         self.view.setSceneRect(rect)
         self.view.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
 
+    def _fit_by_hand(self):
+        """The Fit button. The zoom is the user's from here on."""
+        self._follow_window = False
+        self._fit()
+
+    def _view_resized(self):
+        """Fit the drawing to the window it ends up in.
+
+        The constructor's rebuild() fits the scene before the dialog is shown,
+        when the view is still Qt's default child with a 98 x 28 viewport. So
+        the drawing opened at scale 0.022 where the shown viewport fits it at
+        about 0.6: some 17 x 24 px in the middle of 1,760 x 669 on 4.2.3, of
+        2,046 x 655 on 3.22.16 and 3.40.15 (the same in v1.5.0). Showing the
+        dialog resizes the view, and so may the window manager afterwards, or
+        the user maximising the window, so each resize fits the drawing again,
+        until the user zooms, pans, centres or fits by hand. Fit, Apply and
+        Refresh fit once, as they always did.
+        """
+        if self._follow_window:
+            self.view.fitInView(self.view.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+
+    def _stop_following(self):
+        self._follow_window = False
+
+    def _zoom_in(self):
+        self._zoom(1.25)
+
+    def _zoom_out(self):
+        self._zoom(0.8)
+
+    def _zoom(self, factor):
+        self._follow_window = False
+        self.view.scale(factor, factor)
+
     def _parse_capacity(self, value):
         """Extract first number from capacity; if no number, return None."""
         import re as _re
@@ -311,10 +435,50 @@ class OpticalSchematicDialog(QDialog):
     def _center_on_query(self):
         name = self.txt_search.text().strip()
         if name:
-            self._center_on(name)
+            found = self._center_on(name)
+            self.lbl_find.set_message("" if found else f'Not found: "{name}"')
+
+    def _find_node(self, name):
+        """The layout's own name for what was typed: exact, else in any case.
+
+        The completer offers names whatever their case, so a lookup that
+        needed the exact case found nothing for "mh 1" and said nothing.
+        """
+        pos = getattr(self, "_last_positions", {}) or {}
+        if name in pos:
+            return name
+        folded = name.casefold()
+        return next((key for key in sorted(pos) if key.casefold() == folded), None)
+
+    def _clear_find_message(self, *args):
+        self.lbl_find.set_message("")
 
     def _center_on(self, name):
-        """Scroll to an element and ring it for a moment.
+        """Bring an element to the middle of the view and ring it for a moment.
+
+        Answers whether the name was found. Since the two defects below were
+        fixed, Center moved nothing anyone could see (QA on 4.2.3): _fit()
+        makes the scene rect the drawing and fits it, so centerOn() had
+        nothing to scroll -- MH 1 stayed 524-613 px left of the middle in the
+        map layout -- and the ring, 12 scene units in radius, came out 0.5 px
+        across at the opening scale, about 14.5 px at the fitted schematic one
+        and 24-28 px at the fitted map one (3.22.16, 3.40.15, 4.2.3). Now the
+        view zooms to _READABLE_SCALE unless it is already closer, and the
+        scene rect grows past half a viewport around the element so it
+        reaches the middle at the drawing's edge too; Fit, Apply and Refresh
+        put it back. The ring is that same ring, for _RING_MS: at the zoom
+        Center leaves, at least 24 px across and twice the element's circle.
+
+        A ring of a fixed 30 px on screen (ItemIgnoresTransformations) was
+        tried and dropped. Qt grows the scene's own sceneRect() -- which never
+        shrinks, and which the PNG, JPG and SVG exports draw -- by such an
+        item's rect at the scene's origin rather than where it is drawn, so
+        every export after a Center came out different: the drawing about
+        9 px further right and 0.3% smaller (Qt 5.15.3, 5.15.13 and 6.8.2,
+        measured). At scale 3.05 it also lay inside the element's circle. A
+        ring in scene units widens that rect only where it reaches past the
+        drawing, as it always did, and the exports after any Center are the
+        ones they were before Center zoomed, byte for byte (3.40.15, 4.2.3).
 
         Two defects lived in the four lines this replaces, and the second one
         was hidden by the first.
@@ -334,18 +498,34 @@ class OpticalSchematicDialog(QDialog):
         Center would have taken QGIS down. Fixing only the brush would have
         turned a dead button into a hard crash, which is why both are one fix.
         """
-        pos = getattr(self, "_last_positions", {})
-        if name not in pos:
-            return
-        x, y = pos[name]
-        self.view.centerOn(x, y)
+        key = self._find_node(name)
+        if key is None:
+            return False
+        x, y = self._last_positions[key]
+        self._follow_window = False
         self._drop_highlight()
+        view = self.view
+        if view.transform().m11() < _READABLE_SCALE:
+            view.setTransform(QTransform.fromScale(_READABLE_SCALE, _READABLE_SCALE))
+        # Half the viewport, measured without scroll bars, and a margin past
+        # it: the scene rect then overflows the view both ways and centerOn()
+        # scrolls the element to the middle, at the drawing's edge too. A rect
+        # that just fitted the view was placed by QGraphicsView's alignment
+        # instead, 8 px off once a scroll bar came or went (4.2.3).
+        scale = view.transform().m11()
+        room = view.maximumViewportSize()
+        half_w = (room.width() / 2.0 + _CENTER_MARGIN_PX) / scale
+        half_h = (room.height() / 2.0 + _CENTER_MARGIN_PX) / scale
+        drawing = self.scene.itemsBoundingRect().adjusted(-40, -40, 40, 40)
+        view.setSceneRect(drawing.united(QRectF(x - half_w, y - half_h, 2 * half_w, 2 * half_h)))
+        view.centerOn(x, y)
         r = 12.0
         self._highlight = self.scene.addEllipse(
             x - r, y - r, 2 * r, 2 * r,
             QPen(QColor(255, 165, 0), 2.4), QBrush(Qt.BrushStyle.NoBrush))
         self._highlight.setZValue(10)
-        QTimer.singleShot(1300, self._drop_highlight)
+        QTimer.singleShot(_RING_MS, self._drop_highlight)
+        return True
 
     def _drop_highlight(self):
         """Remove the Center ring if it is still there.
