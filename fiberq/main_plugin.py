@@ -1,4 +1,6 @@
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
+from types import SimpleNamespace
+
 from qgis.PyQt.QtCore import QT_TRANSLATE_NOOP, Qt, QCoreApplication
 from qgis.PyQt.QtGui import QKeySequence
 from qgis.PyQt.QtWidgets import (
@@ -40,9 +42,11 @@ from .i18n import (
 # name, and reading the modern one raises KeyError instead of missing quietly.
 from .core import feature_links
 from .core import interchange_fields as fm
+# Q21: what a route end may sit on, for Route correction's check and Correct.
+from .core import route_ends
 from .utils import file_filters
-from .utils.geometry import geometry_point, line_endpoint, line_part_count, transformed
-from .utils.spatial import ScanOrderIndex, box_around
+from .utils.geometry import line_endpoint, line_part_count, transformed
+from .utils.spatial import box_around
 from .models.schema import canonical_layer_name
 from .utils.errors import OperationErrors, check_commit, describe, report_error
 
@@ -3782,15 +3786,22 @@ class FiberQPlugin:
         # back None, the whole check was skipped, and Route correction
         # announced "No errors found!". canonical_layer_name knows every
         # spelling, and is the same resolver Delete selected uses.
-        layers = {}
-        for lyr in QgsProject.instance().mapLayers().values():
-            if not isinstance(lyr, QgsVectorLayer) or not lyr.isValid():
-                continue
-            layers.setdefault(canonical_layer_name(lyr.name()) or lyr.name(), lyr)
-
-        route_layer = layers.get("Route")
-        poles_layer = layers.get("Poles")
-        manholes_layer = layers.get("Manholes")
+        #
+        # Q21: and the lookup that replaced it still took the FIRST layer of
+        # each name, of any geometry. A project holding both Poles and a
+        # pre-1.0 Stubovi had the second one's poles ignored, and a polygon
+        # layer called Manholes stopped the check with "TypeError: Polygon
+        # geometry cannot be converted to a point". The Route layer is now the
+        # one Correct edits (_route_layer: the first LINE layer of that name),
+        # so the check and Correct always look at the same routes; and what a
+        # route may end on is every point layer of the fifteen FiberQ itself
+        # ends routes and cables on -- Poles, Manholes, Joint Closures and the
+        # twelve element layers -- not Poles and Manholes alone. Why those
+        # fifteen is in core/route_ends.py.
+        route_layer = self._route_layer()
+        node_layers = route_ends.node_layers(QgsProject.instance())
+        has_poles_or_manholes = any(
+            canonical_layer_name(lyr.name()) in ("Poles", "Manholes") for lyr in node_layers)
 
         # U15: and it said "No errors found!" when it had checked nothing at
         # all, which is the one answer a consistency check must never give.
@@ -3799,7 +3810,7 @@ class FiberQPlugin:
                 self.iface.mainWindow(), self.tr("Route correction"),
                 self.tr("This project has no Route layer, so nothing was checked."))
             return
-        if poles_layer is None and manholes_layer is None:
+        if not has_poles_or_manholes:
             QMessageBox.information(
                 self.iface.mainWindow(), self.tr("Route correction"),
                 self.tr("This project has no Poles or Manholes layer, so route "
@@ -3823,7 +3834,7 @@ class FiberQPlugin:
         # look like protection.
         without_geometry = 0
 
-        if route_layer and (poles_layer or manholes_layer):
+        if route_layer and node_layers:
             # R10: a feature with no geometry answers asPoint() with
             # "ValueError: Null geometry cannot be converted to a point."
             # (measured on both stacks), and QGIS creates one whenever a row is
@@ -3835,18 +3846,21 @@ class FiberQPlugin:
             # distances at size S, growing with the square of the project. The
             # test itself is unchanged and still decides; the index only hands
             # it the points inside a 1 cm box, which are all it could accept.
-            pole_points = ScanOrderIndex()
-            for source in (poles_layer, manholes_layer):
-                if source is None:
-                    continue
-                for pole in source.getFeatures():
-                    point = geometry_point(pole.geometry())
-                    if point is None:
-                        without_geometry += 1
-                        continue
-                    pole_points.add(point, box_around(point, 0.0))
+            #
+            # Q21: the same test, over the fifteen layers' points, which on
+            # the S city are 4,880 where Poles and Manholes were 2,660. They
+            # are filed in a grid of 2 cm cells rather than a ScanOrderIndex,
+            # which took 52 ms to fill with them where the grid takes 2.4
+            # (route_ends._PointGrid says why that is enough). node_index
+            # skips and counts a feature with no position, as R10 did here.
+            nodes, without_geometry = route_ends.node_index(node_layers)
+            routes = list(route_layer.getFeatures())
+            # Q21: the other routes, by bounding box, built when the first end
+            # that is on no point is met. A project whose route ends all sit on
+            # points never builds it.
+            other_routes = None
 
-            for feat in route_layer.getFeatures():
+            for feat in routes:
                 # R10: and asPolyline() RAISES on a multipart route rather than
                 # answering an empty list, so `if not poly: continue` never
                 # saw one. line_endpoint goes through line_vertices, which
@@ -3876,61 +3890,121 @@ class FiberQPlugin:
                 # worse, and what such a route needs is merging, not moving.
                 pieces = line_part_count(feat.geometry())
                 if pieces > 1:
+                    #: Route correction finding. {route} is the route's name and
+                    #: ID, e.g. 'Route 7' (ID 15), or just (ID 15) when it has no
+                    #: name; {pieces} is a number, 2 or more.
+                    src = QT_TRANSLATE_NOOP(
+                        'FiberQPlugin',
+                        "Route {route} is in {pieces} separate pieces. Only its two outer ends were checked.")
                     self.popravljive_greske.append({
-                        'msg': (f"Route (ID {feat.id()}) is in {pieces} separate pieces. "
-                                f"Only its two outer ends were checked against poles."),
+                        'msg': safe_format(self.tr(src), src, route=route_ends.route_label(feat), pieces=pieces),
                         'feat': feat,
                         'layer': route_layer,
                     })
-                # Start
-                near_start = pole_points.candidates(box_around(start, 1e-2))
-                if not any(QgsPointXY(sp).distance(start) < 1e-2 for sp in near_start):
-                    greska = {
-                        'msg': f"Start of route (ID {feat.id()}) is NOT on a pole.",
-                        'feat': feat,
-                        'layer': route_layer,
+
+                for must_start, point in ((True, start), (False, end)):
+                    # Q21: an end is connected, and so not reported, when it
+                    # is within 1 cm of a point on one of the fifteen layers,
+                    # or of any vertex of another route: a junction, which Lay
+                    # cable routes through. Before, only Poles and Manholes
+                    # counted, so every drop ending at an OTB or a TO, every
+                    # branch drawn from another route and both halves of a
+                    # split route were "NOT on a pole" -- all 86 findings on
+                    # the benchmark's XS city, and 598 of S's 602 -- and
+                    # Correct then pulled them off what they were connected to.
+                    if route_ends.on_a_node(point, nodes):
+                        continue
+                    if other_routes is None:
+                        other_routes = route_ends.route_index(routes)
+                    how, other = route_ends.touching_route(
+                        point, feat.id(), other_routes.candidates(box_around(point, route_ends.ON)))
+                    if how == 'vertex':
+                        continue
+                    route = route_ends.route_label(feat)
+                    # 'where' is the end itself, for Select on map.
+                    finding = {'feat': feat, 'layer': route_layer, 'where': point}
+                    if how == 'segment':
+                        # Q21: on another route, but between two of its
+                        # vertices, which Lay cable cannot cross. Reported, and
+                        # deliberately no 'popravka': the cure is a vertex on
+                        # the other route at that point, and moving this end
+                        # anywhere would only disconnect it.
+                        if must_start:
+                            #: Route correction finding. {route} and {other} are a
+                            #: route's name and ID, e.g. 'Route 7' (ID 15), or just
+                            #: (ID 15). A vertex is a corner point of a line.
+                            src = QT_TRANSLATE_NOOP(
+                                'FiberQPlugin',
+                                "Start of route {route} touches route {other} between two of its vertices, "
+                                "so the two are not connected. Add a vertex to route {other} at that point.")
+                        else:
+                            #: Route correction finding. {route} and {other} are a
+                            #: route's name and ID, e.g. 'Route 7' (ID 15), or just
+                            #: (ID 15). A vertex is a corner point of a line.
+                            src = QT_TRANSLATE_NOOP(
+                                'FiberQPlugin',
+                                "End of route {route} touches route {other} between two of its vertices, "
+                                "so the two are not connected. Add a vertex to route {other} at that point.")
+                        finding['msg'] = safe_format(self.tr(src), src, route=route,
+                                                     other=route_ends.route_label(other))
+                    else:
+                        if must_start:
+                            #: Route correction finding. {route} is the route's name
+                            #: and ID, e.g. 'Route 7' (ID 15), or just (ID 15).
+                            #: "Element" = any FiberQ network element: ODF, OTB, TO...
+                            src = QT_TRANSLATE_NOOP(
+                                'FiberQPlugin',
+                                "Start of route {route} is not connected to a pole, manhole, joint closure, "
+                                "element or another route.")
+                        else:
+                            #: Route correction finding. {route} is the route's name
+                            #: and ID, e.g. 'Route 7' (ID 15), or just (ID 15).
+                            #: "Element" = any FiberQ network element: ODF, OTB, TO...
+                            src = QT_TRANSLATE_NOOP(
+                                'FiberQPlugin',
+                                "End of route {route} is not connected to a pole, manhole, joint closure, "
+                                "element or another route.")
+                        finding['msg'] = safe_format(self.tr(src), src, route=route)
                         # U15: by ID, not by this feature object. The
                         # object holds the geometry as it was when the check
                         # ran, so correcting the start and then the end wrote
                         # the stale geometry back and REVERTED the start --
                         # measured: ends (1, 99) -> (0, 99) -> (1, 100).
-                        'popravka': lambda fid=feat.id(): self.fix_route_to_pole(fid, must_start=True)
-                    }
-                    self.popravljive_greske.append(greska)
-                # Kraj
-                near_end = pole_points.candidates(box_around(end, 1e-2))
-                if not any(QgsPointXY(sp).distance(end) < 1e-2 for sp in near_end):
-                    greska = {
-                        'msg': f"End of route (ID {feat.id()}) is NOT on a pole.",
-                        'feat': feat,
-                        'layer': route_layer,
-                        'popravka': lambda fid=feat.id(): self.fix_route_to_pole(fid, must_start=False)
-                    }
-                    self.popravljive_greske.append(greska)
+                        finding['popravka'] = (lambda fid=feat.id(), first=must_start:
+                                               self.fix_route_to_pole(fid, must_start=first))
+                    self.popravljive_greske.append(finding)
 
         if without_geometry:
+            #: Route correction, message bar. {count} is a number. "Element" =
+            #: any FiberQ network element: ODF, OTB, TO...
             src = QT_TRANSLATE_NOOP(
                 'FiberQPlugin',
-                "{count} pole or manhole(s) have no position yet and were not checked.")
+                "Poles, manholes, joint closures or elements with no position yet were left out of the check: "
+                "{count}")
             self.iface.messageBar().pushWarning(
                 self.tr("Route correction"),
                 safe_format(self.tr(src), src, count=without_geometry))
 
         if not self.popravljive_greske:
             #: Dialog title for the results of the route-consistency check
-            #: (e.g. route lines whose ends do not meet a pole). "Route" = the
+            #: (e.g. route lines whose ends meet no pole, manhole, element or
+            #: other route). "Route" = the
             #: physical cable route/trench on the map, not a road and not a network
             #: route. "Correction" is a NOUN: the fixing-up of those defects.
             QMessageBox.information(self.iface.mainWindow(), self.tr("Route correction"),
                                     self.tr("No errors found!"))
         else:
-            dlg = CorrectionDialog(self.popravljive_greske, self.iface.mainWindow())
+            dlg = CorrectionDialog(self.popravljive_greske, self.iface.mainWindow(),
+                                   show=self._show_route_finding)
             dlg.exec()
 
         # Automatska korekcija
 
     def fix_route_to_pole(self, route_feature, must_start=True):
-        """Drag one end of a route onto the nearest pole or manhole.
+        """Move one end of a route onto the nearest pole, manhole, joint closure or element.
+
+        Answers True when the end was moved, and the dialog then greys out the
+        Correct button that asked for it.
 
         Args:
             route_feature: The route's feature **id**, or the feature itself.
@@ -3941,6 +4015,16 @@ class FiberQPlugin:
                 and then (1, 100). A feature is still accepted, because that is
                 what the tests and any external caller hand over.
             must_start: Correct the first vertex rather than the last.
+
+        Q21: it moves an end only while that end is still loose -- on no pole,
+        manhole, joint closure, element or other route, by the check's own test
+        -- only onto the nearest of those points within ``route_ends.MAX_MOVE_M``
+        (5 m) on the ground, and never away from a cable or duct with a vertex
+        there. Anything else leaves the route as it is and says why in the
+        message bar. v1.5.0 and the 1.6.0 test build dragged every flagged end
+        onto the nearest pole or manhole at any distance and saved it: on the
+        maintainer's project, 20.66 m onto pole 4, off the route and the
+        transition pipe the end met.
         """
         # R10: isinstance FIRST. mapLayers() is keyed by layer id, which
         # starts with the layer name, so iteration is roughly name order -- and
@@ -3957,31 +4041,30 @@ class FiberQPlugin:
         # "corrected" by dragging it to a distant pole, or not corrected at all
         # when the project has no Poles layer. Both layers are candidates here
         # now, resolved the same canonical way as the check.
-        candidates = []
-        for lyr in QgsProject.instance().mapLayers().values():
-            if not isinstance(lyr, QgsVectorLayer) or not lyr.isValid():
-                continue
-            if lyr.geometryType() != QgsWkbTypes.GeometryType.PointGeometry:
-                continue
-            if canonical_layer_name(lyr.name()) in ("Poles", "Manholes"):
-                candidates.append(lyr)
+        #
+        # Q21: and so are the other thirteen layers the check now counts as a
+        # place a route may end, through the one list both share
+        # (route_ends.node_layers, which makes the same isinstance and
+        # geometry-type tests first).
+        project = QgsProject.instance()
+        candidates = route_ends.node_layers(project)
 
         if not candidates:
             QMessageBox.warning(self.iface.mainWindow(), "FiberQ",
                                 self.tr("Layer 'Poles' not found!"))
-            return
+            return False
 
         route_layer = self._route_layer()
         if route_layer is None:
             QMessageBox.warning(self.iface.mainWindow(), "FiberQ",
                                 self.tr("Route layer 'Route' not found!"))
-            return
+            return False
 
         # U15: re-read the feature, so the geometry is whatever it is NOW.
         feature_id = route_feature if isinstance(route_feature, int) else route_feature.id()
         fresh = next(iter(route_layer.getFeatures(QgsFeatureRequest(int(feature_id)))), None)
         if fresh is None:
-            return
+            return False
 
         # R10: multipart again -- asPolyline() raises rather than answering
         # empty, so this guard never ran on the geometry it was written for.
@@ -3997,109 +4080,199 @@ class FiberQPlugin:
         # MultiLineString column and answers SUCCESS.
         route_point, idx = line_endpoint(fresh.geometry(), last=not must_start)
         if route_point is None:
-            return
+            return False
 
-        min_dist = None
-        nearest_stub = None
-        for source in candidates:
-            for pole_feat in source.getFeatures():
-                pole_pt = geometry_point(pole_feat.geometry())
-                if pole_pt is None:
-                    continue  # R10: a pole with no position is not a candidate
-                dist = pole_pt.distance(route_point)
-                if min_dist is None or dist < min_dist:
-                    min_dist = dist
-                    nearest_stub = pole_pt
+        title = self.tr("Route correction")
+        bar = self.iface.messageBar()
+        route = route_ends.route_label(fresh)
 
-        # If pole found, move start/end of route to pole
-        if nearest_stub and min_dist > 1e-2:
-            # On a copy, and in place: moveVertex keeps the part structure and
-            # the wkbType, so a multipart route keeps every part and a
-            # MultiLineString layer still gets a geometry it can store.
-            # It answers False for an index it does not hold rather than
-            # raising, and leaves the geometry alone (measured on both stacks),
-            # so the result is checked.
-            new_geom = QgsGeometry(fresh.geometry())
-            if not new_geom.moveVertex(nearest_stub.x(), nearest_stub.y(), idx):
-                with OperationErrors(self.tr("Route correction"), self.iface) as errors:
-                    errors.add(route_layer.name(), QCoreApplication.translate(
-                        'FiberQPlugin', "the end of this route could not be moved"))
-                return
+        # Q21: the check's own test, on the route as it is now. An end that is
+        # already on a point of the fifteen layers, or on another route -- at a
+        # vertex or between two -- is never moved: the data may have changed
+        # since the check, and pulling such an end away is what disconnected
+        # routes from what they met. v1.5.0's "min_dist > 1e-2" asked the same
+        # of Poles and Manholes alone.
+        if (route_ends.meets_a_node(route_point, candidates)
+                or route_ends.touching_route(  # noqa: W503
+                    route_point, fresh.id(), route_ends.routes_near(route_layer, route_point))[0] is not None):
+            #: Route correction, message bar. {route} is the route's name and
+            #: ID, e.g. 'Route 7' (ID 15), or just (ID 15).
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                "Route {route} was not changed: that end already meets a pole, manhole, joint closure, "
+                "element or another route.")
+            bar.pushWarning(title, safe_format(self.tr(src), src, route=route))
+            return False
 
-            # f011: and refuse to flatten the route onto itself. There is no
-            # maximum snap distance here, so the "nearest pole" can be the pole
-            # this route's OTHER end already sits on -- which is the ordinary
-            # shape of an FTTH drop, one pole and one house. Measured on
-            # 3.22.16, 3.44.15 and 4.0.3: a 1 km route with poles at (0 0) and
-            # (5000 0) came back as LineString (0 0, 0 0), length 0, announced
-            # as "Route has been automatically attached to a pole."
-            #
-            # The test is the moved end's own NEIGHBOUR vertex, because that is
-            # what the defect actually is: a segment becomes zero-length when
-            # its two ends meet. The tempting version -- "refuse the pole the
-            # route's OTHER end is already on" -- was measured against this and
-            # misses two real cases:
-            #
-            #   route (0 0, 50 0, 100 0), pole on the bend at (50 0): the far
-            #       end is 50 m away, so it allows the last segment to collapse
-            #   a 2-part route with the pole where part 2 starts: the far end is
-            #       in part 1 and cannot see part 2 collapsing. 20 m became
-            #       10 m, reported as a success.
-            #
-            # Both are covered by tests that fail against that version. A closed
-            # loop is unaffected either way -- its ends share a position, but a
-            # pole close enough to matter is also within the min_dist guard
-            # above -- so rings are not the reason, though it is pinned too.
-            #
-            # adjacentVertices() answers -1 on the outer side of an end AND
-            # across a part boundary, and indexes the stored coordinates, the
-            # same basis as line_endpoint -- so curves and multiparts both
-            # work. Moving a vertex does not change adjacency, so reading it
-            # from the already-moved copy is the same answer.
-            before_idx, after_idx = new_geom.adjacentVertices(idx)
-            neighbour_idx = after_idx if must_start else before_idx
-            if neighbour_idx >= 0 and QgsPointXY(new_geom.vertexAt(neighbour_idx)).distance(nearest_stub) < 1e-2:
-                src = QT_TRANSLATE_NOOP('FiberQPlugin', "The nearest pole is {distance} map units away and already sits where this route's next vertex is, so attaching the route to it would collapse the route to nothing. The route was left alone.")
-                self.iface.messageBar().pushWarning(
-                    self.tr("Route correction"),
-                    safe_format(self.tr(src), src, distance=f"{min_dist:.1f}"))
-                return
+        # Q21: the nearest point of the fifteen layers within MAX_MOVE_M on the
+        # ground, measured the way stored lengths are. There was no limit:
+        # v1.5.0 and the test build moved an end 5.1 m, 30 m, 2 km, and 0.02
+        # degrees (1.6 km) in EPSG:4326 as readily as 0.5 m.
+        target = route_ends.nearest_node(route_point, route_layer.crs(), candidates)
+        if target is None:
+            #: Route correction, message bar. {route} is the route's name and
+            #: ID, e.g. 'Route 7' (ID 15), or just (ID 15); {limit} is a
+            #: number of metres. "Element" = any FiberQ network element.
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                "Route {route} was not changed: no pole, manhole, joint closure or element is within "
+                "{limit} m of that end. If it belongs to one further away, move the end by hand.")
+            bar.pushWarning(title, safe_format(self.tr(src), src, route=route,
+                                               limit=f"{route_ends.MAX_MOVE_M:g}"))
+            return False
+        node_layer, node_fid, nearest_stub, metres = target
+        node_name = route_ends.feature_label(node_layer, node_layer.getFeature(node_fid))
 
-            # R10: both results used to be discarded, so a Correct that the
-            # provider refused still announced "Route has been automatically
-            # attached to a pole." -- and the user went looking for a route
-            # that had not moved.
-            #
-            # was_editing, because this must not touch an edit session it did
-            # not open. The first cut of the R10 fix called startEditing() and
-            # rollBack() unconditionally, and both ends of that were wrong:
-            # running Correct while the user had unsaved routes digitised
-            # SAVED them and closed the session on the way out, and a refused
-            # write rolled the whole buffer back and DESTROYED them, saying
-            # only "the route would not take its new shape" (both measured on
-            # 3.44.15 against a GeoPackage). utils/errors.py states the policy
-            # this file imports from it: a failed write is never tidied up by
-            # throwing the user's work away. Same guard as
-            # route_manager._add_imported_routes.
-            was_editing = route_layer.isEditable()
-            with OperationErrors(self.tr("Route correction"), self.iface) as errors:
+        # On a copy, and in place: moveVertex keeps the part structure and
+        # the wkbType, so a multipart route keeps every part and a
+        # MultiLineString layer still gets a geometry it can store.
+        # It answers False for an index it does not hold rather than
+        # raising, and leaves the geometry alone (measured on both stacks),
+        # so the result is checked.
+        new_geom = QgsGeometry(fresh.geometry())
+        if not new_geom.moveVertex(nearest_stub.x(), nearest_stub.y(), idx):
+            with OperationErrors(title, self.iface) as errors:
+                errors.add(route_layer.name(), QCoreApplication.translate(
+                    'FiberQPlugin', "the end of this route could not be moved"))
+            return False
+
+        # f011: and refuse to flatten the route onto itself. There was no
+        # maximum snap distance here before Q21, so the "nearest pole" could be
+        # the pole this route's OTHER end already sits on -- which is the
+        # ordinary shape of an FTTH drop, one pole and one house. Measured on
+        # 3.22.16, 3.44.15 and 4.0.3: a 1 km route with poles at (0 0) and
+        # (5000 0) came back as LineString (0 0, 0 0), length 0, announced
+        # as "Route has been automatically attached to a pole." The 5 m limit
+        # makes that rarer, not impossible: a drop shorter than 5 m still meets
+        # its own pole.
+        #
+        # The test is the moved end's own NEIGHBOUR vertex, because that is
+        # what the defect actually is: a segment becomes zero-length when
+        # its two ends meet. The tempting version -- "refuse the pole the
+        # route's OTHER end is already on" -- was measured against this and
+        # misses two real cases:
+        #
+        #   route (0 0, 50 0, 100 0), pole on the bend at (50 0): the far
+        #       end is 50 m away, so it allows the last segment to collapse
+        #   a 2-part route with the pole where part 2 starts: the far end is
+        #       in part 1 and cannot see part 2 collapsing. 20 m became
+        #       10 m, reported as a success.
+        #
+        # Both are covered by tests that fail against that version. A closed
+        # loop is unaffected either way -- its ends share a position, but a
+        # pole close enough to matter is also within the min_dist guard
+        # above (the "already meets" guard since Q21) -- so rings are not the
+        # reason, though it is pinned too.
+        #
+        # adjacentVertices() answers -1 on the outer side of an end AND
+        # across a part boundary, and indexes the stored coordinates, the
+        # same basis as line_endpoint -- so curves and multiparts both
+        # work. Moving a vertex does not change adjacency, so reading it
+        # from the already-moved copy is the same answer.
+        before_idx, after_idx = new_geom.adjacentVertices(idx)
+        neighbour_idx = after_idx if must_start else before_idx
+        if neighbour_idx >= 0 and QgsPointXY(new_geom.vertexAt(neighbour_idx)).distance(nearest_stub) < route_ends.ON:
+            #: Route correction, message bar. {route} is the route's name and
+            #: ID, e.g. 'Route 7' (ID 15); {target} names a point on the map
+            #: the same way, e.g. Manholes '12312' (ID 4).
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                "Route {route} was not changed: the nearest pole, manhole, joint closure or element, {target}, "
+                "is where the route's next vertex already is, so attaching the end to it would collapse the "
+                "route.")
+            bar.pushWarning(title, safe_format(self.tr(src), src, route=route, target=node_name))
+            return False
+
+        # Q21: nor away from a cable or duct. Neither keeps a link to its
+        # route -- a laid cable stores its from/to names and a copy of the
+        # route's points -- so the route would move and they would stay where
+        # the end was. Moving them as well is a cross-layer edit, with their
+        # lengths, the slack totals and undo; until FiberQ does that, Correct
+        # refuses, which is the safe way round.
+        lines = route_ends.lines_at(route_point, project)
+        if lines:
+            #: Route correction, message bar. {route} is the route's name and
+            #: ID, e.g. 'Route 7' (ID 15); {lines} is a list of cables and
+            #: ducts named the same way, e.g. Aerial cables 'K1' (ID 3).
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                "Route {route} was not changed, because these would be left behind at that end: {lines}. "
+                "Move them together by hand.")
+            bar.pushWarning(title, safe_format(self.tr(src), src, route=route, lines=", ".join(lines)))
+            return False
+
+        # R10: both results used to be discarded, so a Correct that the
+        # provider refused still announced "Route has been automatically
+        # attached to a pole." -- and the user went looking for a route
+        # that had not moved.
+        #
+        # was_editing, because this must not touch an edit session it did
+        # not open. The first cut of the R10 fix called startEditing() and
+        # rollBack() unconditionally, and both ends of that were wrong:
+        # running Correct while the user had unsaved routes digitised
+        # SAVED them and closed the session on the way out, and a refused
+        # write rolled the whole buffer back and DESTROYED them, saying
+        # only "the route would not take its new shape" (both measured on
+        # 3.44.15 against a GeoPackage). utils/errors.py states the policy
+        # this file imports from it: a failed write is never tidied up by
+        # throwing the user's work away. Same guard as
+        # route_manager._add_imported_routes.
+        moved = False
+        was_editing = route_layer.isEditable()
+        with OperationErrors(title, self.iface) as errors:
+            if not was_editing:
+                route_layer.startEditing()
+            if not route_layer.changeGeometry(int(feature_id), new_geom):
+                errors.add(route_layer.name(), QCoreApplication.translate(
+                    'FiberQPlugin', "the route would not take its new shape"))
                 if not was_editing:
-                    route_layer.startEditing()
-                if not route_layer.changeGeometry(int(feature_id), new_geom):
-                    errors.add(route_layer.name(), QCoreApplication.translate(
-                        'FiberQPlugin', "the route would not take its new shape"))
-                    if not was_editing:
-                        route_layer.rollBack()
-                elif was_editing or check_commit(route_layer, errors):
-                    # Left uncommitted on purpose when the user was already
-                    # editing: the correction joins their edit session and they
-                    # save it with the rest of their work.
-                    route_layer.triggerRepaint()
-                    QMessageBox.information(
-                        self.iface.mainWindow(),
-                        "FiberQ",
-                        self.tr("Route has been automatically attached to a pole.")
-                    )
+                    route_layer.rollBack()
+            elif was_editing or check_commit(route_layer, errors):
+                # Left uncommitted on purpose when the user was already
+                # editing: the correction joins their edit session and they
+                # save it with the rest of their work.
+                route_layer.triggerRepaint()
+                moved = True
+                # Q21: what it was attached to, and how far it moved, which
+                # "Route has been automatically attached to a pole." never said.
+                #: Route correction, after a move. {route} is the route's name
+                #: and ID, e.g. 'Route 7' (ID 15); {target} names a point the
+                #: same way, e.g. Manholes '12312' (ID 4); {distance} is a
+                #: number of metres, e.g. 2.1.
+                src = QT_TRANSLATE_NOOP('FiberQPlugin', "Route {route} was attached to {target}, {distance} m away.")
+                QMessageBox.information(
+                    self.iface.mainWindow(),
+                    "FiberQ",
+                    safe_format(self.tr(src), src, route=route, target=node_name, distance=f"{metres:.1f}")
+                )
+        return moved
+
+    def _show_route_finding(self, finding):
+        """Select on map: select the route, and centre the map on the end the finding is about.
+
+        Q21. The dialog's own handler received Qt's ``checked`` flag as the
+        feature id, so it selected feature 0, and it looked for ``iface`` on
+        the main window, which has none, so it never moved the map -- since
+        v1.1, measured on 3.22.16, 3.40.15 and 4.2.3. A route's whole extent
+        says little about which end is loose -- route 15 on the maintainer's
+        project is 582 m long and 238 m across -- so the map is centred on the
+        end itself, with the red cross Validate's "go to issue" drops. A finding
+        about a route in pieces is about all of it, so that one zooms to the
+        route.
+        """
+        layer, feat = finding.get('layer'), finding.get('feat')
+        if layer is None or feat is None:
+            return
+        # Clear selection on all layers, as the dialog always did.
+        for lyr in QgsProject.instance().mapLayers().values():
+            if isinstance(lyr, QgsVectorLayer):
+                lyr.removeSelection()
+        layer.selectByIds([feat.id()])
+        where = finding.get('where')
+        if where is None:
+            self.iface.mapCanvas().zoomToSelected(layer)
+            return
+        self._zoom_to_issue(SimpleNamespace(where=(where.x(), where.y()), layer_id=layer.id()))
 
     # === DRAWINGS / ATTACHMENTS (DWG/DXF) ===
     def _drawing_key(self, layer, fid):

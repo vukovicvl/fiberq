@@ -128,8 +128,9 @@ class RoutingUI:
         # Route correction
         icon_korekcija = load_icon('ic_route_correction.svg')
         #: Menu entry AND the title of the dialog it opens; noun phrase. A validation
-        #: pass: it finds routes whose start or end vertex does not sit on a pole or
-        #: manhole and offers to snap them. "correction" = repairing those errors.
+        #: pass: it finds routes whose start or end vertex meets no pole, manhole,
+        #: joint closure, network element or other route, and offers to move such an
+        #: end onto one a few metres away. "correction" = repairing those errors.
         core.action_correction = QAction(icon_korekcija, self.tr('Route correction'), core.iface.mainWindow())
         core.action_correction.triggered.connect(core.check_consistency)
         core.actions.append(core.action_correction)

@@ -257,8 +257,12 @@ def sc_latent_open(ctx):
 
 # --- PF-3: route correction ------------------------------------------------
 @scenario("route_correction", pf="PF-3", needs=("route", "poles"),
-          post="the same finding count every time, and the dialog is built")
+          post="the same finding count every time, and the dialog is built when there is a finding")
 def sc_route_correction(ctx):
+    # Q21 (v1.6.0 QA): an end on an element, a joint closure or another
+    # route's vertex is no longer a finding. All 86 findings the XS city had
+    # were such ends, so XS now answers "No errors found!" and builds no
+    # dialog; S, M and L keep 4, 3 and 4 findings, and so still build it.
     plugin = ctx["plugin"]
 
     def run():

@@ -362,6 +362,28 @@ CRITICAL = {
         "line_vertices",
         "transformed",
     }),
+    # Q21, unclaimed (v1.6.0 QA): what a route end may sit on, read by Route
+    # correction's check and by Correct, which writes the route -- the node
+    # layers and their grid, the tests for a node and for another route, the
+    # nearest node within 5 m on the ground, the cables and ducts at an end,
+    # and the labels the messages name them by.
+    "fiberq/core/route_ends.py": frozenset({
+        "_PointGrid",
+        "_cell",
+        "_name_of",
+        "_reach",
+        "feature_label",
+        "lines_at",
+        "meets_a_node",
+        "nearest_node",
+        "node_index",
+        "node_layers",
+        "on_a_node",
+        "route_index",
+        "route_label",
+        "routes_near",
+        "touching_route",
+    }),
     # R3, R5, R6, R7, R8, R10
     "fiberq/main_plugin.py": frozenset({
         "FiberQPlugin._add_imported_points",
@@ -369,6 +391,8 @@ CRITICAL = {
         "FiberQPlugin._cables_behind",
         "FiberQPlugin.check_consistency",
         "FiberQPlugin.fix_route_to_pole",
+        # Q21, unclaimed: Route correction's Select on map.
+        "FiberQPlugin._show_route_finding",
         "FiberQPlugin._change_element_type",
         "FiberQPlugin._save_color_catalogs",
         "FiberQPlugin.delete_selected",
@@ -827,9 +851,12 @@ def test_d_package_wide_silence_does_not_grow():
 #: hook's own taking of a layer it was held from, in routing_ui.py. Then two
 #: more for its fourth round, another file judged by the GDAL driver that
 #: opens it: the SQLite file's own check in gpkg_target.py, and the driver
-#: GDAL names in export_manager.py.
-HARDENED_FUNCTIONS = 198
-HARDENED_FILES = 25
+#: GDAL names in export_manager.py. Then sixteen, unclaimed (Q21): the
+#: fifteen in core/route_ends.py, a file of its own, that Route correction's
+#: check and Correct now share, and main_plugin's _show_route_finding, which
+#: Select on map calls.
+HARDENED_FUNCTIONS = 214
+HARDENED_FILES = 26
 
 
 def test_the_hardened_set_is_not_quietly_narrowed():
