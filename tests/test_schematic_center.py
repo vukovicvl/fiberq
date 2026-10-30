@@ -43,11 +43,13 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 import pytest
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt import sip
+from qgis.PyQt.QtCore import Qt, QTimer
 from qgis.PyQt.QtGui import QBrush, QColor, QPen
-from qgis.PyQt.QtWidgets import QGraphicsScene, QGraphicsView
+from qgis.PyQt.QtWidgets import QGraphicsRectItem, QGraphicsScene, QGraphicsView
 
 from fiberq.dialogs.schematic_dialog import OpticalSchematicDialog
 
@@ -169,59 +171,47 @@ os._exit(0)
 '''
 
 
-OLD_PATTERN_DRIVER = '''
-import os, sys
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from qgis.core import QgsApplication
-app = QgsApplication([], True)
-from qgis.PyQt.QtCore import Qt
-from qgis.PyQt.QtGui import QBrush, QColor, QPen
-from qgis.PyQt.QtWidgets import QGraphicsScene
+def test_the_old_closure_pattern_reaches_a_freed_item(qgis_app):
+    """The hazard itself, read without touching the freed memory.
 
-# Exactly what _center_on used to do, with the brush already corrected so the
-# TypeError does not mask what is underneath.
-scene = QGraphicsScene()
-item = scene.addEllipse(0, 0, 24, 24, QPen(QColor(255, 165, 0), 2.4),
-                        QBrush(Qt.BrushStyle.NoBrush))
+    The old code: a closure over the ring, fired by a 1300 ms timer, and
+    rebuild()'s ``scene.clear()`` in between. ``removeItem()`` on the ring
+    then is a use-after-free, which is undefined behaviour: a child process
+    making the call died of SIGSEGV in 200 runs of 200 on 3.22.16, 3.40.15,
+    3.44.15 and 4.0.3, but on 4.2.3 it lived on in 5 of 200 (Qt printed
+    "item's scene (0x0) is different from this scene" and returned), and
+    the test that waited for the crash failed there 3 times in 26.
 
-def _remove():                 # the closure the 1300 ms timer held
-    scene.removeItem(item)
-
-scene.clear()                  # what rebuild() does
-print("cleared", flush=True)
-_remove()                      # what the timer then fired
-print("SURVIVED", flush=True)
-sys.stdout.flush()
-os._exit(0)
-'''
-
-
-def _child(tmp_path, name, source):
-    script = tmp_path / name
-    script.write_text(source, encoding="utf-8")
-    environment = dict(os.environ, QT_QPA_PLATFORM="offscreen",
-                       TMPDIR=str(tmp_path), FIBERQ_LOG_FILE="false")
-    done = subprocess.run([sys.executable, str(script)], cwd=str(tmp_path),
-                          env=environment, timeout=TIMEOUT_S,
-                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    return done.returncode, done.stdout.decode("utf-8", "replace")
-
-
-def test_the_old_closure_pattern_really_does_crash(tmp_path):
-    """The hazard itself, pinned in a child so it costs this test only.
-
-    Measured returncode -11 (SIGSEGV) on 3.44.15 and 4.0.3. Asserted as
-    "did not exit cleanly" rather than exactly -11, because the signal is the
-    platform's business; what matters is that it is not an exception the
-    plugin could have caught, which is why ``_drop_highlight`` clears the
-    reference instead of guarding the call.
+    What the old timer met does not vary, and it is read here as it fires:
+    the ring's C++ object is gone, and PyQt does not know it. A child item
+    made in Python, whose end sip does hear of, goes with its parent; the
+    ring itself was made in C++ by ``addEllipse()``, so sip still takes it
+    for alive, and ``removeItem()`` is handed the freed pointer instead of
+    raising RuntimeError. Nothing in Python can catch that, which is why
+    ``_drop_highlight`` lets go of the ring before the scene is cleared
+    instead of guarding the call.
     """
-    code, output = _child(tmp_path, "old_pattern.py", OLD_PATTERN_DRIVER)
-    assert "cleared" in output, output
-    assert code != 0, (
-        "removeItem() on an item destroyed by scene.clear() exited cleanly "
-        f"here, so this QGIS no longer has the hazard: {output}")
-    assert "SURVIVED" not in output, output
+    scene = QGraphicsScene()
+    ring = scene.addEllipse(0, 0, 24, 24, QPen(QColor(255, 165, 0), 2.4),
+                            QBrush(Qt.BrushStyle.NoBrush))
+    child = QGraphicsRectItem(ring)     # made in Python: sip hears of its end
+    fired = []
+
+    def _remove():                      # the closure the timer held, minus its call
+        fired.append({"ring_freed": sip.isdeleted(child), "sip_knows": sip.isdeleted(ring)})
+
+    QTimer.singleShot(50, _remove)
+    scene.clear()                       # what rebuild() does in between
+    deadline = time.monotonic() + TIMEOUT_S
+    while not fired and time.monotonic() < deadline:
+        qgis_app.processEvents()
+        time.sleep(0.01)
+    assert len(fired) == 1, f"the timer fired {len(fired)} times"
+    assert fired[0]["ring_freed"], (
+        "scene.clear() left the ring's child alive, so it did not delete the ring")
+    assert not fired[0]["sip_knows"], (
+        "sip knew the ring was deleted, so removeItem() would raise RuntimeError instead of "
+        "reading freed memory: this PyQt no longer has the hazard")
 
 
 def test_rebuilding_then_firing_the_timer_does_not_crash_qgis(tmp_path):
