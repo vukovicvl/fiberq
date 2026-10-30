@@ -5,6 +5,7 @@ This module contains the BOM report dialog for generating material lists
 with export to XLSX/CSV format.
 """
 
+import io
 import math
 import os
 import textwrap
@@ -406,38 +407,73 @@ class _BOMDialog(QDialog):
         ``OSError`` out of a Qt slot -- measured, into QGIS's blocking "Python
         error" traceback dialog, which the caller's own try/except never saw.
 
-        Worse than the traceback: ``open(path, "w")`` TRUNCATES before writing.
-        Measured -- a previous 1230-byte export became 512 bytes of half-written
-        CSV when the disk filled, and the user saw only a traceback. A partial
-        file that looks like an export is worse than no file, so it is removed
-        and the message says so.
+        The whole file is put together in memory, as the bytes that go to disk,
+        and only then handed to ``_write_file``. A row that cannot be written --
+        a layer name that is not valid Unicode -- fails here, before the target
+        is opened, so the previous export is left as it was instead of being
+        truncated and then removed (v1.6.0 QA, Q25).
         """
         import csv
-        existed = os.path.exists(path)
+        text = io.StringIO(newline="")
         try:
-            with open(path, "w", newline="", encoding="utf-8") as f:
-                w = csv.writer(f, delimiter=";")
-                w.writerow(["Layer", "Type", "Number", "Length_m", "Slack_m", "Total_m"])
-                for row in self._rows:
-                    w.writerow(row)
-                # add a blank and totals
-                w.writerow([])
-                t = self._totals
-                w.writerow(["TOTAL", "", t["points"], t["line_len"], t["line_slack"],
-                            t["line_total"]])
-                for line in self._note_lines(getattr(self, "_notes", {}) or {}):
-                    w.writerow([line])
-        except (OSError, UnicodeEncodeError, csv.Error) as exc:
-            return self._failed(path, exc, removed=self._remove_partial(path, existed))
+            w = csv.writer(text, delimiter=";")
+            w.writerow(["Layer", "Type", "Number", "Length_m", "Slack_m", "Total_m"])
+            for row in self._rows:
+                w.writerow(row)
+            # add a blank and totals
+            w.writerow([])
+            t = self._totals
+            w.writerow(["TOTAL", "", t["points"], t["line_len"], t["line_slack"],
+                        t["line_total"]])
+            for line in self._note_lines(getattr(self, "_notes", {}) or {}):
+                w.writerow([line])
+            data = text.getvalue().encode("utf-8")
+        except (UnicodeEncodeError, csv.Error) as exc:
+            return self._failed(path, exc)
+        return self._write_file(path, data)
+
+    def _write_file(self, path, data):
+        """Write a finished export to ``path`` in one call. True when it all got there.
+
+        The one place either export touches its target.
+
+        R4: opening a file for writing TRUNCATES it. Measured -- a previous
+        1230-byte export became 512 bytes of half-written CSV when the disk
+        filled, and the user saw only a traceback. A partial file that looks
+        like an export is worse than no file, so when the write fails after the
+        open, the file -- created or truncated by FiberQ itself -- is removed
+        and the message says so.
+
+        v1.6.0 QA, Q25: that removal used to follow ANY failure, including an
+        ``open()`` the operating system refused, and a refused open has
+        truncated nothing. Measured on 4.2.3: a read-only 68-byte BOM CSV was
+        deleted, with the message that a half-written file had been removed. A
+        refusal -- a read-only file, a folder, a file another program holds, a
+        folder that is not there -- now leaves whatever is at ``path`` exactly
+        as it was, and the message is the plain one.
+        """
+        try:
+            handle = open(path, "wb")
+        except OSError as exc:
+            # Refused before anything was truncated: the file, if there is
+            # one, is still the user's and is not touched.
+            return self._failed(path, exc)
+        try:
+            with handle:
+                handle.write(data)
+        except OSError as exc:
+            # The open succeeded, so what is at ``path`` now is FiberQ's own
+            # half-written export.
+            return self._failed(path, exc, removed=self._remove_partial(path))
         return True
 
     @staticmethod
-    def _remove_partial(path, existed):
+    def _remove_partial(path):
         """Delete a half-written export. True when something was removed.
 
-        ``existed`` is not used to decide -- a truncated copy of the user's
-        previous export is exactly the file worth removing -- but a target that
-        was never created leaves nothing to clean up.
+        Only ``_write_file`` calls this, and only after its ``open()`` has
+        succeeded, so the file removed is one FiberQ created or truncated
+        itself -- never a file it could not open (v1.6.0 QA, Q25).
         """
         if not os.path.exists(path):
             return False
@@ -451,25 +487,33 @@ class _BOMDialog(QDialog):
     def _export_xlsx(self, path):
         """Export BOM to XLSX file. True when the whole file was written.
 
-        ``xlsxwriter`` writes most of its output in ``close()``, so that is
-        where a locked or full target usually fails -- and without a guard the
-        workbook was left open and a partial file on disk.
+        ``xlsxwriter`` writes most of its output in ``close()``, and it opens
+        the target there, truncating it, before it has assembled anything. The
+        workbook is built in memory instead and its bytes go through
+        ``_write_file`` like the CSV's (v1.6.0 QA, Q25), so nothing xlsxwriter
+        does can touch the target.
         """
         import xlsxwriter
 
-        existed = os.path.exists(path)
         try:
-            return self._write_xlsx(xlsxwriter, path)
+            data = self._write_xlsx(xlsxwriter, io.BytesIO())
         except Exception as exc:  # noqa: BLE001
-            # Deliberately broad. xlsxwriter's FileCreateError is not an OSError
-            # subclass and the module is optional, so there is no exception
+            # Deliberately broad. xlsxwriter's own exceptions are not OSError
+            # subclasses and the module is optional, so there is no exception
             # tuple that can be named here without importing it at module scope
             # -- which would make an optional dependency mandatory and break
             # the 3.22 floor. The handler reports, so test A is satisfied.
-            return self._failed(path, exc, removed=self._remove_partial(path, existed))
+            return self._failed(path, exc)
+        return self._write_file(path, data)
 
-    def _write_xlsx(self, xlsxwriter, path):
-        wb = xlsxwriter.Workbook(path)
+    def _write_xlsx(self, xlsxwriter, buffer):
+        """Write the workbook into ``buffer`` and answer its bytes.
+
+        ``in_memory`` keeps xlsxwriter off the disk altogether: without it the
+        workbook's parts go through temporary files even when the target is a
+        buffer.
+        """
+        wb = xlsxwriter.Workbook(buffer, {"in_memory": True})
         ws = wb.add_worksheet("By layers")
         headers = ["Layer", "Type", "Number", "Length_m", "Slack_m", "Total_m"]
         for c, h in enumerate(headers):
@@ -491,7 +535,7 @@ class _BOMDialog(QDialog):
         for offset, line in enumerate(self._note_lines(getattr(self, "_notes", {}) or {})):
             ws2.write(5 + offset, 0, line)
         wb.close()
-        return True
+        return buffer.getvalue()
 
 
 __all__ = ['_BOMDialog']

@@ -358,6 +358,9 @@ CRITICAL = {
         "_BOMDialog._build",
         "_BOMDialog._export_csv",
         "_BOMDialog._export_xlsx",
+        # Q25, unclaimed (v1.6.0 QA): the one place either export now touches
+        # its target, and the only caller of _remove_partial.
+        "_BOMDialog._write_file",
     }),
     # R10, R6: the geometry primitives Route correction and the importers rest on
     "fiberq/utils/geometry.py": frozenset({
@@ -860,8 +863,9 @@ def test_d_package_wide_silence_does_not_grow():
 #: check and Correct now share, and main_plugin's _show_route_finding, which
 #: Select on map calls. Then two, unclaimed (Q24): RouteManager._import_sources
 #: and ._say_left_out, which list the layers of a file Import route reads and
-#: say what it left out.
-HARDENED_FUNCTIONS = 216
+#: say what it left out. Then one, unclaimed (Q25): the BOM dialog's
+#: _write_file, where both exports now write their target.
+HARDENED_FUNCTIONS = 217
 HARDENED_FILES = 26
 
 
