@@ -59,12 +59,16 @@ class FakeBar:
     def __init__(self):
         self.warnings = []
         self.infos = []
+        #: Every entry as ``(level, title, text)``, in the order it was pushed.
+        self.entries = []
 
     def pushWarning(self, title, text):
         self.warnings.append(text)
+        self.entries.append(("warning", title, text))
 
     def pushInfo(self, title, text):
         self.infos.append(text)
+        self.entries.append(("info", title, text))
 
 
 class FakeCanvas:
@@ -464,6 +468,327 @@ def test_an_import_into_a_clean_layer_commits(project, tmp_path):
 
     assert not route.isEditable()
     assert len(list(route.dataProvider().getFeatures())) == 1
+
+
+# ---------------------------------------------------------------------------
+# v1.6.0 QA, Q23: "The reason is in the message bar" -- so it has to be
+# ---------------------------------------------------------------------------
+#
+# QA step E.4, on 4.2.3 and 3.40.15: Import route from file with a GeoJSON of
+# three points answered "None of the 3 feature(s) in the file could be
+# imported. The reason is in the message bar." over a bar that said only "3
+# feature(s) in the file could not be imported and were skipped." A feature
+# with no line in it was counted, and its reason was written down nowhere.
+#
+# These go through import_route_from_file, the code the Routing menu runs, with
+# the file dialog and the route-type prompt answered: what the user reads is
+# the box (quiet_dialogs) and the bar (FakeBar), and only the two together say
+# whether the box is telling the truth.
+
+#: The bar entry for features with no line in them, as OperationErrors renders
+#: a single reason.
+_NOT_LINES = ("{count} feature(s) in the file are not lines (points, areas or empty) and were"
+              " left out. See Log Messages > FiberQ for the details.")
+_NONE_IMPORTED = ("None of the {count} feature(s) in the file could be imported. The reason is in"
+                  " the message bar.")
+
+
+@pytest.fixture
+def modals():
+    """Any modal that opens anyway, closed and recorded, so a regression fails instead of hanging."""
+    from qgis.PyQt.QtCore import QTimer
+    from qgis.PyQt.QtWidgets import QApplication
+
+    seen = []
+
+    def close():
+        widget = QApplication.activeModalWidget()
+        if widget is not None:
+            seen.append(widget.windowTitle())
+            widget.reject()
+
+    timer = QTimer()
+    timer.timeout.connect(close)
+    timer.start(50)
+    yield seen
+    timer.stop()
+
+
+@pytest.fixture
+def reasons(monkeypatch):
+    """Every ``(what, reason)`` an operation's collector was given, in order."""
+    from fiberq.utils.errors import OperationErrors
+
+    seen = []
+    add = OperationErrors.add
+
+    def recorded(self, what, problem):
+        add(self, what, problem)
+        seen.append(self.problems[-1])
+
+    monkeypatch.setattr(OperationErrors, "add", recorded)
+    return seen
+
+
+def _from_the_menu(manager, path, monkeypatch, kind="Aerial"):
+    """Routing > Import route from file, with ``path`` picked and ``kind`` chosen."""
+    from fiberq.core import route_manager
+
+    monkeypatch.setattr(route_manager.QFileDialog, "getOpenFileName",
+                        staticmethod(lambda *a, **k: (path, "")))
+    monkeypatch.setattr(route_manager.QInputDialog, "getItem",
+                        staticmethod(lambda *a, **k: (kind, True)))
+    manager.import_route_from_file()
+
+
+def _the_route_layer(project):
+    found = [lyr for lyr in project.mapLayers().values() if lyr.name() == "Route"]
+    assert len(found) == 1, found
+    return found[0]
+
+
+def _saved(layer):
+    """How many routes are in the data source, not just in an edit buffer."""
+    return len(list(layer.dataProvider().getFeatures()))
+
+
+def _qa16_points(tmp_path):
+    """The maintainer's qa16-points.geojson: three points, in CRS84."""
+    return _geojson(tmp_path, "qa16-points.geojson", [
+        _feature(_point((21.0600, 44.7400))),
+        _feature(_point((21.0610, 44.7405))),
+        _feature(_point((21.0620, 44.7410))),
+    ])
+
+
+def test_a_file_of_points_says_on_the_bar_why_nothing_was_imported(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals):
+    """QA step E.4, with the maintainer's file, into the project's own CRS (EPSG:3857)."""
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, _qa16_points(tmp_path), monkeypatch)
+
+    assert quiet_dialogs == [_NONE_IMPORTED.format(count=3)]
+    assert manager.iface.bar.entries == [("warning", "Import route", _NOT_LINES.format(count=3))]
+    route = _the_route_layer(project)
+    assert route.featureCount() == 0
+    assert not route.isEditable(), "the crash fix under test: the layer is not left in edit mode"
+    assert modals == []
+
+
+def test_a_mixed_file_adds_the_lines_and_says_why_the_point_was_left_out(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals):
+    path = _geojson(tmp_path, "mixed.geojson", [
+        _feature(_line([[21.0600, 44.7400], [21.0610, 44.7405]])),
+        _feature(_point((21.0605, 44.7402))),
+        _feature(_line([[21.0620, 44.7410], [21.0630, 44.7415]])),
+    ])
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == ["Imported 2 routes into the 'Route' layer!\n(All are of type: Aerial)"]
+    assert manager.iface.bar.entries == [("warning", "Import route", _NOT_LINES.format(count=1))]
+    route = _the_route_layer(project)
+    assert _saved(route) == 2
+    assert not route.isEditable()
+    assert modals == []
+
+
+@pytest.mark.parametrize("geometry", [
+    pytest.param({"type": "Polygon", "coordinates": [
+        [[21.06, 44.74], [21.061, 44.74], [21.061, 44.741], [21.06, 44.74]]]}, id="polygon"),
+    pytest.param(None, id="null-geometry"),
+    pytest.param({"type": "LineString", "coordinates": []}, id="empty-line"),
+    pytest.param({"type": "LineString", "coordinates": [[21.06, 44.74]]}, id="one-point-line"),
+])
+def test_a_feature_with_no_line_in_it_is_named_on_the_bar(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals, geometry):
+    """Each reads back with no line part (measured on 3.22.16, 3.40.15 and 4.2.3)."""
+    path = _geojson(tmp_path, "one-of-each.geojson", [
+        _feature(_line([[21.0600, 44.7500], [21.0610, 44.7505]])),
+        _feature(geometry),
+    ])
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == ["Imported 1 routes into the 'Route' layer!\n(All are of type: Aerial)"]
+    assert manager.iface.bar.entries == [("warning", "Import route", _NOT_LINES.format(count=1))]
+    assert _saved(_the_route_layer(project)) == 1
+    assert modals == []
+
+
+def test_a_refused_save_keeps_its_reason_first_on_the_bar(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals, reasons):
+    """The box sends the user to the bar for why the save failed, so that reason
+    comes first and the points are counted after it, not the other way round."""
+    path = _geojson(tmp_path, "mixed.geojson", [
+        _feature(_line([[21.0600, 44.7400], [21.0610, 44.7405]])),
+        _feature(_point((21.0605, 44.7402))),
+    ])
+    route = _route_layer(project)
+    monkeypatch.setattr(route, "commitChanges", lambda *a, **k: False)
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [
+        "1 route(s) were added to the Route layer but could not be saved. Close any program holding"
+        " the file open, then use Layer > Save Layer Edits. The reason is in the message bar."]
+    assert manager.iface.bar.entries == [(
+        "warning", "Import route",
+        "Route: QGIS refused the commit without saying why (+1 more). See Log Messages > FiberQ for"
+        " the details.")]
+    assert reasons == [
+        ("Route", "QGIS refused the commit without saying why"),
+        (None, "1 feature(s) in the file are not lines (points, areas or empty) and were left out")]
+    assert modals == []
+    route.rollBack()
+
+
+def test_a_point_ahead_of_a_failed_import_keeps_its_reason(project, tmp_path):
+    """The import that ends on an exception (f009) still says why the point was
+    left out, after the exception that stopped it."""
+    from fiberq.utils.compat import FieldType, new_field
+
+    path = _geojson(tmp_path, "point-then-line.geojson", [
+        _feature(_point((0.0, 0.0))),
+        _feature(_line([[0.0, 0.0], [0.001, 0.0]])),
+    ])
+    layer = QgsVectorLayer("LineString?crs=EPSG:3857", "Route", "memory")
+    layer.dataProvider().addAttributes([new_field("duzina", FieldType.Double)])
+    layer.updateFields()
+    project.addMapLayer(layer)
+    manager = _route_manager(project, FakeIface())
+
+    added, skipped, saved = _import_routes(project, manager, path, layer)
+
+    assert (added, skipped, saved) == (0, 1, False)
+    assert not layer.isEditable()
+    assert manager.iface.bar.entries == [(
+        "warning", "Import route",
+        "KeyError: 'naziv' (+1 more). See Log Messages > FiberQ for the details.")]
+
+
+@pytest.mark.parametrize("cause", ["reprojection", "refusal"])
+def test_a_reason_on_the_bar_is_not_repeated_as_a_bare_count(
+        project, tmp_path, monkeypatch, modals, cause):
+    """With every reason on the bar, the reason-free "{count} feature(s) in the
+    file could not be imported and were skipped." only repeated their count."""
+    path = _geojson(tmp_path, "lines.geojson", [
+        _feature(_line([[1e30, 1e30], [2e30, 2e30]] if cause == "reprojection"
+                       else [[21.0600, 44.7400], [21.0610, 44.7405]])),
+    ])
+    if cause == "refusal":
+        _route_layer(project).setReadOnly(True)
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert manager.iface.bar.warnings, "the reason"
+    assert manager.iface.bar.infos == []
+    assert modals == []
+
+
+# What Import route from file said before Q23, and says still: the outcomes the
+# fix had to leave as they were.
+
+def test_a_file_of_lines_still_imports_every_line(project, tmp_path, monkeypatch, quiet_dialogs, modals):
+    path = _geojson(tmp_path, "lines.geojson", [
+        _feature(_line([[21.0600, 44.7400], [21.0610, 44.7405]])),
+        _feature(_line([[21.0620, 44.7410], [21.0630, 44.7415]])),
+    ])
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == ["Imported 2 routes into the 'Route' layer!\n(All are of type: Aerial)"]
+    assert manager.iface.bar.entries == []
+    route = _the_route_layer(project)
+    assert _saved(route) == 2
+    assert not route.isEditable()
+    assert modals == []
+
+
+def test_a_route_that_cannot_be_reprojected_is_still_named(project, tmp_path, monkeypatch, quiet_dialogs, modals):
+    path = _geojson(tmp_path, "far.geojson", [_feature(_line([[1e30, 1e30], [2e30, 2e30]]))])
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [_NONE_IMPORTED.format(count=1)]
+    assert manager.iface.bar.warnings == [
+        "a route could not be reprojected and was left out. See Log Messages > FiberQ for the details."]
+    route = _the_route_layer(project)
+    assert route.featureCount() == 0
+    assert not route.isEditable()
+    assert modals == []
+
+
+def test_a_layer_that_refuses_the_routes_is_still_named(project, tmp_path, monkeypatch, quiet_dialogs, modals):
+    path = _geojson(tmp_path, "three.geojson", [
+        _feature(_line([[21.0600, 44.7400], [21.0610, 44.7405]])),
+        _feature(_line([[21.0600, 44.7500], [21.0610, 44.7505]])),
+        _feature(_line([[21.0600, 44.7600], [21.0610, 44.7605]])),
+    ])
+    route = _route_layer(project)
+    route.setReadOnly(True)
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [_NONE_IMPORTED.format(count=3)]
+    assert manager.iface.bar.warnings == [
+        "Route: a route was rejected by the layer (+3 more). See Log Messages > FiberQ for the details."]
+    assert route.featureCount() == 0
+    assert not route.isEditable()
+    assert modals == []
+
+
+def test_a_refused_save_still_says_the_routes_are_not_saved(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals):
+    path = _geojson(tmp_path, "two.geojson", [
+        _feature(_line([[21.0600, 44.7400], [21.0610, 44.7405]])),
+        _feature(_line([[21.0620, 44.7410], [21.0630, 44.7415]])),
+    ])
+    route = _route_layer(project)
+    monkeypatch.setattr(route, "commitChanges", lambda *a, **k: False)
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [
+        "2 route(s) were added to the Route layer but could not be saved. Close any program holding"
+        " the file open, then use Layer > Save Layer Edits. The reason is in the message bar."]
+    assert manager.iface.bar.entries == [(
+        "warning", "Import route",
+        "Route: QGIS refused the commit without saying why. See Log Messages > FiberQ for the details.")]
+    assert route.isEditable(), "the refused routes stay in the buffer, for the user to save"
+    assert _saved(route) == 0
+    assert modals == []
+    route.rollBack()
+
+
+def test_an_import_into_the_users_open_session_still_leaves_it_to_them(
+        project, tmp_path, monkeypatch, quiet_dialogs, modals):
+    path = _geojson(tmp_path, "one.geojson", [
+        _feature(_line([[21.0600, 44.7400], [21.0610, 44.7405]]))])
+    route = _route_layer(project)
+    route.startEditing()
+    manager = _route_manager(project, FakeIface())
+
+    _from_the_menu(manager, path, monkeypatch)
+
+    assert quiet_dialogs == [
+        "1 route(s) of type Aerial were added to the Route layer. They are not saved yet, because you"
+        " already had the layer open for editing -- use Layer > Save Layer Edits when you are ready."]
+    assert manager.iface.bar.entries == []
+    assert route.isEditable()
+    assert route.featureCount() == 1
+    assert _saved(route) == 0
+    assert modals == []
+    route.rollBack()
 
 
 # ---------------------------------------------------------------------------

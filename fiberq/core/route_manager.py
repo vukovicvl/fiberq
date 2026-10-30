@@ -743,6 +743,16 @@ class RouteManager:
         had unsaved edits keeps them: the import joins their undo stack instead
         of committing their buffer for them, and a failure destroys only the
         import's own command.
+
+        Everything counted in ``skipped`` has its reason in ``errors``. A
+        route that could not be reprojected and one the layer refused are added
+        where they happen. A feature with no line in it -- a point, an area, a
+        null or empty geometry, a one-point line -- is added once, with the
+        count, and last: the message bar shows the first reason and counts the
+        rest, and a refused commit's reason is the one the caller's "could not
+        be saved" box sends the user to. It used to be counted and nothing
+        else, so a file of points ended under "The reason is in the message
+        bar" with no reason there (v1.6.0 QA, Q23).
         """
         was_editing = route_layer.isEditable()
         if not was_editing:
@@ -751,10 +761,12 @@ class RouteManager:
 
         added = 0
         skipped = 0
+        not_lines = 0
         try:
             for feat in imported_layer.getFeatures():
                 parts = self._route_parts(feat.geometry())
                 if not parts:
+                    not_lines += 1
                     skipped += 1
                     continue
                 for polyline in parts:
@@ -791,19 +803,27 @@ class RouteManager:
                 route_layer.rollBack()
             # destroyEditCommand() undoes this import's own edits either way, so
             # nothing was added however the session is owned.
-            return 0, skipped, None if was_editing else False
-
-        route_layer.endEditCommand()
-        if was_editing:
-            # The user's session, theirs to save. Not an error, and not "saved".
-            return added, skipped, None
-        if not check_commit(route_layer, errors):
-            # NOT zero. QGIS keeps refused features in the layer's buffer (see
-            # utils.errors.check_commit), so they really are in the layer -- and
-            # reporting zero here is what made the caller tell the user the file
-            # had held no lines, sending them to inspect a file that was fine.
-            return added, skipped, False
-        return added, skipped, True
+            outcome = 0, skipped, None if was_editing else False
+        else:
+            route_layer.endEditCommand()
+            if was_editing:
+                # The user's session, theirs to save. Not an error, and not "saved".
+                outcome = added, skipped, None
+            else:
+                # added is NOT zeroed when the commit is refused. QGIS keeps
+                # refused features in the layer's buffer (see
+                # utils.errors.check_commit), so they really are in the layer --
+                # and reporting zero here is what made the caller tell the user
+                # the file had held no lines, sending them to inspect a file
+                # that was fine.
+                outcome = added, skipped, check_commit(route_layer, errors)
+        if not_lines:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQRoutes',
+                "{count} feature(s) in the file are not lines (points, areas or empty) and were left out")
+            errors.add(None, safe_format(QCoreApplication.translate('FiberQRoutes', src), src,
+                                         count=not_lines))
+        return outcome
 
     @staticmethod
     def _route_parts(geom):
@@ -879,21 +899,17 @@ class RouteManager:
             count_added, skipped, saved = self._add_imported_routes(
                 imported_layer, route_layer, src_crs, dst_crs, transform,
                 tip_trase, errors)
-        if skipped:
-            # Reason-free, because the reasons differ and each is already
-            # written down where it happened: a reprojection that could not work
-            # (errors.add above), a geometry that is not a line (_route_parts),
-            # or a route the layer refused (_add_one_route). The old wording
-            # said "were not routes", which contradicted the reprojection
-            # warning sitting next to it in the same message bar about a feature
-            # that WAS a route.
-            src = QT_TRANSLATE_NOOP(
-                'FiberQRoutes',
-                "{count} feature(s) in the file could not be imported and were skipped.")
-            self.iface.messageBar().pushInfo(
-                _route_import(),
-                safe_format(QCoreApplication.translate('FiberQRoutes', src), src,
-                            count=skipped))
+        # Every skipped feature has its reason in the one message-bar entry the
+        # collector pushed on leaving the block: the first reason in full, any
+        # others counted there and written out in Log Messages > FiberQ. A
+        # route that could not be reprojected and a feature with no line in it
+        # (once, with the count) were added by _add_imported_routes, a route
+        # the layer refused by _add_one_route, so no count of our own goes
+        # here. The "{count} feature(s) in the file could not be imported and
+        # were skipped." that stood here claimed every reason was written down
+        # already, but a feature with no line in it was only counted: for a
+        # file of points that count was all the bar said, under a box sending
+        # the user to the bar for the reason (v1.6.0 QA, Q23).
         self.stylize_route_layer(route_layer)
 
         tip_label_display = ROUTE_TYPE_LABELS.get(tip_trase, tip_trase)
