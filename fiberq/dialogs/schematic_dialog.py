@@ -6,8 +6,10 @@ fiber network topology with filtering, search, and export capabilities.
 """
 
 from qgis.PyQt import sip
-from qgis.PyQt.QtCore import Qt, QStringListModel, QTimer, QSize, QRect, QRectF, pyqtSignal
-from qgis.PyQt.QtGui import QBrush, QPen, QColor, QPainterPath, QFont, QTransform
+from qgis.PyQt.QtCore import Qt, QBuffer, QStringListModel, QTimer, QSize, QRect, QRectF, pyqtSignal
+from qgis.PyQt.QtGui import (
+    QBrush, QPen, QColor, QPainterPath, QFont, QTransform, QImage, QImageWriter, QPainter,
+)
 from qgis.PyQt.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -24,6 +26,7 @@ from qgis.PyQt.QtWidgets import (
     QGraphicsScene,
     QCompleter,
     QFileDialog,
+    QMessageBox,
     QSizePolicy,
     QApplication,
 )
@@ -40,6 +43,7 @@ from qgis.core import (
 # Phase 5.2: Logging
 from ..utils.logger import get_logger
 from ..utils.batch import features_by_id
+from ..utils.errors import describe
 from ..utils.measure import ground_length
 from ..utils.spatial import RectGrid
 logger = get_logger(__name__)
@@ -58,6 +62,9 @@ _RING_MS = 1500
 
 #: How far past half a viewport Center lets the view scroll, in pixels.
 _CENTER_MARGIN_PX = 20.0
+
+#: The room an export leaves round the drawing, in pixels, on every side.
+_EXPORT_MARGIN = 20
 
 #: The layer signals the view refreshes on. One tuple, so that wiring a layer
 #: and unwiring it again cannot drift apart.
@@ -470,15 +477,13 @@ class OpticalSchematicDialog(QDialog):
         Center leaves, at least 24 px across and twice the element's circle.
 
         A ring of a fixed 30 px on screen (ItemIgnoresTransformations) was
-        tried and dropped. Qt grows the scene's own sceneRect() -- which never
-        shrinks, and which the PNG, JPG and SVG exports draw -- by such an
-        item's rect at the scene's origin rather than where it is drawn, so
-        every export after a Center came out different: the drawing about
-        9 px further right and 0.3% smaller (Qt 5.15.3, 5.15.13 and 6.8.2,
-        measured). At scale 3.05 it also lay inside the element's circle. A
-        ring in scene units widens that rect only where it reaches past the
-        drawing, as it always did, and the exports after any Center are the
-        ones they were before Center zoomed, byte for byte (3.40.15, 4.2.3).
+        tried and dropped. At scale 3.05 it lay inside the element's circle,
+        and Qt grows the scene's own sceneRect(), which never shrinks, by such
+        an item's rect at the scene's origin rather than where it is drawn
+        (Qt 5.15.3, 5.15.13 and 6.8.2, measured). The PNG, JPG and SVG exports
+        drew that rect then, so every export after a Center came out
+        different; they draw the drawing's own rect now, without the ring
+        (see _export_area).
 
         Two defects lived in the four lines this replaces, and the second one
         was hidden by the first.
@@ -1093,51 +1098,107 @@ class OpticalSchematicDialog(QDialog):
         self._fit()
 
     # ---------- EXPORT ----------
+    def _export_area(self):
+        """The part of the scene every export shows, at one pixel a unit.
+
+        The whole drawing, the same _EXPORT_MARGIN all round it, in whole
+        pixels: the size the exports always had, the drawing's own plus 40 px.
+        A Center ring still showing goes first. It points at an element in the
+        view, and is no part of the drawing.
+
+        QA finding Q22. The exports translated the painter by the drawing's
+        corner and then called ``scene.render(painter)`` with no target and no
+        source, which maps the scene's own sceneRect() onto the whole image on
+        top of that translation. That rect is everything the scene has held
+        since the view opened, schematic layout and Center rings included, and
+        it never shrinks. So in the schematic layout, as the view opens, the
+        drawing began 999 px down an image 1,045-1,054 px high: 4.4-5.2% of it
+        was in the image, 2 of its 18 or 19 elements. Under Match map styling
+        it was drawn at 0.36-0.37 of its size into the image's lower left, and
+        on the maintainer's project its bottom tenth was cut off. Measured on
+        3.22.16, 3.40.15 and 4.2.3, the same on v1.5.0. A Center at the
+        drawing's edge widened that rect for every later export, and one
+        taken while the ring showed had the ring in it.
+        """
+        self._drop_highlight()
+        drawing = self.scene.itemsBoundingRect()
+        width = int(drawing.width()) + 2 * _EXPORT_MARGIN
+        height = int(drawing.height()) + 2 * _EXPORT_MARGIN
+        middle = drawing.center()
+        return QRectF(middle.x() - width / 2.0, middle.y() - height / 2.0, width, height)
+
+    def _paint_area(self, device, area):
+        """Draw ``area`` of the scene onto all of ``device``, which is as big."""
+        painter = QPainter(device)
+        try:
+            self.scene.render(painter, QRectF(0, 0, area.width(), area.height()), area)
+        finally:
+            painter.end()
+
+    def _export_image(self, image_format, background):
+        area = self._export_area()
+        img = QImage(int(area.width()), int(area.height()), image_format)
+        img.fill(background)
+        self._paint_area(img, area)
+        return img
+
+    def _save_image(self, img, path, kind):
+        writer = QImageWriter(path, kind.encode("ascii"))
+        if not writer.write(img):
+            self._not_saved(kind, path, writer.errorString())
+
+    def _not_saved(self, kind, path, reason):
+        """Say that an export was not written, and why.
+
+        Each export said nothing when its file could not be written: a
+        folder that is not there, or not writable, or a full disk.
+        """
+        where = f" to {path}" if path else ""
+        message = f"Could not save the {kind}{where}: {reason}"
+        logger.warning(f"Optical schematic export: {message}")
+        QMessageBox.critical(self, self.windowTitle(), message)
+
     def _export_png(self):
-        from qgis.PyQt.QtGui import QImage, QPainter
-        rect = self.scene.itemsBoundingRect().adjusted(10, 10, 10, 10)
-        img = QImage(int(rect.width()) + 40, int(rect.height()) + 40, QImage.Format.Format_ARGB32)
-        img.fill(0x00ffffff)
-        p = QPainter(img)
-        p.translate(-rect.x() + 20, -rect.y() + 20)
-        self.scene.render(p)
-        p.end()
+        """The drawing as a PNG, on a transparent background."""
+        img = self._export_image(QImage.Format.Format_ARGB32, 0x00ffffff)
         fn, _ = QFileDialog.getSaveFileName(self, "Save PNG", "optical_schematic.png", "PNG (*.png)")
         if fn:
-            img.save(fn, "PNG")
+            self._save_image(img, fn, "PNG")
 
     def _export_jpg(self):
-        from qgis.PyQt.QtGui import QImage, QPainter
-        rect = self.scene.itemsBoundingRect().adjusted(10, 10, 10, 10)
-        img = QImage(int(rect.width()) + 40, int(rect.height()) + 40, QImage.Format.Format_RGB32)
-        img.fill(0xffffffff)
-        p = QPainter(img)
-        p.translate(-rect.x() + 20, -rect.y() + 20)
-        self.scene.render(p)
-        p.end()
+        """The drawing as a JPG, on white."""
+        img = self._export_image(QImage.Format.Format_RGB32, 0xffffffff)
         fn, _ = QFileDialog.getSaveFileName(self, "Save JPG", "optical_schematic.jpg", "JPG (*.jpg)")
         if fn:
-            img.save(fn, "JPG")
+            self._save_image(img, fn, "JPG")
 
     def _export_svg(self):
+        """The drawing as an SVG, its size and viewBox those of the PNG.
+
+        Drawn before the file is asked for, as the PNG and the JPG are, into
+        memory: QSvgGenerator says nothing when it cannot write its file.
+        """
         try:
             from qgis.PyQt.QtSvg import QSvgGenerator
-            from qgis.PyQt.QtGui import QPainter
-
-        except Exception:
+        except ImportError as exc:
+            self._not_saved("SVG", "", describe(exc))
             return
-        rect = self.scene.itemsBoundingRect().adjusted(10, 10, 10, 10)
+        area = self._export_area()
+        size = QSize(int(area.width()), int(area.height()))
+        svg = QBuffer()
+        gen = QSvgGenerator()
+        gen.setOutputDevice(svg)
+        gen.setSize(size)
+        gen.setViewBox(QRect(0, 0, size.width(), size.height()))
+        self._paint_area(gen, area)
         fn, _ = QFileDialog.getSaveFileName(self, "Save SVG", "optical_schematic.svg", "SVG (*.svg)")
         if not fn:
             return
-        gen = QSvgGenerator()
-        gen.setFileName(fn)
-        gen.setSize(QSize(int(rect.width()) + 40, int(rect.height()) + 40))
-        gen.setViewBox(QRect(0, 0, int(rect.width()) + 40, int(rect.height()) + 40))
-        p = QPainter(gen)
-        p.translate(-rect.x() + 20, -rect.y() + 20)
-        self.scene.render(p)
-        p.end()
+        try:
+            with open(fn, "wb") as fh:
+                fh.write(bytes(svg.data()))
+        except OSError as exc:
+            self._not_saved("SVG", fn, exc.strerror or describe(exc))
 
     def _schedule_rebuild(self):
         """Debounced rebuild – used for automatic layer changes.

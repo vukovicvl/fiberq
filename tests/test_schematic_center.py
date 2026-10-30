@@ -514,9 +514,9 @@ pump(2.0)
 out["race"] = {"nodes_before": nodes, "nodes_after": circles(dlg), "ring": ring(dlg),
                "rebuilds": len(REBUILDS) - mark}
 
-# The exports. They draw the scene's own sceneRect(), which grows with what is
-# added and never shrinks, so what one Center does to it stays for the session:
-# a fresh view, before its first Center.
+# The exports, before and after a Center: a fresh view, before its first one.
+# Until Q22 they drew the scene's own sceneRect(), which grows with what is
+# added and never shrinks, so what one Center did to it stayed for the session.
 EXPORTS = []
 
 
@@ -529,10 +529,6 @@ def export(view, kind):
         return None
     with open(path, "rb") as fh:
         return fh.read()
-
-
-def box(rect):
-    return [round(v, 3) for v in (rect.left(), rect.top(), rect.right(), rect.bottom())]
 
 
 dlg.teardown()
@@ -549,17 +545,15 @@ first = {kind: export(fresh, kind) for kind in ("png", "jpg", "svg")}
 press_center(fresh, inside[0])
 pump(2.0)
 again = {kind: export(fresh, kind) for kind in ("png", "jpg", "svg")}
-out["exports"] = {"element": inside[0], "rect_before": box(rect), "rect_after": box(scene.sceneRect()),
-                  "same": {kind: first[kind] == again[kind] for kind in first},
+out["exports"] = {"element": inside[0], "same": {kind: first[kind] == again[kind] for kind in first},
                   "written": {kind: first[kind] is not None for kind in first}}
 
-# At the drawing's top edge the ring reaches past it: the rect may grow there.
+# At the drawing's top edge, where the ring reaches past the drawing.
 highest = min(pos, key=lambda name: (pos[name][1], name))
-rect = scene.sceneRect()
 press_center(fresh, highest)
-drawn = fresh._highlight.sceneBoundingRect()
 pump(2.0)
-out["edge"] = {"element": highest, "expected": box(rect.united(drawn)), "rect": box(scene.sceneRect())}
+edge = {kind: export(fresh, kind) for kind in ("png", "jpg", "svg")}
+out["edge"] = {"element": highest, "same": {kind: first[kind] == edge[kind] for kind in first}}
 
 # Zoomed in well past Center's own zoom, the ring still goes round the element.
 for _ in range(5):
@@ -682,24 +676,23 @@ def test_the_center_ring_goes_round_the_element_at_any_zoom(view_child):
 
 
 def test_a_center_leaves_the_exports_as_they_were(view_child):
-    """PNG, JPG and SVG draw the scene's own sceneRect(), which grows and never
-    shrinks. A ring that ignored the zoom went into it at the scene's origin,
-    not where it was drawn (Qt 5.15.3, 5.15.13, 6.8.2), so from the first
-    Center on, every export put the drawing about 9 px further right and 0.3%
-    smaller. The ring may widen that rect only where it is drawn: past the
-    drawing's edge, as it always could."""
+    """Inside the drawing, and at its top edge where the ring reaches past it.
+    Until Q22 PNG, JPG and SVG drew the scene's own sceneRect(), which grows
+    and never shrinks: a ring that ignored the zoom went into it at the
+    scene's origin, not where it was drawn (Qt 5.15.3, 5.15.13, 6.8.2), so
+    from the first Center on every export put the drawing about 9 px further
+    right and 0.3% smaller, and the ring at the edge widened it for every
+    later export. tests/test_schematic_export.py has the rest of the view."""
     result, output = _seen(view_child)
     exports = result["exports"]
     assert all(exports["written"].values()), exports
     assert all(exports["same"].values()), (
         f"Center on {exports['element']!r}, inside the drawing, changed the exports "
-        f"(same: {exports['same']}): the exported rect went from {exports['rect_before']} "
-        f"to {exports['rect_after']}")
-    assert exports["rect_after"] == exports["rect_before"], exports
+        f"(same: {exports['same']})")
     edge = result["edge"]
-    assert edge["rect"] == pytest.approx(edge["expected"], abs=1e-3), (
-        f"Center on {edge['element']!r}, at the drawing's top, grew the exported rect to "
-        f"{edge['rect']}, not by the ring where it was drawn: {edge['expected']}")
+    assert all(edge["same"].values()), (
+        f"Center on {edge['element']!r}, at the drawing's top, changed the exports "
+        f"(same: {edge['same']})")
 
 
 def test_a_name_typed_in_another_case_finds_the_element(view_child):
