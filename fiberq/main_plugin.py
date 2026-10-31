@@ -389,14 +389,6 @@ class FiberQPlugin:
         panel.show()
         panel.raise_()
 
-        if result.config_problems:
-            src = QT_TRANSLATE_NOOP(
-                'FiberQPlugin',
-                "Some of this project's validation settings could not be used, and the "
-                "defaults stood in for them: {details}")
-            self.iface.messageBar().pushWarning('FiberQ', safe_format(
-                self.tr(src), src, details='; '.join(result.config_problems)))
-
         counts = result.counts_by_severity()
         summary = ', '.join([
             self.tr('%n error(s)', '', counts['error']),
@@ -421,6 +413,17 @@ class FiberQPlugin:
             bar.pushSuccess('FiberQ', safe_format(
                 self.tr(src), src,
                 rules=len(result.ran_rules), layers=len(result.feature_counts or {})))
+
+        # Pushed after the summary, so it is the message the bar shows: the bar
+        # shows the newest and counts the rest as "1 more", and a summary of
+        # errors is a warning, which never times out to let an older one through.
+        if result.config_problems:
+            src = QT_TRANSLATE_NOOP(
+                'FiberQPlugin',
+                "Some of this project's validation settings could not be used, and the "
+                "defaults stood in for them: {details}")
+            bar.pushWarning('FiberQ', safe_format(
+                self.tr(src), src, details='; '.join(result.config_problems)))
 
     def export_validation_report(self):
         """Save the current validation result as HTML, JSON or CSV.

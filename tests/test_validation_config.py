@@ -15,7 +15,7 @@ and its default stands in for it.
 import json
 
 import pytest
-from qgis.core import (QgsCoordinateReferenceSystem, QgsCoordinateTransform,
+from qgis.core import (Qgis, QgsCoordinateReferenceSystem, QgsCoordinateTransform,
                        QgsCoordinateTransformContext, QgsFeature, QgsField, QgsGeometry,
                        QgsPointXY, QgsProject, QgsVectorLayer)
 from qgis.PyQt.QtCore import QVariant
@@ -208,3 +208,131 @@ def test_recalculate_says_which_settings_it_could_not_use(mercator):
     plan = plan_recalculation(mercator)
     assert any("length_rel_tol" in problem for problem in plan.config_problems), (
         plan.config_problems)
+
+
+# -- and the message bar shows the ones it could not use ----------------------------------
+
+class _Iface:
+    """What Validate project asks of iface: a real QgsMessageBar, so the message
+    read as shown is the one QGIS shows."""
+
+    def __init__(self):
+        from qgis.gui import QgsMessageBar
+        self.bar = QgsMessageBar()
+
+    def messageBar(self):
+        return self.bar
+
+
+class _Panel:
+    """Stands in for the results dock, which needs QGIS's main window."""
+
+    result = None
+
+    def set_busy(self, busy):
+        pass
+
+    def set_result(self, result):
+        self.result = result
+
+    def show(self):
+        pass
+
+    def raise_(self):
+        pass
+
+
+def _validate_project():
+    """Validate project, as FiberQ's toolbar button runs it."""
+    from fiberq.main_plugin import FiberQPlugin
+
+    plugin = FiberQPlugin.__new__(FiberQPlugin)
+    plugin.iface = _Iface()
+    plugin._validation_panel = _Panel()
+    FiberQPlugin.run_validation(plugin)
+    return plugin.iface.bar, plugin._validation_panel.result
+
+
+def _in_turn(bar):
+    """The bar's messages as the user meets them, each (level, timeout, text): the
+    one shown, then the one the bar shows when that is closed, and so on."""
+    seen = []
+    while bar.currentItem() is not None:
+        item = bar.currentItem()
+        seen.append((item.level(), item.duration(), item.text()))
+        bar.popWidget()
+    return seen
+
+
+NOT_USED = ("Some of this project's validation settings could not be used, and the "
+            "defaults stood in for them: ")
+
+
+@pytest.fixture
+def current_project(qgis_app):
+    """QgsProject.instance(), the project Validate project reads."""
+    prj = QgsProject.instance()
+    prj.removeAllMapLayers()
+    prj.removeEntry(*vm.CONFIG_ENTRY)
+    yield prj
+    prj.removeAllMapLayers()
+    prj.removeEntry(*vm.CONFIG_ENTRY)
+
+
+@pytest.mark.parametrize("entry, named", [
+    ({"tol": "abc"}, "tol ('abc' is not a number >= 0)"),
+    ({"disabled_rules": ["E22"]}, "E22 (no rule has this id)"),
+], ids=["K3-tol", "rule-id-typo"])
+def test_the_settings_it_could_not_use_are_the_message_the_bar_shows(current_project, entry, named):
+    """QA finding Q26, step K.3: writeEntry('{"tol": "abc"}'), then Validate project.
+    The warning was pushed before the summary, so the bar showed "2 error(s), 0
+    warning(s), 0 info" and counted the warning as "1 more". A summary of errors is
+    a warning, which never times out, and the bar's Close All dropped both."""
+    current_project.addMapLayer(_layer("Underground cables", ["tip:string"],
+                                       [({"tip": "x"}, QgsPointXY(0, 0))]))
+    current_project.writeEntry(*vm.CONFIG_ENTRY, json.dumps(entry))
+
+    bar, result = _validate_project()
+
+    counts = result.counts_by_severity()
+    assert counts["error"], "premise: a summary of errors, which is a warning"
+    assert _in_turn(bar) == [
+        (Qgis.MessageLevel.Warning, 0, NOT_USED + named),
+        (Qgis.MessageLevel.Warning, 0,
+         f"{counts['error']} error(s), {counts['warning']} warning(s), {counts['info']} info"),
+    ]
+
+
+def _issue(severity):
+    return vm.ValidationIssue(rule_id="C1", severity=severity, category="completeness",
+                              message="Required field(s) missing or empty: tip",
+                              layer_name="Underground cables", layer_id="cables")
+
+
+@pytest.mark.parametrize("issues, rule_errors, summary", [
+    ([vm.Severity.ERROR], [], (Qgis.MessageLevel.Warning, "1 error(s), 0 warning(s), 0 info")),
+    ([vm.Severity.WARNING], [], (Qgis.MessageLevel.Info, "0 error(s), 1 warning(s), 0 info")),
+    ([], ["B1: boom"], (Qgis.MessageLevel.Warning,
+                        "1 rule(s) failed to run; the rules that did found no issues")),
+    ([], [], (Qgis.MessageLevel.Success, "Validation found no issues (2 rules, 0 layers).")),
+], ids=["errors", "issues", "rules-failed", "no-issues"])
+def test_the_settings_warning_is_shown_ahead_of_every_summary(qgis_app, monkeypatch,
+                                                              issues, rule_errors, summary):
+    """Each of the four summaries. An info or success summary used to cover the
+    warning for its five seconds; without a setting it could not use, the summary
+    is the only message, as before."""
+    def bar_after(problems):
+        result = vm.ValidationResult(project_name="t", crs="EPSG:3857")
+        result.issues = [_issue(severity) for severity in issues]
+        result.rule_errors = list(rule_errors)
+        result.ran_rules = ["A1", "B1"]
+        result.config_problems = list(problems)
+        monkeypatch.setattr(vm, "run_validation", lambda **_kwargs: result)
+        bar, _result = _validate_project()
+        return [(level, text) for level, _timeout, text in _in_turn(bar)]
+
+    assert bar_after([]) == [summary]
+    assert bar_after(["tol ('abc' is not a number >= 0)"]) == [
+        (Qgis.MessageLevel.Warning, NOT_USED + "tol ('abc' is not a number >= 0)"),
+        summary,
+    ]
