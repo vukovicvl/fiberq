@@ -368,6 +368,9 @@ CRITICAL = {
         "is_finite",
         "line_vertices",
         "transformed",
+        # Q30, unclaimed (v1.6.0 QA): the bundle export's check of each
+        # reprojected feature, which transformed() made before.
+        "transform_in_place",
     }),
     # Q21, unclaimed (v1.6.0 QA): what a route end may sit on, read by Route
     # correction's check and by Correct, which writes the route -- the node
@@ -864,8 +867,10 @@ def test_d_package_wide_silence_does_not_grow():
 #: Select on map calls. Then two, unclaimed (Q24): RouteManager._import_sources
 #: and ._say_left_out, which list the layers of a file Import route reads and
 #: say what it left out. Then one, unclaimed (Q25): the BOM dialog's
-#: _write_file, where both exports now write their target.
-HARDENED_FUNCTIONS = 217
+#: _write_file, where both exports now write their target. Then one,
+#: unclaimed (Q30): utils.geometry.transform_in_place, the bundle export's
+#: check of each reprojected feature, which transformed() made before.
+HARDENED_FUNCTIONS = 218
 HARDENED_FILES = 26
 
 

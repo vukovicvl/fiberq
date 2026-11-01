@@ -45,7 +45,7 @@ from . import interchange_fields as fm
 from ..i18n import safe_format
 from ..models.schema import SCHEMA_VERSION, canonical_layer_name
 from ..utils.compat import FieldType, new_field
-from ..utils.geometry import transformed
+from ..utils.geometry import transform_in_place
 from ..utils.logger import get_logger
 from ..utils.uuid_utils import FIBERQ_UUID_FIELD
 
@@ -850,6 +850,14 @@ class InterchangeBundleWriter:
         cable_layer_index = _stored_index(source_fields, "cable_layer_id")
         cable_fid_index = _stored_index(source_fields, "cable_fid")
 
+        # Q30: whether a column has values to translate is asked once per
+        # column here, not once per value: canonical_value() answers every
+        # value of a column with no value domain unchanged, and most have none.
+        steps = [
+            (src_index, dest_index, canonical_name,
+             bool(roster) and fm.has_value_domain(roster, canonical_name))
+            for src_index, dest_index, canonical_name in plan
+        ]
         built = []
         unresolved = 0
         unreprojectable = 0
@@ -858,7 +866,7 @@ class InterchangeBundleWriter:
             feature = QgsFeature(fields)
             geometry = QgsGeometry(source_feature.geometry())
             # isEmpty() as well as isNull(): a `Point EMPTY` answers False to
-            # isNull() but has no coordinates to move, and `transformed()`
+            # isNull() but has no coordinates to move, and the check below
             # rejects it like any other geometry it cannot measure. Guarding on
             # isNull() alone dropped such a feature -- caught by
             # test_sample_bundle.py against this repo's own published example,
@@ -870,18 +878,19 @@ class InterchangeBundleWriter:
                 # answers Success and leaves `inf`. For a point it does raise,
                 # but only after the geometry is already `Point (inf inf)`, so
                 # catching it changed nothing either. The old handler here could
-                # not have worked in either direction. `transformed()` checks the
-                # result as well as the call -- see utils.geometry.is_finite.
-                moved = transformed(geometry, transform)
-                if moved is None:
+                # not have worked in either direction. `transform_in_place()`
+                # checks the result as well as the call -- see
+                # utils.geometry.is_finite. It moves this copy itself, as v1.5.0
+                # did: `transformed()`'s second copy and four math.isfinite were
+                # most of what the export had lost against v1.5.0 (Q30).
+                if not transform_in_place(geometry, transform):
                     unreprojectable += 1
                     continue
-                geometry = moved
             feature.setGeometry(geometry)
 
-            for src_index, dest_index, canonical_name in plan:
+            for src_index, dest_index, canonical_name, translated in steps:
                 value = source_feature.attribute(src_index)
-                if roster and value is not None:
+                if translated and value is not None:
                     value = fm.canonical_value(roster, canonical_name, value)
                 if dest_index in merged:
                     # First non-blank wins, and nothing blank overwrites it.

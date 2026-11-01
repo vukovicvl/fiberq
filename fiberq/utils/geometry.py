@@ -544,6 +544,28 @@ def transformed(geom: QgsGeometry, transform) -> Optional[QgsGeometry]:
     return moved if is_finite(moved) else None
 
 
+def transform_in_place(geom: QgsGeometry, transform) -> bool:
+    """Move ``geom`` itself into the transform's target CRS; False when it cannot be.
+
+    :func:`transformed` without the copy, for a caller that owns ``geom``, has
+    already passed over a null or empty one, and drops ``geom`` on False: the
+    bundle export, once per feature. False for the same geometries, logged the
+    same way, and the same coordinates otherwise. The result is held to
+    :func:`is_finite` in one call: ``QgsRectangle.isFinite()`` tests the four
+    values ``is_finite`` hands to ``math.isfinite``, for inf and nan, and the two
+    agree on every combination of a number, inf, -inf and nan (3.22.16, 3.40.15,
+    4.2.3). Unclaimed (QA finding Q30 of the 1.6.0 QA): ``transformed``'s copy
+    and four ``math.isfinite`` for each feature were most of the 3-6% a
+    GeoPackage bundle of 14,024 features had lost against v1.5.0.
+    """
+    try:
+        geom.transform(transform)
+    except Exception as exc:  # QgsCsException, and anything the proj stack adds
+        logger.warning(f"Could not reproject a geometry: {exc}")
+        return False
+    return not geom.isNull() and not geom.isEmpty() and geom.boundingBox().isFinite()
+
+
 def geometry_point(geom: QgsGeometry) -> Optional[QgsPointXY]:
     """The point of a point geometry, or ``None`` when it has none.
 
