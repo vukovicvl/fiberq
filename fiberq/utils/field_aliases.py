@@ -13,7 +13,7 @@ import re
 import sqlite3
 from contextlib import closing
 from typing import Dict
-from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
+from qgis.PyQt.QtCore import QCoreApplication, QObject, QT_TRANSLATE_NOOP, Qt, pyqtSlot
 from qgis.core import QgsEditorWidgetSetup, QgsExpression, QgsFeatureRequest, QgsVectorLayer
 
 # Phase 5.2: Logging
@@ -550,15 +550,52 @@ def clear_wrong_fid_alias(layer: QgsVectorLayer) -> None:
 
     Save all and auto-save stored it in the GeoPackage's default style, and a
     saved project stored it too, so it comes back with the layer: FiberQ runs
-    this on every layer added to the project. Only that exact alias, and only
-    on ``fid``: an alias the user gave it is left alone, and so is the right
-    "Cable feature ID" on ``cable_fid``. Neither this nor setting an alias
-    marks a project modified (measured on 3.22.16, 3.40.15 and 4.2.3), so a
-    project opened with the alias in it still opens unmodified.
+    this on every layer added to the project, and again each time QGIS loads
+    that layer's style (:class:`WrongFidAliasWatch`). Only that exact alias,
+    and only on ``fid``: an alias the user gave it is left alone, and so is the
+    right "Cable feature ID" on ``cable_fid``. Neither this nor setting an
+    alias marks a project modified (measured on 3.22.16, 3.40.15 and 4.2.3), so
+    a project opened with the alias in it still opens unmodified.
     """
     idx = layer.fields().indexFromName("fid")
     if idx != -1 and layer.attributeAlias(idx) == WRONG_FID_ALIAS:
         layer.removeFieldAlias(idx)
+
+
+class WrongFidAliasWatch(QObject):
+    """Takes :data:`WRONG_FID_ALIAS` off ``fid`` each time a watched layer's style loads.
+
+    QGIS's own Add Layer adds a layer to the project first and loads its
+    default style after. Layer > Add Layer > Add Vector Layer..., the Browser
+    panel and a file dropped on QGIS all make the layer without its style, add
+    it -- ``layersAdded``, where FiberQ clears an alias that is not there yet
+    -- and only then call ``loadDefaultStyle()``, which brings the stored
+    alias back (``QgsAppLayerHandling::addSublayers`` on 3.40 and 4.2,
+    ``QgisApp::addSublayers`` on 3.22). ``styleLoaded`` follows every style
+    load that succeeds, with the style already on the layer (measured on
+    3.22.16, 3.40.15, 3.44.15, 4.0.3 and 4.2.3), so the alias goes as it
+    arrives, by the same rule -- also when Layer Properties' "Restore Default"
+    reloads it.
+
+    One per plugin load. Qt drops a connection when either end is deleted: a
+    layer removed from the project takes its own along, and deleting the
+    watch, in ``FiberQPlugin.unload``, takes all of them.
+    """
+
+    def follow(self, layer: QgsVectorLayer) -> bool:
+        """Follow ``layer``'s style loads; False when it already was followed."""
+        try:
+            layer.styleLoaded.connect(self._style_loaded, Qt.ConnectionType.UniqueConnection)
+        except TypeError:
+            # Qt refuses a second, identical connection, and PyQt raises it.
+            return False
+        return True
+
+    @pyqtSlot()
+    def _style_loaded(self):
+        layer = self.sender()
+        if isinstance(layer, QgsVectorLayer):
+            clear_wrong_fid_alias(layer)
 
 
 #: One ``<alias .../>`` element of a QML style. QGIS writes its attributes in

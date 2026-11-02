@@ -2904,6 +2904,12 @@ class FiberQPlugin:
             QgsProject.instance().layersAdded.disconnect(self._on_layers_added)
         except Exception as e:
             logger.debug(f"Error in FiberQPlugin.unload: {e}")
+        # The watch _on_layers_added put on each layer's style loads: deleting
+        # it drops every one of its connections.
+        watch = getattr(self, "_fid_alias_watch", None)
+        self._fid_alias_watch = None
+        if watch is not None and not sip.isdeleted(watch):
+            sip.delete(watch)
 
         # WP2: take the validation dock back down. It is added with
         # iface.addDockWidget(), so it is NOT covered by the self.actions loop
@@ -3025,9 +3031,15 @@ class FiberQPlugin:
     def _on_layers_added(self, layers):
         from qgis.core import QgsVectorLayer, QgsWkbTypes
 
-        from .utils.field_aliases import clear_wrong_fid_alias
+        from .utils.field_aliases import WrongFidAliasWatch, clear_wrong_fid_alias
 
         cable_names = {"Aerial cables", "Underground cables", "Kablovi_vazdusni", "Kablovi_podzemni"}
+
+        # QGIS's own Add Layer loads the default style only after this hook has
+        # run, so the clear below is repeated on each style load (unload deletes it).
+        watch = getattr(self, "_fid_alias_watch", None)
+        if watch is None:
+            watch = self._fid_alias_watch = WrongFidAliasWatch()
 
         for layer in layers:
             if not isinstance(layer, QgsVectorLayer) or not layer.isValid():
@@ -3037,6 +3049,7 @@ class FiberQPlugin:
             # every layer: the fid alias branch 3 gave up to 1.5.0 is kept in
             # saved projects and in GeoPackage default styles.
             clear_wrong_fid_alias(layer)
+            watch.follow(layer)
 
             lname = (layer.name() or "")
             lname_l = lname.lower().strip()

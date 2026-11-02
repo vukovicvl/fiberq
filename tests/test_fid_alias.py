@@ -11,12 +11,16 @@ Save all and auto-save stored the wrong alias in the GeoPackage's default style
 (``layer_styles``), and a saved project stored it too, so taking it out of the
 branch was not enough: a layer that arrives with it -- a project opened, Add
 Layer, the layer auto-save rebuilds -- now has it taken off, and only that
-alias, only on ``fid``.
+alias, only on ``fid``. QGIS's own Add Layer loads the default style after the
+layer is added, so it is taken off again whenever a layer's style loads (Q31).
 
 The hook is the plugin's own method, on a plugin made with ``__new__``: none of
 these layers reaches a branch that reads anything else of the plugin.
 """
+import json
 import os
+import subprocess
+import sys
 
 import pytest
 from qgis.core import (
@@ -30,6 +34,8 @@ from fiberq.main_plugin import FiberQPlugin
 from fiberq.utils.compat import save_style_to_database
 
 WRONG = "Cable feature ID"
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 FIBER_BREAK_FIELDS = ["naziv:string", "cable_layer_id:string", "cable_fid:integer",
                       "distance_m:double", "segments_hit:integer", "vreme:string"]
@@ -198,6 +204,199 @@ def test_an_alias_the_user_gave_fid_is_kept(project, tmp_path):
 
     (opened,) = project.mapLayers().values()
     assert _aliases(opened) == {"fid": "Closure number", "naziv": "Name"}
+
+
+# ---------------------------------------------------------------------------
+# QGIS's own Add Layer loads the default style after the hook (v1.6.0 QA Q31)
+# ---------------------------------------------------------------------------
+#
+# The tests above open the layer with its default style already loaded, and
+# QGIS's Add Layer does not: Layer > Add Layer > Add Vector Layer..., the Browser
+# panel and a file dropped on QGIS make the layer without its style, add it to
+# the project -- the hook runs and finds no alias yet -- and only then load the
+# default style, which brought the stored alias back
+# (QgsAppLayerHandling::addSublayers on 3.40 and 4.2, QgisApp::addSublayers on
+# 3.22). The maintainer's re-check of Q17 met exactly that: Poles removed and
+# added back with Add Vector Layer, as "q17 — Poles", showed "Cable feature ID".
+
+def _added_as_qgis_adds_it(project, uri, name):
+    """The table as Add Layer adds it: made without its default style, added to
+    the project, and only then given that style."""
+    options = QgsVectorLayer.LayerOptions(project.transformContext())
+    options.loadDefaultStyle = False
+    if hasattr(options, "loadAllStoredStyle"):  # set by 3.40 and 4.2; 3.22 has no such option
+        options.loadAllStoredStyle = True
+    layer = QgsVectorLayer(uri, name, "ogr", options)
+    assert layer.isValid(), uri
+    assert _aliases(layer)["fid"] == "", "made with its style after all, so nothing was tested"
+    project.addMapLayer(layer)
+    message, loaded = layer.loadDefaultStyle()
+    assert loaded, message
+    return layer
+
+
+def _stored(tmp_path, table, fields, aliases):
+    """``table`` in data.gpkg, its default style giving ``aliases``; its URI."""
+    uri = _table(tmp_path, table, fields)
+    layer = _layer(uri, table)
+    for field, alias in aliases.items():
+        _alias(layer, field, alias)
+    _save_default_style(layer)
+    return uri
+
+
+@pytest.mark.parametrize("table,name,fields", [("Poles", "q17 — Poles", []),
+                                               ("Survey", "q17 — Survey", ["kind:string"])],
+                         ids=["the-maintainers-poles", "a-layer-no-branch-reaches"])
+def test_the_alias_goes_when_qgis_loads_the_style_after_the_add(project, tmp_path, table, name, fields):
+    uri = _stored(tmp_path, table, fields, {"fid": WRONG})
+
+    layer = _added_as_qgis_adds_it(project, uri, name)
+
+    assert _aliases(layer)["fid"] == ""
+
+
+def test_cable_fid_keeps_its_alias_and_a_name_the_user_gave_fid_stays(project, tmp_path):
+    """Only that alias on fid goes, also when the style loads after the add.
+    Optical slacks reaches no branch of the hook that would put it back."""
+    slacks = _stored(tmp_path, "Optical slacks", SLACK_FIELDS, {"fid": WRONG, "cable_fid": "Cable feature ID"})
+    survey = _stored(tmp_path, "Survey", ["kind:string"], {"fid": "Key"})
+
+    slacks = _added_as_qgis_adds_it(project, slacks, "data — Optical slacks")
+    survey = _added_as_qgis_adds_it(project, survey, "data — Survey")
+
+    assert (_aliases(slacks)["fid"], _aliases(slacks)["cable_fid"]) == ("", "Cable feature ID")
+    assert _aliases(survey)["fid"] == "Key"
+
+
+def test_restore_default_style_does_not_bring_it_back(project, tmp_path):
+    """Layer Properties > Style > Restore Default reloads the default style of a
+    layer already in the project."""
+    uri = _stored(tmp_path, "Survey", ["kind:string"], {"fid": WRONG})
+    layer = _layer(uri, "Survey")
+    project.addMapLayer(layer)
+    assert _aliases(layer)["fid"] == ""
+
+    message, loaded = layer.loadDefaultStyle()
+
+    assert loaded, message
+    assert _aliases(layer)["fid"] == ""
+
+
+def test_a_layer_added_again_is_followed_once(project, tmp_path, monkeypatch):
+    """The hook runs on every add of the same layer; one style load still runs
+    the clear once, not once per add."""
+    from fiberq.utils import field_aliases
+
+    uri = _stored(tmp_path, "Survey", ["kind:string"], {"fid": WRONG})
+    layer = _layer(uri, "Survey")
+    project.addMapLayer(layer)
+    layer = project.takeMapLayer(layer)
+    project.addMapLayer(layer)
+    cleared = []
+    clear = field_aliases.clear_wrong_fid_alias
+    monkeypatch.setattr(field_aliases, "clear_wrong_fid_alias", lambda lyr: (cleared.append(lyr.id()), clear(lyr)))
+
+    layer.loadDefaultStyle()
+
+    assert cleared == [layer.id()]
+    assert _aliases(layer)["fid"] == ""
+
+
+#: initGui() and unload() for real, on QgsProject.instance(), so in a child with
+#: its own HOME (the settings they read and write stay out of the suite), with
+#: test_language_preference's stand-in iface.
+UNLOAD_DRIVER = '''
+import json
+import os
+import sys
+from unittest import mock
+
+sys.path.insert(0, {repo!r})
+
+from qgis.core import QgsApplication
+
+QgsApplication.setPrefixPath("/usr", True)
+APP = QgsApplication([], True)
+APP.initQgis()
+
+from qgis.core import QgsProject, QgsVectorLayer
+from qgis.gui import QgsMapCanvas
+from qgis.PyQt.QtWidgets import QMainWindow, QToolBar
+
+
+class Iface:
+    """What initGui() and unload() really use; the rest answers with a MagicMock."""
+
+    def __init__(self):
+        self._window = QMainWindow()
+        self._canvas = QgsMapCanvas(self._window)
+        self._window.setCentralWidget(self._canvas)
+        self._mocks = {{}}
+
+    def mainWindow(self):
+        return self._window
+
+    def mapCanvas(self):
+        return self._canvas
+
+    def addToolBar(self, name):
+        return QToolBar(name, self._window)
+
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return self.__dict__["_mocks"].setdefault(name, mock.MagicMock(name=name))
+
+
+from fiberq.main_plugin import FiberQPlugin
+
+# initGui() arms a 2 s one-shot schema migration; it is not what this is about.
+FiberQPlugin._run_schema_migrations = lambda self: None
+
+plugin = FiberQPlugin(Iface())
+plugin.initGui()
+
+options = QgsVectorLayer.LayerOptions(QgsProject.instance().transformContext())
+options.loadDefaultStyle = False
+layer = QgsVectorLayer({uri!r}, "q17 \\u2014 Poles", "ogr", options)
+QgsProject.instance().addMapLayer(layer)
+fid = layer.fields().indexFromName("fid")
+out = {{"loaded": layer.loadDefaultStyle()[1], "after_add": layer.attributeAlias(fid)}}
+plugin.unload()
+out["reloaded"] = layer.loadDefaultStyle()[1]
+out["after_unload"] = layer.attributeAlias(fid)
+QgsProject.instance().removeAllMapLayers()
+print("RESULT " + json.dumps(out), flush=True)
+sys.stdout.flush()
+os._exit(0)
+'''
+
+
+def test_after_unload_a_style_load_runs_nothing_of_fiberq(tmp_path):
+    """Whatever the hook connects goes with unload(): a default style loaded
+    after it keeps the old name, as QGIS without FiberQ shows it."""
+    uri = _stored(tmp_path, "Poles", [], {"fid": WRONG})
+    script = tmp_path / "fid_alias_unload.py"
+    script.write_text(UNLOAD_DRIVER.format(repo=REPO_ROOT, uri=uri), encoding="utf-8")
+    home = tmp_path / "home"
+    home.mkdir()
+    environment = dict(os.environ, QT_QPA_PLATFORM="offscreen", TMPDIR=str(tmp_path),
+                       HOME=str(home), XDG_CONFIG_HOME=str(home / ".config"),
+                       FIBERQ_LOG_FILE="false")
+    # pytest-qgis points QGIS at <checkout>/.qgis-settings; inherited, the child
+    # would write its settings there, into the checkout CI tests.
+    environment.pop("QGIS_CUSTOM_CONFIG_PATH", None)
+
+    done = subprocess.run([sys.executable, str(script)], cwd=str(tmp_path), env=environment,
+                          timeout=120, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+    output = done.stdout.decode("utf-8", "replace")
+    assert done.returncode == 0, f"returncode {done.returncode} (-11/139 is SIGSEGV)\n{output}"
+    results = [line for line in output.splitlines() if line.startswith("RESULT ")]
+    assert results, output
+    assert json.loads(results[-1][len("RESULT "):]) == {
+        "loaded": True, "after_add": "", "reloaded": True, "after_unload": WRONG}, output
 
 
 # ---------------------------------------------------------------------------
