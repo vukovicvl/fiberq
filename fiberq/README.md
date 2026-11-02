@@ -24,6 +24,15 @@ A QGIS plugin for fiber optic network design and documentation.
 - **Interchange bundles** — an import adds and never replaces what you have,
   more of what another tool wrote travels through, and an export refuses or
   warns instead of writing something other than the project.
+- **Route correction** no longer reports a route end that meets a joint
+  closure, an element or a vertex of another route, the
+  **Optical Schematic View** opens fitted and its exports show the whole
+  drawing, and **Import route** reads every folder of a KML and the tracks and
+  routes of a GPX.
+- **Saves** — the placement tools say when the layer refused a save instead
+  of reporting success, Add breakpoint no longer loses the route when that
+  happens, FiberQ adds its own columns with a type PostGIS accepts, and
+  saving to GeoPackage asks before writing over a table no layer uses.
 - **Removed** — the "Check (health check)" button (Validate project covers it),
   and Publish to PostGIS's "Delete existing table and recreate" box, which
   never took effect.

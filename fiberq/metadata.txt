@@ -86,11 +86,44 @@ changelog=
           menu, and only finished translations ship. Service Area area and
           perimeter are ground measurements. The plugin loads on QGIS 3.22
           again, as its metadata promises, and so do the duct tools.
+        * Route correction no longer reports a route end that meets a joint
+          closure, an element or a vertex of another route. An end that
+          touches another route between two of its vertices is reported with
+          what to do about it, and Select on map selects the route and
+          centres the map on that end.
+        * The Optical Schematic View opens fitted to its window, with its
+          controls in two rows. Center zooms in on the element and rings it,
+          finds a name in any case and says when none matches, and Enter in
+          the Find box runs it. The PNG, JPG and SVG exports show the whole
+          drawing, and a file that could not be written is reported.
+        * Import route reads every folder of a KML file and the tracks and
+          routes of a GPX file, and says what it left out: features that are
+          not lines, folders with no lines, waypoints.
+        * The placement and drawing tools, Add breakpoint and Branch cables
+          say when the layer refused a save, and why, instead of reporting
+          success or saying nothing. Add breakpoint saves the two halves
+          before it removes the original, so a refused save no longer loses
+          the route.
+        * FiberQ adds its own columns, such as the feature ID, with a type
+          every data source accepts. On PostGIS the add failed and left every
+          later save on that layer failing; on a shapefile, a column name
+          longer than ten characters is refused instead of being added again,
+          shortened, at every placement and project open. When FiberQ cannot
+          finish upgrading a project, it says so, and tries again the next
+          time the project is opened.
+        * With snapping off, a joint closure also snaps along a route or
+          cable span, as the other placement tools do.
+        * FiberQ no longer fills QGIS's logs: no "Entry token invalid" lines
+          for each feature clicked on the map in QGIS 3, and no deprecation
+          warnings when it creates fields, saves layer styles or makes a
+          relation on recent QGIS versions.
         * Smaller fixes: the fibre-break distance, the mid-span slack point,
           the slack tool on multipart cables, Delete selected on "Optical
           slacks", route correction with old layer names and manholes, the
-          Import points file filter, and the schematic view following layers
-          added after it opened.
+          Import points file filter, the schematic view following layers
+          added after it opened, a cable's type shown as "(Optical)" in the
+          attribute form, a GeoPackage layer's fid labelled "Cable feature
+          ID", and the pipe tools on a pipe layer without a length column.
         * Changed: the "Check (health check)" button is gone; Validate project
           covers the same checks in more detail.
         * Changed: the BOM now measures lengths the way the attribute table
@@ -111,10 +144,24 @@ changelog=
           Open drawing). A slack layer still named Opticke_rezerve is no longer
           restyled when the project opens. After upgrading from 1.5.0 without
           restarting QGIS, restart it once.
+        * Changed: Save all layers to GeoPackage, and turning Auto-save on,
+          ask before writing over a table of the same name that no layer of
+          the project uses (1.5.0 wrote over it without asking): replace it,
+          keep it and save beside it, or cancel. Their file dialogs no longer
+          offer to replace the whole file, which FiberQ never does.
+        * Changed: Route correction's Correct moves a route end onto the
+          nearest pole, manhole, joint closure or element within 5 m, and
+          leaves it where it is, saying why, when a cable or duct passes
+          through or ends there.
+        * Changed: Add breakpoint and Digitized object (from selection), on a
+          layer you already have in edit mode, no longer save your other
+          unsaved edits: their result stays in your edit session; use Layer >
+          Save Layer Edits.
         (The spatial indexing and batching behind the speed-ups, their
         benchmark, the failure reporting and the crash fixes were developed
         with support from the NLnet NGI0 Commons Fund. Everything else in this
-        release was not funded by it.)
+        release, including the fixes made during its release testing, was not
+        funded by it.)
         If FiberQ helps your work, you can sponsor its development:
         https://github.com/sponsors/vukovicvl
 
