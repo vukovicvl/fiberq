@@ -31,7 +31,7 @@ time.
 **The file:** `fiberq/i18n/fiberq_fr.ts` for French. (Serbian is
 `fiberq_sr.ts`; other languages follow the same pattern.)
 
-**The size:** around **450 strings**, all currently untranslated. Most are
+**The size:** around **530 strings**, all currently untranslated. Most are
 short — menu entries, button labels, tooltips. The longest, a few warnings and
 confirmation prompts, run to three or four sentences.
 
@@ -39,7 +39,7 @@ To see the exact number for yourself, open the file and count the occurrences of
 `type="unfinished"`; that is the to-do flag. The figure grows as FiberQ gains
 features, so treat any number written here as "about".
 
-**The time:** budget around **20 hours** for a careful full pass. That is an
+**The time:** budget around **25 hours** for a careful full pass. That is an
 honest estimate, not a sales pitch. Much of FiberQ's vocabulary is specialised,
 and the right French term often needs a moment's thought rather than a
 dictionary lookup. Some strings will take you five seconds; a dozen will take
@@ -92,7 +92,7 @@ please open an issue about it rather than fixing it in the `.ts` file.
 ### Rule 2 — placeholders must survive exactly
 
 Some phrases contain markers in curly braces that the plugin replaces with real
-values while it runs. FiberQ uses about fifty different ones, such as `{count}`,
+values while it runs. FiberQ uses about sixty different ones, such as `{count}`,
 `{layer}`, `{name}`, `{path}`, `{details}` and `{reason}`.
 
 They must appear in your translation **spelled exactly as in the English**,
@@ -353,7 +353,7 @@ worth doing them:
 | Group | Strings | What it covers |
 |---|---:|---|
 | `FiberQ` | 12 | The **main toolbar buttons** — Place Pole, Place Manhole, Create Route, Aerial/Underground Cable, ODF, OTB, TO, Optical Slack, Undo. The most visible text in the whole plugin. |
-| `RoutingUI` | 18 | The **Routing** toolbar group: creating, merging, importing and correcting routes, breakpoints, GeoPackage auto-save. |
+| `RoutingUI` | 21 | The **Routing** toolbar group: creating, merging, importing and correcting routes, breakpoints, GeoPackage auto-save. |
 | `CableLayingUI` | 6 | The **Cable laying** group: Underground, Aerial, and the cable classes Backbone / Distributive / Drop. Terminology-heavy — the glossary matters most here. |
 | `ElementNames` | 12 | The **names of the network elements** — ODF, OTB, TB, TO, Patch panel and the rest — wherever menus and dialogs show them. Several are abbreviations the trade keeps as they are; check the glossary. |
 | `ObjectsUI` | 10 | Drawing objects on the map (object in 3 points, in N points, digitised object) and their warning messages. |
@@ -363,26 +363,27 @@ worth doing them:
 | `SelectionUI` | 4 | Smart selection, clear selection, delete selected. |
 | `ElementPlacementUI` | 3 | Placing network elements, including joint closures. |
 | `QuickToolbar` | 1 | One label template for the quick-access toolbar. |
-| `ValidationPanel` | 25 | The **Validate project** panel: its summary line, filters and buttons. |
+| `ValidationPanel` | 26 | The **Validate project** panel: its summary line, filters and buttons. |
 | `ValidationRules` | 45 | What each validation finding says, such as "Element is not on or near any cable or route". Precise technical wording. |
 | `ValidationReport` | 28 | The exported **validation report** (HTML, JSON, CSV): headings and verdicts such as "No errors — project is structurally sound". |
-| `FiberQErrors` | 4 | The one-line message FiberQ shows when an operation fails, pointing to *Log Messages > FiberQ*. |
-| `FiberQRoutes` | 28 | Messages from the route tools: creating, merging, importing and correcting routes. |
-| `FiberQCables` | 6 | Messages from **Lay cable**. |
+| `FiberQErrors` | 12 | The one-line message FiberQ shows when an operation fails, pointing to *Log Messages > FiberQ*. |
+| `FiberQRoutes` | 34 | Messages from the route tools: creating, merging, importing and correcting routes. |
+| `FiberQTools` | 15 | The names of the map tools as their messages show them (Place pole, Lay pipe, Split route and the rest), and the messages of Split route and the object tools. |
+| `FiberQCables` | 10 | Messages from **Lay cable** and **Branch cables**. |
 | `FiberQSlack` | 12 | Messages from the optical slack tools and the slack totals. |
 | `FiberQBreak` | 4 | Messages from the fibre break tool. |
 | `FiberQUndo` | 6 | Messages from FiberQ's own Undo. |
 | `FiberQBOM` | 8 | The **bill of materials** export. |
-| `FiberQExport` | 2 | Export layer's success messages. |
+| `FiberQExport` | 27 | Export layer's success messages, and **Save all layers to GeoPackage** / Auto-save: the question about a table of the same name that no layer uses, its buttons, and the notes and warnings that follow. |
 | `FiberQDrawings` | 2 | The file-type filter for DWG/DXF drawings. |
 | `FiberQImages` | 1 | The title of the picture popup. |
 | `FiberQStore` | 7 | Names of the project data FiberQ keeps (relations, colour catalogues, pass-through elements), used inside its warnings. |
-| `FiberQLayers` | 5 | Rare warnings from moving an element to another layer (Change element type). |
+| `FiberQLayers` | 6 | Rare warnings from moving an element to another layer (Change element type), and the **Create Service Area** title. |
 | `FiberQInterchange` | 33 | Exporting and importing **interchange bundles**: what an export left out or refused, and what an import could not keep. The longest messages in the plugin. |
-| `FiberQPlugin` | 158 | **Everything else** — menu entries, dialogs, tooltips, status messages and error messages from the plugin's main module: BOM report, locator, PostGIS publishing, image linking, cutting tools, export, and the language menu. |
+| `FiberQPlugin` | 170 | **Everything else** — menu entries, dialogs, tooltips, status messages and error messages from the plugin's main module: BOM report, locator, PostGIS publishing, image linking, cutting tools, export, and the language menu. |
 
 **Suggested order:** do `FiberQ`, `RoutingUI` and `CableLayingUI` first — that is
-36 strings and covers almost everything a user sees on screen constantly. Then
+39 strings and covers almost everything a user sees on screen constantly. Then
 the other small UI groups. Leave `FiberQPlugin` for last: it is by far the
 biggest, and much of it is error text that a user meets rarely.
 
