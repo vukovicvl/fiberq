@@ -117,6 +117,46 @@ def ground_length(geom, layer=None, crs=None, project=None) -> float:
     return _measure(geom, layer, crs, project, "measureLength", "length")
 
 
+def length_measurer(layer=None, crs=None, project=None):
+    """:func:`ground_length` for every geometry of one layer, with the measurer resolved once.
+
+    A loop over a layer's features asks the same question each time -- the
+    layer's CRS and the project's ellipsoid cannot change in between -- and
+    resolving them for every feature was about a quarter of what planning a
+    length recalculation cost on a large project. The function returned
+    answers what ``ground_length(geom, layer, crs, project)`` answers, planar
+    fallback and warning included.
+    """
+    if crs is None and layer is not None:
+        try:
+            crs = layer.crs()
+        except Exception:
+            crs = None
+    try:
+        measure = distance_area(crs, project).measureLength
+    except Exception:
+        # Then every geometry takes ground_length's own way to its fallback.
+        return lambda geom: ground_length(geom, crs=crs, project=project)
+
+    def length(geom):
+        if geom is None:
+            return 0.0
+        try:
+            if geom.isEmpty():
+                return 0.0
+        except Exception:
+            return 0.0
+        try:
+            return float(measure(geom))
+        except Exception as e:
+            logger.warning(f"Ellipsoidal measurement failed, using the planar length (map units): {e}")
+            try:
+                return float(geom.length())
+            except Exception:
+                return 0.0
+    return length
+
+
 def ground_area(geom, layer=None, crs=None, project=None) -> float:
     """Area of a polygon ``geom`` in square metres on the ground.
 

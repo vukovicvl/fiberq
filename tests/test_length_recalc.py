@@ -203,18 +203,54 @@ def test_one_bad_layer_does_not_cost_the_whole_project(project, monkeypatch):
     _cables(project, [(geom, {"duzina_m": geom.length(), "slack_m": 0.0,
                               "total_len_m": geom.length()})])
 
-    real = lm.ground_length
+    real = lm.length_measurer
 
-    def explode(g, layer=None, **kwargs):
-        if layer is not None and layer.name() == "Route":
+    def explode(layer=None, **kwargs):
+        measure = real(layer, **kwargs)
+        if layer is None or layer.name() != "Route":
+            return measure
+
+        def broken(g):
             raise KeyError("slack_m")
-        return real(g, layer, **kwargs)
+        return broken
 
-    monkeypatch.setattr(lm, "ground_length", explode)
+    # The plan measures through the layer's measurer, once per feature.
+    monkeypatch.setattr(lm, "length_measurer", explode)
     plan = plan_recalculation(project)
 
     assert plan.failed_layers and "Route" in plan.failed_layers[0]
     assert any(c.layer_name == "Aerial cables" for c in plan.changes)
+
+
+def test_the_plan_looks_up_its_measurer_once_per_layer_not_per_feature(project, monkeypatch):
+    """Resolving the CRS and the ellipsoid again for every feature made the
+    plan slower in 1.6.0 than in 1.5.0 (the final benchmark's
+    plan_recalculation row): the lookups must not grow with the layer."""
+    from fiberq.utils import measure
+
+    calls = []
+    real = measure.distance_area
+
+    def counting(*args, **kwargs):
+        calls.append(args)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(measure, "distance_area", counting)
+    counts = {}
+    for features in (10, 100):
+        prj = QgsProject()
+        prj.setCrs(QgsCoordinateReferenceSystem("EPSG:3857"))
+        prj.setEllipsoid("EPSG:7030")
+        geom = _line()
+        _route(prj, [(geom, {"duzina": geom.length()})] * features)
+        _cables(prj, [(geom, {"duzina_m": geom.length(), "slack_m": 0.0,
+                              "total_len_m": geom.length()})] * features)
+        calls.clear()
+        plan = plan_recalculation(prj)
+        counts[features] = len(calls)
+        assert len([c for c in plan.changes if c.field_name in ("duzina", "duzina_m")]) == 2 * features
+
+    assert counts[10] == counts[100]
 
 
 def test_a_cable_layer_without_slack_m_still_plans(project):
