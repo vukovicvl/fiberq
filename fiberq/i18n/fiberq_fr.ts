@@ -219,12 +219,12 @@
 <context>
     <name>FiberQ</name>
     <message>
-        <location filename="../main_plugin.py" line="4712"/>
+        <location filename="../main_plugin.py" line="4725"/>
         <source>FiberQ – Preview Map</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4713"/>
+        <location filename="../main_plugin.py" line="4726"/>
         <source>Error opening the preview map:
 {details}</source>
         <translation type="unfinished"></translation>
@@ -617,48 +617,42 @@ Either way, the file&apos;s other tables stay as they are, and so does anything 
     </message>
     <message>
         <location filename="../core/export_manager.py" line="156"/>
-        <source>not saved: the tables of {file} could not be read ({reason})</source>
-        <extracomment>Why a layer was not saved, after the layer&apos;s name: right before writing it, FiberQ reads the file&apos;s tables again so as never to write over one that appeared meanwhile, and they could not be read. {file} is the GeoPackage&apos;s file name and {reason} the database&apos;s own words, neither translated.</extracomment>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core/export_manager.py" line="162"/>
         <source>not saved, and the old table {table} is no longer in the file: {reason}</source>
         <extracomment>Why a layer was not saved, when it was replacing an unused table the user chose to replace and the write failed part-way: the old table is gone with it. {table} is the old table&apos;s name and {reason} the writer&apos;s own words, neither translated.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/export_manager.py" line="166"/>
+        <location filename="../core/export_manager.py" line="160"/>
         <source>not saved, and the old table {table} was overwritten with only part of this layer: {reason}</source>
         <extracomment>As above, when the failed write left a table of that name holding only part of the layer, and none of the old table&apos;s features.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/export_manager.py" line="172"/>
+        <location filename="../core/export_manager.py" line="166"/>
         <source>{file} is a folder, not a GeoPackage. Nothing was saved.</source>
         <extracomment>Shown before anything is asked or written when the chosen GeoPackage is a folder. {file} is its name, not translated; the FiberQ log has the full path.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/export_manager.py" line="175"/>
+        <location filename="../core/export_manager.py" line="169"/>
         <source>{file} cannot be written to. Nothing was saved.</source>
         <extracomment>As above, when the file cannot be written to: read-only, or in a folder the user may not write in.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/export_manager.py" line="177"/>
+        <location filename="../core/export_manager.py" line="171"/>
         <source>{file} is not a GeoPackage. Nothing was saved.</source>
         <extracomment>As above, when the file is not a GeoPackage at all.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/export_manager.py" line="181"/>
+        <location filename="../core/export_manager.py" line="175"/>
         <source>The tables of {file} could not be read ({reason}). Nothing was saved.</source>
         <extracomment>As above, when the file&apos;s list of tables cannot be read -- another program holds it, or it is damaged -- so FiberQ cannot tell which tables are in use. {reason} is the database&apos;s own words, not translated.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../core/export_manager.py" line="188"/>
+        <location filename="../core/export_manager.py" line="182"/>
         <source>{file} or this project changed while the question was open. Nothing was saved.</source>
         <extracomment>Shown, and nothing written, when the user has answered the question about unused tables and the GeoPackage or the project&apos;s layers are no longer what the question was about: another program wrote to the file or replaced it, or a layer was added or removed while the question was open. {file} is the GeoPackage&apos;s file name, not translated.</extracomment>
         <translation type="unfinished"></translation>
@@ -983,7 +977,7 @@ Either way, the file&apos;s other tables stay as they are, and so does anything 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3268"/>
+        <location filename="../main_plugin.py" line="3281"/>
         <location filename="../main_plugin.py" line="1125"/>
         <source>this layer could not be opened for editing</source>
         <translation type="unfinished"></translation>
@@ -1006,122 +1000,122 @@ Either way, the file&apos;s other tables stay as they are, and so does anything 
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3199"/>
+        <location filename="../main_plugin.py" line="3212"/>
         <source>&apos;{layer}&apos; has no cable reference columns, so no cable total was updated</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3277"/>
+        <location filename="../main_plugin.py" line="3290"/>
         <source>the layer refused to delete one of the features</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3296"/>
+        <location filename="../main_plugin.py" line="3309"/>
         <source>its data source does not allow deleting features; on a database, the login needs the right to delete from the table</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3320"/>
+        <location filename="../main_plugin.py" line="3333"/>
         <source>Deleted {count} selected features from all layers.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3323"/>
+        <location filename="../main_plugin.py" line="3336"/>
         <source>{count} of the selected features were in layers that were already in edit mode, so their deletion is not saved yet. Use Layer &gt; Save Layer Edits when you are ready.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3574"/>
+        <location filename="../main_plugin.py" line="3587"/>
         <source>the new layer would not take its &apos;naziv&apos; field</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3615"/>
+        <location filename="../main_plugin.py" line="3628"/>
         <source>the layer would not take its &apos;tip&apos; field</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3635"/>
+        <location filename="../main_plugin.py" line="3648"/>
         <source>{count} point(s) in the file could not be placed and were skipped.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3725"/>
+        <location filename="../main_plugin.py" line="3738"/>
         <source>a point was rejected by the layer</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3902"/>
+        <location filename="../main_plugin.py" line="3915"/>
         <source>Route {route} is in {pieces} separate pieces. Only its two outer ends were checked.</source>
         <extracomment>Route correction finding. {route} is the route&apos;s name and ID, e.g. &apos;Route 7&apos; (ID 15), or just (ID 15) when it has no name; {pieces} is a number, 2 or more.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3942"/>
+        <location filename="../main_plugin.py" line="3955"/>
         <source>Start of route {route} touches route {other} between two of its vertices, so the two are not connected. Add a vertex to route {other} at that point.</source>
         <extracomment>Route correction finding. {route} and {other} are a route&apos;s name and ID, e.g. &apos;Route 7&apos; (ID 15), or just (ID 15). A vertex is a corner point of a line.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3950"/>
+        <location filename="../main_plugin.py" line="3963"/>
         <source>End of route {route} touches route {other} between two of its vertices, so the two are not connected. Add a vertex to route {other} at that point.</source>
         <extracomment>Route correction finding. {route} and {other} are a route&apos;s name and ID, e.g. &apos;Route 7&apos; (ID 15), or just (ID 15). A vertex is a corner point of a line.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3961"/>
+        <location filename="../main_plugin.py" line="3974"/>
         <source>Start of route {route} is not connected to a pole, manhole, joint closure, element or another route.</source>
         <extracomment>Route correction finding. {route} is the route&apos;s name and ID, e.g. &apos;Route 7&apos; (ID 15), or just (ID 15). &quot;Element&quot; = any FiberQ network element: ODF, OTB, TO...</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3969"/>
+        <location filename="../main_plugin.py" line="3982"/>
         <source>End of route {route} is not connected to a pole, manhole, joint closure, element or another route.</source>
         <extracomment>Route correction finding. {route} is the route&apos;s name and ID, e.g. &apos;Route 7&apos; (ID 15), or just (ID 15). &quot;Element&quot; = any FiberQ network element: ODF, OTB, TO...</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3986"/>
+        <location filename="../main_plugin.py" line="3999"/>
         <source>Poles, manholes, joint closures or elements with no position yet were left out of the check: {count}</source>
         <extracomment>Route correction, message bar. {count} is a number. &quot;Element&quot; = any FiberQ network element: ODF, OTB, TO...</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4106"/>
+        <location filename="../main_plugin.py" line="4119"/>
         <source>Route {route} was not changed: that end already meets a pole, manhole, joint closure, element or another route.</source>
         <extracomment>Route correction, message bar. {route} is the route&apos;s name and ID, e.g. &apos;Route 7&apos; (ID 15), or just (ID 15).</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4122"/>
+        <location filename="../main_plugin.py" line="4135"/>
         <source>Route {route} was not changed: no pole, manhole, joint closure or element is within {limit} m of that end. If it belongs to one further away, move the end by hand.</source>
         <extracomment>Route correction, message bar. {route} is the route&apos;s name and ID, e.g. &apos;Route 7&apos; (ID 15), or just (ID 15); {limit} is a number of metres. &quot;Element&quot; = any FiberQ network element.</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4141"/>
+        <location filename="../main_plugin.py" line="4154"/>
         <source>the end of this route could not be moved</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4184"/>
+        <location filename="../main_plugin.py" line="4197"/>
         <source>Route {route} was not changed: the nearest pole, manhole, joint closure or element, {target}, is where the route&apos;s next vertex already is, so attaching the end to it would collapse the route.</source>
         <extracomment>Route correction, message bar. {route} is the route&apos;s name and ID, e.g. &apos;Route 7&apos; (ID 15); {target} names a point on the map the same way, e.g. Manholes &apos;12312&apos; (ID 4).</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4203"/>
+        <location filename="../main_plugin.py" line="4216"/>
         <source>Route {route} was not changed, because these would be left behind at that end: {lines}. Move them together by hand.</source>
         <extracomment>Route correction, message bar. {route} is the route&apos;s name and ID, e.g. &apos;Route 7&apos; (ID 15); {lines} is a list of cables and ducts named the same way, e.g. Aerial cables &apos;K1&apos; (ID 3).</extracomment>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4232"/>
+        <location filename="../main_plugin.py" line="4245"/>
         <source>the route would not take its new shape</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4248"/>
+        <location filename="../main_plugin.py" line="4261"/>
         <source>Route {route} was attached to {target}, {distance} m away.</source>
         <extracomment>Route correction, after a move. {route} is the route&apos;s name and ID, e.g. &apos;Route 7&apos; (ID 15); {target} names a point the same way, e.g. Manholes &apos;12312&apos; (ID 4); {distance} is a number of metres, e.g. 2.1.</extracomment>
         <translation type="unfinished"></translation>
@@ -1148,7 +1142,7 @@ Language will change when QGIS restarts.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4508"/>
+        <location filename="../main_plugin.py" line="4521"/>
         <location filename="../main_plugin.py" line="2690"/>
         <location filename="../main_plugin.py" line="2571"/>
         <location filename="../main_plugin.py" line="2545"/>
@@ -1315,7 +1309,7 @@ Language will change when QGIS restarts.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4421"/>
+        <location filename="../main_plugin.py" line="4434"/>
         <location filename="../main_plugin.py" line="1257"/>
         <location filename="../main_plugin.py" line="1204"/>
         <source>Select one or more elements and try again.</source>
@@ -1332,7 +1326,7 @@ Language will change when QGIS restarts.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3473"/>
+        <location filename="../main_plugin.py" line="3486"/>
         <location filename="../main_plugin.py" line="1214"/>
         <source>All files</source>
         <translation type="unfinished"></translation>
@@ -1439,19 +1433,19 @@ Language will change when QGIS restarts.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3669"/>
-        <location filename="../main_plugin.py" line="3639"/>
-        <location filename="../main_plugin.py" line="3629"/>
-        <location filename="../main_plugin.py" line="3611"/>
-        <location filename="../main_plugin.py" line="3573"/>
-        <location filename="../main_plugin.py" line="3509"/>
+        <location filename="../main_plugin.py" line="3682"/>
+        <location filename="../main_plugin.py" line="3652"/>
+        <location filename="../main_plugin.py" line="3642"/>
+        <location filename="../main_plugin.py" line="3624"/>
+        <location filename="../main_plugin.py" line="3586"/>
+        <location filename="../main_plugin.py" line="3522"/>
         <location filename="../main_plugin.py" line="1705"/>
         <source>Import points</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3764"/>
-        <location filename="../main_plugin.py" line="3752"/>
+        <location filename="../main_plugin.py" line="3777"/>
+        <location filename="../main_plugin.py" line="3765"/>
         <location filename="../main_plugin.py" line="1716"/>
         <source>Export</source>
         <translation type="unfinished"></translation>
@@ -1710,99 +1704,99 @@ Language will change when QGIS restarts.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../main_plugin.py" line="3341"/>
         <location filename="../main_plugin.py" line="3328"/>
-        <location filename="../main_plugin.py" line="3315"/>
-        <location filename="../main_plugin.py" line="3233"/>
+        <location filename="../main_plugin.py" line="3246"/>
         <source>Delete</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3316"/>
+        <location filename="../main_plugin.py" line="3329"/>
         <source>No selected features to delete.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3393"/>
+        <location filename="../main_plugin.py" line="3406"/>
         <source>Shortcuts</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3455"/>
-        <location filename="../main_plugin.py" line="3436"/>
+        <location filename="../main_plugin.py" line="3468"/>
+        <location filename="../main_plugin.py" line="3449"/>
         <source>Lay cable</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3470"/>
+        <location filename="../main_plugin.py" line="3483"/>
         <source>Choose a file with points</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3472"/>
+        <location filename="../main_plugin.py" line="3485"/>
         <source>GIS files</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3481"/>
+        <location filename="../main_plugin.py" line="3494"/>
         <source>Unable to load or invalid file!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3486"/>
+        <location filename="../main_plugin.py" line="3499"/>
         <source>The selected file does not contain points!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3560"/>
-        <location filename="../main_plugin.py" line="3556"/>
+        <location filename="../main_plugin.py" line="3573"/>
+        <location filename="../main_plugin.py" line="3569"/>
         <source>Unable to create or find the Poles layer!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3598"/>
+        <location filename="../main_plugin.py" line="3611"/>
         <source>Unable to find the target layer!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3644"/>
+        <location filename="../main_plugin.py" line="3657"/>
         <source>Imported {count} points into layer &apos;{layer}&apos;!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4091"/>
-        <location filename="../main_plugin.py" line="3991"/>
-        <location filename="../main_plugin.py" line="3821"/>
-        <location filename="../main_plugin.py" line="3816"/>
+        <location filename="../main_plugin.py" line="4104"/>
+        <location filename="../main_plugin.py" line="4004"/>
+        <location filename="../main_plugin.py" line="3834"/>
+        <location filename="../main_plugin.py" line="3829"/>
         <source>Route correction</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3817"/>
+        <location filename="../main_plugin.py" line="3830"/>
         <source>This project has no Route layer, so nothing was checked.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="3822"/>
+        <location filename="../main_plugin.py" line="3835"/>
         <source>This project has no Poles or Manholes layer, so route ends could not be checked.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4001"/>
+        <location filename="../main_plugin.py" line="4014"/>
         <source>No errors found!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4060"/>
+        <location filename="../main_plugin.py" line="4073"/>
         <source>Layer &apos;Poles&apos; not found!</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4066"/>
+        <location filename="../main_plugin.py" line="4079"/>
         <source>Route layer &apos;Route&apos; not found!</source>
         <translation type="unfinished"></translation>
     </message>
     <message numerus="yes">
-        <location filename="../main_plugin.py" line="4442"/>
+        <location filename="../main_plugin.py" line="4455"/>
         <source>Drawing link removed for %n element(s).</source>
         <extracomment>Confirmation after detaching a drawing (a CAD/PDF document attached to an element) from the selected map elements. Only the link is cleared - the drawing file is not deleted. %n is how many elements were actually unlinked; keep %n.</extracomment>
         <translation type="unfinished">
@@ -1811,17 +1805,17 @@ Language will change when QGIS restarts.</source>
         </translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4503"/>
+        <location filename="../main_plugin.py" line="4516"/>
         <source>Placing manhole</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4504"/>
+        <location filename="../main_plugin.py" line="4517"/>
         <source>Click on the map to place the manhole (ESC to exit).</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main_plugin.py" line="4507"/>
+        <location filename="../main_plugin.py" line="4520"/>
         <source>Manhole</source>
         <translation type="unfinished"></translation>
     </message>
