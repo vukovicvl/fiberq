@@ -55,8 +55,7 @@ whose reading :func:`tables_read` understands -- another file it reads by the
 GDAL driver that opens that file, which the caller names, this module asking
 GDAL nothing. Anything else and nothing is offered: each layer goes beside the
 tables of its name, as U6 did. And the file and the project must not change
-while the question is open (:func:`file_identity`), nor a free name be taken
-before it is written (:func:`free_at_write`). A path whose ".." QGIS 3.22
+while the question is open (:func:`file_identity`). A path whose ".." QGIS 3.22
 reads as another file than the system does is resolved where it is chosen
 (:func:`unambiguous`), so that what is planned and what is written are one
 file.
@@ -911,31 +910,6 @@ def plan_tables(layers, gpkg_path, used=None, replace=False, contents=None):
     return TablePlan(tables, wanted, frozenset(kept), offers, bool(replace))
 
 
-def free_at_write(path, plan, index):
-    """The table ``plan`` gives layer ``index``, looked at again right before it is written.
-
-    A table the layer already lives in, or the offered one the user chose to
-    replace, is what it was planned as. A name the plan found free may have
-    been taken since -- another program, or a layer added in the meantime --
-    and the writer replaces a table whose name it is given: then the next free
-    name is taken instead, beside every name the file holds and every other
-    name of the plan, and ``plan.tables`` says so.
-
-    Raises:
-        sqlite3.Error: When the file cannot be read.
-    """
-    name = plan.tables[index]
-    if index in plan.kept or (plan.replace and index in plan.offers):
-        return name
-    names = read_contents(path).names
-    if name.casefold() not in names:
-        return name
-    taken = set(names) | set(RESERVED_TABLES)
-    taken |= {table.casefold() for other, table in enumerate(plan.tables) if other != index}
-    plan.tables[index] = free_name(plan.wanted[index], taken)
-    return plan.tables[index]
-
-
 __all__ = [
     "GPKG_CORE_TABLES",
     "NOTHING",
@@ -954,7 +928,6 @@ __all__ = [
     "existing_tables",
     "file_identity",
     "flatten_name",
-    "free_at_write",
     "free_name",
     "gpkg_target_problem",
     "is_geopackage",

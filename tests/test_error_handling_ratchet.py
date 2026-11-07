@@ -160,8 +160,8 @@ CRITICAL = {
     # write -- the allow-list of what a layer reads (another file by the
     # driver that opens it) and of the file a table may be offered from, which
     # unused tables are offered, what the file holds, whether it changed while
-    # the question was open, a free name looked at again at its write, a path
-    # read two ways, and what a failed overwrite left of the old table.
+    # the question was open, a path read two ways, and what a failed overwrite
+    # left of the old table.
     "fiberq/core/gpkg_target.py": frozenset({
         "TablePlan",
         "_ambiguous",
@@ -181,7 +181,6 @@ CRITICAL = {
         "existing_tables",
         "file_identity",
         "flatten_name",
-        "free_at_write",
         "free_name",
         "gpkg_target_problem",
         "is_geopackage",
@@ -222,13 +221,11 @@ CRITICAL = {
         # replaced table, the stored path and what the success message says;
         # the file read before the plan, and the overwrite that says what a
         # failed write left of the old table; the file and the project looked
-        # at again after the answer, a free name again at its write, the
-        # project's layers as the plan reads them and the GDAL driver of
-        # another file one reads, and auto-save's hook held while a save
-        # plans, asks and writes.
+        # at again after the answer, the project's layers as the plan reads
+        # them and the GDAL driver of another file one reads, and auto-save's
+        # hook held while a save plans, asks and writes.
         "ExportManager._auto_save_moves",
         "ExportManager._clear_styles",
-        "ExportManager._free_at_write",
         "ExportManager._plan",
         "ExportManager._remember_target",
         "ExportManager._run_writer",
@@ -869,8 +866,13 @@ def test_d_package_wide_silence_does_not_grow():
 #: say what it left out. Then one, unclaimed (Q25): the BOM dialog's
 #: _write_file, where both exports now write their target. Then one,
 #: unclaimed (Q30): utils.geometry.transform_in_place, the bundle export's
-#: check of each reprojected feature, which transformed() made before.
-HARDENED_FUNCTIONS = 218
+#: check of each reprojected feature, which transformed() made before. Then two
+#: fewer, Q18's third round: gpkg_target.free_at_write and
+#: ExportManager._free_at_write, the free name looked at again before each
+#: layer's write, gone because that read of the file's whole schema, once a
+#: layer, made Save all 2% slower than v1.5.0 (the final benchmark's save_gpkg
+#: row). No R-row moved: Q18 is unclaimed.
+HARDENED_FUNCTIONS = 216
 HARDENED_FILES = 26
 
 

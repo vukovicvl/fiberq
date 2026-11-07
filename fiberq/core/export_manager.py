@@ -35,7 +35,7 @@ from ..utils.compat import save_file_name, save_style_to_database
 from ..utils.errors import OperationErrors, check_commit, describe
 from ..utils.logger import PLUGIN_NAME, get_logger
 from .gpkg_target import (
-    NOTHING, file_identity, free_at_write, gpkg_target_problem, plan_tables, read_contents, same_file,
+    NOTHING, file_identity, gpkg_target_problem, plan_tables, read_contents, same_file,
     sqlite_fold, styled_tables, table_name_for, table_state, unambiguous, used_tables,
 )
 logger = get_logger(__name__)
@@ -149,12 +149,6 @@ _STYLES_STAY = QT_TRANSLATE_NOOP(
     'FiberQExport',
     "{table} now holds this layer, but the layer still reads its old source: the table's old styles "
     "could not be removed ({reason})")
-#: Why a layer was not saved, after the layer's name: right before writing it,
-#: FiberQ reads the file's tables again so as never to write over one that
-#: appeared meanwhile, and they could not be read. {file} is the GeoPackage's
-#: file name and {reason} the database's own words, neither translated.
-_NOT_SAVED_UNREAD = QT_TRANSLATE_NOOP(
-    'FiberQExport', "not saved: the tables of {file} could not be read ({reason})")
 #: Why a layer was not saved, when it was replacing an unused table the user
 #: chose to replace and the write failed part-way: the old table is gone with
 #: it. {table} is the old table's name and {reason} the writer's own words,
@@ -743,11 +737,15 @@ class ExportManager:
                     saved.add(index)
                     continue
 
-                # A free name is looked at again right before its write: the
-                # writer replaces a table whose name it is given.
-                name = self._free_at_write(layer, gpkg_path, plan, index, errors)
-                if name is None:
-                    continue
+                # The plan's name, from the file as it was read just before (and
+                # again after the question). Nothing of FiberQ's can take one
+                # meanwhile: auto-save's hook waits (hold_auto_save). Reading
+                # the file's tables again before every layer cost Save all a read
+                # of the file's whole schema per layer -- 2% against v1.5.0 at 24
+                # layers, and growing with layers times tables -- for another
+                # program writing the same file during the save, which it could
+                # narrow and never close (the final benchmark's save_gpkg row).
+                name = plan.tables[index]
                 old = plan.offers.get(index) if plan.replace else None
                 written = (self._write_over(layer, gpkg_path, name, old, errors) if old is not None
                            else self._write_layer(layer, gpkg_path, name, errors))
@@ -875,16 +873,6 @@ class ExportManager:
         logger.warning(f"{text} ({gpkg_path}: {changed})")
         self.iface.messageBar().pushWarning(heading, text)
         return False
-
-    def _free_at_write(self, layer, gpkg_path, plan, index, errors):
-        """``gpkg_target.free_at_write``: the table ``layer`` goes to now; None once its failure is added."""
-        try:
-            return free_at_write(gpkg_path, plan, index)
-        except sqlite3.Error as exc:
-            errors.add(layer.name(), safe_format(_tr(_NOT_SAVED_UNREAD), _NOT_SAVED_UNREAD,
-                                                 file=os.path.basename(os.path.normpath(gpkg_path)),
-                                                 reason=describe(exc)))
-            return None
 
     def _target_contents(self, gpkg_path, heading):
         """What the GeoPackage at ``gpkg_path`` holds; None, once a warning has said why, when it cannot be used.
@@ -1495,17 +1483,14 @@ def plan_gpkg_tables(layers, gpkg_path, iface, title, heading=GPKG_EXPORT):
 def export_planned_layers(layers, gpkg_path, iface, errors, plan):
     """Write auto-save's ``layers`` where ``plan`` puts them; the indexes of the layers saved.
 
-    Each as :func:`export_one_layer_to_gpkg` writes one, once the plan's name
-    for it has been looked at again (``gpkg_target.free_at_write``): a name
-    taken since the plan was made gives way to the next free one, which
-    ``plan.tables`` then says, so the report names where the layer went.
+    Each as :func:`export_one_layer_to_gpkg` writes one, under the plan's
+    name for it, as Save all does (see there why a name is not looked up
+    again before each write).
     """
     em = ExportManager(iface)
     saved = set()
     for index, layer in enumerate(layers):
-        table = em._free_at_write(layer, gpkg_path, plan, index, errors)
-        if table is None:
-            continue
+        table = plan.tables[index]
         replacing = plan.offers.get(index) if plan.replace else None
         if em._export_one_layer(layer, gpkg_path, errors, table, replacing):
             saved.add(index)
