@@ -8,7 +8,8 @@ Usage::
 The raw directory holds one directory per run, named the way the final run named
 them: ``final-v150-a1-qgis344-S``, ``final-v160-qgis344-S``,
 ``final-v150-a2-qgis344-S``, the middle columns ``final-mid-pf5-qgis344-S``,
-``final-mid-pf7-qgis344-S`` and ``final-mid-gate-qgis344-S``, and the early
+``final-mid-pf7-qgis344-S``, ``final-mid-gate-qgis344-S``,
+``final-mid-pf3-qgis344-S`` and ``final-mid-q9b-qgis344-S``, and the early
 ``baseline-v150-qgis344-S``. Each holds one ``<scenario>-<size>.json`` per row.
 
 The rules, so a reader can check a published figure rather than trust it
@@ -22,6 +23,11 @@ The rules, so a reader can check a published figure rather than trust it
   says "no measurable change", or why it cannot be compared.
 * A row is flagged when its two v1.5.0 medians are more than 15% apart, or
   either is more than 15% from the early baseline.
+* A middle column is one of two kinds. The parent of a claimed change is
+  compared with v1.6.0: that is the change on its own. v1.6.0 without a later
+  change of behaviour computes what v1.5.0 computed, so it is compared with
+  v1.5.0, by the same rule as v1.6.0 is: the speed-up at equal results, on a
+  row where v1.6.0 itself computes something else.
 
 Pure stdlib: it reads JSON and needs no QGIS.
 """
@@ -34,15 +40,23 @@ import sys
 
 #: Run directories this report understands: <kind>-<image>-<size>.
 RUN_RE = re.compile(r"^(?P<kind>final-v150-a1|final-v150-a2|final-v160|final-mid-pf5|final-mid-pf7|"
-                    r"final-mid-gate|baseline-v150)-qgis(?P<image>\d+)-(?P<size>[A-Z]+)$")
+                    r"final-mid-gate|final-mid-pf3|final-mid-q9b|baseline-v150)"
+                    r"-qgis(?P<image>\d+)-(?P<size>[A-Z]+)$")
 
-#: Which middle column applies to which row, and what it isolates.
+#: Which middle column applies to which rows, as ``kind: (label, short name, against, rows)``.
+#: ``against`` is what it is compared with: "v1.6.0" for the parent of a claimed
+#: change, "v1.5.0" for v1.6.0 without a later change of behaviour (see the rules).
 MIDDLE = {
-    "final-mid-pf5": ("PF-5's parent (`473a149`)",
+    "final-mid-pf5": ("PF-5's parent (`473a149`)", "PF-5's parent", "v1.6.0",
                       {"snap_move_element", "snap_move_point", "snap_move_route", "snap_move_pipe",
                        "snap_move_breakpoint", "snap_move_closure", "manhole_click"}),
-    "final-mid-pf7": ("PF-7's parent (`69555e8`)", {"lay_cable", "route_path"}),
-    "final-mid-gate": ("v1.6.0 without the visibility gate", {"edit_after_schematic"}),
+    "final-mid-pf7": ("PF-7's parent (`69555e8`)", "PF-7's parent", "v1.6.0", {"lay_cable", "route_path"}),
+    "final-mid-gate": ("v1.6.0 without the visibility gate", "v1.6.0 without the gate", "v1.6.0",
+                       {"edit_after_schematic"}),
+    "final-mid-pf3": ("v1.6.0 without the QA fix to route ends (`ef58e92`)", "with 1.5.0's findings", "v1.5.0",
+                      {"route_correction"}),
+    "final-mid-q9b": ("v1.6.0 with joint closures snapping to vertices only, as in 1.5.0", "snapping as 1.5.0 did",
+                      "v1.5.0", {"snap_move_closure"}),
 }
 
 #: The plan's drift threshold between runs of the same code.
@@ -177,34 +191,66 @@ def compare(scenario, runs):
     return verdict, notes
 
 
-def middle_compare(scenario, runs):
-    """``(label, middle row, verdict)`` for the middle column that isolates this row, else ``None``.
+def middle_compares(scenario, runs):
+    """``[(kind, middle row, verdict)]`` for every middle column that isolates this row.
 
-    The verdict compares v1.6.0 with the middle column alone, and only when the two
-    computed the same result: that is the claimed work on its own, with the
-    supporting change already on both sides.
+    Against v1.6.0 the verdict is v1.6.0's: the claimed work on its own, with
+    the supporting change already on both sides. Against v1.5.0 it is the middle
+    column's, by the rule :func:`compare` applies to v1.6.0: the speed-up at
+    equal results. Either way only where the two sides computed the same result.
     """
-    b = runs.get("final-v160", {}).get(scenario)
-    for kind, (label, rows) in MIDDLE.items():
+    found = []
+    for kind, (_label, _short, against, rows) in MIDDLE.items():
         mid = runs.get(kind, {}).get(scenario)
-        if scenario not in rows or mid is None:
-            continue
-        tm, tb = timing(mid), timing(b)
+        if scenario in rows and mid is not None:
+            found.append((kind, mid, _middle_verdict(scenario, runs, mid, against)))
+    return found
+
+
+def _middle_verdict(scenario, runs, mid, against):
+    tm = timing(mid)
+    if against == "v1.6.0":
+        b = runs.get("final-v160", {}).get(scenario)
+        tb = timing(b)
         if not (tm and tb):
-            return label, mid, ""
+            return ""
         if mid.get("result_digest") != b.get("result_digest"):
-            return label, mid, "not comparable"
+            return "not comparable"
         side = outside([tm], tb)
-        return label, mid, "no measurable change" if side is None else change_text(tm[0], tb[0])
-    return None
+        return "no measurable change" if side is None else change_text(tm[0], tb[0])
+    olds = [runs.get(kind, {}).get(scenario) for kind in ("final-v150-a1", "final-v150-a2")]
+    a_runs = [timing(r) for r in olds if timing(r)]
+    if not (tm and a_runs):
+        return ""
+    if any(timing(r) and r.get("result_digest") != mid.get("result_digest") for r in olds):
+        return "not comparable"
+    side = outside(a_runs, tm)
+    return "no measurable change" if side is None else change_text(sum(t[0] for t in a_runs) / len(a_runs), tm[0])
+
+
+def middle_compare(scenario, runs):
+    """``(label, middle row, verdict)`` of the first middle column that isolates this row, else ``None``."""
+    found = middle_compares(scenario, runs)
+    if not found:
+        return None
+    kind, mid, verdict = found[0]
+    return MIDDLE[kind][0], mid, verdict
 
 
 def middle_cell(scenario, runs):
-    found = middle_compare(scenario, runs)
-    if not found:
-        return ""
-    label, mid, verdict = found
-    return "%s: %s%s" % (label, cell(mid), " (v1.6.0 %s)" % verdict if verdict else "")
+    cells = []
+    for kind, mid, verdict in middle_compares(scenario, runs):
+        label, _short, against, _rows = MIDDLE[kind]
+        if not verdict:
+            note = ""
+        elif against == "v1.6.0":
+            note = " (v1.6.0 %s)" % verdict
+        elif verdict == "not comparable":
+            note = " (against v1.5.0: not comparable)"
+        else:
+            note = " (against v1.5.0, the same result: %s)" % verdict
+        cells.append("%s: %s%s" % (label, cell(mid), note))
+    return "; ".join(cells)
 
 
 def first_call(row):
@@ -274,8 +320,10 @@ def mean_v150(runs, scenario):
 def summary_table(raw_dir, image="344"):
     """One line per user action: v1.5.0 -> v1.6.0 at each size, with the change.
 
-    Where v1.5.0 computed something else (the snap-distance fix changed what two
-    tools snap to), the change is the middle column's, and the cell says so.
+    Where v1.5.0 computed something else, the change is a middle column's. One
+    that computes what v1.5.0 computed comes first, and the cell then gives its
+    time and says what v1.6.0 as shipped takes; else the parent of the claimed
+    change (the snap-distance fix changed what two tools snap to).
     """
     groups = load_runs(raw_dir)
     sizes = [s for s in SIZE_ORDER if (image, s) in groups and "final-v160" in groups[(image, s)]]
@@ -289,10 +337,18 @@ def summary_table(raw_dir, image="344"):
                 cells.append("—")
                 continue
             verdict, _notes = compare(scenario, runs)
-            if verdict == "not comparable":
-                found = middle_compare(scenario, runs)
-                verdict = "%s than PF-5's parent" % found[2] if found and found[2] else verdict
             before, after = mean_v150(runs, scenario), cell(runs["final-v160"][scenario])
+            if verdict == "not comparable":
+                equal = [(kind, mid, found) for kind, mid, found in middle_compares(scenario, runs)
+                         if MIDDLE[kind][2] == "v1.5.0" and found and found != "not comparable"]
+                if equal:
+                    kind, mid, found = equal[0]
+                    cells.append("%s → %s %s (%s); %s as shipped" % (before, cell(mid), MIDDLE[kind][1], found, after))
+                    continue
+                parent = [(kind, found) for kind, _mid, found in middle_compares(scenario, runs)
+                          if MIDDLE[kind][2] == "v1.6.0" and found and found != "not comparable"]
+                if parent:
+                    verdict = "%s than %s" % (parent[0][1], MIDDLE[parent[0][0]][1])
             cells.append("%s → %s (%s)" % (before, after, verdict))
         lines.append("| %s | %s |" % (action, " | ".join(cells)))
     return "\n".join(lines)
@@ -312,11 +368,11 @@ def report(raw_dir):
         out.append("")
         for scenario in scenario_order(runs):
             verdict, notes = compare(scenario, runs)
-            found = middle_compare(scenario, runs)
+            middles = [{"label": MIDDLE[kind][0], "against": MIDDLE[kind][2], "time": cell(mid), "verdict": found}
+                       for kind, mid, found in middle_compares(scenario, runs)]
             summary.setdefault("%s-%s" % (image, size), {})[scenario] = {
                 "verdict": verdict, "notes": notes,
-                "middle": None if not found else {"label": found[0], "time": cell(found[1]),
-                                                  "verdict": found[2]},
+                "middle": middles[0] if middles else None, "middles": middles,
                 "v150_a1": cell(runs.get("final-v150-a1", {}).get(scenario)),
                 "v150_a2": cell(runs.get("final-v150-a2", {}).get(scenario)),
                 "v160": cell(runs.get("final-v160", {}).get(scenario)),
