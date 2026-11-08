@@ -2,28 +2,31 @@
 
 Open-source QGIS plugin for fiber optic network design (FTTH / GPON / FTTx).
 
-**Latest release: v1.5.0 — 17.09.2026.** Added on GitHub as a new release.
+**Latest release: v1.6.0 — 08.11.2026.** Added on GitHub as a new release.
 
-v1.5.0 — WP3 · An open interchange format
+v1.6.0 — WP4 · Performance and reliability
 
-A fibre design is not a pile of points and lines. A slack loop belongs to a
-*particular* cable; a cable passes *through* particular manholes, in order;
-cables are grouped into named routes. An ordinary GeoPackage export drops all of
-that, because those relationships live in identifiers local to one QGIS project.
-**Export interchange bundle** carries them, keyed by an identity that survives
-the trip, and **Import interchange bundle** reads them back.
+On a large design, the **Optical Schematic View**, the list of **latent
+elements**, **route correction**, **Generate terminal slacks**, placing a slack,
+FiberQ's own snapping in the placement tools, the undo record after every
+placement and **Lay cable** now use spatial indexes and batched reads instead of
+scanning every feature. And the operations that save, export, import or migrate
+data now say when they fail, and why, instead of failing silently or reporting
+success.
 
-    A GeoPackage any GIS tool can open, or a folder of GeoJSON files per element type
-    Cable references, pass-through elements and cable groupings, keyed by fiberq_uuid
-    An element type, attribute or side-car table FiberQ cannot model survives a round trip
-    Nothing is reclassified to the nearest familiar type, and nothing is silently dropped
-    Published as a CC-BY-4.0 specification anyone can implement, with a conformance list
+    On an 88,622-feature test city, the Optical Schematic View opens in 11 s, not 16 min 39 s
+    The list of latent elements opens there in 5 s; in 1.5.0 it did not finish in 30 minutes
+    Measured against 1.5.0 on QGIS 3.44 and 4.0, with the method, the raw data and the limits
+    One message per failed operation; the details are in Log Messages > FiberQ
+    A test stops silent error handlers from growing back
 
-Guides: [moving a design between tools](docs/interchange-guide.md) ·
+Guides: [performance on large projects](docs/performance.md) ·
+[the 1.6.0 re-check, replayed in QGIS](docs/qa/1.6.0/)
+
+Earlier: [moving a design between tools](docs/interchange-guide.md) ·
 [the specification](docs/interchange-format.md) ·
-[field mapping](docs/interchange-mapping.md)
-
-Earlier: [validating a design](docs/validation-guide.md) ·
+[field mapping](docs/interchange-mapping.md) ·
+[validating a design](docs/validation-guide.md) ·
 [rule reference](docs/validation-rules.md) ·
 [demo project](docs/samples/) · [project versioning](docs/project-versioning-guide.md)
 
