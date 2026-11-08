@@ -1,0 +1,12 @@
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+This plugin does not support propagateSizeHints()
+
+QGIS 4.2.3-Belém do Pará
+{"features": 4, "closure@vertex": 160.1, "closure@span": 149.5, "pole@vertex": 145.9, "pole@span": 145.1, "odf@vertex": 159.3, "odf@span": 151.1}
+{"features": 400, "closure@vertex": 192.0, "closure@span": 179.8, "pole@vertex": 156.2, "pole@span": 155.7, "odf@vertex": 192.7, "odf@span": 182.4}
+{"features": 4000, "closure@vertex": 394.1, "closure@span": 377.9, "pole@vertex": 206.7, "pole@span": 206.0, "odf@vertex": 386.8, "odf@span": 374.0}
+{"features": 20000, "closure@vertex": 1501.4, "closure@span": 1509.2, "pole@vertex": 414.2, "pole@span": 419.2, "odf@vertex": 1516.0, "odf@span": 1514.8}
+.
+1 passed in 16.67s

@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   snap_move_route
+# size       S
+# code        1.5.0 (c208d1a607bf7499)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    13812 features, digest ae4011b9fe9cf3a5
+# result     {"events":9,"snapped":6}
+
+
+==== sorted by cumulative (top 25) ====
+         593073 function calls in 1.005 seconds
+
+   Ordered by: cumulative time
+   List reduced from 41 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    1.005    1.005 <harness>/bench_scenarios.py:334(run)
+        9    0.000    0.000    1.005    0.112 <code>/fiberq/tools/route_tool.py:184(canvasMoveEvent)
+        9    0.761    0.085    1.004    0.112 <code>/fiberq/tools/route_tool.py:75(_find_snap_point)
+   125640    0.085    0.000    0.085    0.000 {built-in method distance}
+    60264    0.020    0.000    0.033    0.000 /usr/lib/python3/dist-packages/qgis/core/additions/qgsgeometry.py:19(_geometryNonZero)
+    60264    0.029    0.000    0.029    0.000 {built-in method geometry}
+    16344    0.026    0.000    0.026    0.000 {built-in method asPolyline}
+   120528    0.023    0.000    0.023    0.000 {built-in method isEmpty}
+    43920    0.022    0.000    0.022    0.000 {built-in method asPoint}
+    65376    0.011    0.000    0.011    0.000 {built-in method x}
+    65376    0.010    0.000    0.010    0.000 {built-in method y}
+      144    0.007    0.000    0.007    0.000 {built-in method getFeatures}
+    16345    0.003    0.000    0.003    0.000 {built-in method builtins.len}
+    16344    0.003    0.000    0.003    0.000 {built-in method isMultipart}
+       18    0.002    0.000    0.002    0.000 {built-in method mapLayers}
+      432    0.000    0.000    0.001    0.000 {built-in method geometryType}
+       18    0.001    0.000    0.001    0.000 {instance}
+      432    0.000    0.000    0.000    0.000 /usr/lib/python3.13/enum.py:695(__call__)
+        9    0.000    0.000    0.000    0.000 <code>/fiberq/tools/route_tool.py:50(_get_snap_layer_names)
+      432    0.000    0.000    0.000    0.000 /usr/lib/python3.13/enum.py:1156(__new__)
+      198    0.000    0.000    0.000    0.000 {built-in method name}
+        9    0.000    0.000    0.000    0.000 {built-in method reset}
+        9    0.000    0.000    0.000    0.000 <code>/fiberq/tools/base.py:47(get_joint_closure_def)
+        9    0.000    0.000    0.000    0.000 {built-in method setToGeometry}
+      432    0.000    0.000    0.000    0.000 {built-in method builtins.isinstance}
+
+
+
+==== sorted by tottime (top 25) ====
+         593073 function calls in 1.005 seconds
+
+   Ordered by: internal time
+   List reduced from 41 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        9    0.761    0.085    1.004    0.112 <code>/fiberq/tools/route_tool.py:75(_find_snap_point)
+   125640    0.085    0.000    0.085    0.000 {built-in method distance}
+    60264    0.029    0.000    0.029    0.000 {built-in method geometry}
+    16344    0.026    0.000    0.026    0.000 {built-in method asPolyline}
+   120528    0.023    0.000    0.023    0.000 {built-in method isEmpty}
+    43920    0.022    0.000    0.022    0.000 {built-in method asPoint}
+    60264    0.020    0.000    0.033    0.000 /usr/lib/python3/dist-packages/qgis/core/additions/qgsgeometry.py:19(_geometryNonZero)
+    65376    0.011    0.000    0.011    0.000 {built-in method x}
+    65376    0.010    0.000    0.010    0.000 {built-in method y}
+      144    0.007    0.000    0.007    0.000 {built-in method getFeatures}
+    16345    0.003    0.000    0.003    0.000 {built-in method builtins.len}
+    16344    0.003    0.000    0.003    0.000 {built-in method isMultipart}
+       18    0.002    0.000    0.002    0.000 {built-in method mapLayers}
+       18    0.001    0.000    0.001    0.000 {instance}
+      432    0.000    0.000    0.001    0.000 {built-in method geometryType}
+        9    0.000    0.000    1.005    0.112 <code>/fiberq/tools/route_tool.py:184(canvasMoveEvent)
+      432    0.000    0.000    0.000    0.000 /usr/lib/python3.13/enum.py:695(__call__)
+      432    0.000    0.000    0.000    0.000 /usr/lib/python3.13/enum.py:1156(__new__)
+      198    0.000    0.000    0.000    0.000 {built-in method name}
+        9    0.000    0.000    0.000    0.000 <code>/fiberq/tools/route_tool.py:50(_get_snap_layer_names)
+        9    0.000    0.000    0.000    0.000 {built-in method reset}
+        9    0.000    0.000    0.000    0.000 {built-in method setToGeometry}
+      432    0.000    0.000    0.000    0.000 {built-in method builtins.isinstance}
+        9    0.000    0.000    0.000    0.000 {fromPolylineXY}
+        9    0.000    0.000    0.000    0.000 <code>/fiberq/tools/base.py:47(get_joint_closure_def)
+
+

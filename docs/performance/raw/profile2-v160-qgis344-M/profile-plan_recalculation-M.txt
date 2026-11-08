@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   plan_recalculation
+# size       M
+# code        1.6.0 (d01d1ea87e3eff23)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    34078 features, digest ff084aa367b5b010
+# result     {"changes":56,"failed_layers":[],"layers_seen":["Aerial cables","PE pipes","Route","Transition pipes","Underground cables"]}
+
+
+==== sorted by cumulative (top 25) ====
+         405663 function calls in 0.461 seconds
+
+   Ordered by: cumulative time
+   List reduced from 56 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.465    0.465 <harness>/bench_scenarios.py:591(run)
+        1    0.000    0.000    0.465    0.465 <code>/fiberq/core/length_manager.py:302(plan_recalculation)
+        5    0.167    0.033    0.464    0.093 <code>/fiberq/core/length_manager.py:328(_plan_layer)
+    14133    0.031    0.000    0.167    0.000 <code>/fiberq/core/length_manager.py:204(length_values)
+    14133    0.009    0.000    0.086    0.000 <code>/fiberq/utils/measure.py:141(length)
+    28701    0.032    0.000    0.084    0.000 <code>/fiberq/core/length_manager.py:140(_as_float)
+    14133    0.075    0.000    0.075    0.000 {built-in method measureLength}
+    28701    0.053    0.000    0.053    0.000 {built-in method attribute}
+    28701    0.014    0.000    0.029    0.000 /usr/lib/python3/dist-packages/qgis/PyQt/QtCore.py:46(__eq__)
+    28702    0.015    0.000    0.023    0.000 <frozen importlib._bootstrap>:1390(_handle_fromlist)
+    19181    0.013    0.000    0.020    0.000 <code>/fiberq/core/length_manager.py:132(_disagrees)
+     5048    0.002    0.000    0.014    0.000 <code>/fiberq/core/length_manager.py:160(_attribute)
+    57427    0.012    0.000    0.012    0.000 {built-in method builtins.isinstance}
+    14133    0.008    0.000    0.008    0.000 {built-in method geometry}
+    28701    0.007    0.000    0.007    0.000 {built-in method isNull}
+    28266    0.005    0.000    0.005    0.000 {built-in method isEmpty}
+    42834    0.005    0.000    0.005    0.000 {built-in method builtins.abs}
+    28702    0.005    0.000    0.005    0.000 {built-in method builtins.hasattr}
+     4472    0.004    0.000    0.004    0.000 {built-in method builtins.round}
+    19181    0.003    0.000    0.003    0.000 {built-in method builtins.max}
+        5    0.000    0.000    0.000    0.000 {built-in method getFeatures}
+        5    0.000    0.000    0.000    0.000 <code>/fiberq/core/validation_manager.py:288(layers_for)
+        5    0.000    0.000    0.000    0.000 <code>/fiberq/core/validation_manager.py:270(layers_by_canonical)
+        1    0.000    0.000    0.000    0.000 {built-in method mapLayers}
+       10    0.000    0.000    0.000    0.000 <code>/fiberq/utils/measure.py:64(distance_area)
+
+
+
+==== sorted by tottime (top 25) ====
+         405663 function calls in 0.461 seconds
+
+   Ordered by: internal time
+   List reduced from 56 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        5    0.167    0.033    0.464    0.093 <code>/fiberq/core/length_manager.py:328(_plan_layer)
+    14133    0.075    0.000    0.075    0.000 {built-in method measureLength}
+    28701    0.053    0.000    0.053    0.000 {built-in method attribute}
+    28701    0.032    0.000    0.084    0.000 <code>/fiberq/core/length_manager.py:140(_as_float)
+    14133    0.031    0.000    0.167    0.000 <code>/fiberq/core/length_manager.py:204(length_values)
+    28702    0.015    0.000    0.023    0.000 <frozen importlib._bootstrap>:1390(_handle_fromlist)
+    28701    0.014    0.000    0.029    0.000 /usr/lib/python3/dist-packages/qgis/PyQt/QtCore.py:46(__eq__)
+    19181    0.013    0.000    0.020    0.000 <code>/fiberq/core/length_manager.py:132(_disagrees)
+    57427    0.012    0.000    0.012    0.000 {built-in method builtins.isinstance}
+    14133    0.009    0.000    0.086    0.000 <code>/fiberq/utils/measure.py:141(length)
+    14133    0.008    0.000    0.008    0.000 {built-in method geometry}
+    28701    0.007    0.000    0.007    0.000 {built-in method isNull}
+    28266    0.005    0.000    0.005    0.000 {built-in method isEmpty}
+    42834    0.005    0.000    0.005    0.000 {built-in method builtins.abs}
+    28702    0.005    0.000    0.005    0.000 {built-in method builtins.hasattr}
+     4472    0.004    0.000    0.004    0.000 {built-in method builtins.round}
+    19181    0.003    0.000    0.003    0.000 {built-in method builtins.max}
+     5048    0.002    0.000    0.014    0.000 <code>/fiberq/core/length_manager.py:160(_attribute)
+        5    0.000    0.000    0.000    0.000 {built-in method getFeatures}
+        1    0.000    0.000    0.000    0.000 {built-in method mapLayers}
+       85    0.000    0.000    0.000    0.000 {built-in method name}
+        1    0.000    0.000    0.465    0.465 <code>/fiberq/core/length_manager.py:302(plan_recalculation)
+       10    0.000    0.000    0.000    0.000 {built-in method ellipsoid}
+        5    0.000    0.000    0.000    0.000 <code>/fiberq/core/validation_manager.py:270(layers_by_canonical)
+        1    0.000    0.000    0.000    0.000 {instance}
+
+

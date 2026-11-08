@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   snap_move_closure
+# size       M
+# code        1.6.0 (d01d1ea87e3eff23)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    34078 features, digest ff084aa367b5b010
+# result     {"events":9,"snapped":6}
+
+
+==== sorted by cumulative (top 25) ====
+         4698 function calls in 0.013 seconds
+
+   Ordered by: cumulative time
+   List reduced from 96 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.013    0.013 <harness>/bench_scenarios.py:334(run)
+        9    0.000    0.000    0.013    0.001 <code>/fiberq/tools/extension_tool.py:99(canvasMoveEvent)
+        9    0.000    0.000    0.013    0.001 <code>/fiberq/tools/base.py:192(snap)
+        9    0.000    0.000    0.012    0.001 <code>/fiberq/tools/base.py:330(_fallback)
+       45    0.000    0.000    0.010    0.000 <code>/fiberq/utils/spatial.py:270(features_within)
+       45    0.005    0.000    0.010    0.000 <code>/fiberq/utils/spatial.py:205(features_near)
+       45    0.003    0.000    0.003    0.000 {built-in method getFeatures}
+       54    0.000    0.000    0.001    0.000 <code>/fiberq/tools/base.py:281(_candidate_layers)
+      225    0.000    0.000    0.001    0.000 <code>/fiberq/tools/base.py:300(<genexpr>)
+       45    0.000    0.000    0.000    0.000 <code>/fiberq/utils/spatial.py:94(_box_answers_exactly)
+      261    0.000    0.000    0.000    0.000 {built-in method geometryType}
+       12    0.000    0.000    0.000    0.000 <code>/fiberq/utils/geometry.py:379(held_by_its_box)
+       45    0.000    0.000    0.000    0.000 <code>/fiberq/utils/spatial.py:61(indexable_box)
+        9    0.000    0.000    0.000    0.000 <code>/fiberq/tools/base.py:228(show)
+        6    0.000    0.000    0.000    0.000 {built-in method setMatch}
+       63    0.000    0.000    0.000    0.000 {built-in method builtins.all}
+      303    0.000    0.000    0.000    0.000 /usr/lib/python3.13/enum.py:695(__call__)
+       45    0.000    0.000    0.000    0.000 <code>/fiberq/utils/spatial.py:67(box_around)
+        9    0.000    0.000    0.000    0.000 {instance}
+       45    0.000    0.000    0.000    0.000 <code>/fiberq/utils/spatial.py:115(_stamp_now)
+      225    0.000    0.000    0.000    0.000 <code>/fiberq/utils/spatial.py:63(<genexpr>)
+       45    0.000    0.000    0.000    0.000 <code>/fiberq/utils/spatial.py:256(_request)
+        9    0.000    0.000    0.000    0.000 <code>/fiberq/utils/geopackage.py:150(file_stamp)
+        9    0.000    0.000    0.000    0.000 <code>/fiberq/utils/geopackage.py:59(_stamp)
+        6    0.000    0.000    0.000    0.000 <code>/fiberq/utils/geometry.py:339(_xy_of)
+
+
+
+==== sorted by tottime (top 25) ====
+         4698 function calls in 0.013 seconds
+
+   Ordered by: internal time
+   List reduced from 96 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       45    0.005    0.000    0.010    0.000 <code>/fiberq/utils/spatial.py:205(features_near)
+       45    0.003    0.000    0.003    0.000 {built-in method getFeatures}
+        9    0.000    0.000    0.012    0.001 <code>/fiberq/tools/base.py:330(_fallback)
+        6    0.000    0.000    0.000    0.000 {built-in method setMatch}
+      225    0.000    0.000    0.001    0.000 <code>/fiberq/tools/base.py:300(<genexpr>)
+      261    0.000    0.000    0.000    0.000 {built-in method geometryType}
+       45    0.000    0.000    0.010    0.000 <code>/fiberq/utils/spatial.py:270(features_within)
+        9    0.000    0.000    0.000    0.000 {instance}
+       45    0.000    0.000    0.000    0.000 <code>/fiberq/utils/spatial.py:67(box_around)
+       54    0.000    0.000    0.001    0.000 <code>/fiberq/tools/base.py:281(_candidate_layers)
+      303    0.000    0.000    0.000    0.000 /usr/lib/python3.13/enum.py:695(__call__)
+       45    0.000    0.000    0.000    0.000 <code>/fiberq/utils/spatial.py:256(_request)
+       45    0.000    0.000    0.000    0.000 <code>/fiberq/utils/spatial.py:94(_box_answers_exactly)
+       18    0.000    0.000    0.000    0.000 {built-in method posix.stat}
+      225    0.000    0.000    0.000    0.000 <code>/fiberq/utils/spatial.py:63(<genexpr>)
+        9    0.000    0.000    0.013    0.001 <code>/fiberq/tools/base.py:192(snap)
+        9    0.000    0.000    0.000    0.000 {built-in method mapLayers}
+       45    0.000    0.000    0.000    0.000 <code>/fiberq/utils/spatial.py:61(indexable_box)
+      303    0.000    0.000    0.000    0.000 /usr/lib/python3.13/enum.py:1156(__new__)
+      216    0.000    0.000    0.000    0.000 {built-in method name}
+      261    0.000    0.000    0.000    0.000 {built-in method isValid}
+       12    0.000    0.000    0.000    0.000 <code>/fiberq/utils/geometry.py:379(held_by_its_box)
+       90    0.000    0.000    0.000    0.000 {built-in method providerType}
+       63    0.000    0.000    0.000    0.000 {built-in method builtins.all}
+       72    0.000    0.000    0.000    0.000 {built-in method isEditable}
+
+

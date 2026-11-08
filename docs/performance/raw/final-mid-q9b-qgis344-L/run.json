@@ -1,0 +1,55 @@
+{
+ "code_sha256": [
+  "093d59df69544931043f20384e87b45018f438f4be3cd84f959d1bb3bb5ede3f"
+ ],
+ "controls": [],
+ "finished_utc": "2026-11-07T22:03:20Z",
+ "host": {
+  "cpu_count": 8,
+  "cpu_governor": "performance",
+  "cpu_model": "Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz",
+  "cpuset_effective": "2-6",
+  "image": "qgis/qgis:3.44-trixie",
+  "image_digest": "sha256:6df39d4b09c7ccceb18b80644a377e27829f408f64b33ca55e6fd7d7eaa92006",
+  "in_container": true,
+  "kernel": "7.0.0-38-generic",
+  "machine": "x86_64",
+  "mem_total": "31438232 kB",
+  "python": "3.13.5"
+ },
+ "k": 50,
+ "label": "mid-v160-closure-vertex-only",
+ "profile_run": false,
+ "results": [
+  {
+   "code_sha256": "093d59df69544931043f20384e87b45018f438f4be3cd84f959d1bb3bb5ede3f",
+   "cold_s": 0.025213,
+   "control": false,
+   "detail": null,
+   "errors": 0,
+   "file": "snap_move_closure-L.json",
+   "mad_s": 2.7e-05,
+   "median_s": 0.010028,
+   "n": 7,
+   "pf": "PF-5",
+   "result_digest": "3529433ce2b31fd2e2887c8ef5741831dfd3c596859886ee9d4aa65307586bab",
+   "scenario": "snap_move_closure",
+   "size": "L",
+   "status": "ok",
+   "swallowed_debug": 0,
+   "worker": "wrote",
+   "worker_s": 2.195
+  }
+ ],
+ "run_id": "final-mid-q9b-qgis344-L",
+ "scenarios": [
+  "snap_move_closure"
+ ],
+ "schema": "fiberq-bench/1",
+ "sizes": [
+  "L"
+ ],
+ "targets_41": [
+  "snap_move_closure"
+ ]
+}

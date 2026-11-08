@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   branch_offset
+# size       M
+# code        1.6.0 (d01d1ea87e3eff23)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    34078 features, digest ff084aa367b5b010
+# result     {"groups":3597,"updated":3597}
+
+
+==== sorted by cumulative (top 25) ====
+         75615 function calls in 0.187 seconds
+
+   Ordered by: cumulative time
+   List reduced from 69 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.187    0.187 <harness>/bench_scenarios.py:672(run)
+        1    0.000    0.000    0.151    0.151 <code>/fiberq/main_plugin.py:3367(_compute_branch_indices_for_layer)
+        1    0.001    0.001    0.151    0.151 <code>/fiberq/core/cable_manager.py:372(compute_branch_indices_for_layer)
+        1    0.060    0.060    0.150    0.150 <code>/fiberq/core/cable_manager.py:399(_write_branch_indices)
+        1    0.000    0.000    0.051    0.051 <code>/fiberq/utils/errors.py:290(check_commit)
+        1    0.051    0.051    0.051    0.051 {built-in method commitChanges}
+        2    0.000    0.000    0.036    0.018 <code>/fiberq/core/cable_manager.py:350(ensure_branch_index_field)
+        1    0.000    0.000    0.036    0.036 <code>/fiberq/main_plugin.py:3359(_ensure_branch_index_field)
+        1    0.000    0.000    0.036    0.036 <code>/fiberq/utils/errors.py:358(add_columns)
+        1    0.036    0.036    0.036    0.036 {built-in method addAttributes}
+     7194    0.008    0.000    0.013    0.000 <code>/fiberq/core/cable_manager.py:406(round_key)
+     3597    0.006    0.000    0.006    0.000 {built-in method asPolyline}
+        1    0.006    0.006    0.006    0.006 {built-in method getFeatures}
+     3597    0.006    0.000    0.006    0.000 {built-in method changeAttributeValue}
+    14388    0.003    0.000    0.003    0.000 {built-in method builtins.round}
+     3597    0.002    0.000    0.002    0.000 {built-in method geometry}
+     7194    0.001    0.000    0.001    0.000 {built-in method x}
+     3597    0.001    0.000    0.001    0.000 {method 'setdefault' of 'dict' objects}
+     7196    0.001    0.000    0.001    0.000 {built-in method builtins.len}
+     7194    0.001    0.000    0.001    0.000 {built-in method y}
+     3597    0.001    0.000    0.001    0.000 {built-in method isEmpty}
+     3597    0.001    0.000    0.001    0.000 {built-in method id}
+     3597    0.001    0.000    0.001    0.000 {built-in method isMultipart}
+     3597    0.001    0.000    0.001    0.000 {built-in method builtins.sorted}
+     3597    0.001    0.000    0.001    0.000 {method 'append' of 'list' objects}
+
+
+
+==== sorted by tottime (top 25) ====
+         75615 function calls in 0.187 seconds
+
+   Ordered by: internal time
+   List reduced from 69 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.060    0.060    0.150    0.150 <code>/fiberq/core/cable_manager.py:399(_write_branch_indices)
+        1    0.051    0.051    0.051    0.051 {built-in method commitChanges}
+        1    0.036    0.036    0.036    0.036 {built-in method addAttributes}
+     7194    0.008    0.000    0.013    0.000 <code>/fiberq/core/cable_manager.py:406(round_key)
+     3597    0.006    0.000    0.006    0.000 {built-in method asPolyline}
+        1    0.006    0.006    0.006    0.006 {built-in method getFeatures}
+     3597    0.006    0.000    0.006    0.000 {built-in method changeAttributeValue}
+    14388    0.003    0.000    0.003    0.000 {built-in method builtins.round}
+     3597    0.002    0.000    0.002    0.000 {built-in method geometry}
+     7194    0.001    0.000    0.001    0.000 {built-in method x}
+     3597    0.001    0.000    0.001    0.000 {method 'setdefault' of 'dict' objects}
+     7196    0.001    0.000    0.001    0.000 {built-in method builtins.len}
+     7194    0.001    0.000    0.001    0.000 {built-in method y}
+     3597    0.001    0.000    0.001    0.000 {built-in method isEmpty}
+     3597    0.001    0.000    0.001    0.000 {built-in method id}
+        1    0.001    0.001    0.151    0.151 <code>/fiberq/core/cable_manager.py:372(compute_branch_indices_for_layer)
+     3597    0.001    0.000    0.001    0.000 {built-in method isMultipart}
+     3597    0.001    0.000    0.001    0.000 {built-in method builtins.sorted}
+     3597    0.001    0.000    0.001    0.000 {method 'append' of 'list' objects}
+        1    0.000    0.000    0.000    0.000 {built-in method updateFields}
+        1    0.000    0.000    0.000    0.000 {built-in method startEditing}
+        2    0.000    0.000    0.036    0.018 <code>/fiberq/core/cable_manager.py:350(ensure_branch_index_field)
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+        1    0.000    0.000    0.036    0.036 <code>/fiberq/utils/errors.py:358(add_columns)
+        1    0.000    0.000    0.000    0.000 {built-in method dataProvider}
+
+

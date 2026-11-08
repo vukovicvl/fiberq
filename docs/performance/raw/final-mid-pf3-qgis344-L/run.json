@@ -1,0 +1,55 @@
+{
+ "code_sha256": [
+  "4f4a9e8dce7e9ee039427c6380c50f64699ddeb3496c2210d44bb66abd30cdea"
+ ],
+ "controls": [],
+ "finished_utc": "2026-11-07T22:03:17Z",
+ "host": {
+  "cpu_count": 8,
+  "cpu_governor": "performance",
+  "cpu_model": "Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz",
+  "cpuset_effective": "2-6",
+  "image": "qgis/qgis:3.44-trixie",
+  "image_digest": "sha256:6df39d4b09c7ccceb18b80644a377e27829f408f64b33ca55e6fd7d7eaa92006",
+  "in_container": true,
+  "kernel": "7.0.0-38-generic",
+  "machine": "x86_64",
+  "mem_total": "31438232 kB",
+  "python": "3.13.5"
+ },
+ "k": 50,
+ "label": "mid-v160-without-q21-ef58e92",
+ "profile_run": false,
+ "results": [
+  {
+   "code_sha256": "4f4a9e8dce7e9ee039427c6380c50f64699ddeb3496c2210d44bb66abd30cdea",
+   "cold_s": 1.338306,
+   "control": false,
+   "detail": null,
+   "errors": 0,
+   "file": "route_correction-L.json",
+   "mad_s": 0.012719,
+   "median_s": 1.355773,
+   "n": 7,
+   "pf": "PF-3",
+   "result_digest": "b1aef890bf5f0d34ce3c3427c6dd6bf549464a9a3261ade0df94799952cd123b",
+   "scenario": "route_correction",
+   "size": "L",
+   "status": "ok",
+   "swallowed_debug": 0,
+   "worker": "wrote",
+   "worker_s": 14.306
+  }
+ ],
+ "run_id": "final-mid-pf3-qgis344-L",
+ "scenarios": [
+  "route_correction"
+ ],
+ "schema": "fiberq-bench/1",
+ "sizes": [
+  "L"
+ ],
+ "targets_41": [
+  "route_correction"
+ ]
+}

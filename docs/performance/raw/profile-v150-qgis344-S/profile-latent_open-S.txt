@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   latent_open
+# size       S
+# code        1.5.0 (c208d1a607bf7499)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    13812 features, digest ae4011b9fe9cf3a5
+# result     {"editable":1297,"rows":2041}
+
+
+==== sorted by cumulative (top 25) ====
+         15259222 function calls in 65.306 seconds
+
+   Ordered by: cumulative time
+   List reduced from 80 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000   65.346   65.346 <harness>/bench_scenarios.py:247(run)
+        1    0.000    0.000   65.342   65.342 <code>/fiberq/dialogs/latent_dialog.py:31(__init__)
+        1   12.942   12.942   65.341   65.341 <code>/fiberq/dialogs/latent_dialog.py:54(_load_cables)
+     2041    0.002    0.000   51.388    0.025 <code>/fiberq/main_plugin.py:2654(_find_candidate_elements_for_cable)
+     2041    0.009    0.000   51.386    0.025 <code>/fiberq/core/relations_manager.py:337(find_candidate_elements_for_cable)
+     2041   38.231    0.019   51.377    0.025 <code>/fiberq/core/data_manager.py:524(find_candidate_elements_for_cable)
+  4531020    7.791    0.000    7.791    0.000 {built-in method distance}
+  4533061    2.351    0.000    2.351    0.000 {built-in method geometry}
+    28576    1.494    0.000    1.494    0.000 {built-in method getFeatures}
+  4533061    0.953    0.000    0.953    0.000 {built-in method isEmpty}
+     2042    0.326    0.000    0.326    0.000 {built-in method mapLayers}
+  1257901    0.317    0.000    0.317    0.000 {built-in method id}
+        1    0.000    0.000    0.250    0.250 <code>/fiberq/main_plugin.py:2592(list_all_cables)
+        1    0.000    0.000    0.250    0.250 <code>/fiberq/core/cable_manager.py:525(list_all_cables)
+        1    0.207    0.207    0.250    0.250 <code>/fiberq/core/data_manager.py:392(list_all_cables)
+    49008    0.085    0.000    0.153    0.000 {built-in method geometryType}
+     4082    0.127    0.000    0.127    0.000 {built-in method setCellWidget}
+     4085    0.091    0.000    0.091    0.000 {instance}
+    49008    0.042    0.000    0.068    0.000 /usr/lib/python3.13/enum.py:695(__call__)
+     4083    0.065    0.000    0.065    0.000 {method 'connect' of 'PyQt5.QtCore.pyqtBoundSignal' objects}
+    26533    0.042    0.000    0.042    0.000 {built-in method indexFromName}
+    30617    0.037    0.000    0.037    0.000 {built-in method fields}
+    39022    0.037    0.000    0.037    0.000 {built-in method name}
+     4082    0.027    0.000    0.027    0.000 {built-in method names}
+    49008    0.026    0.000    0.026    0.000 /usr/lib/python3.13/enum.py:1156(__new__)
+
+
+
+==== sorted by tottime (top 25) ====
+         15259222 function calls in 65.306 seconds
+
+   Ordered by: internal time
+   List reduced from 80 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+     2041   38.231    0.019   51.377    0.025 <code>/fiberq/core/data_manager.py:524(find_candidate_elements_for_cable)
+        1   12.942   12.942   65.341   65.341 <code>/fiberq/dialogs/latent_dialog.py:54(_load_cables)
+  4531020    7.791    0.000    7.791    0.000 {built-in method distance}
+  4533061    2.351    0.000    2.351    0.000 {built-in method geometry}
+    28576    1.494    0.000    1.494    0.000 {built-in method getFeatures}
+  4533061    0.953    0.000    0.953    0.000 {built-in method isEmpty}
+     2042    0.326    0.000    0.326    0.000 {built-in method mapLayers}
+  1257901    0.317    0.000    0.317    0.000 {built-in method id}
+        1    0.207    0.207    0.250    0.250 <code>/fiberq/core/data_manager.py:392(list_all_cables)
+     4082    0.127    0.000    0.127    0.000 {built-in method setCellWidget}
+     4085    0.091    0.000    0.091    0.000 {instance}
+    49008    0.085    0.000    0.153    0.000 {built-in method geometryType}
+     4083    0.065    0.000    0.065    0.000 {method 'connect' of 'PyQt5.QtCore.pyqtBoundSignal' objects}
+    49008    0.042    0.000    0.068    0.000 /usr/lib/python3.13/enum.py:695(__call__)
+    26533    0.042    0.000    0.042    0.000 {built-in method indexFromName}
+    30617    0.037    0.000    0.037    0.000 {built-in method fields}
+    39022    0.037    0.000    0.037    0.000 {built-in method name}
+     4082    0.027    0.000    0.027    0.000 {built-in method names}
+    49008    0.026    0.000    0.026    0.000 /usr/lib/python3.13/enum.py:1156(__new__)
+     6361    0.019    0.000    0.019    0.000 {built-in method lineLocatePoint}
+     8164    0.016    0.000    0.016    0.000 {built-in method setItem}
+     2041    0.010    0.000    0.010    0.000 {built-in method setEnabled}
+     2041    0.009    0.000   51.386    0.025 <code>/fiberq/core/relations_manager.py:337(find_candidate_elements_for_cable)
+     2041    0.009    0.000    0.021    0.000 <code>/fiberq/dialogs/latent_dialog.py:117(_latent_counts_for_cable)
+    25441    0.007    0.000    0.007    0.000 {method 'get' of 'dict' objects}
+
+

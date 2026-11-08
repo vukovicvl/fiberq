@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   latent_open
+# size       S
+# code        1.6.0 (d01d1ea87e3eff23)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    13812 features, digest ae4011b9fe9cf3a5
+# result     {"editable":1297,"rows":2041}
+
+
+==== sorted by cumulative (top 25) ====
+         331478 function calls in 0.913 seconds
+
+   Ordered by: cumulative time
+   List reduced from 109 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.952    0.952 <harness>/bench_scenarios.py:247(run)
+        1    0.002    0.002    0.949    0.949 <code>/fiberq/dialogs/latent_dialog.py:37(__init__)
+        1    0.110    0.110    0.945    0.945 <code>/fiberq/dialogs/latent_dialog.py:63(_load_cables)
+        1    0.000    0.000    0.263    0.263 <code>/fiberq/main_plugin.py:2616(list_all_cables)
+        1    0.000    0.000    0.263    0.263 <code>/fiberq/core/cable_manager.py:591(list_all_cables)
+        1    0.219    0.219    0.263    0.263 <code>/fiberq/core/data_manager.py:481(list_all_cables)
+     2041    0.002    0.000    0.238    0.000 <code>/fiberq/main_plugin.py:2673(_find_candidate_elements_for_cable)
+     2041    0.004    0.000    0.236    0.000 <code>/fiberq/core/relations_manager.py:335(find_candidate_elements_for_cable)
+     2041    0.061    0.000    0.233    0.000 <code>/fiberq/core/data_manager.py:613(find_candidate_elements_for_cable)
+     2041    0.026    0.000    0.114    0.000 <code>/fiberq/core/data_manager.py:92(near)
+     4082    0.088    0.000    0.088    0.000 {built-in method setCellWidget}
+        1    0.024    0.024    0.066    0.066 <code>/fiberq/core/data_manager.py:83(__init__)
+     4083    0.053    0.000    0.053    0.000 {method 'connect' of 'PyQt5.QtCore.pyqtBoundSignal' objects}
+        1    0.049    0.049    0.052    0.052 <code>/fiberq/utils/batch.py:15(features_by_id)
+     6302    0.011    0.000    0.042    0.000 <code>/fiberq/utils/spatial.py:61(indexable_box)
+     2041    0.005    0.000    0.038    0.000 <code>/fiberq/utils/spatial.py:420(candidates)
+     2220    0.003    0.000    0.038    0.000 <code>/fiberq/utils/spatial.py:411(add)
+     2046    0.037    0.000    0.037    0.000 {instance}
+     6302    0.008    0.000    0.026    0.000 {built-in method builtins.all}
+     4082    0.022    0.000    0.022    0.000 {built-in method names}
+     7032    0.021    0.000    0.021    0.000 {built-in method distance}
+     2220    0.021    0.000    0.021    0.000 {built-in method addFeature}
+     2041    0.019    0.000    0.019    0.000 {built-in method intersects}
+    31510    0.012    0.000    0.018    0.000 <code>/fiberq/utils/spatial.py:63(<genexpr>)
+     2041    0.005    0.000    0.014    0.000 <code>/fiberq/dialogs/latent_dialog.py:132(_latent_counts_for_cable)
+
+
+
+==== sorted by tottime (top 25) ====
+         331478 function calls in 0.913 seconds
+
+   Ordered by: internal time
+   List reduced from 109 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.219    0.219    0.263    0.263 <code>/fiberq/core/data_manager.py:481(list_all_cables)
+        1    0.110    0.110    0.945    0.945 <code>/fiberq/dialogs/latent_dialog.py:63(_load_cables)
+     4082    0.088    0.000    0.088    0.000 {built-in method setCellWidget}
+     2041    0.061    0.000    0.233    0.000 <code>/fiberq/core/data_manager.py:613(find_candidate_elements_for_cable)
+     4083    0.053    0.000    0.053    0.000 {method 'connect' of 'PyQt5.QtCore.pyqtBoundSignal' objects}
+        1    0.049    0.049    0.052    0.052 <code>/fiberq/utils/batch.py:15(features_by_id)
+     2046    0.037    0.000    0.037    0.000 {instance}
+     2041    0.026    0.000    0.114    0.000 <code>/fiberq/core/data_manager.py:92(near)
+        1    0.024    0.024    0.066    0.066 <code>/fiberq/core/data_manager.py:83(__init__)
+     4082    0.022    0.000    0.022    0.000 {built-in method names}
+     7032    0.021    0.000    0.021    0.000 {built-in method distance}
+     2220    0.021    0.000    0.021    0.000 {built-in method addFeature}
+     2041    0.019    0.000    0.019    0.000 {built-in method intersects}
+    31510    0.012    0.000    0.018    0.000 <code>/fiberq/utils/spatial.py:63(<genexpr>)
+     8164    0.012    0.000    0.012    0.000 {built-in method setItem}
+     6302    0.011    0.000    0.042    0.000 <code>/fiberq/utils/spatial.py:61(indexable_box)
+     4575    0.009    0.000    0.009    0.000 {built-in method lineLocatePoint}
+     9252    0.008    0.000    0.008    0.000 {built-in method geometry}
+     6302    0.008    0.000    0.026    0.000 {built-in method builtins.all}
+    23251    0.006    0.000    0.006    0.000 {method 'get' of 'dict' objects}
+     2041    0.005    0.000    0.014    0.000 <code>/fiberq/dialogs/latent_dialog.py:132(_latent_counts_for_cable)
+     2041    0.005    0.000    0.038    0.000 <code>/fiberq/utils/spatial.py:420(candidates)
+     2043    0.005    0.000    0.005    0.000 {built-in method mapLayer}
+     2041    0.005    0.000    0.005    0.000 {built-in method setEnabled}
+    25458    0.004    0.000    0.004    0.000 {method 'append' of 'list' objects}
+
+

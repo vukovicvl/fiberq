@@ -1,0 +1,206 @@
+{
+ "canvas": {
+  "metres_per_pixel": 0.5,
+  "size_px": [
+   998,
+   776
+  ]
+ },
+ "code": {
+  "bytes": 3073391,
+  "files": 232,
+  "module": "fiberq/__init__.py",
+  "precompiled": true,
+  "pyc_after": 0,
+  "pyc_before": 0,
+  "pycache_prefix": "<tmp>/bench_pycache",
+  "sha256": "26b73b69a90fb660ae3b108cc1d7137c93946b84c6701c82dcd573a58f411eec",
+  "version": "1.5.0"
+ },
+ "control": false,
+ "dataset": {
+  "counts": {
+   "Aerial cables": 1451,
+   "Fiber break": 13,
+   "Indoor OTB": 30,
+   "Indoor TO": 29,
+   "Joint Closure TO": 29,
+   "Joint Closures": 169,
+   "Manholes": 2632,
+   "ODF": 26,
+   "OTB": 30,
+   "Objects": 4472,
+   "Optical slack": 2840,
+   "Outdoor OTB": 577,
+   "Outdoor TO": 2633,
+   "PE pipes": 2632,
+   "Patch panel": 30,
+   "Pole OTB": 29,
+   "Pole TO": 1841,
+   "Poles": 3930,
+   "Route": 4472,
+   "Service Area": 576,
+   "TB": 30,
+   "TO": 29,
+   "Transition pipes": 1981,
+   "Underground cables": 3597
+  },
+  "digest": "ff084aa367b5b010fa2ae0c0451226c1550c1cadf6a09b6ab065edd2c2ae01a9",
+  "features": 34078,
+  "files": {
+   "gpkg": "city_M.gpkg",
+   "qgz": "city_M.qgz"
+  },
+  "generator": "make_city_project.py",
+  "gpkg_bytes": 9138176,
+  "layers": 24,
+  "legacy_names": false,
+  "n": 50,
+  "seed": 20260921,
+  "size": "M"
+ },
+ "env": {
+  "cpu_count": 8,
+  "cpu_governor": "performance",
+  "cpu_model": "Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz",
+  "cpuset_effective": "2-6",
+  "gdal": "3.10.3",
+  "image": "qgis/qgis:4.0-trixie",
+  "image_digest": "sha256:23c12670e69909e8659a5c098aa307996735a5763b9ff9c3268bdeeee1a10916",
+  "in_container": true,
+  "kernel": "7.0.0-38-generic",
+  "machine": "x86_64",
+  "mem_total": "31438232 kB",
+  "pyqt": "6.9.0",
+  "python": "3.13.5",
+  "qgis": "4.0.3-Norrk\u00f6ping",
+  "qgis_int": 40003,
+  "qt": "6.8.2"
+ },
+ "fixed_layer_ids": 24,
+ "label": "mid-pf5-parent-473a149",
+ "mutating": true,
+ "needs": [
+  "route"
+ ],
+ "patches": [
+  "CablePickerDialog.exec",
+  "CorrectionDialog.exec",
+  "QFileDialog.getExistingDirectory",
+  "QFileDialog.getOpenFileName",
+  "QFileDialog.getOpenFileNames",
+  "QFileDialog.getSaveFileName",
+  "QMessageBox.about",
+  "QMessageBox.critical",
+  "QMessageBox.exec",
+  "QMessageBox.information",
+  "QMessageBox.question",
+  "QMessageBox.warning"
+ ],
+ "pf": "PF-5",
+ "post_condition": "one manhole feature per click",
+ "result": {
+  "manholes_added": 1
+ },
+ "result_digest": "2cb6c61149f19ed308463e340fd702938a37c5fb44034e0e1a41e86715029137",
+ "sanity": {
+  "error_sample": [],
+  "errors": 0,
+  "levels": {
+   "DEBUG": 3
+  },
+  "message_bar": [
+   [
+    "pushInfo",
+    [
+     "Manholes",
+     "Manhole placed: BENCH-1"
+    ]
+   ]
+  ],
+  "qgis_log": {
+   "counts": {},
+   "hooked": true,
+   "samples": [],
+   "signal": "messageReceivedWithFormat"
+  },
+  "records": 3,
+  "swallowed_debug": 2,
+  "swallowed_sample": [
+   "fiberq.core.style_manager: Error in StyleManager._apply_manhole_labels: a member of enum 'LabelPlacement' is expected not 'LabelPredefinedPointPosition'",
+   "fiberq.core.style_manager: Error in StyleManager._apply_manhole_labels: a member of enum 'LabelPlacement' is expected not 'LabelPredefinedPointPosition'"
+  ],
+  "warning_sample": [],
+  "warnings": 0
+ },
+ "scenario": "manhole_click",
+ "schema": "fiberq-bench/1",
+ "size": "M",
+ "started_utc": "2026-11-07T18:02:58Z",
+ "state": {
+  "cold": {
+   "Aerial cables": 1451,
+   "Fiber break": 13,
+   "Indoor OTB": 30,
+   "Indoor TO": 29,
+   "Joint Closure TO": 29,
+   "Joint Closures": 169,
+   "Manholes": 2632,
+   "ODF": 26,
+   "OTB": 30,
+   "Objects": 4472,
+   "Optical slacks": 2840,
+   "Outdoor OTB": 577,
+   "Outdoor TO": 2633,
+   "PE pipes": 2632,
+   "Patch panel": 30,
+   "Pole OTB": 29,
+   "Pole TO": 1841,
+   "Poles": 3930,
+   "Route": 4472,
+   "Service Area": 576,
+   "TB": 30,
+   "TO": 29,
+   "Transition pipes": 1981,
+   "Underground cables": 3597
+  },
+  "digest": "358f18a8027c3f44eca78f240e51041ee23b0e0f8fcb75a1f78e1847b87a49c5",
+  "layers": 24
+ },
+ "status": "ok",
+ "timing": {
+  "cold_log_records": 3,
+  "cold_s": 0.117243,
+  "cold_with_sanity_probe": true,
+  "load": {
+   "after": {
+    "15m": 1.22,
+    "1m": 1.19,
+    "5m": 1.26
+   },
+   "before": {
+    "15m": 1.22,
+    "1m": 1.21,
+    "5m": 1.27
+   }
+  },
+  "load_s": 0.4211486098356545,
+  "mad_s": 0.002728,
+  "max_s": 0.124815,
+  "median_s": 0.120715,
+  "min_s": 0.117511,
+  "n": 7,
+  "policy": "N=7 (warm-up under 2 s)",
+  "prepares": 9,
+  "runs": [
+   0.117511,
+   0.117987,
+   0.124478,
+   0.120715,
+   0.121979,
+   0.124815,
+   0.118029
+  ],
+  "warmup_s": 0.119053
+ }
+}

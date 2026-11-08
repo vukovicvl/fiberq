@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   route_correction
+# size       S
+# code        1.6.0 (d01d1ea87e3eff23)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    13812 features, digest ae4011b9fe9cf3a5
+# result     {"findings":4,"messages":[]}
+
+
+==== sorted by cumulative (top 25) ====
+         334787 function calls in 0.218 seconds
+
+   Ordered by: cumulative time
+   List reduced from 101 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.003    0.003    0.221    0.221 <harness>/bench_scenarios.py:268(run)
+        1    0.016    0.016    0.218    0.218 <code>/fiberq/main_plugin.py:3796(check_consistency)
+        1    0.024    0.024    0.074    0.074 <code>/fiberq/core/route_ends.py:157(node_index)
+     3632    0.004    0.000    0.043    0.000 <code>/fiberq/core/route_ends.py:176(on_a_node)
+        1    0.003    0.003    0.036    0.036 <code>/fiberq/core/route_ends.py:203(route_index)
+     3632    0.015    0.000    0.034    0.000 <code>/fiberq/core/route_ends.py:142(near)
+     1816    0.002    0.000    0.029    0.000 <code>/fiberq/utils/spatial.py:411(add)
+     3632    0.012    0.000    0.029    0.000 <code>/fiberq/utils/geometry.py:136(line_endpoint)
+     4880    0.010    0.000    0.027    0.000 <code>/fiberq/utils/geometry.py:569(geometry_point)
+     8512    0.011    0.000    0.019    0.000 <code>/fiberq/core/route_ends.py:97(_cell)
+     4880    0.005    0.000    0.018    0.000 <code>/fiberq/core/route_ends.py:133(add)
+     1816    0.016    0.000    0.016    0.000 {built-in method addFeature}
+     2198    0.003    0.000    0.013    0.000 <code>/fiberq/utils/spatial.py:61(indexable_box)
+     2198    0.003    0.000    0.008    0.000 {built-in method builtins.all}
+     1816    0.003    0.000    0.008    0.000 <code>/fiberq/utils/geometry.py:194(line_part_count)
+    10371    0.005    0.000    0.007    0.000 /usr/lib/python3.13/enum.py:695(__call__)
+     4880    0.004    0.000    0.007    0.000 {built-in method wkbType}
+    12144    0.006    0.000    0.006    0.000 {built-in method geometry}
+      382    0.001    0.000    0.006    0.000 <code>/fiberq/utils/spatial.py:420(candidates)
+    32688    0.006    0.000    0.006    0.000 {method 'get' of 'dict' objects}
+     3632    0.006    0.000    0.006    0.000 {built-in method vertexAt}
+    10990    0.004    0.000    0.006    0.000 <code>/fiberq/utils/spatial.py:63(<genexpr>)
+     3633    0.001    0.000    0.005    0.000 {built-in method builtins.any}
+     5448    0.005    0.000    0.005    0.000 {built-in method constGet}
+    36702    0.005    0.000    0.005    0.000 {method 'extend' of 'list' objects}
+
+
+
+==== sorted by tottime (top 25) ====
+         334787 function calls in 0.218 seconds
+
+   Ordered by: internal time
+   List reduced from 101 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.024    0.024    0.074    0.074 <code>/fiberq/core/route_ends.py:157(node_index)
+     1816    0.016    0.000    0.016    0.000 {built-in method addFeature}
+        1    0.016    0.016    0.218    0.218 <code>/fiberq/main_plugin.py:3796(check_consistency)
+     3632    0.015    0.000    0.034    0.000 <code>/fiberq/core/route_ends.py:142(near)
+     3632    0.012    0.000    0.029    0.000 <code>/fiberq/utils/geometry.py:136(line_endpoint)
+     8512    0.011    0.000    0.019    0.000 <code>/fiberq/core/route_ends.py:97(_cell)
+     4880    0.010    0.000    0.027    0.000 <code>/fiberq/utils/geometry.py:569(geometry_point)
+    12144    0.006    0.000    0.006    0.000 {built-in method geometry}
+    32688    0.006    0.000    0.006    0.000 {method 'get' of 'dict' objects}
+     3632    0.006    0.000    0.006    0.000 {built-in method vertexAt}
+     5448    0.005    0.000    0.005    0.000 {built-in method constGet}
+    36702    0.005    0.000    0.005    0.000 {method 'extend' of 'list' objects}
+     4880    0.005    0.000    0.018    0.000 <code>/fiberq/core/route_ends.py:133(add)
+    10371    0.005    0.000    0.007    0.000 /usr/lib/python3.13/enum.py:695(__call__)
+     4880    0.004    0.000    0.007    0.000 {built-in method wkbType}
+     3632    0.004    0.000    0.043    0.000 <code>/fiberq/core/route_ends.py:176(on_a_node)
+    10990    0.004    0.000    0.006    0.000 <code>/fiberq/utils/spatial.py:63(<genexpr>)
+        1    0.003    0.003    0.036    0.036 <code>/fiberq/core/route_ends.py:203(route_index)
+    25816    0.003    0.000    0.003    0.000 {built-in method builtins.abs}
+     2198    0.003    0.000    0.013    0.000 <code>/fiberq/utils/spatial.py:61(indexable_box)
+    10371    0.003    0.000    0.003    0.000 /usr/lib/python3.13/enum.py:1156(__new__)
+    12144    0.003    0.000    0.003    0.000 {built-in method isEmpty}
+     2198    0.003    0.000    0.008    0.000 {built-in method builtins.all}
+     4880    0.003    0.000    0.003    0.000 {built-in method asPoint}
+     4880    0.003    0.000    0.005    0.000 {isMultiType}
+
+

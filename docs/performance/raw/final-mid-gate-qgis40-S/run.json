@@ -1,0 +1,55 @@
+{
+ "code_sha256": [
+  "e34597460b92d53231bb982e9ca32eff1029f443a33449d7e42c78eb11c8642f"
+ ],
+ "controls": [],
+ "finished_utc": "2026-11-07T15:20:55Z",
+ "host": {
+  "cpu_count": 8,
+  "cpu_governor": "performance",
+  "cpu_model": "Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz",
+  "cpuset_effective": "2-6",
+  "image": "qgis/qgis:4.0-trixie",
+  "image_digest": "sha256:23c12670e69909e8659a5c098aa307996735a5763b9ff9c3268bdeeee1a10916",
+  "in_container": true,
+  "kernel": "7.0.0-38-generic",
+  "machine": "x86_64",
+  "mem_total": "31438232 kB",
+  "python": "3.13.5"
+ },
+ "k": 50,
+ "label": "mid-v160-without-581273c",
+ "profile_run": false,
+ "results": [
+  {
+   "code_sha256": "e34597460b92d53231bb982e9ca32eff1029f443a33449d7e42c78eb11c8642f",
+   "cold_s": 1.899964,
+   "control": false,
+   "detail": null,
+   "errors": 0,
+   "file": "edit_after_schematic-S.json",
+   "mad_s": 0.009321,
+   "median_s": 1.84718,
+   "n": 7,
+   "pf": "PF-1",
+   "result_digest": "2297ce12ec7434bd51ef3c04d6343098e435e494a94a53b664f1577990250096",
+   "scenario": "edit_after_schematic",
+   "size": "S",
+   "status": "ok",
+   "swallowed_debug": 0,
+   "worker": "wrote",
+   "worker_s": 41.874
+  }
+ ],
+ "run_id": "final-mid-gate-qgis40-S",
+ "scenarios": [
+  "edit_after_schematic"
+ ],
+ "schema": "fiberq-bench/1",
+ "sizes": [
+  "S"
+ ],
+ "targets_41": [
+  "edit_after_schematic"
+ ]
+}

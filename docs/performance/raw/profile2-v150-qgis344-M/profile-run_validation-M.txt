@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   run_validation
+# size       M
+# code        1.5.0 (c208d1a607bf7499)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    34078 features, digest ff084aa367b5b010
+# result     {"issues":0,"rule_errors":0}
+
+
+==== sorted by cumulative (top 25) ====
+         2819806 function calls in 8.462 seconds
+
+   Ordered by: cumulative time
+   List reduced from 128 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.009    0.009    8.625    8.625 <harness>/bench_scenarios.py:580(run)
+        1    0.002    0.002    8.615    8.615 <code>/fiberq/core/validation_manager.py:211(run_validation)
+    19912    3.853    0.000    3.853    0.000 {built-in method getFeature}
+        1    0.322    0.322    3.669    3.669 <code>/fiberq/core/validation_rules.py:480(_check_orphan_elements)
+     5706    0.027    0.000    1.179    0.000 <code>/fiberq/core/validation_rules.py:547(_resolve_cable)
+        1    0.000    0.000    1.062    1.062 <code>/fiberq/core/validation_rules.py:412(_check_cable_dangles)
+        2    0.048    0.024    1.062    0.531 <code>/fiberq/core/validation_rules.py:349(_endpoint_scan)
+        1    0.028    0.028    0.757    0.757 <code>/fiberq/core/validation_rules.py:604(_check_fk_spatial)
+        2    0.018    0.009    0.678    0.339 <code>/fiberq/core/validation_rules.py:567(check)
+        1    0.208    0.208    0.520    0.520 <code>/fiberq/core/validation_rules.py:913(_check_length_coherence)
+        1    0.317    0.317    0.510    0.510 <code>/fiberq/core/validation_rules.py:641(_check_identity)
+        1    0.301    0.301    0.440    0.440 <code>/fiberq/core/validation_rules.py:1103(_check_geometry_validity)
+   220964    0.428    0.000    0.428    0.000 {built-in method attribute}
+        1    0.154    0.154    0.423    0.423 <code>/fiberq/core/validation_rules.py:286(_node_index)
+        1    0.218    0.218    0.419    0.419 <code>/fiberq/core/validation_rules.py:816(_check_numeric_ranges)
+        1    0.133    0.133    0.418    0.418 <code>/fiberq/core/validation_rules.py:318(_cable_endpoint_index)
+   216574    0.133    0.000    0.384    0.000 <code>/fiberq/core/validation_rules.py:137(_is_blank)
+    26941    0.244    0.000    0.317    0.000 <code>/fiberq/core/validation_rules.py:233(_first_point)
+        1    0.164    0.164    0.294    0.294 <code>/fiberq/core/validation_rules.py:749(_check_enum_conformance)
+        1    0.164    0.164    0.264    0.264 <code>/fiberq/core/validation_rules.py:717(_check_required_fields)
+    39972    0.237    0.000    0.237    0.000 {built-in method intersects}
+    22140    0.227    0.000    0.227    0.000 {built-in method addFeature}
+   216574    0.110    0.000    0.210    0.000 /usr/lib/python3/dist-packages/qgis/PyQt/QtCore.py:46(__eq__)
+    99914    0.039    0.000    0.190    0.000 <code>/fiberq/core/validation_rules.py:797(_as_number)
+     5710    0.076    0.000    0.143    0.000 <code>/fiberq/core/validation_rules.py:527(_fk_rows)
+
+
+
+==== sorted by tottime (top 25) ====
+         2819806 function calls in 8.462 seconds
+
+   Ordered by: internal time
+   List reduced from 128 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+    19912    3.853    0.000    3.853    0.000 {built-in method getFeature}
+   220964    0.428    0.000    0.428    0.000 {built-in method attribute}
+        1    0.322    0.322    3.669    3.669 <code>/fiberq/core/validation_rules.py:480(_check_orphan_elements)
+        1    0.317    0.317    0.510    0.510 <code>/fiberq/core/validation_rules.py:641(_check_identity)
+        1    0.301    0.301    0.440    0.440 <code>/fiberq/core/validation_rules.py:1103(_check_geometry_validity)
+    26941    0.244    0.000    0.317    0.000 <code>/fiberq/core/validation_rules.py:233(_first_point)
+    39972    0.237    0.000    0.237    0.000 {built-in method intersects}
+    22140    0.227    0.000    0.227    0.000 {built-in method addFeature}
+        1    0.218    0.218    0.419    0.419 <code>/fiberq/core/validation_rules.py:816(_check_numeric_ranges)
+        1    0.208    0.208    0.520    0.520 <code>/fiberq/core/validation_rules.py:913(_check_length_coherence)
+        1    0.164    0.164    0.294    0.294 <code>/fiberq/core/validation_rules.py:749(_check_enum_conformance)
+        1    0.164    0.164    0.264    0.264 <code>/fiberq/core/validation_rules.py:717(_check_required_fields)
+        1    0.154    0.154    0.423    0.423 <code>/fiberq/core/validation_rules.py:286(_node_index)
+        1    0.133    0.133    0.418    0.418 <code>/fiberq/core/validation_rules.py:318(_cable_endpoint_index)
+   216574    0.133    0.000    0.384    0.000 <code>/fiberq/core/validation_rules.py:137(_is_blank)
+   216574    0.110    0.000    0.210    0.000 /usr/lib/python3/dist-packages/qgis/PyQt/QtCore.py:46(__eq__)
+   504442    0.089    0.000    0.089    0.000 {built-in method builtins.isinstance}
+    19780    0.085    0.000    0.102    0.000 <code>/fiberq/core/validation_manager.py:197(spatial_index)
+    14133    0.078    0.000    0.078    0.000 {built-in method measureLength}
+     5710    0.076    0.000    0.143    0.000 <code>/fiberq/core/validation_rules.py:527(_fk_rows)
+    97259    0.068    0.000    0.068    0.000 {built-in method geometry}
+    22140    0.064    0.000    0.103    0.000 <code>/fiberq/core/validation_rules.py:280(_rect_around)
+        2    0.048    0.024    1.062    0.531 <code>/fiberq/core/validation_rules.py:349(_endpoint_scan)
+    59854    0.045    0.000    0.071    0.000 <frozen importlib._bootstrap>:1390(_handle_fromlist)
+   216574    0.043    0.000    0.043    0.000 {built-in method isNull}
+
+

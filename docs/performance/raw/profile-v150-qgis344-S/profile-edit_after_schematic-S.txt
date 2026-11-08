@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   edit_after_schematic
+# size       S
+# code        1.5.0 (c208d1a607bf7499)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    13812 features, digest ae4011b9fe9cf3a5
+# result     {"_rebuild_scheduled_while_hidden":true,"_scene_items":14846,"edited_fid":1000,"edited_field":"naziv"}
+
+
+==== sorted by cumulative (top 25) ====
+         39376937 function calls in 30.221 seconds
+
+   Ordered by: cumulative time
+   List reduced from 109 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.003    0.003   30.272   30.272 <harness>/bench_scenarios.py:218(run)
+        1    0.002    0.002   30.164   30.164 <code>/fiberq/dialogs/schematic_dialog.py:886(_do_rebuild_if_needed)
+        1    0.087    0.087   30.161   30.161 <code>/fiberq/dialogs/schematic_dialog.py:748(rebuild)
+        1   18.609   18.609   20.561   20.561 <code>/fiberq/dialogs/schematic_dialog.py:346(_collect_edges)
+     5345    0.116    0.000    9.244    0.002 <code>/fiberq/dialogs/schematic_dialog.py:773(place_text)
+    11290    1.781    0.000    8.515    0.001 {built-in method builtins.any}
+ 17233863    3.692    0.000    6.734    0.000 <code>/fiberq/dialogs/schematic_dialog.py:782(<genexpr>)
+ 17229707    3.042    0.000    3.042    0.000 {built-in method intersects}
+  2163913    0.597    0.000    0.597    0.000 {built-in method id}
+     5345    0.510    0.000    0.510    0.000 {built-in method addText}
+  2260695    0.372    0.000    0.372    0.000 {method 'get' of 'dict' objects}
+     3940    0.279    0.000    0.279    0.000 {built-in method getFeatures}
+        1    0.000    0.000    0.254    0.254 <code>/fiberq/main_plugin.py:2592(list_all_cables)
+        1    0.000    0.000    0.254    0.254 <code>/fiberq/core/cable_manager.py:525(list_all_cables)
+        1    0.211    0.211    0.254    0.254 <code>/fiberq/core/data_manager.py:392(list_all_cables)
+    15679    0.203    0.000    0.203    0.000 {instance}
+     3919    0.014    0.000    0.160    0.000 <code>/fiberq/utils/measure.py:107(ground_length)
+     3919    0.010    0.000    0.103    0.000 <code>/fiberq/utils/measure.py:64(distance_area)
+        1    0.056    0.056    0.097    0.097 <code>/fiberq/dialogs/schematic_dialog.py:293(_collect_nodes)
+        1    0.000    0.000    0.078    0.078 <code>/fiberq/main_plugin.py:2645(list_all_pipes)
+        1    0.000    0.000    0.078    0.078 <code>/fiberq/core/pipe_manager.py:343(list_all_pipes)
+        1    0.064    0.064    0.077    0.077 <code>/fiberq/core/data_manager.py:469(list_all_pipes)
+        1    0.020    0.020    0.050    0.050 <code>/fiberq/dialogs/schematic_dialog.py:465(_build_layout)
+        1    0.050    0.050    0.050    0.050 {built-in method items}
+     7838    0.003    0.000    0.049    0.000 <code>/fiberq/utils/measure.py:29(_project)
+
+
+
+==== sorted by tottime (top 25) ====
+         39376937 function calls in 30.221 seconds
+
+   Ordered by: internal time
+   List reduced from 109 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1   18.609   18.609   20.561   20.561 <code>/fiberq/dialogs/schematic_dialog.py:346(_collect_edges)
+ 17233863    3.692    0.000    6.734    0.000 <code>/fiberq/dialogs/schematic_dialog.py:782(<genexpr>)
+ 17229707    3.042    0.000    3.042    0.000 {built-in method intersects}
+    11290    1.781    0.000    8.515    0.001 {built-in method builtins.any}
+  2163913    0.597    0.000    0.597    0.000 {built-in method id}
+     5345    0.510    0.000    0.510    0.000 {built-in method addText}
+  2260695    0.372    0.000    0.372    0.000 {method 'get' of 'dict' objects}
+     3940    0.279    0.000    0.279    0.000 {built-in method getFeatures}
+        1    0.211    0.211    0.254    0.254 <code>/fiberq/core/data_manager.py:392(list_all_cables)
+    15679    0.203    0.000    0.203    0.000 {instance}
+     5345    0.116    0.000    9.244    0.002 <code>/fiberq/dialogs/schematic_dialog.py:773(place_text)
+        1    0.087    0.087   30.161   30.161 <code>/fiberq/dialogs/schematic_dialog.py:748(rebuild)
+        1    0.064    0.064    0.077    0.077 <code>/fiberq/core/data_manager.py:469(list_all_pipes)
+        1    0.056    0.056    0.097    0.097 <code>/fiberq/dialogs/schematic_dialog.py:293(_collect_nodes)
+        1    0.050    0.050    0.050    0.050 {built-in method items}
+        1    0.045    0.045    0.045    0.045 {built-in method clear}
+     3919    0.039    0.000    0.039    0.000 {built-in method measureLength}
+     4156    0.033    0.000    0.033    0.000 {built-in method addRect}
+        1    0.031    0.031    0.031    0.031 {built-in method startEditing}
+        1    0.024    0.024    0.024    0.024 {built-in method commitChanges}
+     3919    0.023    0.000    0.023    0.000 {built-in method ellipsoid}
+     5345    0.022    0.000    0.022    0.000 {built-in method setDefaultTextColor}
+        1    0.020    0.020    0.050    0.050 <code>/fiberq/dialogs/schematic_dialog.py:465(_build_layout)
+     3304    0.020    0.000    0.020    0.000 {built-in method addEllipse}
+    19595    0.018    0.000    0.035    0.000 <code>/fiberq/dialogs/schematic_dialog.py:391(gv)
+
+
