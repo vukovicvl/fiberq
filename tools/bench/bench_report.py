@@ -23,11 +23,13 @@ The rules, so a reader can check a published figure rather than trust it
   says "no measurable change", or why it cannot be compared.
 * A row is flagged when its two v1.5.0 medians are more than 15% apart, or
   either is more than 15% from the early baseline.
-* A middle column is one of two kinds. The parent of a claimed change is
-  compared with v1.6.0: that is the change on its own. v1.6.0 without a later
-  change of behaviour computes what v1.5.0 computed, so it is compared with
-  v1.5.0, by the same rule as v1.6.0 is: the speed-up at equal results, on a
-  row where v1.6.0 itself computes something else.
+* A middle column is compared with one side or the other. The parent of a
+  claimed change is compared with v1.6.0: that is the change plus what was
+  merged after it on the same path. So is v1.6.0 without a supporting change
+  (the visibility gate): that is the supporting change's share. v1.6.0
+  without a later change of behaviour computes what v1.5.0 computed, so it is
+  compared with v1.5.0, by the same rule as v1.6.0 is: the speed-up at equal
+  results, on a row where v1.6.0 itself computes something else.
 
 Pure stdlib: it reads JSON and needs no QGIS.
 """

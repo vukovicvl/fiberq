@@ -22,9 +22,11 @@ from bench_support import (centre_canvas, first_name, layer_by_name, point_of,
                            polyline)
 
 #: Nine mouse positions around a route vertex, in metres, used by every
-#: placement row. Three of them are inside the snap tolerance at 0.5 m/px and
-#: six are not, so one call exercises both branches. Divide a reported median by
-#: ``events`` for the per-move cost the plan's section 1.2 table quotes.
+#: placement row. Four of them are within 3.6 m of the vertex, inside every
+#: placement tool's snap tolerance at 0.5 m/px, and five are 30 to 50 m away,
+#: where a tool can still find a span or another feature in reach, so one call
+#: exercises both branches. Divide a reported median by ``events`` for the
+#: per-move cost the plan's section 1.2 table quotes.
 SNAP_OFFSETS = [(dx, dy) for dx in (-3.0, 0.0, 40.0) for dy in (-2.0, 0.0, 30.0)]
 
 #: Candidate names for the layers the scenarios need, newest canonical name
