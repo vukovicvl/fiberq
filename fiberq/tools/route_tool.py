@@ -6,20 +6,32 @@ Tool for manually drawing routes by clicking points on the map.
 
 import math
 
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
+
 from .base import (
-    Qt, QVariant, QColor, QMessageBox, QInputDialog,
+    Qt, QColor, QMessageBox, QInputDialog,
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
-    QgsPointXY, QgsField, QgsWkbTypes, QgsRubberBand,
+    QgsPointXY, QgsWkbTypes, QgsRubberBand,
     QgsMapTool,
     get_element_defs, get_joint_closure_def, get_route_type_options
 )
+from ..core.route_manager import add_route_columns
 
 # Phase 5.2: Logging
+from ..utils.errors import OperationErrors, add_and_save
 from ..utils.geometry import held_by_its_box, polylines
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
 from ..utils.spatial import features_within
+from ..utils.uuid_utils import ensure_uuid_field
 logger = get_logger(__name__)
+
+
+def _draw_route() -> str:
+    """Title on the message-bar entries the manual route tool pushes."""
+    src = QT_TRANSLATE_NOOP('FiberQTools', "Manual route")
+    return QCoreApplication.translate('FiberQTools', src)
+
 
 #: How near, in screen pixels, a click or a move must come to a node or a
 #: route to snap to it.
@@ -279,26 +291,20 @@ class ManualRouteTool(QgsMapTool):
             route_layer = QgsVectorLayer(f"LineString?crs={crs}", "Route", "memory")
             QgsProject.instance().addMapLayer(route_layer)
 
-        # Ensure required fields exist
-        route_layer.startEditing()
-        if route_layer.fields().indexFromName("naziv") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("naziv", QVariant.String)])
-        if route_layer.fields().indexFromName("duzina") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("duzina", QVariant.Double)])
-        if route_layer.fields().indexFromName("duzina_km") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("duzina_km", QVariant.Double)])
-        if route_layer.fields().indexFromName("tip_trase") == -1:
-            route_layer.dataProvider().addAttributes([QgsField("tip_trase", QVariant.String)])
-        route_layer.updateFields()
-        route_layer.commitChanges()
+        # Ensure required fields exist: typed and straight to the provider, the
+        # same four adds as Import route's (core.route_manager.add_route_columns),
+        # with a refusal said. This copy added them untyped -- a PostgreSQL Route
+        # table refused every one -- inside a startEditing()/commitChanges() pair
+        # that committed none of the columns, only whatever else the layer had
+        # unsaved, before the route was even drawn into it.
+        with OperationErrors(_draw_route(), self.iface) as column_errors:
+            add_route_columns(route_layer, column_errors)
 
         # WP1b identity invariant: ensure the fiberq_uuid column exists before
         # features are added, so set_feature_uuid() below actually stamps it.
-        try:
-            from ..utils.uuid_utils import ensure_uuid_field
-            ensure_uuid_field(route_layer)
-        except Exception as e:
-            logger.debug(f"Error ensuring fiberq_uuid on route layer: {e}")
+        # False where it cannot be added (reason logged): the route is then
+        # written without an ID.
+        ensure_uuid_field(route_layer)
 
         # Apply style
         if self.plugin:
@@ -334,7 +340,6 @@ class ManualRouteTool(QgsMapTool):
             tip_trase = TRASA_LABEL_TO_CODE.get(tip_label, TRASA_TYPE_OPTIONS[0])
 
         # Create feature
-        route_layer.startEditing()
         feat = QgsFeature(route_layer.fields())
         feat.setGeometry(line_geom)
         feat.setAttribute("naziv", f"Route {route_layer.featureCount() + 1}")
@@ -347,31 +352,38 @@ class ManualRouteTool(QgsMapTool):
             set_feature_uuid(feat)
         except Exception as e:
             logger.debug(f"failed to set uuid on route feature: {e}")
-        route_layer.addFeature(feat)
-        route_layer.commitChanges()
+        # Each answer checked (utils.errors.add_and_save): the edit session, the
+        # add and the commit all used to be unchecked, and the modal below said
+        # the route had been created over a locked file just the same.
+        placed = False
+        with OperationErrors(_draw_route(), self.iface, absorb=True) as errors:
+            placed = add_and_save(route_layer, [feat], errors)
 
-        # Record for undo (v1.2 — Feature 2)
-        try:
-            if self.plugin and hasattr(self.plugin, 'undo_manager') and self.plugin.undo_manager:
-                self.plugin.undo_manager.record_add(route_layer, feat)
-        except Exception as e:
-            logger.debug(f"Error recording undo for route: {e}")
+        if placed:
+            # Record for undo (v1.2 — Feature 2). Only after the save: an undo
+            # entry for a route that never reached the layer would undo
+            # somebody else's work.
+            try:
+                if self.plugin and hasattr(self.plugin, 'undo_manager') and self.plugin.undo_manager:
+                    self.plugin.undo_manager.record_add(route_layer, feat)
+            except Exception as e:
+                logger.debug(f"Error recording undo for route: {e}")
 
-        # Re-apply style
-        if self.plugin:
-            self.plugin.stylize_route_layer(route_layer)
+            # Re-apply style
+            if self.plugin:
+                self.plugin.stylize_route_layer(route_layer)
 
-        # Show message
-        nice_label = TRASA_TYPE_LABELS.get(tip_trase, tip_trase)
-        QMessageBox.information(
-            self.iface.mainWindow(),
-            "FiberQ",
-            f"Manual route has been created!\n"
-            f"Length: {duzina_m:.2f} m ({duzina_km:.2f} km)\n"
-            f"Type: {nice_label}"
-        )
+            # Show message
+            nice_label = TRASA_TYPE_LABELS.get(tip_trase, tip_trase)
+            QMessageBox.information(
+                self.iface.mainWindow(),
+                "FiberQ",
+                f"Manual route has been created!\n"
+                f"Length: {duzina_m:.2f} m ({duzina_km:.2f} km)\n"
+                f"Type: {nice_label}"
+            )
 
-        # Reset tool
+        # Reset tool, saved or not: the reason is on the message bar.
         self.points = []
         self.rb.reset(QgsWkbTypes.GeometryType.LineGeometry)
         self.canvas.unsetMapTool(self)

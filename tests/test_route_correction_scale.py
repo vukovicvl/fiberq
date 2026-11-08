@@ -12,24 +12,24 @@ skips there), so a timing ratio would skip on exactly the code it guards. The
 number of distances measured is deterministic and is what the index changes.
 
 On v1.5.0 the two count tests fail, and so does the golden at its closing
-distance count -- its 86 findings and their digest pass there, which shows
-they are v1.5.0's. The two boundary tests pin answers v1.5.0 gave, which the
-index must keep. The XS findings are identical on v1.5.0 and on main before
+distance count -- its 86 findings and their digest passed there, which showed
+they were v1.5.0's. The two boundary tests pin answers v1.5.0 gave, which the
+index must keep. The XS findings were identical on v1.5.0 and on main before
 this change (branches 8 and B changed nothing on that dataset: no multipart
 route, no pole without a position, English names).
+
+Q21 (v1.6.0 QA) replaced that golden. Every one of the 86 was a route end on
+another route's vertex -- 31 of them on an element as well -- which is a
+connection, not an error, so the XS city now has no findings at all. The
+distance count the index is judged by is kept. Q21 also files the points in a
+grid of 2 cm cells (core/route_ends.py) instead of the ScanOrderIndex, because
+it reads fifteen layers where there were two; the counts below hold for both.
 """
-import hashlib
 import shutil
 
 import pytest
 from qgis.core import QgsFeature, QgsGeometry, QgsPointXY, QgsProject, QgsVectorLayer
 from qgis.PyQt.QtWidgets import QMessageBox
-
-#: The XS city's findings, one message per line in the order check_consistency
-#: produced them, captured from the v1.5.0 tag. Identical on 3.22.16, 3.44.15
-#: and 4.2.3.
-XS_FINDINGS = 86
-XS_FINDINGS_SHA256 = "100439f5f74fec294e7e3aadcf9dfe75b27b479699b3944b86b4465c4e69cd3b"
 
 
 class _Bar:
@@ -65,7 +65,7 @@ def shown(monkeypatch):
     captured = []
 
     class _Dialog:
-        def __init__(self, errors, parent=None):
+        def __init__(self, errors, parent=None, **kwargs):
             captured.append([error["msg"] for error in errors])
 
         def exec(self):
@@ -197,17 +197,20 @@ def test_an_end_one_step_beyond_the_box_edge_is_not(plugin, project, shown):
     assert _kinds(shown[0]) == ["Start of route"]
 
 
-def test_the_xs_city_gets_the_findings_v150_gave(city_xs_dataset, plugin, project, shown,
-                                                 distance_calls, tmp_path):
-    """v1.5.0's findings, message for message, and the count that shows the index did the work."""
+def test_the_xs_city_has_no_false_findings(city_xs_dataset, plugin, project, shown,
+                                           distance_calls, tmp_path):
+    """No findings, and the count that shows the index did the work.
+
+    v1.5.0 reported 86 of the city's 500 route ends, every one of them on
+    another route's vertex (Q21).
+    """
     for key in ("gpkg", "qgz"):
         shutil.copy(city_xs_dataset[key], tmp_path)
     assert project.read(str(tmp_path / "city_XS.qgz"))
 
     plugin.check_consistency()
 
-    messages = shown[0]
-    assert len(messages) == XS_FINDINGS
-    assert hashlib.sha256("\n".join(messages).encode("utf-8")).hexdigest() == XS_FINDINGS_SHA256
-    # 500 route ends, 414 of them on a pole; v1.5.0 measured 96,339 distances here.
+    assert shown == [], shown
+    # 500 route ends, 414 of them on a pole or manhole; v1.5.0 measured 96,339
+    # distances here.
     assert distance_calls[0] <= 500, distance_calls[0]

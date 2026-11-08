@@ -6,7 +6,7 @@ This module contains dialogs for managing optical relations
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtWidgets import (
@@ -64,12 +64,18 @@ class NewRelationDialog(QDialog):
         v.addWidget(btns)
 
     def values(self):
-        """Return the relation data as a dict."""
+        """Return the relation data as a dict.
+
+        ``created`` is UTC, ``2026-10-27T21:41:05.123456Z``: the shape relations
+        have always stored, now at a whole second too, where ``isoformat()``
+        dropped the fraction. Not from ``utcnow``, which Python 3.12 deprecates;
+        QGIS shows that warning in its Python log.
+        """
         return {
             "id": str(uuid.uuid4()),
             "name": self.edit_name.text().strip(),
             "category": self.cmb_cat.currentText(),
-            "created": datetime.utcnow().isoformat() + "Z",
+            "created": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
             "cables": []  # list of {"layer_id":, "fid":}
         }
 

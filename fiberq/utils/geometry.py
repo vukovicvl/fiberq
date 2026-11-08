@@ -9,8 +9,8 @@ import math
 import sys
 from array import array
 from typing import Optional, Tuple, List, Dict
-from qgis.core import (QgsCurvePolygon, QgsGeometry, QgsGeometryCollection, QgsGeometryUtils, QgsPointXY,
-                       QgsVectorLayer, QgsWkbTypes)
+from qgis.core import (QgsCurvePolygon, QgsGeometry, QgsGeometryCollection, QgsGeometryUtils, QgsLineString,
+                       QgsPointXY, QgsVectorLayer, QgsWkbTypes)
 
 # Phase 5.2: Logging
 from .logger import get_logger
@@ -440,7 +440,18 @@ def held_by_its_box(geom: QgsGeometry, slack: float = 0.0) -> bool:
     high_x, high_y = box.xMaximum() + slack, box.yMaximum() + slack
     if not all(math.isfinite(value) for value in (low_x, low_y, high_x, high_y)):
         return False
-    for piece in _pieces(geom.constGet()):
+    shape = geom.constGet()
+    if type(shape) is QgsLineString:
+        # The walk below, for its commonest shape: one part, no arc, so one
+        # piece and nothing curved to check after it. Half the cost of a short
+        # route, and the snaps ask it on every mouse move that finds one.
+        coordinates = _xy_of(shape)
+        if coordinates is not None:
+            xs, ys = coordinates
+            if not (all(map(math.isfinite, xs)) and all(map(math.isfinite, ys))):
+                return False
+            return not xs or (low_x <= min(xs) and max(xs) <= high_x and low_y <= min(ys) and max(ys) <= high_y)
+    for piece in _pieces(shape):
         coordinates = None
         if QgsWkbTypes.displayString(QgsWkbTypes.flatType(piece.wkbType())) == "LineString":
             coordinates = _xy_of(piece)
@@ -531,6 +542,28 @@ def transformed(geom: QgsGeometry, transform) -> Optional[QgsGeometry]:
         logger.warning(f"Could not reproject a geometry: {exc}")
         return None
     return moved if is_finite(moved) else None
+
+
+def transform_in_place(geom: QgsGeometry, transform) -> bool:
+    """Move ``geom`` itself into the transform's target CRS; False when it cannot be.
+
+    :func:`transformed` without the copy, for a caller that owns ``geom``, has
+    already passed over a null or empty one, and drops ``geom`` on False: the
+    bundle export, once per feature. False for the same geometries, logged the
+    same way, and the same coordinates otherwise. The result is held to
+    :func:`is_finite` in one call: ``QgsRectangle.isFinite()`` tests the four
+    values ``is_finite`` hands to ``math.isfinite``, for inf and nan, and the two
+    agree on every combination of a number, inf, -inf and nan (3.22.16, 3.40.15,
+    4.2.3). Unclaimed (QA finding Q30 of the 1.6.0 QA): ``transformed``'s copy
+    and four ``math.isfinite`` for each feature were most of the 3-6% a
+    GeoPackage bundle of 14,024 features had lost against v1.5.0.
+    """
+    try:
+        geom.transform(transform)
+    except Exception as exc:  # QgsCsException, and anything the proj stack adds
+        logger.warning(f"Could not reproject a geometry: {exc}")
+        return False
+    return not geom.isNull() and not geom.isEmpty() and geom.boundingBox().isFinite()
 
 
 def geometry_point(geom: QgsGeometry) -> Optional[QgsPointXY]:

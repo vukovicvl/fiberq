@@ -41,6 +41,13 @@ data. Regenerate with `--size L --seed 20260921`.
 - `sanity.errors` — error records logged during the cold call. Any run with a
   non-zero count publishes no timing, because an exception that got swallowed
   mid-operation would otherwise look like a speed-up.
+- `sanity.qgis_log` — the lines QGIS's own message log received; QGIS 4 runs
+  made before `QgisLogProbe` listened on `messageReceivedWithFormat` (both
+  `baseline-v150-qgis40-*` runs above) recorded no log lines because the probe
+  could not hear QGIS 4's log, so their counts are not measurements. Their
+  `hooked: true` says only that the probe connected to `messageReceived`, not
+  that it heard anything: QGIS 4 no longer delivers a line there. The probe
+  now says `hooked` only once a line it logs itself has arrived.
 - `result_digest` — what the scenario computed. All 22 digests are identical
   between QGIS 3.44 and 4.0, and the "after" run must match them or the
   comparison is between two different pieces of work.

@@ -299,6 +299,8 @@ def features_within(layer, point, tolerance, geometry_only=False, stamps=None):
     memory = (layer.providerType() or "").lower() == "memory"
     if memory:
         provider = layer.dataProvider()
+        # Kept alive, never reused: see _PROVIDERS.
+        _PROVIDERS[layer.id()] = provider
         # SpatialIndexPresent is 2 on QGIS 3.22 to 4.2, whatever the enum is called.
         if provider is not None and int(provider.hasSpatialIndex()) == 2:
             return None
@@ -307,6 +309,14 @@ def features_within(layer, point, tolerance, geometry_only=False, stamps=None):
     return features_near(layer, point, tolerance * (2.0 if arcs else 1.000001),
                          geometry_only=geometry_only, stamps=stamps)
 
+
+#: ``layer id -> provider``, holding each memory layer's provider wrapper alive and
+#: nothing else. Asking a layer for its provider costs ~9 us while no Python
+#: wrapper of it is alive and ~0.15 us while one is (3.22.16, 3.40.15, 4.2.3), and
+#: ``features_within`` asks a memory layer on every mouse move. It still asks on
+#: every call -- a layer's data source can be replaced -- so what is kept here is
+#: never what is used.
+_PROVIDERS = {}
 
 #: ``key -> (generation, [(fid, (x, y) or None), ...])``: per layer object,
 #: the changed geometries a box query may drop, as of the edit it last saw.

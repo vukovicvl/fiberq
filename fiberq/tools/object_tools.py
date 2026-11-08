@@ -5,7 +5,7 @@ Map tools for drawing building/object polygons.
 Phase 2.1: Extracted from extracted_classes.py
 """
 
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, Qt
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit,
@@ -26,8 +26,23 @@ from ..utils.legacy_bridge import (
 )
 
 # Phase 5.2: Logging
+from ..utils.errors import OperationErrors, add_and_save
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
+
+
+def _objects() -> str:
+    """Title on the message-bar entries the Objects tools push."""
+    src = QT_TRANSLATE_NOOP('FiberQTools', "Objects")
+    return QCoreApplication.translate('FiberQTools', src)
+
+
+#: Said instead of "Object added." when the object went into an edit session
+#: the user already had open, which add_and_save leaves unsaved here.
+_OBJECT_UNSAVED = QT_TRANSLATE_NOOP(
+    'FiberQTools',
+    "The Objects layer was already in edit mode, so this object is not saved yet. Use Layer > Save"
+    " Layer Edits when you are ready.")
 
 
 class ObjectPropertiesDialog(QDialog):
@@ -133,9 +148,6 @@ class _BaseObjMapTool(QgsMapTool):
             was_editing = False
 
         try:
-            if not was_editing:
-                obj_layer.startEditing()
-
             f = QgsFeature(obj_layer.fields())
             f.setGeometry(geom)
 
@@ -155,12 +167,15 @@ class _BaseObjMapTool(QgsMapTool):
             except Exception as e:
                 logger.debug(f"Could not set feature uuid: {e}")
 
-            obj_layer.addFeature(f)
-
-            if not was_editing:
-                obj_layer.commitChanges()
-            else:
-                obj_layer.triggerRepaint()
+            # Each answer checked (utils.errors.add_and_save): the edit session,
+            # the add and the commit used to be unchecked, and "Object added."
+            # followed regardless. A session the user already had open takes
+            # the object unsaved, as it always has here.
+            with OperationErrors(_objects(), self.iface) as errors:
+                placed = add_and_save(obj_layer, [f], errors, save_open_session=False)
+            obj_layer.triggerRepaint()
+            if not placed:
+                return
 
             # Record for undo (v1.2 — Feature 2)
             try:
@@ -187,8 +202,14 @@ class _BaseObjMapTool(QgsMapTool):
             except Exception as e:
                 logger.debug(f"Error in _BaseObjMapTool._finish: {e}")
 
+            # "Object added." only for an object that was saved. One that went
+            # into the user's open session, unsaved, was announced the same way.
             try:
-                self.iface.messageBar().pushSuccess("Objects", "Object added.")
+                if was_editing:
+                    self.iface.messageBar().pushInfo(
+                        _objects(), QCoreApplication.translate('FiberQTools', _OBJECT_UNSAVED))
+                else:
+                    self.iface.messageBar().pushSuccess("Objects", "Object added.")
             except Exception as e:
                 logger.debug(f"Error in _BaseObjMapTool._finish: {e}")
 

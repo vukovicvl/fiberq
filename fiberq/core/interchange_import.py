@@ -35,7 +35,7 @@ from contextlib import closing
 
 from qgis.core import (
     QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsFeature, QgsFeatureRequest,
-    QgsField, QgsGeometry, QgsProject, QgsVectorLayer,
+    QgsGeometry, QgsProject, QgsVectorLayer,
 )
 
 from qgis.PyQt.QtCore import QT_TRANSLATE_NOOP, QCoreApplication
@@ -46,6 +46,7 @@ from .interchange_bundle import read_bundle_metadata
 from .project_store import read_json_entry
 from ..i18n import safe_format
 from ..models import schema as fq_schema
+from ..utils.compat import FieldType, new_field
 from ..utils.geometry import transformed
 from ..utils.logger import get_logger
 from ..utils.uuid_utils import FIBERQ_UUID_FIELD
@@ -170,27 +171,17 @@ _UNKNOWN_SIDECAR_NAME = re.compile(r"^fq_[A-Za-z0-9_]{1,60}$")
 #: Columns a bundle adds that are not part of any FiberQ layer.
 BUNDLE_COLUMNS = frozenset({"fq_type", "placement", "fq_extra_json", "fid"})
 
-#: Logical schema type -> the QVariant/QMetaType name used to build the field.
-_QT_TYPE_NAMES = {
-    "text": "QString", "enum": "QString", "int": "Int", "year": "Int",
-    "double": "Double", "bool": "Bool",
+#: Logical schema type -> the type its field is built with.
+_FIELD_TYPES = {
+    "text": FieldType.String, "enum": FieldType.String, "int": FieldType.Int, "year": FieldType.Int,
+    "double": FieldType.Double, "bool": FieldType.Bool,
 }
 
 
 def _field(name, logical_type="text"):
-    """Build a :class:`QgsField`, with the constructor this QGIS accepts.
-
-    QGIS 3.38 deprecated the ``QVariant``-typed constructor; QGIS 3.22 LTR, which
-    this plugin still targets, only has that one.
-    """
-    qt_name = _QT_TYPE_NAMES.get(logical_type, "QString")
-    try:
-        from qgis.PyQt.QtCore import QMetaType
-        return QgsField(name, getattr(QMetaType.Type, qt_name))
-    except (ImportError, AttributeError, TypeError):
-        from qgis.PyQt.QtCore import QVariant
-        legacy = {"QString": "String", "Int": "Int", "Double": "Double", "Bool": "Bool"}
-        return QgsField(name, getattr(QVariant, legacy[qt_name]))
+    """Build a :class:`QgsField` with :func:`fiberq.utils.compat.new_field`, which
+    picks the constructor this QGIS accepts and a type name; an unknown type is text."""
+    return new_field(name, _FIELD_TYPES.get(logical_type, FieldType.String))
 
 
 class ImportResult:

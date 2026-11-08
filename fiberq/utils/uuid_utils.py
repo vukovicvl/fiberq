@@ -12,11 +12,12 @@ Phase 0.1 of FiberQ Designer preparation.
 import uuid
 
 from qgis.core import (
-    QgsProject, QgsVectorLayer, QgsField, QgsMessageLog,
+    QgsProject, QgsVectorLayer, QgsMessageLog,
     Qgis
 )
-from qgis.PyQt.QtCore import QVariant
+from .compat import FieldType, new_field
 
+from .errors import OperationErrors, add_columns
 from .logger import get_logger
 
 logger = get_logger(__name__)
@@ -162,99 +163,61 @@ def _set_uuid_alias(layer):
 
 
 def ensure_uuid_field(layer):
-    """
-    Ensure a layer has the fiberq_uuid field. Add it if missing.
+    """True when ``layer``'s data source has the fiberq_uuid column, which is
+    added if it can be.
 
-    Works for both memory layers and file-backed layers (GPKG, Shapefile, etc).
+    The answer is about the data source, not the layer: ``layer.fields()`` also
+    lists a column only an edit buffer holds. Until 1.6.0 that counted, and on
+    a PostgreSQL table it was the usual outcome. The field had no type name, so
+    the provider sent ``ADD COLUMN "fiberq_uuid"`` with nothing after it and
+    refused it; a fallback then added the column through an edit session, whose
+    commit failed the same way and left the layer in edit mode with the column
+    pending -- and the answer was True. Every later save on that layer failed
+    with "1 new attribute(s) not added" while the tools said "placed", and the
+    project-open migration counted UUIDs it never wrote (measured on 3.22.16,
+    3.40.15 and 4.2.3, PostGIS 16, the table's owner). A locked GeoPackage got
+    the same pending column, slipped into the user's own session when the layer
+    was already in edit mode; a layer set read-only had the column written to
+    its file regardless.
 
-    Args:
-        layer: QgsVectorLayer to check/modify
-
-    Returns:
-        True if field exists (or was added), False on error
+    Now the column is added typed (``compat.new_field``) and only through the
+    provider (``errors.add_columns``): nothing is started, committed or rolled
+    back here, so the user's session is never touched. False when the layer is
+    read-only, when its data source does not allow new columns (a database
+    login that does not own the table), when the add is refused (a locked file),
+    when the data source is a shapefile -- DBF keeps ten characters of a column
+    name, so the column arrived as ``fiberq_uui`` and every call added another
+    copy -- and when the column is only in an edit buffer; the reason is logged
+    at WARNING. A caller carries on without the column -- ``set_feature_uuid``
+    does nothing where there is none and the feature is saved without an ID --
+    and the project-open migration holds its schema marker back and tries again
+    on the next load.
     """
     if not isinstance(layer, QgsVectorLayer):
         return False
-
     try:
-        # Check current fields
-        current_fields = [f.name() for f in layer.fields()]
-        if FIBERQ_UUID_FIELD in current_fields:
-            _set_uuid_alias(layer)
-            return True
-
-        provider_type = (layer.dataProvider().name() if layer.dataProvider() else "unknown")
-        _log(f"ensure_uuid_field: '{layer.name()}' provider={provider_type}, fields={len(current_fields)}, attempting to add...")
-
-        new_field = QgsField(FIBERQ_UUID_FIELD, QVariant.String)
-
-        # Method 1: Direct provider add (best for memory/ogr layers)
-        if layer.dataProvider():
-            caps = layer.dataProvider().capabilities()
-            can_add = bool(caps & layer.dataProvider().AddAttributes)
-            _log(f"  Method 1: provider supports AddAttributes={can_add}")
-
-            if can_add:
-                try:
-                    ok = layer.dataProvider().addAttributes([new_field])
-                    _log(f"  Method 1: addAttributes returned {ok}")
-                    if ok:
-                        layer.updateFields()
-                        updated_fields = [f.name() for f in layer.fields()]
-                        if FIBERQ_UUID_FIELD in updated_fields:
-                            _log(f"  Method 1: SUCCESS - field added to '{layer.name()}'")
-                            _set_uuid_alias(layer)
-                            return True
-                        else:
-                            _log(f"  Method 1: addAttributes ok but field not in layer.fields()! updated_fields={updated_fields}")
-                except Exception as e:
-                    _log(f"  Method 1: exception: {e}")
-
-        # Method 2: Via editing session
-        try:
-            was_editing = layer.isEditable()
-            _log(f"  Method 2: was_editing={was_editing}")
-
-            if not was_editing:
-                started = layer.startEditing()
-                _log(f"  Method 2: startEditing returned {started}")
-                if not started:
-                    _log(f"  Method 2: FAILED - cannot start editing on '{layer.name()}'")
-                    return False
-
-            ok = layer.addAttribute(new_field)
-            _log(f"  Method 2: addAttribute returned {ok}")
-
-            if not was_editing:
-                if ok:
-                    committed = layer.commitChanges()
-                    _log(f"  Method 2: commitChanges returned {committed}")
-                    if not committed:
-                        errors = layer.commitErrors()
-                        _log(f"  Method 2: commit errors: {errors}")
-                else:
-                    layer.rollBack()
-
-            final_fields = [f.name() for f in layer.fields()]
-            if FIBERQ_UUID_FIELD in final_fields:
-                _log(f"  Method 2: SUCCESS - field added to '{layer.name()}'")
-                _set_uuid_alias(layer)
-                return True
-            else:
-                _log(f"  Method 2: field NOT found after commit. final_fields={final_fields}")
-        except Exception as e:
-            _log(f"  Method 2: exception: {e}")
-            try:
-                if layer.isEditable():
-                    layer.rollBack()
-            except Exception as rollback_err:
-                logger.debug(f"rollback after Method 2 failure raised: {rollback_err}")
-
-        _log(f"ensure_uuid_field: ALL METHODS FAILED for '{layer.name()}'")
+        name = layer.name()
+        provider = layer.dataProvider()
+        if provider is None:
+            logger.warning(f"'{name}' has no data source to add {FIBERQ_UUID_FIELD} to")
+            return False
+        if layer.fields().indexOf(FIBERQ_UUID_FIELD) < 0:
+            # Logged at WARNING, never pushed: most callers are layer look-ups
+            # that run on every placement. Project open says it once, through
+            # the migration that fails on it (main_plugin._run_schema_migrations).
+            log_only = OperationErrors(f"Adding the {FIBERQ_UUID_FIELD} column")
+            if not add_columns(layer, [new_field(FIBERQ_UUID_FIELD, FieldType.String)], log_only):
+                return False
+        if provider.fields().indexOf(FIBERQ_UUID_FIELD) < 0:
+            logger.warning(f"'{name}' has {FIBERQ_UUID_FIELD} only in its edit buffer; the column is "
+                           f"not in the data source until that buffer is saved")
+            return False
+    except RuntimeError as exc:
+        # A layer whose C++ object is already gone.
+        logger.warning(f"could not check the {FIBERQ_UUID_FIELD} column: {exc}")
         return False
-    except Exception as e:
-        _log(f"ensure_uuid_field: top-level exception for '{layer.name()}': {e}")
-        return False
+    _set_uuid_alias(layer)
+    return True
 
 
 def migrate_layer_uuids(layer):
@@ -304,19 +267,34 @@ def migrate_layer_uuids(layer):
     # Apply + persist. A failure here MUST propagate (not be swallowed): otherwise
     # the runner would stamp the project migrated while the UUIDs never reached
     # disk, and the marker gate would stop it ever retrying.
-    was_editing = layer.isEditable()
+    #
+    # Only into a session of its own, and only counted once saved. A layer
+    # already in edit mode -- the user's session, or one a refused save left
+    # behind -- used to take the changes into its buffer and have them counted:
+    # "Upgraded project schema 0 -> 1.0 (assigned 2 UUIDs across 1 layers)",
+    # the project stamped 1.0 and never retried, nothing on disk (v1.6.0 QA,
+    # finding Q14, measured on a locked GeoPackage). Its session is left alone
+    # now and the layer fails, so the next load tries again.
+    if layer.isEditable():
+        raise UuidMigrationError(
+            f"'{layer.name()}' was already in edit mode, so its features were not given FiberQ IDs")
+    if not layer.startEditing():
+        raise UuidMigrationError(f"'{layer.name()}' could not be opened for editing")
     try:
-        if not was_editing:
-            layer.startEditing()
-        for fid, new_uuid in features_to_update.items():
-            layer.changeAttributeValue(fid, field_idx, new_uuid)
-        if not was_editing:
-            if not layer.commitChanges():
-                errors = layer.commitErrors()
-                layer.rollBack()
-                raise UuidMigrationError(
-                    f"commit failed for '{layer.name()}': {errors}"
-                )
+        refused = sum(1 for fid, new_uuid in features_to_update.items()
+                      if not layer.changeAttributeValue(fid, field_idx, new_uuid))
+        if refused:
+            layer.rollBack()
+            raise UuidMigrationError(
+                f"{refused} feature(s) in '{layer.name()}' would not take a FiberQ ID")
+        if not layer.commitChanges():
+            errors = layer.commitErrors()
+            # This session holds nothing but the IDs: the layer was not in edit
+            # mode before, so there is no work of the user's to keep.
+            layer.rollBack()
+            raise UuidMigrationError(
+                f"commit failed for '{layer.name()}': {errors}"
+            )
     except UuidMigrationError:
         raise
     except Exception as e:
@@ -325,7 +303,7 @@ def migrate_layer_uuids(layer):
             if layer.isEditable():
                 layer.rollBack()
         except Exception as rollback_err:
-            logger.debug(f"rollback after persist failure raised: {rollback_err}")
+            logger.warning(f"rollback after persist failure raised: {rollback_err}")
         raise UuidMigrationError(f"error persisting UUIDs in '{layer.name()}': {e}")
 
     _log(f"Migrated {count} features with UUID in layer '{layer.name()}'")
@@ -395,6 +373,8 @@ def migrate_project_uuids(project=None):
             except Exception:
                 failed_layers.append("<unknown>")
             _log(f"Error migrating layer: {e}")
+            # The reason, where the project-open message sends the user to look.
+            logger.warning(f"FiberQ IDs were not saved: {e}")
 
     if field_added_layers:
         _log(f"UUID migration: added fiberq_uuid field to {len(field_added_layers)} layers: {', '.join(field_added_layers)}")

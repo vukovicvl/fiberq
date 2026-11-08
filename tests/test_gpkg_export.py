@@ -39,6 +39,8 @@ class FakeBar:
     def __init__(self):
         self.warnings = []
         self.successes = []
+        #: Lines of their own a save adds after its success (v1.6.0 QA Q18).
+        self.notes = []
 
     def pushWarning(self, title, text):
         self.warnings.append(text)
@@ -48,6 +50,9 @@ class FakeBar:
 
     def pushCritical(self, title, text):
         self.warnings.append(text)
+
+    def pushMessage(self, title, text, level=None, duration=-1):
+        self.notes.append(text)
 
 
 class FakeIface:
@@ -336,6 +341,42 @@ def test_two_layers_that_flatten_to_one_name_get_two_tables(iface, project, save
 
     assert iface.bar.warnings == []
     assert {"Poles", "Poles_2"} <= _tables(target)
+
+
+def test_a_save_reads_the_files_tables_no_more_often_for_more_layers(iface, project, save_to, tmp_path, monkeypatch):
+    """The final benchmark's save_gpkg row: looking each table name up again
+    right before its write read the file's whole schema once a layer, which made
+    Save all 2% slower than v1.5.0 at 24 layers, and the cost grows with layers
+    times tables. The plan's read is the one a save makes, however many layers it
+    writes; auto-save's hook waits meanwhile (hold_auto_save)."""
+    from fiberq.core import export_manager, gpkg_target
+
+    reads = []
+    real = gpkg_target.read_contents
+
+    def counting(path):
+        reads.append(path)
+        return real(path)
+
+    monkeypatch.setattr(gpkg_target, "read_contents", counting)
+    monkeypatch.setattr(export_manager, "read_contents", counting)
+    counts = {}
+    for layers in (2, 12):
+        project.removeAllMapLayers()
+        for number in range(layers):
+            project.addMapLayer(_memory_layer("Layer %d" % number))
+        # A file that is there, so that the plan reads it: one table no layer is named like.
+        target = tmp_path / ("out-%d.gpkg" % layers)
+        _gpkg_layer(target, "Old")
+        reads.clear()
+
+        save_to(ExportManager(iface), target)
+
+        counts[layers] = len(reads)
+        assert {"Layer_%d" % number for number in range(layers)} <= _tables(target)
+    assert iface.bar.warnings == []
+    assert counts[2] > 0, "the plan reads the file it saves into"
+    assert counts[12] == counts[2]
 
 
 def test_a_style_that_cannot_be_saved_is_reported(iface, project, save_to, tmp_path):

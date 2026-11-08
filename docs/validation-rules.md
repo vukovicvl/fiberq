@@ -319,7 +319,7 @@ project validates it the same way. A project that has none uses the defaults:
 | `tol` | `5.0` | snap tolerance, in map units, for the A-rules and B3 |
 | `length_rel_tol` | `0.01` | a stored length agrees with the geometry within this fraction of it (D3, and **Recalculate lengths**)… |
 | `length_abs_tol` | `0.5` | …or within this many metres, whichever is larger |
-| `disabled_rules` | none | rule ids that do not run; a run lists them as skipped |
+| `disabled_rules` | none | rule ids that do not run; the panel names them under its summary, as "Skipped by this project's settings: A2, B2", and a report lists them as **Rules skipped** (HTML) or `run.rules_skipped` (JSON) |
 | `severity_overrides` | none | rule id → `error`, `warning` or `info`, for every issue that rule reports |
 
 There is no dialog for them in this release. Set them from the QGIS Python console

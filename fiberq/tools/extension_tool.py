@@ -6,12 +6,13 @@ Phase 2.1: Extracted from extracted_classes.py
 Phase 5.2: Added logging infrastructure
 """
 
-from qgis.PyQt.QtCore import Qt, QVariant
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, Qt
+from ..utils.compat import FieldType, new_field
 from qgis.PyQt.QtWidgets import QMessageBox, QInputDialog
 
 from qgis.core import (
     QgsProject, QgsVectorLayer, QgsFeature, QgsGeometry,
-    QgsField, QgsWkbTypes, QgsMarkerSymbol,
+    QgsWkbTypes, QgsMarkerSymbol,
     QgsSvgMarkerSymbolLayer, QgsUnitTypes,
     QgsPalLayerSettings, QgsVectorLayerSimpleLabeling
 )
@@ -29,8 +30,16 @@ from ..utils.legacy_bridge import (
 )
 
 # Phase 5.2: Logging
+from ..utils.errors import OperationErrors, add_and_save, add_columns
 from ..utils.logger import get_logger
+from ..utils.uuid_utils import ensure_uuid_field
 logger = get_logger(__name__)
+
+
+def _place_closure() -> str:
+    """Title on the message-bar entries the joint-closure tool pushes."""
+    src = QT_TRANSLATE_NOOP('FiberQTools', "Place joint closure")
+    return QCoreApplication.translate('FiberQTools', src)
 
 
 class ExtensionTool(QgsMapToolEmitPoint):
@@ -52,12 +61,12 @@ class ExtensionTool(QgsMapToolEmitPoint):
             point_layers=SNAP_NODE_LAYERS,
             line_layers=SNAP_ROUTE_LAYERS + SNAP_CABLE_LAYERS,
             pixels=20,
-            # Vertices only, which is what this tool always did: a closure
-            # marks a splice, so it belongs on a node or on the cut vertex of a
-            # cable, never at an arbitrary point along one. Letting it land
-            # mid-span would be a new behaviour, not one of the three fixes the
-            # fallback is here to make.
-            segments=False,
+            # Along a span as well as on a vertex, like the other placement
+            # tools. Until 1.6.0 a closure snapped to vertices and nodes only,
+            # so on a straight two-vertex route there was nothing to land on
+            # between its ends (v1.6.0 QA, section B; the maintainer's call,
+            # 2026-10-21). A vertex or a node within reach still wins: the
+            # fallback returns the nearest vertex before any segment point.
             # A joint closure also belongs on a user's infrastructure-cut
             # marker layer, which is not part of the FiberQ schema and so has
             # no canonical name to resolve.
@@ -135,12 +144,9 @@ class ExtensionTool(QgsMapToolEmitPoint):
             ):
                 nastavak_layer = lyr
                 self._apply_joint_closure_aliases(nastavak_layer)
-                # Phase 0.1: Ensure UUID field exists
-                try:
-                    from ..utils.uuid_utils import ensure_uuid_field
-                    ensure_uuid_field(nastavak_layer)
-                except Exception as e:
-                    logger.debug(f"Could not ensure UUID field on joint closure layer: {e}")
+                # Phase 0.1: Ensure UUID field exists. False where it cannot be
+                # added (reason logged); the closure is then placed without an ID.
+                ensure_uuid_field(nastavak_layer)
                 break
 
         # 2) If doesn't exist – create new
@@ -154,8 +160,8 @@ class ExtensionTool(QgsMapToolEmitPoint):
 
             pr = nastavak_layer.dataProvider()
             pr.addAttributes([
-                QgsField("naziv", QVariant.String),
-                QgsField("fiberq_uuid", QVariant.String),
+                new_field("naziv", FieldType.String),
+                new_field("fiberq_uuid", FieldType.String),
             ])
             nastavak_layer.updateFields()
 
@@ -192,12 +198,12 @@ class ExtensionTool(QgsMapToolEmitPoint):
 
         # 3) If layer exists but doesn't have 'naziv' field – add it + labeling + alias
         elif nastavak_layer.fields().indexFromName("naziv") == -1:
-            nastavak_layer.startEditing()
-            nastavak_layer.dataProvider().addAttributes(
-                [QgsField("naziv", QVariant.String)]
-            )
-            nastavak_layer.updateFields()
-            nastavak_layer.commitChanges()
+            # Typed and straight to the provider (utils.errors.add_columns), with
+            # a refusal said. No edit session: the startEditing()/commitChanges()
+            # pair that was here committed nothing of the column's -- addAttributes
+            # bypasses the buffer -- only whatever else the layer had unsaved.
+            with OperationErrors(_place_closure(), None) as column_errors:
+                add_columns(nastavak_layer, [new_field("naziv", FieldType.String)], column_errors)
             nastavak_layer.triggerRepaint()
 
             label_settings = QgsPalLayerSettings()
@@ -223,13 +229,17 @@ class ExtensionTool(QgsMapToolEmitPoint):
         except Exception as e:
             logger.debug(f"Could not set UUID on joint closure feature: {e}")
 
-        nastavak_layer.startEditing()
-        nastavak_layer.addFeature(nastavak_feat)
-        nastavak_layer.commitChanges()
+        # Each answer checked (utils.errors.add_and_save): all three used to be
+        # thrown away, and "Joint closure placed!" followed regardless.
+        placed = False
+        with OperationErrors(_place_closure(), None, absorb=True) as errors:
+            placed = add_and_save(nastavak_layer, [nastavak_feat], errors)
         nastavak_layer.triggerRepaint()
         self.snapper.clear()
+        if not placed:
+            return
 
-        # Record for undo (v1.2 — Feature 2)
+        # Record for undo (v1.2 — Feature 2). Only after the save, as above.
         try:
             if hasattr(self, 'plugin') and self.plugin and hasattr(self.plugin, 'undo_manager') and self.plugin.undo_manager:
                 self.plugin.undo_manager.record_add(nastavak_layer, nastavak_feat)

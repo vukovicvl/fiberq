@@ -1,11 +1,11 @@
 from datetime import datetime
 
-from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, Qt, QVariant
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, Qt
+from ..utils.compat import FieldType, new_field
 from qgis.PyQt.QtWidgets import QMessageBox
 from qgis.core import (
     QgsDistanceArea,
     QgsFeature,
-    QgsField,
     QgsGeometry,
     QgsMarkerSymbol,
     QgsPointXY,
@@ -168,12 +168,11 @@ class FiberBreakTool(QgsMapTool):
                 self._apply_break_style(lyr)
                 self._apply_break_field_aliases(lyr)
 
-                try:
-                    from ..utils.uuid_utils import ensure_uuid_field
+                # False where the column cannot be added (reason logged); the
+                # break is then recorded without an ID.
+                from ..utils.uuid_utils import ensure_uuid_field
 
-                    ensure_uuid_field(lyr)
-                except Exception as e:
-                    logger.debug(f"could not ensure uuid field on Fiber break layer: {e}")
+                ensure_uuid_field(lyr)
 
                 return lyr
             except Exception as e:
@@ -185,13 +184,13 @@ class FiberBreakTool(QgsMapTool):
         pr = vl.dataProvider()
         pr.addAttributes(
             [
-                QgsField("naziv", QVariant.String),
-                QgsField("cable_layer_id", QVariant.String),
-                QgsField("cable_fid", QVariant.Int),
-                QgsField("distance_m", QVariant.Double),
-                QgsField("segments_hit", QVariant.Int),
-                QgsField("vreme", QVariant.String),
-                QgsField("fiberq_uuid", QVariant.String),
+                new_field("naziv", FieldType.String),
+                new_field("cable_layer_id", FieldType.String),
+                new_field("cable_fid", FieldType.Int),
+                new_field("distance_m", FieldType.Double),
+                new_field("segments_hit", FieldType.Int),
+                new_field("vreme", FieldType.String),
+                new_field("fiberq_uuid", FieldType.String),
             ]
         )
         vl.updateFields()

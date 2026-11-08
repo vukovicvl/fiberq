@@ -454,6 +454,35 @@ def test_escape_and_deactivate_clear_the_indicator(qgis_app, qgis_new_project):
             f"{label}: a tool switch left the indicator up")
 
 
+def test_a_joint_closure_also_lands_along_a_span(qgis_app, qgis_new_project):
+    """v1.6.0 QA, section B: with the magnet off, a closure found nothing to land on mid-span.
+
+    It snapped to vertices and nodes only, so on a straight two-vertex route
+    there was nowhere between the ends. The maintainer's call (2026-10-21): a
+    closure snaps along a route or cable as the other placement tools do. A
+    vertex in reach still wins.
+    """
+    from fiberq.tools.extension_tool import ExtensionTool
+
+    route = add_route()
+    poles = add_poles()
+    canvas = unit_canvas([route, poles])
+    set_snapping(canvas, False)
+    closure = ExtensionTool(canvas)
+
+    # 5 px beside the second segment, about 50 px from every vertex and node.
+    closure.canvasMoveEvent(event_at(canvas, QgsPointXY(105, 50)))
+    point = indicator_point(closure.snapper)
+    assert point is not None, "nothing to land on mid-span"
+    assert closure.snapper.indicator.match().hasEdge()
+    assert point.x() == pytest.approx(100.0, abs=1e-6)
+    assert point.y() == pytest.approx(50.0, abs=1.0)
+
+    closure.canvasMoveEvent(event_off_corner(canvas, 8))
+    assert closure.snapper.indicator.match().hasVertex()
+    assert_on_corner(indicator_point(closure.snapper), "joint closure beside the bend")
+
+
 def test_right_click_clears_the_indicator(qgis_app, qgis_new_project):
     """QA B7. Right-click cancels, on whichever handler each tool uses."""
     from fiberq.tools.element_tool import PlaceElementTool

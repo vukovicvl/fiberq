@@ -155,14 +155,48 @@ CRITICAL = {
         "DataManager.save_latent",
         "DataManager.save_relations",
     }),
-    # U6: the pure pre-flight and naming rules both export paths depend on
+    # U6: the pure pre-flight and naming rules both export paths depend on;
+    # and Q18 (v1.6.0 QA, a follow-up of U6): the plan both make before they
+    # write -- the allow-list of what a layer reads (another file by the
+    # driver that opens it) and of the file a table may be offered from, which
+    # unused tables are offered, what the file holds, whether it changed while
+    # the question was open, a path read two ways, and what a failed overwrite
+    # left of the old table.
     "fiberq/core/gpkg_target.py": frozenset({
+        "TablePlan",
+        "_ambiguous",
+        "_gdal_reads",
+        "_modules",
+        "_names_sql",
+        "_offerable",
+        "_ogr_reads",
+        "_other_file",
+        "_plain_local_file",
+        "_read_only",
+        "_reads_only_itself",
+        "_sqlite_reads_only_itself",
+        "_uri",
+        "_virtual_modules",
+        "_web_only",
         "existing_tables",
+        "file_identity",
         "flatten_name",
+        "free_name",
         "gpkg_target_problem",
         "is_geopackage",
+        "is_reserved",
+        "plan_tables",
+        "read_contents",
+        "same_file",
+        "sqlite_fold",
+        "styled_tables",
         "table_in_use",
         "table_name_for",
+        "table_state",
+        "tables_read",
+        "unambiguous",
+        "understood",
+        "used_tables",
     }),
     # R1, R2, R3. export_active_layer and _do_export are THE export path now
     # that main_plugin's duplicate is deleted; neither was named here before,
@@ -183,6 +217,38 @@ CRITICAL = {
         "ExportManager.export_one_layer_to_gpkg",
         "ExportManager.save_all_layers_to_gpkg",
         "_writer_result",
+        # Q18: the plan, the question about unused tables, the old styles of a
+        # replaced table, the stored path and what the success message says;
+        # the file read before the plan, and the overwrite that says what a
+        # failed write left of the old table; the file and the project looked
+        # at again after the answer, the project's layers as the plan reads
+        # them and the GDAL driver of another file one reads, and auto-save's
+        # hook held while a save plans, asks and writes.
+        "ExportManager._auto_save_moves",
+        "ExportManager._clear_styles",
+        "ExportManager._plan",
+        "ExportManager._remember_target",
+        "ExportManager._run_writer",
+        "ExportManager._table_state",
+        "ExportManager._target_contents",
+        "ExportManager._unchanged",
+        "ExportManager._write_over",
+        "_AutoSaveHold",
+        "_identify",
+        "_listed",
+        "_project_state",
+        "_reader",
+        "_release_held",
+        "action_title",
+        "ask_about_unused_tables",
+        "auto_save_held",
+        "defer_auto_save",
+        "export_planned_layers",
+        "hold_auto_save",
+        "plan_gpkg_tables",
+        "push_saved",
+        "saved_report",
+        "unused_tables_question",
     }),
     # R1, R2, R7
     "fiberq/core/layer_manager.py": frozenset({
@@ -212,12 +278,17 @@ CRITICAL = {
     }),
     # R8. CableManager.lay_cable holds the whole cable-laying write path and was
     # never named here, so the gate watched the two main_plugin wrappers that
-    # swallowed its failures and not the code producing them.
+    # swallowed its failures and not the code producing them. Q13/Q14,
+    # unclaimed (v1.6.0 QA): Branch cables' column, its writes and its commit.
     "fiberq/core/cable_manager.py": frozenset({
         "CableManager.lay_cable",
+        "CableManager.ensure_branch_index_field",
+        "CableManager.compute_branch_indices_for_layer",
+        "CableManager._write_branch_indices",
     }),
-    # R6, R7
+    # R6, R7; and Q13, unclaimed: the Route columns every route path adds.
     "fiberq/core/route_manager.py": frozenset({
+        "RouteManager._ensure_route_fields",
         "RouteManager._add_imported_routes",
         "RouteManager._add_one_route",
         # The three the merge was split into. A new sibling method is a new
@@ -230,6 +301,10 @@ CRITICAL = {
         "RouteManager.change_route_type",
         "RouteManager.import_route_from_file",
         "RouteManager.merge_all_routes",
+        # Q24, unclaimed: Import route reads every layer of the file, listed
+        # by the first and reported on by the second.
+        "RouteManager._import_sources",
+        "RouteManager._say_left_out",
     }),
     # R9
     "fiberq/core/slack_manager.py": frozenset({
@@ -280,6 +355,9 @@ CRITICAL = {
         "_BOMDialog._build",
         "_BOMDialog._export_csv",
         "_BOMDialog._export_xlsx",
+        # Q25, unclaimed (v1.6.0 QA): the one place either export now touches
+        # its target, and the only caller of _remove_partial.
+        "_BOMDialog._write_file",
     }),
     # R10, R6: the geometry primitives Route correction and the importers rest on
     "fiberq/utils/geometry.py": frozenset({
@@ -287,6 +365,31 @@ CRITICAL = {
         "is_finite",
         "line_vertices",
         "transformed",
+        # Q30, unclaimed (v1.6.0 QA): the bundle export's check of each
+        # reprojected feature, which transformed() made before.
+        "transform_in_place",
+    }),
+    # Q21, unclaimed (v1.6.0 QA): what a route end may sit on, read by Route
+    # correction's check and by Correct, which writes the route -- the node
+    # layers and their grid, the tests for a node and for another route, the
+    # nearest node within 5 m on the ground, the cables and ducts at an end,
+    # and the labels the messages name them by.
+    "fiberq/core/route_ends.py": frozenset({
+        "_PointGrid",
+        "_cell",
+        "_name_of",
+        "_reach",
+        "feature_label",
+        "lines_at",
+        "meets_a_node",
+        "nearest_node",
+        "node_index",
+        "node_layers",
+        "on_a_node",
+        "route_index",
+        "route_label",
+        "routes_near",
+        "touching_route",
     }),
     # R3, R5, R6, R7, R8, R10
     "fiberq/main_plugin.py": frozenset({
@@ -295,6 +398,8 @@ CRITICAL = {
         "FiberQPlugin._cables_behind",
         "FiberQPlugin.check_consistency",
         "FiberQPlugin.fix_route_to_pole",
+        # Q21, unclaimed: Route correction's Select on map.
+        "FiberQPlugin._show_route_finding",
         "FiberQPlugin._change_element_type",
         "FiberQPlugin._save_color_catalogs",
         "FiberQPlugin.delete_selected",
@@ -311,8 +416,34 @@ CRITICAL = {
         "SlackPlaceTool._slack_layer",
         "SlackPlaceTool.canvasReleaseEvent",
     }),
+    # Q13, unclaimed (v1.6.0 QA): the identity column every placement and the
+    # project-open migration ask for. It answered True for a column only an
+    # edit buffer held, so it is gated from here so nothing in it goes quiet.
+    # Q14, unclaimed: the backfill counted IDs that only an edit buffer held.
+    "fiberq/utils/uuid_utils.py": frozenset({
+        "ensure_uuid_field",
+        "migrate_layer_uuids",
+        "migrate_project_uuids",
+    }),
+    # Q13/Q14, unclaimed: the shared writes every placement tool, Split route
+    # and the column adds go through. Nothing in here may be silent, by the
+    # module's own rule; now the gate says so too.
+    "fiberq/utils/errors.py": frozenset({
+        "add_and_save",
+        "add_columns",
+        "check_commit",
+    }),
+    # Q14, unclaimed: the restyle's rewrite of the old cable types.
+    "fiberq/utils/field_aliases.py": frozenset({
+        "_migrate_cable_type_values",
+    }),
+    # Q14, unclaimed: Split route's two-phase write.
+    "fiberq/tools/breakpoint_tool.py": frozenset({
+        "BreakpointTool._write_split",
+    }),
     # R2
     "fiberq/ui/routing_ui.py": frozenset({
+        "RoutingUI._added_while_held",
         "RoutingUI._ask_for_auto_gpkg",
         "RoutingUI._project_gpkg_path",
         "RoutingUI._set_project_gpkg_path",
@@ -360,10 +491,11 @@ ALLOWED_SILENT = {
 #: one hides an exception, the other ignores an answer. Sharing one counter
 #: would let a branch "fix" a swallowed exception by checking a return value.
 ALLOWED_WRITES = {
-    # As above: two dataProvider().addAttributes() calls that build the cable
-    # layer's schema, neither of them R8's row. Gated so they cannot grow.
+    # As above: the dataProvider().addAttributes() call that builds a NEW
+    # memory cable layer's schema, not R8's row. Gated so it cannot grow. Its
+    # sibling, the add to an existing cable layer, is checked since Q13.
     ("fiberq/core/cable_manager.py",
-     "CableManager.lay_cable"): (2, "pre-award schema writes in the same function, not in R8's row"),
+     "CableManager.lay_cable"): (1, "pre-award schema write in the same function, not in R8's row"),
 }
 
 #: What test D pins the package-wide silent-handler count to. Test D asserts
@@ -403,8 +535,20 @@ ALLOWED_WRITES = {
 #: language at start-up, and the handler around that write went with it. The
 #: Service Area fix took two: the ellipsoid set-up both region tools wrote out
 #: by hand, each in a handler that logged at debug level, is
-#: ``utils.measure`` now.
-SILENCE_CEILING = 684
+#: ``utils.measure`` now. The snap commit before Q13 took one and left this
+#: number at 684 (the placement indicator's setMatch handler now resets what
+#: it shows). Q13 took fourteen: ensure_uuid_field's rollback swallow went
+#: with the edit-session fallback it guarded, ensure_branch_index_field and
+#: the pipe tool's column add report through utils.errors.add_columns, and
+#: the eleven ``except Exception: logger.debug`` wrappers around
+#: ensure_uuid_field calls went, because it no longer raises. Q14 took seven:
+#: the branch-index writes check their answers instead of guarding them with
+#: two debug handlers, and a cable it cannot read, the Service Area rollback,
+#: the cable-type rewrite, the FiberQ ID backfill's rollback and the
+#: project-open identity backfill are logged at warning or gone. Q19 took
+#: one: initGui's handler around its call to ``_ensure_global_shortcuts``, a
+#: method gone since v1.2.2 that raised at every start, went with the call.
+SILENCE_CEILING = 661
 
 
 # ---------------------------------------------------------------------------
@@ -690,9 +834,46 @@ def test_d_package_wide_silence_does_not_grow():
 #: ran was the one this gate did not watch. No R-row moved. The last five are
 #: SlackManager's _batch_allowed, _generate_in_one_session, _take_saved_ids,
 #: _recompute_in_one_session and _terminal_slack: WP4 4.1's PF-4 moved part of
-#: R9's Generate terminal slacks into them, so R9 widens with them.
-HARDENED_FUNCTIONS = 130
-HARDENED_FILES = 21
+#: R9's Generate terminal slacks into them, so R9 widens with them. The last
+#: one is uuid_utils.ensure_uuid_field (Q13, unclaimed), in a file of its own.
+#: Then eleven, all unclaimed (Q13/Q14): the shared writes in utils/errors.py,
+#: the two FiberQ ID backfills, the cable-type rewrite, Split route's write,
+#: Branch cables' column, writes and wrapper, and the Route columns.
+#: Then seventeen (Q18, a follow-up of U6): Save all and auto-save plan their
+#: tables before writing and ask about unused ones -- nine in gpkg_target.py
+#: (the plan and what a layer reads) and eight in export_manager.py (the
+#: question, the old styles of a replaced table, the stored path, the report).
+#: Then thirteen more for Q18's second round: six in gpkg_target.py (the file
+#: read before the plan, a table's state, and the parts of a source a reader is
+#: judged by) and eight in export_manager.py (the pre-flight before the plan,
+#: the overwrite and what it left, and the message-bar lines), with
+#: plan_report gone into saved_report. Then twenty-four more for its third
+#: round, an allow-list where the second searched for readers: sixteen in
+#: gpkg_target.py (what a layer reads, by provider and by file; the file a
+#: table may be offered from; its identity while the question is open; a free
+#: name at its write; a path read two ways), with three of the second round's
+#: gone into them; ten in export_manager.py (the re-check after the answer,
+#: the free name at its write, the project's layers as the plan reads them,
+#: auto-save's hook held meanwhile, auto-save's planned writes); and the
+#: hook's own taking of a layer it was held from, in routing_ui.py. Then two
+#: more for its fourth round, another file judged by the GDAL driver that
+#: opens it: the SQLite file's own check in gpkg_target.py, and the driver
+#: GDAL names in export_manager.py. Then sixteen, unclaimed (Q21): the
+#: fifteen in core/route_ends.py, a file of its own, that Route correction's
+#: check and Correct now share, and main_plugin's _show_route_finding, which
+#: Select on map calls. Then two, unclaimed (Q24): RouteManager._import_sources
+#: and ._say_left_out, which list the layers of a file Import route reads and
+#: say what it left out. Then one, unclaimed (Q25): the BOM dialog's
+#: _write_file, where both exports now write their target. Then one,
+#: unclaimed (Q30): utils.geometry.transform_in_place, the bundle export's
+#: check of each reprojected feature, which transformed() made before. Then two
+#: fewer, Q18's third round: gpkg_target.free_at_write and
+#: ExportManager._free_at_write, the free name looked at again before each
+#: layer's write, gone because that read of the file's whole schema, once a
+#: layer, made Save all 2% slower than v1.5.0 (the final benchmark's save_gpkg
+#: row). No R-row moved: Q18 is unclaimed.
+HARDENED_FUNCTIONS = 216
+HARDENED_FILES = 26
 
 
 def test_the_hardened_set_is_not_quietly_narrowed():

@@ -134,6 +134,7 @@ def test_get_layer_schema_via_legacy_name():
 
 def test_value_maps_present_where_expected():
     cable = {f.key: f for f in schema.LAYER_SCHEMAS["Underground cables"].fields}
-    assert cable["tip"].value_map == {"Optical": "opticki", "Copper": "bakarnI"}
+    assert cable["tip"].value_map == {"Optical": "Optical", "Copper": "Copper"}
+    assert cable["tip"].legacy_values == {"opticki": "Optical", "bakarnI": "Copper"}
     route = {f.key: f for f in schema.LAYER_SCHEMAS["Route"].fields}
     assert route["tip_trase"].value_map["Aerial"] == "vazdusna"

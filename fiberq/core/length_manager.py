@@ -30,7 +30,7 @@ from typing import Dict, List, Optional
 
 from ..models import schema
 from ..utils.logger import get_logger
-from ..utils.measure import ground_length, measures_metres
+from ..utils.measure import ground_length, length_measurer, measures_metres
 from .validation_manager import ValidationConfig, ValidationContext
 
 logger = get_logger(__name__)
@@ -202,7 +202,7 @@ def length_field_for(layer) -> Optional[str]:
 
 
 def length_values(feat, layer, geom=None, length_field=None, names=None,
-                  project=None) -> Dict[str, float]:
+                  project=None, measure=None) -> Dict[str, float]:
     """The values ``feat``'s length fields should hold, as ``{field: value}``.
 
     The one place the arithmetic lives: metres from
@@ -218,8 +218,9 @@ def length_values(feat, layer, geom=None, length_field=None, names=None,
 
     ``geom`` overrides ``feat.geometry()``, for a caller holding the new
     geometry before the feature carries it (the live hook gets it from the
-    signal). ``length_field`` and ``names`` are hoists for a loop that already
-    resolved them once per layer.
+    signal). ``length_field``, ``names`` and ``measure`` (the layer's
+    :func:`~fiberq.utils.measure.length_measurer`) are hoists for a loop that
+    already resolved them once per layer.
 
     Returns an empty dict when there is nothing to write -- not a FiberQ layer
     that stores a length, the field is missing, the geometry is null or empty,
@@ -241,7 +242,7 @@ def length_values(feat, layer, geom=None, length_field=None, names=None,
     if geom is None or geom.isNull() or geom.isEmpty():
         return {}  # nothing to measure; E2 reports the geometry itself
 
-    computed = ground_length(geom, layer, project=project)
+    computed = measure(geom) if measure is not None else ground_length(geom, layer, project=project)
 
     # A zero-length geometry is E2's finding, but its stored length is still
     # wrong and D3 still reports it. Setting it to 0 is the honest answer and
@@ -336,12 +337,13 @@ def _plan_layer(plan, layer, length_field, config, project):
     if length_field not in names:
         return
 
+    measure = length_measurer(layer, project=project)
     for feat in layer.getFeatures():
         # One shared computation, via the same helper the live sync and the
         # creators use: a second copy of these rules here is how the manual
         # repair and the automatic one would start disagreeing.
         expected = length_values(feat, layer, length_field=length_field,
-                                 names=names, project=project)
+                                 names=names, project=project, measure=measure)
         if not expected:
             continue
 

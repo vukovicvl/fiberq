@@ -16,8 +16,8 @@ import sys
 import tempfile
 import time
 
-from qgis.core import (QgsApplication, QgsCoordinateReferenceSystem, QgsPointXY,
-                       QgsProject, QgsRectangle, QgsSnappingConfig, Qgis)
+from qgis.core import (QgsApplication, QgsCoordinateReferenceSystem, QgsMessageLog,
+                       QgsPointXY, QgsProject, QgsRectangle, QgsSnappingConfig, Qgis)
 
 from bench_common import dataset_files, tree_sha256
 
@@ -199,10 +199,11 @@ def patch_modals(save_path):
     accepted = QDialog.DialogCode.Accepted
     ok = QMessageBox.StandardButton.Ok
     #: A confirmation must answer Yes, not Ok. The plugin asks with Yes/No or
-    #: Yes/Cancel and compares against Yes (main_plugin.py:525,
-    #: license_manager.py:115, relations_dialog.py:173), so answering Ok would
-    #: silently take the cancel branch -- the scenario would then time the
-    #: refusal instead of the work, on both sides of the comparison.
+    #: Yes/Cancel and compares against Yes (FiberQPlugin.recalculate_lengths,
+    #: license_manager._fiberq_check_pro, RelationsDialog._on_delete_relation),
+    #: so answering Ok would silently take the cancel branch -- the scenario
+    #: would then time the refusal instead of the work, on both sides of the
+    #: comparison.
     yes = QMessageBox.StandardButton.Yes
 
     for name in ("information", "warning", "critical", "about"):
@@ -601,25 +602,69 @@ def sanity_off(probe, restore):
     return probe.report()
 
 
+def _line_signals(log):
+    """``[(name, signal)]`` a logged line can arrive on, the one to prefer first.
+
+    QGIS 4.0 and 4.2 deliver a line on ``messageReceivedWithFormat(message, tag,
+    level, format)`` and no longer on the three-argument ``messageReceived``
+    they still declare; 3.22 to 3.44 have no ``messageReceivedWithFormat`` and
+    deliver it on ``messageReceived`` (measured on all five legs). That overload
+    is looked up by its signature -- ``messageReceived(bool)`` only says that a
+    line arrived -- and a QGIS without it is not an error.
+    """
+    signals = []
+    with_format = getattr(log, "messageReceivedWithFormat", None)
+    if with_format is not None:
+        signals.append(("messageReceivedWithFormat", with_format))
+    try:
+        signals.append(("messageReceived", log.messageReceived[str, str, Qgis.MessageLevel]))
+    except (AttributeError, KeyError, TypeError):
+        pass  # no such overload here: the line arrives on the other signal or not at all
+    return signals
+
+
 class QgisLogProbe:
-    """Counts QGIS's own message log, which is where C++ complaints land."""
+    """Counts QGIS's own message log, which is where C++ complaints land.
+
+    It logs a line of its own and listens on the first signal of
+    :func:`_line_signals` that delivers it, and on that one only, so a QGIS
+    emitting both cannot count a line twice. ``hooked`` says that line arrived.
+    It used to say only that a connect had not raised: on QGIS 4 the probe sat
+    on the three-argument ``messageReceived``, which QGIS 4 no longer emits,
+    and reported ``hooked: True`` with nothing counted whatever QGIS logged.
+    """
+
+    #: The line logged at hook time. Never counted.
+    PROBE_TAG = "FiberQ bench"
+    PROBE_TEXT = "Can the benchmark hear QGIS's message log?"
 
     def __init__(self):
         self.counts = {}
         self.samples = []
         self.hooked = False
-        try:
-            QgsApplication.messageLog().messageReceived.connect(self._got)
-            self.hooked = True
-        except Exception:                      # pragma: no cover - overload drift
-            self.hooked = False
+        self.signal = None
+        self._heard = False
+        for name, signal in _line_signals(QgsApplication.messageLog()):
+            try:
+                signal.connect(self._got)
+            except (TypeError, RuntimeError):  # pragma: no cover - overload drift
+                continue
+            QgsMessageLog.logMessage(self.PROBE_TEXT, self.PROBE_TAG, Qgis.MessageLevel.Info)
+            if self._heard:
+                self.hooked = True
+                self.signal = name
+                return
+            signal.disconnect(self._got)
 
-    def _got(self, message, tag, level):
+    def _got(self, message, tag, level, *_format):
+        if not self._heard and tag == self.PROBE_TAG and message == self.PROBE_TEXT:
+            self._heard = True
+            return
         key = "%s/%s" % (tag, int(level))
         self.counts[key] = self.counts.get(key, 0) + 1
         if int(level) >= int(Qgis.MessageLevel.Warning) and len(self.samples) < 5:
             self.samples.append("%s: %s" % (tag, str(message)[:160]))
 
     def report(self):
-        return {"hooked": self.hooked, "counts": dict(self.counts),
-                "samples": list(self.samples)}
+        return {"hooked": self.hooked, "signal": self.signal,
+                "counts": dict(self.counts), "samples": list(self.samples)}

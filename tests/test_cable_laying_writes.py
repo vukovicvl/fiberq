@@ -322,6 +322,46 @@ def test_laying_a_cable_does_not_save_the_user_s_other_unsaved_work(
 
 
 # ---------------------------------------------------------------------------
+# a cable layer FiberQ does not add columns to
+# ---------------------------------------------------------------------------
+
+def _csv_cables(project, tmp_path, missing):
+    """A cable layer whose columns lay_cable leaves alone -- delimited text
+    here, a PostGIS table live -- holding every column it writes but
+    ``missing`` (and fiberq_uuid, which PICKED does not carry)."""
+    columns = [name for name in PICKED if name not in ("vrsta",) + tuple(missing)]
+    columns += ["od", "do", "duzina_m", "slack_m", "total_len_m"]
+    header = "wkt," + ",".join(columns)
+    row = '"LINESTRING (500 500, 510 500)"' + "," * len(columns)
+    path = tmp_path / "cables.csv"
+    path.write_text(f"{header}\n{row}\n", encoding="utf-8")
+    layer = QgsVectorLayer(f"{path.as_uri()}?type=csv&delimiter=,&wktField=wkt&crs=EPSG:3857",
+                           "Kablovi_podzemni", "delimitedtext")
+    assert layer.isValid()
+    project.addMapLayer(layer)
+    return layer
+
+
+def test_the_missing_columns_warning_names_the_columns_that_are_missing(
+        project, picker, said, tmp_path):
+    """Measured live on an Aerial cables table that has slack_m and total_len_m:
+    the warning said "missing fields (slack_m/total_len_m)" whatever was
+    missing, and the columns that were missing there went unnamed."""
+    missing = ("fibers_per_tube", "total_fibers", "color_standard")
+    _csv_cables(project, tmp_path, missing)
+    _routes_and_poles(project, ["LineString (0 0, 10 0, 20 0)"])
+
+    iface = FakeIface()
+    _manager(iface).lay_cable()
+
+    warned = [text for text in iface.bar.messages if "is missing fields" in text]
+    assert len(warned) == 1, iface.bar.messages
+    named = warned[0].split("(", 1)[1].split(")", 1)[0].split(", ")
+    assert sorted(named) == sorted(("fiberq_uuid",) + missing), warned
+    assert "Kablovi_podzemni" in warned[0], warned
+
+
+# ---------------------------------------------------------------------------
 # the routing graph
 # ---------------------------------------------------------------------------
 

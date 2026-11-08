@@ -12,14 +12,14 @@ Phase 5.2: Added logging infrastructure
 
 from typing import List, Dict, Any, Tuple
 
-from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, QVariant, Qt
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, Qt
+from ..utils.compat import FieldType, new_field
 from qgis.PyQt.QtWidgets import QMessageBox, QDialog
 from qgis.PyQt.QtGui import QColor
 
 from qgis.core import (
     QgsProject,
     QgsVectorLayer,
-    QgsField,
     QgsFeature,
     QgsFeatureRequest,
     QgsGeometry,
@@ -41,7 +41,7 @@ from qgis.core import (
 # Phase 5.2: Logging
 from . import interchange_fields as fm
 from ..i18n import safe_format
-from ..utils.errors import OperationErrors, check_commit, describe
+from ..utils.errors import OperationErrors, add_columns, check_commit, describe
 from ..utils.geometry import line_parts
 from ..utils.logger import get_logger
 from ..utils.measure import ground_length
@@ -63,6 +63,14 @@ _NOT_EDITABLE = QT_TRANSLATE_NOOP(
 _NO_LENGTH = QT_TRANSLATE_NOOP(
     'FiberQCables',
     "the cable layer has no {columns} column, so this cable was laid without its length recorded")
+_MISSING_COLUMNS = QT_TRANSLATE_NOOP(
+    'FiberQCables',
+    "Cable layer '{layer}' is missing fields ({columns}). Add them in the database schema.")
+_BRANCH_TITLE = QT_TRANSLATE_NOOP('FiberQCables', "Branch cables")
+_BRANCH_NOT_EDITABLE = QT_TRANSLATE_NOOP(
+    'FiberQCables', "the cable layer could not be opened for editing, so no branch index was written")
+_BRANCH_REFUSED = QT_TRANSLATE_NOOP(
+    'FiberQCables', "{count} cable(s) would not take their branch index")
 
 # Phase 0.1: UUID support for FiberQ Designer
 from ..utils.uuid_utils import FIBERQ_UUID_FIELD, generate_uuid  # noqa: E402
@@ -339,28 +347,57 @@ class CableManager:
     # Branch offset methods
     # -------------------------------------------------------------------------
 
-    def ensure_branch_index_field(self, layer: QgsVectorLayer) -> None:
-        """Ensure layer has INT field 'branch_index'."""
-        try:
-            if layer.fields().indexFromName("branch_index") != -1:
-                return
-            pr = layer.dataProvider()
-            pr.addAttributes([QgsField("branch_index", QVariant.Int)])
-            layer.updateFields()
-        except Exception as e:
-            logger.debug(f"Error in CableManager.ensure_branch_index_field: {e}")
+    def ensure_branch_index_field(self, layer: QgsVectorLayer, errors=None) -> bool:
+        """Ensure layer has INT field 'branch_index'. True when it has.
 
-    def compute_branch_indices_for_layer(self, layer: QgsVectorLayer, tol_m: float = 0.3) -> Tuple[int, int]:
+        Typed and straight to the provider (``utils.errors.add_columns``): the
+        untyped add was refused by every PostgreSQL table, made a SpatiaLite
+        column that read its numbers back as text, and its answer was thrown
+        away -- so the indices were then written to a column that was not
+        there. A refusal goes to ``errors``; ``None`` builds a collector of its
+        own and reports before returning.
+        """
+        if layer.fields().indexFromName("branch_index") != -1:
+            return True
+        own_errors = errors is None
+        if own_errors:
+            errors = OperationErrors(
+                QCoreApplication.translate('FiberQCables', _BRANCH_TITLE), self.iface)
+        try:
+            return add_columns(layer, [new_field("branch_index", FieldType.Int)], errors)
+        finally:
+            if own_errors:
+                errors.report()
+
+    def compute_branch_indices_for_layer(self, layer: QgsVectorLayer, tol_m: float = 0.3,
+                                         errors=None) -> Tuple[int, int]:
         """
         Assign branch_index for cables with same endpoints (direction-independent).
 
         Args:
             layer: Cable layer
             tol_m: Tolerance for grouping in meters
+            errors: The :class:`OperationErrors` to report into. ``None`` builds
+                a collector of its own and reports before returning.
 
         Returns:
-            Tuple of (groups_count, updated_count)
+            Tuple of (groups_count, updated_count). ``updated_count`` counts
+            only values that were saved: the edit session, every
+            changeAttributeValue and the commit used to be unchecked, so a
+            read-only layer came back "updated cables: 2" with nothing written.
         """
+        own_errors = errors is None
+        if own_errors:
+            errors = OperationErrors(
+                QCoreApplication.translate('FiberQCables', _BRANCH_TITLE), self.iface)
+        try:
+            return self._write_branch_indices(layer, tol_m, errors)
+        finally:
+            if own_errors:
+                errors.report()
+
+    def _write_branch_indices(self, layer, tol_m, errors) -> Tuple[int, int]:
+        """The body of :meth:`compute_branch_indices_for_layer`, with a collector."""
         if layer is None or layer.geometryType() != QgsWkbTypes.GeometryType.LineGeometry:
             return 0, 0
 
@@ -383,7 +420,9 @@ class CableManager:
                 else:
                     line = g.asPolyline()
             except Exception as e:
-                logger.debug(f"Skipping feature; could not read cable geometry: {e}")
+                # Left out of the branching, and so of the count it reports.
+                logger.warning(f"Branch cables: cable {f.id()} in '{layer.name()}' was left out, its "
+                               f"geometry could not be read: {e}")
                 continue
 
             if len(line) < 2:
@@ -401,37 +440,36 @@ class CableManager:
             return 0, 0
 
         # Write branch_index values
-        self.ensure_branch_index_field(layer)
+        self.ensure_branch_index_field(layer, errors)
         idx = layer.fields().indexFromName("branch_index")
         if idx == -1:
             return 0, 0
 
-        layer.startEditing()
+        # A session the user already had open is saved with the indices, as
+        # this always has done; one that cannot be opened writes nothing.
+        if not layer.isEditable() and not layer.startEditing():
+            errors.add(layer.name(), QCoreApplication.translate('FiberQCables', _BRANCH_NOT_EDITABLE))
+            return len(groups), 0
         updated = 0
+        refused = 0
 
         for key, ids in groups.items():
             ids_sorted = sorted(ids)
             n = len(ids_sorted)
-
-            if n == 1:
-                # Single cable between these nodes - no offset
-                try:
-                    layer.changeAttributeValue(ids_sorted[0], idx, 0)
-                    updated += 1
-                except Exception as e:
-                    logger.debug(f"Error in CableManager.round_key: {e}")
-                continue
-
-            # n >= 2 - assign symmetric values around zero
+            # One cable between these nodes: no offset. Two or more: symmetric
+            # values around zero.
             for i, fid in enumerate(ids_sorted):
-                pos = i * 2 - (n - 1)
-                try:
-                    layer.changeAttributeValue(fid, idx, int(pos))
+                if layer.changeAttributeValue(fid, idx, int(i * 2 - (n - 1))):
                     updated += 1
-                except Exception as e:
-                    logger.debug(f"Error in CableManager.round_key: {e}")
+                else:
+                    refused += 1
 
-        layer.commitChanges()
+        if refused:
+            errors.add(layer.name(), safe_format(
+                QCoreApplication.translate('FiberQCables', _BRANCH_REFUSED), _BRANCH_REFUSED,
+                count=refused))
+        if not check_commit(layer, errors):
+            return len(groups), 0
         return len(groups), updated
 
     def apply_branch_offset_style(self, layer: QgsVectorLayer, offset_mm: float = 2.0) -> None:
@@ -522,18 +560,24 @@ class CableManager:
                 logger.debug(f"Error in CableManager.branch_cables_offset: {e}")
             return
 
-        groups, updated = self.compute_branch_indices_for_layer(layer, tol_m=1.3)
+        with OperationErrors(QCoreApplication.translate('FiberQCables', _BRANCH_TITLE),
+                             self.iface) as errors:
+            groups, updated = self.compute_branch_indices_for_layer(layer, tol_m=1.3, errors=errors)
         self.apply_branch_offset_style(layer, offset_mm=2.0)
 
-        try:
-            msg = (
-                f"Branching complete – groups: {groups}, "
-                f"updated cables: {updated}. "
-                "If you don't see separation, refresh view (Ctrl+R)."
-            )
-            self.iface.messageBar().pushInfo("Branch cables", msg)
-        except Exception as e:
-            logger.debug(f"Error in CableManager.branch_cables_offset: {e}")
+        # Only when the indices were saved: the collector has said why not, and
+        # "Branching complete -- updated cables: 2" was said over a read-only
+        # layer that took none of them.
+        if not errors.failed:
+            try:
+                msg = (
+                    f"Branching complete – groups: {groups}, "
+                    f"updated cables: {updated}. "
+                    "If you don't see separation, refresh view (Ctrl+R)."
+                )
+                self.iface.messageBar().pushInfo("Branch cables", msg)
+            except Exception as e:
+                logger.debug(f"Error in CableManager.branch_cables_offset: {e}")
 
         try:
             layer.triggerRepaint()
@@ -754,38 +798,38 @@ class CableManager:
             pr = cables_layer.dataProvider()
 
             pr.addAttributes([
-                QgsField("tip", QVariant.String),
-                QgsField("podtip", QVariant.String),
-                QgsField("color_code", QVariant.String),
-                QgsField("broj_cevcica", QVariant.Int),
-                QgsField("broj_vlakana", QVariant.Int),
-                QgsField("tip_kabla", QVariant.String),
-                QgsField("vrsta_vlakana", QVariant.String),
-                QgsField("vrsta_omotaca", QVariant.String),
-                QgsField("vrsta_armature", QVariant.String),
-                QgsField("talasno_podrucje", QVariant.String),
-                QgsField("naziv", QVariant.String),
-                QgsField("slabljenje_dbkm", QVariant.Double),
-                QgsField("hrom_disp_ps_nmxkm", QVariant.Double),
-                QgsField("stanje_kabla", QVariant.String),
-                QgsField("cable_laying", QVariant.String),
-                QgsField("vrsta_mreze", QVariant.String),
-                QgsField("godina_ugradnje", QVariant.Int),
-                QgsField("konstr_vlakna_u_cevcicama", QVariant.Int),
-                QgsField("konstr_sa_uzlepljenim_elementom", QVariant.Int),
-                QgsField("konstr_punjeni_kabl", QVariant.Int),
-                QgsField("konstr_sa_arm_vlaknima", QVariant.Int),
-                QgsField("konstr_bez_metalnih", QVariant.Int),
-                QgsField("od", QVariant.String),
-                QgsField("do", QVariant.String),
-                QgsField("duzina_m", QVariant.Double),
-                QgsField("slack_m", QVariant.Double),
-                QgsField("total_len_m", QVariant.Double),
-                QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+                new_field("tip", FieldType.String),
+                new_field("podtip", FieldType.String),
+                new_field("color_code", FieldType.String),
+                new_field("broj_cevcica", FieldType.Int),
+                new_field("broj_vlakana", FieldType.Int),
+                new_field("tip_kabla", FieldType.String),
+                new_field("vrsta_vlakana", FieldType.String),
+                new_field("vrsta_omotaca", FieldType.String),
+                new_field("vrsta_armature", FieldType.String),
+                new_field("talasno_podrucje", FieldType.String),
+                new_field("naziv", FieldType.String),
+                new_field("slabljenje_dbkm", FieldType.Double),
+                new_field("hrom_disp_ps_nmxkm", FieldType.Double),
+                new_field("stanje_kabla", FieldType.String),
+                new_field("cable_laying", FieldType.String),
+                new_field("vrsta_mreze", FieldType.String),
+                new_field("godina_ugradnje", FieldType.Int),
+                new_field("konstr_vlakna_u_cevcicama", FieldType.Int),
+                new_field("konstr_sa_uzlepljenim_elementom", FieldType.Int),
+                new_field("konstr_punjeni_kabl", FieldType.Int),
+                new_field("konstr_sa_arm_vlaknima", FieldType.Int),
+                new_field("konstr_bez_metalnih", FieldType.Int),
+                new_field("od", FieldType.String),
+                new_field("do", FieldType.String),
+                new_field("duzina_m", FieldType.Double),
+                new_field("slack_m", FieldType.Double),
+                new_field("total_len_m", FieldType.Double),
+                new_field(FIBERQ_UUID_FIELD, FieldType.String),
                 # Phase 0.3: Fiber schema for FiberQ Designer
-                QgsField("fibers_per_tube", QVariant.Int),
-                QgsField("total_fibers", QVariant.Int),
-                QgsField("color_standard", QVariant.String),
+                new_field("fibers_per_tube", FieldType.Int),
+                new_field("total_fibers", FieldType.Int),
+                new_field("color_standard", FieldType.String),
             ])
 
             cables_layer.updateFields()
@@ -793,38 +837,38 @@ class CableManager:
 
         # Ensure layer has all needed fields
         needed_fields = {
-            "tip": QVariant.String,
-            "podtip": QVariant.String,
-            "color_code": QVariant.String,
-            "broj_cevcica": QVariant.Int,
-            "broj_vlakana": QVariant.Int,
-            "tip_kabla": QVariant.String,
-            "vrsta_vlakana": QVariant.String,
-            "vrsta_omotaca": QVariant.String,
-            "vrsta_armature": QVariant.String,
-            "talasno_podrucje": QVariant.String,
-            "naziv": QVariant.String,
-            "slabljenje_dbkm": QVariant.Double,
-            "hrom_disp_ps_nmxkm": QVariant.Double,
-            "stanje_kabla": QVariant.String,
-            "cable_laying": QVariant.String,
-            "vrsta_mreze": QVariant.String,
-            "godina_ugradnje": QVariant.Int,
-            "konstr_vlakna_u_cevcicama": QVariant.Int,
-            "konstr_sa_uzlepljenim_elementom": QVariant.Int,
-            "konstr_punjeni_kabl": QVariant.Int,
-            "konstr_sa_arm_vlaknima": QVariant.Int,
-            "konstr_bez_metalnih": QVariant.Int,
-            "od": QVariant.String,
-            "do": QVariant.String,
-            "duzina_m": QVariant.Double,
-            "slack_m": QVariant.Double,
-            "total_len_m": QVariant.Double,
-            FIBERQ_UUID_FIELD: QVariant.String,
+            "tip": FieldType.String,
+            "podtip": FieldType.String,
+            "color_code": FieldType.String,
+            "broj_cevcica": FieldType.Int,
+            "broj_vlakana": FieldType.Int,
+            "tip_kabla": FieldType.String,
+            "vrsta_vlakana": FieldType.String,
+            "vrsta_omotaca": FieldType.String,
+            "vrsta_armature": FieldType.String,
+            "talasno_podrucje": FieldType.String,
+            "naziv": FieldType.String,
+            "slabljenje_dbkm": FieldType.Double,
+            "hrom_disp_ps_nmxkm": FieldType.Double,
+            "stanje_kabla": FieldType.String,
+            "cable_laying": FieldType.String,
+            "vrsta_mreze": FieldType.String,
+            "godina_ugradnje": FieldType.Int,
+            "konstr_vlakna_u_cevcicama": FieldType.Int,
+            "konstr_sa_uzlepljenim_elementom": FieldType.Int,
+            "konstr_punjeni_kabl": FieldType.Int,
+            "konstr_sa_arm_vlaknima": FieldType.Int,
+            "konstr_bez_metalnih": FieldType.Int,
+            "od": FieldType.String,
+            "do": FieldType.String,
+            "duzina_m": FieldType.Double,
+            "slack_m": FieldType.Double,
+            "total_len_m": FieldType.Double,
+            FIBERQ_UUID_FIELD: FieldType.String,
             # Phase 0.3: Fiber schema for FiberQ Designer
-            "fibers_per_tube": QVariant.Int,
-            "total_fibers": QVariant.Int,
-            "color_standard": QVariant.String,
+            "fibers_per_tube": FieldType.Int,
+            "total_fibers": FieldType.Int,
+            "color_standard": FieldType.String,
         }
         # U4: a pre-1.0 cable layer calls cable_laying "polaganje_kabla".
         # Asking only for the modern name finds nothing, so v1.5.0 added a
@@ -837,17 +881,24 @@ class CableManager:
         to_add = []
         for fname, ftype in needed_fields.items():
             if not fm.actual_field(existing_names, fname):
-                to_add.append(QgsField(fname, ftype))
+                to_add.append(new_field(fname, ftype))
         if to_add:
             prov = (cables_layer.providerType() or "").lower()
             if prov in ("memory", "ogr", "spatialite"):
-                cables_layer.dataProvider().addAttributes(to_add)
-                cables_layer.updateFields()
+                # Typed, so a SpatiaLite layer stores numbers as numbers, and
+                # with a refusal said instead of thrown away.
+                with OperationErrors(QCoreApplication.translate('FiberQCables', _LAY_TITLE),
+                                     self.iface) as column_errors:
+                    add_columns(cables_layer, to_add, column_errors)
             else:
-                self.iface.messageBar().pushWarning(
-                    "FiberQ",
-                    "Cable layer is missing fields (slack_m/total_len_m). Add them in the database schema."
-                )
+                # The columns this layer lacks. The warning used to name
+                # slack_m/total_len_m whatever was missing -- measured live on
+                # an Aerial cables table that has both, where the missing ones
+                # were fiberq_uuid, fibers_per_tube, total_fibers and
+                # color_standard.
+                self.iface.messageBar().pushWarning("FiberQ", safe_format(
+                    QCoreApplication.translate('FiberQCables', _MISSING_COLUMNS), _MISSING_COLUMNS,
+                    layer=cables_layer.name(), columns=", ".join(field.name() for field in to_add)))
 
         self.stylize_cable_layer(cables_layer)
 

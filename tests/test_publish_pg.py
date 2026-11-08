@@ -31,9 +31,12 @@ carries the options, and only Success is reported as a publication.
 The table. FiberQ writes only new tables. The overwrite checkbox is gone, every
 call carries overwrite off, and a name the database already has is refused
 before the export -- FiberQ looks it up in pg_class first. When that lookup
-cannot run, QGIS is asked all the same, and refuses a taken name by itself. The
-Table field shows the name PostgreSQL keeps. After Success the rows are counted:
-QGIS also answers Success when reading the layer stops part way.
+fails, nothing is sent either: it reads only pg_catalog, so it fails when QGIS
+cannot connect, and the export then asked for the login a second time (QA
+finding Q28). A connection QGIS had and lost is one it cannot connect on, and no
+box shows FiberQ's statement. The Table field shows the name PostgreSQL keeps.
+After Success the rows are counted: QGIS also answers Success when reading the
+layer stops part way.
 
 No test here needs a database. FiberQ's own statements go to ``FakeConnection``,
 which records them, answers the lookup and the count, and raises on anything
@@ -50,6 +53,7 @@ import pytest
 from qgis.core import (
     Qgis,
     QgsCoordinateTransformContext,
+    QgsCredentials,
     QgsDataSourceUri,
     QgsFeature,
     QgsGeometry,
@@ -212,12 +216,54 @@ def _unquote(token):
     return "".join(text)
 
 
-#: QGIS's text of a refused connection: the whole connection string, password
-#: included (measured on 3.22.16 to 4.2.3).
-REFUSED = ("Connection failed: dbname='gis' host=127.0.0.1 port=1 user='gis' password='pw-in-the-uri' "
-           "sslmode=disable")
+#: FakeConnection's URI, as QGIS writes a connection's own: password included.
+FAKE_URI = "dbname='gis' host=127.0.0.1 port=1 user='gis' password='pw-in-the-uri' sslmode=disable"
+#: QGIS's text of a refused connection: "Connection failed: " and the
+#: connection's whole URI, password included (measured on 3.22.16 to 4.2.3).
+REFUSED = f"Connection failed: {FAKE_URI}"
 #: The advice for a table left incomplete, as FiberQ gives it for public.poles.
 ONLY_COPY = ('Check its rows before you remove it in your database tool (DROP TABLE "public"."poles";): if the layer\'s source has changed or gone, they may be the only copy of those rows left.')
+#: QGIS's words for a statement that did not run on a connection it had, as
+#: QgsPostgresProviderConnection::executeSql writes them on 3.22.16 to 4.2.3,
+#: and as their catalogues have them: tr(words).arg(statement).arg(PQstatus)
+#: .arg(libpq's message), with the status 1, CONNECTION_BAD, for a connection
+#: lost, and 0, CONNECTION_OK, for a statement that failed. Russian writes the
+#: status before the statement, Korean brackets of its own, Japanese words
+#: after the message, and Lithuanian the status in place of it.
+LOST_WORDS = {
+    "en": "Connection error: %1 returned %2 [%3]",
+    "de": "Verbindungsfehler: %1 ergab %2 [%3]",
+    "ru": "Ошибка соединения: ответ %2 получен на запрос %1 [%3]",
+    "ko": "연결 오류: %1 이[가] %2 을[를] 반환했습니다 [%3]",
+}
+FAILED_WORDS = {
+    "en": "SQL error: %1 returned %2 [%3]",
+    "de": "SQL-Fehler: %1 ergab %2 [%3]",
+    "ja": "SQLエラー: %1 が %2 [%3] を返しました",
+    "ko": "연결 오류: %1 이[가] %2 을[를] 반환했습니다 [%3]",
+    "lt": "SQL klaida: %1 grąžino %2 [%2]",
+}
+#: libpq's message for FiberQ's lookup cancelled while it waited for a lock on
+#: pg_namespace (lock_timeout; measured on 4.2.3): the lines after the first
+#: quote the statement.
+LOCK_TIMEOUT = ("ERROR:  canceling statement due to lock timeout\n"
+                "LINE 1: ...T c.relkind::text FROM pg_catalog.pg_class c JOIN pg_catalog...\n"
+                f"{' ' * 61}^\n")
+#: A place marker of QString::arg: %1 to %99, %L1 for a localised number.
+_MARKER = re.compile(r"%L?(\d\d?)")
+
+
+def _qgis_arg(words, *values):
+    """``words`` filled in as QGIS fills them, one arg() per value: each one
+    replaces the lowest-numbered place marker left, wherever it is -- also one
+    that an earlier value put there."""
+    text = words
+    for value in values:
+        numbers = [int(marker.group(1)) for marker in _MARKER.finditer(text)]
+        if numbers:
+            low = min(numbers)
+            text = _MARKER.sub(lambda marker: str(value) if int(marker.group(1)) == low else marker.group(0), text)
+    return text
 
 
 class FakeConnection:
@@ -228,7 +274,10 @@ class FakeConnection:
     lookup is answered from ``relations``, {(schema, name): relkind}, the count
     from ``rows``, {(schema, name): rows}. ``fail`` names the statements --
     "lookup", "count" -- that raise QgsProviderConnectionException instead, with
-    ``failure`` as its text. ``asked`` records what each statement named.
+    ``failure`` as its text: by default QGIS's text of a refused connection,
+    which names the connection's URI, or the text a function of the statement
+    gives -- QGIS's texts of a statement that failed hold it. ``asked`` records
+    what each statement named.
     """
 
     def __init__(self, relations=None, fail=(), failure=REFUSED):
@@ -238,6 +287,9 @@ class FakeConnection:
         self.failure = failure
         self.statements = []
         self.asked = []
+
+    def uri(self):
+        return FAKE_URI
 
     def add(self, schema, name, rows):
         """A table QGIS has just written."""
@@ -252,11 +304,11 @@ class FakeConnection:
         key = tuple(_unquote(token) for token in (lookup or count).groups())
         self.asked.append((what, key))
         if what in self.fail:
-            raise QgsProviderConnectionException(self.failure)
+            raise QgsProviderConnectionException(self.failure(sql) if callable(self.failure) else self.failure)
         if lookup:
             return [[self.relations[key]]] if key in self.relations else []
         if key not in self.rows:
-            raise QgsProviderConnectionException(f'SQL error: {sql} returned 7 [ERROR:  relation "{key[1]}" '
+            raise QgsProviderConnectionException(f'SQL error: {sql} returned 0 [ERROR:  relation "{key[1]}" '
                                                  'does not exist]')
         return [[self.rows[key]]]
 
@@ -474,9 +526,9 @@ def test_a_refused_connection_is_an_error_not_a_publication(monkeypatch, modals,
 
     v1.5.0 showed one information box -- "Layer 'Poles' has been published to
     PostGIS as public.poles" -- and closed the dialog. QGIS had answered
-    ErrorConnectionFailed. FiberQ's own lookup fails first, and its text, which
-    holds the password, is not shown: the export goes on and QGIS says what is
-    wrong.
+    ErrorConnectionFailed. FiberQ's own lookup fails first, and FiberQ stops
+    there with the words QGIS's export ended with; the lookup's text, which
+    holds the password, is not shown.
     """
     config = dict(UNREACHABLE, password="pw-never-shown")
     dlg, accepted = _dialog(monkeypatch, poles, config=config, real_connection=True)
@@ -502,10 +554,9 @@ def test_there_is_no_overwrite_checkbox(monkeypatch, poles):
     assert dlg.findChildren(QCheckBox) == [], [box.text() for box in dlg.findChildren(QCheckBox)]
 
 
-@pytest.mark.parametrize("lookup", ["name-free", "lookup-failed"])
-def test_every_export_asks_qgis_for_a_new_table(monkeypatch, modals, poles, lookup):
+def test_every_export_asks_qgis_for_a_new_table(monkeypatch, modals, poles):
     """The one call QGIS accepts carries overwrite off and lowercased field names,
-    so QGIS can never drop a table -- also when FiberQ's own lookup could not run.
+    so QGIS can never drop a table.
 
     The spy hands every call on to the real binding, so QGIS itself decides
     which calls are valid, and only a call it accepted counts. On v1.5.0 the
@@ -522,7 +573,7 @@ def test_every_export_asks_qgis_for_a_new_table(monkeypatch, modals, poles, look
         return answer
 
     monkeypatch.setattr(QgsVectorLayerExporter, "exportLayer", staticmethod(spy))
-    connection = FakeConnection(fail={"lookup"} if lookup == "lookup-failed" else ())
+    connection = FakeConnection()
     dlg, _accepted = _dialog(monkeypatch, poles, connection=connection)
 
     dlg._do_export()
@@ -566,24 +617,184 @@ def test_a_name_the_database_has_is_refused_before_the_export(monkeypatch, modal
     assert connection.asked == [("lookup", ("public", "poles"))], connection.asked
 
 
-def test_when_the_lookup_fails_qgis_refuses_a_taken_name_itself(monkeypatch, modals, poles):
-    """FiberQ could not look the name up, so the export goes on -- overwrite off,
-    so QGIS's CREATE TABLE refuses a name that is taken and changes nothing
-    (measured on 3.22.16 to 4.2.3) -- and QGIS's reason is shown without the
-    newline it ends with. The lookup's own text, which holds the password, is
-    not. No incomplete table is reported: QGIS created none. On v1.5.0 the call
-    carried no options, and the answer was reported as a publication."""
-    connection = FakeConnection(fail={"lookup"})
-    reason = 'Creation of data source "public"."poles" failed: \nERROR:  relation "poles" already exists'
-    calls = _exporter(monkeypatch, connection, code=Result.ErrorCreatingLayer, message=reason + "\n")
+class _LoginRequests(QgsCredentials):
+    """QGIS's credentials handler, which the desktop app answers with its "Enter
+    Credentials" window: this one records each request and answers it Cancel."""
+
+    def __init__(self):
+        super().__init__()
+        self.messages = []
+
+    def request(self, realm, username, password, message=""):
+        self.messages.append(message)
+        return False, username, password
+
+    def requestMasterPassword(self, password, stored=False):
+        return False, password
+
+    def install(self, handler):
+        """Make ``handler`` the one QGIS asks: setInstance is protected."""
+        self.setInstance(handler)
+
+
+@pytest.fixture
+def login_requests():
+    """Why QGIS asked for a login, once per request, while the test ran. The
+    handler there before is put back."""
+    before = QgsCredentials.instance()
+    handler = _LoginRequests()
+    handler.install(handler)
+    yield handler.messages
+    handler.install(before)
+
+
+def test_a_connection_that_fails_asks_for_the_login_once(monkeypatch, modals, poles, login_requests):
+    """QA finding Q28, step H.4 of the v1.6.0 QA: with a wrong login, or the
+    server down, one click on Publish brought QGIS's "Enter Credentials" window
+    up twice -- for FiberQ's lookup, and then for the export, which could not
+    connect either. Nothing is sent after a lookup that could not connect, and
+    the box is the one the export ended with. The real exporter, and QGIS's
+    real connection, against no server. Before Q28 QGIS asked twice, and the
+    export ran."""
+    real = QgsVectorLayerExporter.exportLayer
+    calls = []
+
+    def spy(*args, **kwargs):
+        calls.append("exportLayer")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(QgsVectorLayerExporter, "exportLayer", staticmethod(spy))
+    config = dict(UNREACHABLE, password="pw-never-shown")
+    dlg, accepted = _dialog(monkeypatch, poles, config=config, real_connection=True)
+
+    dlg._do_export()
+
+    assert len(login_requests) == 1, login_requests
+    assert calls == [], "the export ran"
+    assert modals["critical"] == ["Layer 'Poles' was not published to PostGIS as public.poles.\n\n"
+                                  "Connection to database failed"], modals
+    assert modals["info"] == [] and modals["warning"] == [] and accepted == [], modals
+    assert "pw-never-shown" not in _said(modals)
+
+
+@pytest.mark.parametrize("failure", [
+    REFUSED,
+    f"Verbindung gescheitert: {FAKE_URI}",
+    f"Échec de la connexion : {FAKE_URI} ",
+], ids=["en", "de", "fr"])
+def test_a_lookup_that_cannot_connect_sends_nothing(monkeypatch, modals, poles, failure):
+    """QGIS's text of a refused connection, as QGIS 3.22.16, 3.40.15 and 4.2.3
+    write it in English, German and French, names the connection's URI,
+    password included. The URI tells it, not the words: nothing is sent, and
+    the box says what the export said when it still ran. Before Q28 the export
+    ran."""
+    connection = FakeConnection(fail={"lookup"}, failure=failure)
+    calls = _exporter(monkeypatch, connection, code=Result.ErrorConnectionFailed,
+                      message="Connection to database failed")
     dlg, accepted = _dialog(monkeypatch, poles, connection=connection)
 
     dlg._do_export()
 
-    assert [call["options"] for call in calls] == [{"overwrite": False, "lowercaseFieldNames": True}], calls
-    assert modals["critical"] == [f"Layer 'Poles' was not published to PostGIS as public.poles.\n\n{reason}"], modals
-    assert modals["info"] == [] and accepted == [], modals
-    assert "pw-in-the-uri" not in _said(modals)
+    assert calls == [], "the export ran: " + repr(calls)
+    assert modals["critical"] == ["Layer 'Poles' was not published to PostGIS as public.poles.\n\n"
+                                  "Connection to database failed"], modals
+    assert modals["info"] == [] and modals["warning"] == [] and accepted == [], modals
+    assert connection.asked == [("lookup", ("public", "poles"))], connection.asked
+
+
+@pytest.mark.parametrize("lang", ["en", "de", "ru", "ko"])
+def test_a_connection_lost_since_the_last_publish_is_a_failed_connection(monkeypatch, modals, poles, lang):
+    """The server stopped within the minute or two QGIS keeps a connection after
+    a publish: QGIS takes that connection, cannot reset it, and asks for no
+    login. Its text names the statement and the status 1, CONNECTION_BAD, and
+    not the URI (measured on 3.22.16 to 4.2.3). The box is the one a refused
+    connection gets, whatever the language, and it shows no statement. Before
+    Q28 the export ran."""
+    def lost(sql):
+        return _qgis_arg(LOST_WORDS[lang], sql, 1, "no connection to the server\n")
+    connection = FakeConnection(fail={"lookup"}, failure=lost)
+    calls = _exporter(monkeypatch, connection)
+    dlg, accepted = _dialog(monkeypatch, poles, connection=connection)
+
+    dlg._do_export()
+
+    assert calls == [], "the export ran: " + repr(calls)
+    assert modals["critical"] == ["Layer 'Poles' was not published to PostGIS as public.poles.\n\n"
+                                  "Connection to database failed"], modals
+    assert modals["info"] == [] and modals["warning"] == [] and accepted == [], modals
+    assert connection.asked == [("lookup", ("public", "poles"))], connection.asked
+
+
+NOT_CHECKED = ("Layer 'Poles' was not published to PostGIS as public.poles.\n\nFiberQ could not check whether the "
+               "table already exists, so nothing was written.")
+
+
+@pytest.mark.parametrize("words, message, reason", [
+    (FAILED_WORDS["en"], LOCK_TIMEOUT, "ERROR:  canceling statement due to lock timeout"),
+    (FAILED_WORDS["de"], LOCK_TIMEOUT, "ERROR:  canceling statement due to lock timeout"),
+    (FAILED_WORDS["ja"], LOCK_TIMEOUT, "ERROR:  canceling statement due to lock timeout"),
+    (FAILED_WORDS["ko"], LOCK_TIMEOUT, "ERROR:  canceling statement due to lock timeout"),
+    (FAILED_WORDS["lt"], LOCK_TIMEOUT, ""),
+    (LOST_WORDS["en"], "", ""),
+], ids=["en", "de", "ja", "ko", "lt-no-message", "no-result"])
+def test_a_lookup_that_fails_once_connected_sends_nothing(monkeypatch, modals, poles, words, message, reason):
+    """The lookup reads only pg_catalog, which every login may read: when it
+    fails on a connection that works -- QGIS writes the status 0, CONNECTION_OK,
+    also for a connection it reset that still gave no answer -- FiberQ cannot
+    tell whether the name is taken, so nothing is sent, and the box says why in
+    the first line of libpq's message: never the statement, which the lines
+    after it quote. Lithuanian's words have no place for that message. Before
+    Q28 the export ran, and the layer was reported as published."""
+    def failed(sql):
+        return _qgis_arg(words, sql, 0, message)
+    connection = FakeConnection(fail={"lookup"}, failure=failed)
+    calls = _exporter(monkeypatch, connection)
+    dlg, accepted = _dialog(monkeypatch, poles, connection=connection)
+
+    dlg._do_export()
+
+    assert calls == [], "the export ran: " + repr(calls)
+    assert modals["critical"] == [NOT_CHECKED + (f"\n\n{reason}" if reason else "")], modals
+    assert modals["info"] == [] and modals["warning"] == [] and accepted == [], modals
+    assert "SELECT" not in _said(modals) and "pg_catalog" not in _said(modals), modals
+
+
+def test_a_statement_qgis_changed_is_not_shown_either(monkeypatch, modals, poles):
+    """Each arg() of QGIS's also fills a place marker an earlier one put in, so a
+    schema holding %1 comes back with the status in it, and libpq's message out
+    of its brackets (measured on 3.22.16 to 4.2.3). The text no longer holds
+    the statement FiberQ sent, and nothing of it is shown. Before Q28 the
+    export ran."""
+    def failed(sql):
+        return _qgis_arg(FAILED_WORDS["en"], sql, 0, LOCK_TIMEOUT)
+    connection = FakeConnection(fail={"lookup"}, failure=failed)
+    calls = _exporter(monkeypatch, connection)
+    dlg, accepted = _dialog(monkeypatch, poles, connection=connection)
+    dlg.le_schema.setText("plan%1")
+
+    dlg._do_export()
+
+    assert calls == [], "the export ran: " + repr(calls)
+    assert connection.asked == [("lookup", ("plan%1", "poles"))], connection.asked
+    assert modals["critical"] == [NOT_CHECKED.replace("public.poles", "plan%1.poles")], modals
+    assert accepted == [], modals
+
+
+def test_without_a_postgres_provider_nothing_is_sent(monkeypatch, modals, poles):
+    """A QGIS without the postgres provider gives FiberQ no connection to look
+    the name up on. Nothing is sent, and the box says why. Before Q28 the export
+    ran."""
+    calls = _exporter(monkeypatch)
+    dlg, accepted = _dialog(monkeypatch, poles)
+    monkeypatch.setattr(publish_pg, "_connection", lambda pg: None)
+
+    dlg._do_export()
+
+    assert calls == [], "the export ran: " + repr(calls)
+    assert modals["critical"] == [
+        "Layer 'Poles' was not published to PostGIS as public.poles.\n\nFiberQ could not check whether the table "
+        "already exists, so nothing was written.\n\nThis QGIS has no PostgreSQL provider."], modals
+    assert modals["info"] == [] and modals["warning"] == [] and accepted == [], modals
 
 
 def test_success_is_reported_when_qgis_answers_success(monkeypatch, modals, poles):
@@ -858,15 +1069,21 @@ FULL_URI = ("dbname='gis' host=127.0.0.1 port=1 user='gis' password='pw-in-the-u
             "key='id' table=\"public\".\"poles\" (geom)")
 
 
-@pytest.mark.parametrize("path", ["lookup", "reason", "uri", "exception", "count"])
+@pytest.mark.parametrize("path", ["lookup", "lookup-statement", "reason", "uri", "exception", "count"])
 def test_the_password_is_never_shown(monkeypatch, modals, poles, path):
     """QGIS writes a refused connection as "Connection failed: " and the whole
-    connection string, password included. FiberQ never shows the text of its
-    own lookup or count, and in what QGIS's export says or raises a connection
-    string is replaced and a password masked. On v1.5.0 a raised text was shown
-    as it came, and every answer was reported as a publication."""
-    fail = {"lookup": {"lookup"}, "count": {"count"}}.get(path, ())
-    connection = FakeConnection(fail=fail)
+    connection string, password included. FiberQ never shows the text of a
+    lookup that could not connect, nor of its count, and in what a lookup that
+    failed otherwise, or QGIS's export, says or raises, a connection string is
+    replaced and a password masked. On v1.5.0 a raised text was shown as it
+    came, and every answer was reported as a publication; before Q28 the export
+    ran after a lookup that failed otherwise."""
+    fail = {"lookup": {"lookup"}, "lookup-statement": {"lookup"}, "count": {"count"}}.get(path, ())
+    failure = REFUSED
+    if path == "lookup-statement":
+        failure = ("Connection lost: host=127.0.0.1 port=1 user='gis' password='pw-in-the-uri' | "
+                   "postgresql://gis:pw-in-the-uri@127.0.0.1/gis")
+    connection = FakeConnection(fail=fail, failure=failure)
     if path == "lookup":
         _exporter(monkeypatch, connection, code=Result.ErrorConnectionFailed, message="Connection to database failed")
     elif path == "reason":
@@ -886,6 +1103,10 @@ def test_the_password_is_never_shown(monkeypatch, modals, poles, path):
     expected = {
         "lookup": ("critical", "Layer 'Poles' was not published to PostGIS as public.poles.\n\n"
                                "Connection to database failed"),
+        "lookup-statement": ("critical", "Layer 'Poles' was not published to PostGIS as public.poles.\n\nFiberQ "
+                                         "could not check whether the table already exists, so nothing was written."
+                                         "\n\nConnection lost: [connection string] | "
+                                         "postgresql://gis:********@127.0.0.1/gis"),
         "reason": ("critical", "Layer 'Poles' was not published to PostGIS as public.poles.\n\nConnection failed: "
                                "[connection string] | postgresql://gis:********@127.0.0.1/gis | password=********"),
         "uri": ("critical", "Layer 'Poles' was not published to PostGIS as public.poles.\n\nCould not open "

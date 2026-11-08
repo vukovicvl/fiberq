@@ -1,4 +1,5 @@
-from qgis.PyQt.QtCore import Qt, QVariant
+from qgis.PyQt.QtCore import Qt
+from ..utils.compat import FieldType
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
     QLineEdit, QPushButton, QMessageBox
@@ -142,7 +143,7 @@ def _choose_pk_field(layer: QgsVectorLayer):
     if len(own_key) == 1:
         candidates.append(own_key[0])
     for index in dict.fromkeys(candidates):
-        if fields.at(index).type() in (QVariant.Int, QVariant.LongLong) and _holds_distinct_integers(layer, index):
+        if fields.at(index).type() in (FieldType.Int, FieldType.LongLong) and _holds_distinct_integers(layer, index):
             return fields.at(index).name(), False
 
     taken = {f.name().lower() for f in fields}
@@ -158,9 +159,20 @@ def _choose_pk_field(layer: QgsVectorLayer):
 # ---------------------------------------------------------------------------
 
 class _StatementFailed(Exception):
-    """A statement FiberQ ran did not go through. It carries no text: QGIS's
-    text of a failed connection is the whole connection string, password
-    included."""
+    """A statement FiberQ ran did not go through.
+
+    ``reason`` says why, '' when nothing does, read from QGIS's text by
+    _failed: never the statement, and passed through _scrub, since QGIS
+    writes a failed connection with the whole connection string, password
+    included. ``no_connection`` is True when QGIS has no connection -- a wrong
+    login, a server that is down or not there, also one that went down since
+    the last publish.
+    """
+
+    def __init__(self, reason: str = "", no_connection: bool = False):
+        super().__init__(reason)
+        self.reason = reason
+        self.no_connection = no_connection
 
 
 def _ident(name: str) -> str:
@@ -209,11 +221,51 @@ def _connection(pg: dict):
 def _run(connection, sql: str) -> list:
     """The rows ``sql`` answers on ``connection``; _StatementFailed when it does not run."""
     if connection is None:
-        raise _StatementFailed()
+        raise _StatementFailed("This QGIS has no PostgreSQL provider.")
     try:
         return connection.executeSql(sql)
-    except QgsProviderConnectionException:
-        raise _StatementFailed() from None
+    except QgsProviderConnectionException as e:
+        raise _failed(str(e), sql, connection.uri()) from None
+
+
+def _failed(text: str, sql: str, uri: str) -> _StatementFailed:
+    """What QGIS's ``text`` says of ``sql``, which did not run on the connection ``uri``.
+
+    QGIS writes it in the user's language in one of three ways (3.22.16 to
+    4.2.3), so it is told by what QGIS puts into the words, never by the
+    words:
+
+    - "Connection failed: %1", the connection's URI: QGIS could not connect.
+    - "Connection error: %1 returned %2 [%3]" and "SQL error: %1 returned %2
+      [%3]": the statement, the connection's PQstatus, libpq's message. A
+      status other than 0, CONNECTION_OK, is a connection QGIS had and lost:
+      the server went down within the minute or two QGIS keeps a connection
+      after a publish, and QGIS could not reset it. 0 is a statement that
+      failed on a live connection.
+
+    The status is the first number before the statement, where Russian puts
+    it, or else after it. The message follows the first " [" after the
+    statement -- Korean has brackets of its own, with no space before them --
+    and only its first line is kept: the next ones can quote the statement
+    ("LINE 1: SELECT ..."). Two catalogues lose what QGIS puts in -- Persian's,
+    and Tamil's "Connection failed" -- and their text is the reason, scrubbed.
+    """
+    if uri and uri in text:
+        return _StatementFailed(_scrub(text).strip(), no_connection=True)
+    before, found, after = text.partition(sql)
+    if not found:
+        # Each arg() of QGIS's also fills a %1 to %99 that an earlier one put
+        # in -- a schema named so -- and the statement is no longer as sent.
+        head = re.split("['\"]", sql, maxsplit=1)[0]
+        return _StatementFailed("" if head in text else _scrub(text).strip())
+    status = re.search(r"\d+", before) or re.search(r"\d+", after)
+    _words, _bracket, message = after.partition(" [")
+    line, newline, _rest = message.partition("\n")
+    message = _scrub(line if newline else line.rpartition("]")[0]).strip()
+    # Lithuanian writes the status in place of the message: a number is no reason.
+    if not any(character.isalpha() for character in message):
+        message = ""
+    return _StatementFailed(message, status is not None and status.group() != "0")
 
 
 def _relation_kind(connection, schema: str, name: str):
@@ -337,6 +389,20 @@ def _left_behind(connection, schema: str, table: str, expected) -> str:
         return f"\n\nQGIS may have created {target} before it failed. If it is there, it is incomplete. {remove}"
     wrote = f"{written} of the layer's {_count(expected, 'feature')}"
     return f"\n\nQGIS had created {target} before it failed, and wrote {wrote} to it: the table is incomplete. {remove}"
+
+
+def _not_checked(name: str, target: str, error: Exception) -> str:
+    """What the user is told when the lookup of ``target`` failed: nothing was sent."""
+    if not isinstance(error, _StatementFailed):
+        error = _StatementFailed(_scrub(str(error)).strip())
+    if error.no_connection:
+        # The words QGIS's export ended with when it still ran after a failed lookup.
+        said = "Connection to database failed"
+    else:
+        said = "FiberQ could not check whether the table already exists, so nothing was written."
+        if error.reason:
+            said += f"\n\n{error.reason}"
+    return f"Layer '{name}' was not published to PostGIS as {target}.\n\n{said}"
 
 
 class PublishDialog(QDialog):
@@ -494,15 +560,16 @@ class PublishDialog(QDialog):
 
         # FiberQ writes only new tables. A name the database already has -- a
         # table, a view, a partition, an index, any relation -- is refused
-        # before anything is sent. When the lookup cannot run, the export goes
-        # on: with overwrite off QGIS refuses a taken name by itself, and says why.
-        connection = None
+        # before anything is sent. So is every name when the lookup fails: it
+        # reads only pg_catalog, which every login may read, so it fails when
+        # QGIS cannot connect, and the export would then ask for the login a
+        # second time, to fail the same way.
         try:
             connection = _connection(self.pg)
             found = _relation_kind(connection, schema, table)
-        except (_StatementFailed, QgsProviderConnectionException):
-            # Not known to be taken.
-            found = None
+        except (_StatementFailed, QgsProviderConnectionException) as e:
+            QMessageBox.critical(self.iface.mainWindow(), "PostGIS", _not_checked(layer.name(), target, e))
+            return
         if found is not None:
             QMessageBox.critical(
                 self.iface.mainWindow(),

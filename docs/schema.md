@@ -222,7 +222,7 @@ importing an interchange bundle does.)
 
 | field | type | units | value map | alias |
 |---|---|---|---|---|
-| tip | text | | Optical→opticki, Copper→bakarnI | Cable type |
+| tip | text | | Optical→Optical, Copper→Copper (older projects: opticki, bakarnI) | Cable type |
 | podtip | text | | Backbone→glavni, Distribution→distributivni, Drop→razvodni | Segment type |
 | color_code | text | | | Color code |
 | broj_cevcica | int | | | Number of ducts |
@@ -309,10 +309,12 @@ to stored values is coordinated and lossless):
 - **`kapacitet` type differs:** integer on elements, text on pipes.
 - **Manhole `poklop_tes` / `poklop_lak` are boolean** — booleans may not round-trip
   cleanly through some GeoPackage/OGR paths.
-- **Cable `tip` storage direction:** the value map expects Serbian stored values,
-  but every cable restyle (at project open, after Lay cable and after each slack
-  recompute) rewrites `opticki` / `bakarnI` to `Optical` / `Copper`; the canonical
-  direction will be fixed by the interchange work (the value map still carries the
-  typo `bakarnI` for now).
+- **Cable `tip` storage direction (corrected in 1.6.0):** FiberQ stores `Optical` /
+  `Copper`, and every cable restyle (at project open, after Lay cable and after each
+  slack recompute) rewrites an older project's `opticki` / `bakarnI` to them. Until
+  1.6.0 the value map still expected the older values, so the attribute form showed
+  every cable's type in brackets, "(Optical)"; it now maps to what is stored.
+  Validation rule D1 still accepts the older values, and an interchange import writes
+  `Optical` / `Copper`.
 - **Mixed field naming:** a few keys are English in an otherwise Serbian roster
   (e.g. element `address_id`, the cable fibre-schema fields). These are kept as-is.

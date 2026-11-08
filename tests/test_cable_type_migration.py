@@ -378,3 +378,41 @@ def test_an_edited_layer_is_read_whole_as_before(project, tmp_path):
         assert order == whole_read
     finally:
         layer.rollBack()
+
+
+# ---------------------------------------------------------------------------
+# What the attribute form shows (v1.6.0 QA on 4.2: "(Optical)" on every cable)
+# ---------------------------------------------------------------------------
+
+def _shown(layer, value):
+    """What the attribute form and table show for ``value`` in the ``tip`` column."""
+    from qgis.core import QgsValueMapFieldFormatter
+    index = layer.fields().indexOf("tip")
+    config = layer.editorWidgetSetup(index).config()
+    return QgsValueMapFieldFormatter().representValue(layer, index, config, None, value)
+
+
+def test_the_form_shows_the_cable_type_that_is_stored(project):
+    """The form's value map named the older values, so QGIS showed every cable's
+    type in brackets -- "(Optical)", its sign for a value its list does not have."""
+    from fiberq.utils.field_aliases import apply_cable_field_aliases
+    layer = _cables(project, ["Optical", "Copper", "opticki"])
+
+    apply_cable_field_aliases(layer)
+
+    assert [f["tip"] for f in layer.getFeatures()] == ["Optical", "Copper", "Optical"]
+    assert _shown(layer, "Optical") == "Optical"
+    assert _shown(layer, "Copper") == "Copper"
+    assert _shown(layer, "garbage") == "(garbage)", "premise: brackets mean a value the list lacks"
+
+
+def test_the_schema_declares_what_the_restyle_rewrites(project):
+    """``legacy_values`` is not a second opinion: it is what the migration does."""
+    from fiberq.models import schema
+    tip = {f.key: f for f in schema.LAYER_SCHEMAS["Underground cables"].fields}["tip"]
+    assert set(tip.legacy_values.values()) <= set(tip.value_map.values())
+
+    layer = _cables(project, list(tip.legacy_values))
+    _migrate_cable_type_values(layer)
+
+    assert [f["tip"] for f in layer.getFeatures()] == list(tip.legacy_values.values())

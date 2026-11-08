@@ -104,7 +104,7 @@ def shown(monkeypatch):
     captured = []
 
     class FakeDialog:
-        def __init__(self, errors, parent=None):
+        def __init__(self, errors, parent=None, **kwargs):
             captured.append(list(errors))
 
         def exec(self):
@@ -513,14 +513,15 @@ def test_correcting_a_multipart_route_at_the_start_keeps_every_part(plugin, proj
 
 
 def test_a_pole_with_no_position_is_not_a_correction_target(plugin, project, quiet_dialogs):
+    """The pole is 4 m off the end, inside Correct's 5 m limit (Q21), so it is the target."""
     route = _route(project, [_straight(0, 0, 100, 0)])
-    _points(project, "Poles", [None, (105, 0)])
+    _points(project, "Poles", [None, (104, 0)])
     feature = next(route.getFeatures())
 
     plugin.fix_route_to_pole(feature, must_start=False)
 
     moved = next(route.getFeatures())
-    assert line_vertices(moved.geometry())[-1] == QgsPointXY(105, 0)
+    assert line_vertices(moved.geometry())[-1] == QgsPointXY(104, 0)
 
 
 def test_a_clean_route_reports_no_errors(plugin, project, quiet_dialogs, shown):
@@ -695,15 +696,18 @@ def test_correct_refuses_to_flatten_a_route_onto_its_own_neighbour(plugin, proje
     the pole the route STARTS on. Measured on 3.22.16, 3.44.15 and 4.0.3: a 35 m
     drop came back as LineString (0 0, 0 0), length 0, with "Route has been
     automatically attached to a pole." on screen.
+
+    Q21 gave Correct a 5 m limit, which refuses a 35 m drop before this guard
+    is reached. A 3 m drop is inside the limit, so the guard still decides.
     """
-    route = _route(project, [_straight(0, 0, 35, 0)])
+    route = _route(project, [_straight(0, 0, 3, 0)])
     _points(project, "Poles", [(0, 0), (400, 0)])
 
     plugin.fix_route_to_pole(next(route.getFeatures()), must_start=False)
 
     kept = next(route.getFeatures()).geometry()
-    assert kept.length() == pytest.approx(35.0), kept.asWkt(0)
-    assert not any("automatically attached" in str(m) for m in quiet_dialogs), quiet_dialogs
+    assert kept.length() == pytest.approx(3.0), kept.asWkt(0)
+    assert not any("was attached to" in str(m) for m in quiet_dialogs), quiet_dialogs
     assert any("collapse the route" in w for w in plugin.iface.bar.warnings), \
         plugin.iface.bar.warnings
 
@@ -715,15 +719,23 @@ def test_correct_refuses_to_flatten_one_part_of_a_multipart_route(plugin, projec
     that part while the route's far end -- in part 1 -- is nowhere near. A guard
     written as "exclude the pole the other end is on" cannot see this. Measured
     on main: 20 m in, 10 m out, reported as a success.
+
+    Q21: part 2 is 3 m long here, not 10. With Correct's 5 m limit a pole 10 m
+    off is refused before this guard is reached, so the 10 m part would pass
+    with the guard deleted; at 3 m the guard is what refuses, and says so.
     """
-    route = _route(project, [_multipart()], wkb="MultiLineString")
+    route = _route(project, [QgsGeometry.fromMultiPolylineXY(
+        [[QgsPointXY(0, 0), QgsPointXY(10, 0)],
+         [QgsPointXY(20, 0), QgsPointXY(23, 0)]])], wkb="MultiLineString")
     _points(project, "Poles", [(20, 0)])
 
     plugin.fix_route_to_pole(next(route.getFeatures()), must_start=False)
 
     kept = next(route.getFeatures()).geometry()
-    assert kept.length() == pytest.approx(20.0), kept.asWkt(0)
+    assert kept.length() == pytest.approx(13.0), kept.asWkt(0)
     assert line_part_count(kept) == 2, kept.asWkt(0)
+    assert any("collapse the route" in w for w in plugin.iface.bar.warnings), \
+        plugin.iface.bar.warnings
 
 
 def test_correct_still_closes_a_legitimate_loop_onto_one_pole(plugin, project, quiet_dialogs):
@@ -750,14 +762,18 @@ def test_correct_still_closes_a_legitimate_loop_onto_one_pole(plugin, project, q
 
     moved = next(route.getFeatures()).geometry()
     assert line_vertices(moved)[-1] == QgsPointXY(0.5, 0), moved.asWkt(2)
-    assert any("automatically attached" in str(m) for m in quiet_dialogs), quiet_dialogs
+    assert any("was attached to" in str(m) for m in quiet_dialogs), quiet_dialogs
 
 
 def test_correct_refuses_when_an_interior_vertex_is_the_nearest_pole(plugin, project, quiet_dialogs):
-    """A route with a bend, and the pole sitting on the bend itself."""
+    """A route with a bend, and the pole sitting on the bend itself.
+
+    Q21: the bend is 3 m from the end, inside Correct's 5 m limit, so it is
+    this guard that refuses; at 50 m the limit would refuse first.
+    """
     route = _route(project, [QgsGeometry.fromPolylineXY(
-        [QgsPointXY(0, 0), QgsPointXY(50, 0), QgsPointXY(100, 0)])])
-    _points(project, "Poles", [(50, 0)])
+        [QgsPointXY(0, 0), QgsPointXY(97, 0), QgsPointXY(100, 0)])])
+    _points(project, "Poles", [(97, 0)])
 
     plugin.fix_route_to_pole(next(route.getFeatures()), must_start=False)
 
@@ -865,13 +881,14 @@ def test_correcting_a_curved_route_on_disk_keeps_its_length(plugin, project, qui
     route, path = _gpkg_route(
         project, QgsGeometry.fromWkt("CircularString (0 0, 500 1, 1000 0)"),
         wkb="CircularString")
-    _points(project, "Poles", [(1010, 0)])
+    # 3 m off the end, inside Correct's 5 m limit (Q21); it was 10 m before.
+    _points(project, "Poles", [(1003, 0)])
 
     plugin.fix_route_to_pole(next(route.getFeatures()), must_start=False)
 
     parts, length, wkt = _read_once(path)
     assert length > 1000.0, f"the arc must still span the route, got {wkt}"
-    assert "1010 0" in wkt, f"and its END must be the vertex that moved: {wkt}"
+    assert "1003 0" in wkt, f"and its END must be the vertex that moved: {wkt}"
 
 
 # ---------------------------------------------------------------------------

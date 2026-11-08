@@ -191,23 +191,27 @@ def _safe_format(translated, source, **kwargs):
 
 
 def _allowed_domain(field_def):
-    """Valid values for an enum field -- **both** sides of ``value_map``.
+    """Valid values for an enum field: **both** sides of ``value_map``, and its
+    ``legacy_values``.
 
-    ``value_map`` is declared ``{display: stored}``, but the plugin does not
-    consistently store the mapped side. The cable dialog offers "Optical"/"Copper"
-    and maps them to themselves (fiberq/dialogs/cable_dialog.py), so real projects
-    hold the English label where schema.py declares ``opticki``/``bakarnI``; older
-    projects hold the Serbian form. Both are legitimate as-built values.
+    ``value_map`` is declared ``{display: stored}``. Both sides pass, because a
+    display label typed into the attribute table is not garbage, and older
+    projects hold one or the other depending on how a feature was made.
 
-    Accepting the union keeps D1 doing its actual job -- catching typos and
-    garbage -- without taking sides in a vocabulary split that WP3's schema
-    inventory is the right place to resolve. Narrowing to one side floods every
+    ``legacy_values`` are what older projects still store for a field whose
+    stored value has since changed: a cable's ``opticki`` / ``bakarnI``, which
+    FiberQ rewrites to ``Optical`` / ``Copper`` when it restyles the layer. Until
+    1.6.0 the cable value map still named them, and the union of its two sides
+    is what kept them passing here; they are declared on their own now, so D1
+    accepts exactly what it accepted before. Narrowing either way would flood a
     real project with false positives on every cable.
     """
     allowed = set()
     if field_def.value_map:
         allowed |= set(field_def.value_map.values())
         allowed |= set(field_def.value_map.keys())
+    if field_def.legacy_values:
+        allowed |= set(field_def.legacy_values)
     if field_def.options:
         allowed |= set(field_def.options)
     return allowed

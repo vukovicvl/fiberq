@@ -12,6 +12,7 @@ from qgis.PyQt.QtCore import QCoreApplication
 from qgis.core import QgsWkbTypes
 
 # Phase 5.2: Logging
+from ..utils.errors import OperationErrors, add_and_save
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
@@ -157,7 +158,6 @@ class ObjectsUI:
             if not obj:
                 return
 
-            obj.startEditing()
             f = QgsFeature(obj.fields())
             f.setGeometry(g)
             for k, v in vals.items():
@@ -172,8 +172,17 @@ class ObjectsUI:
                 set_feature_uuid(f)
             except Exception as e:
                 logger.debug(f"Could not set feature uuid: {e}")
-            obj.addFeature(f)
-            obj.commitChanges()
+            # Each answer checked (utils.errors.add_and_save): the edit session,
+            # the add and the commit used to be unchecked, so a building a
+            # locked file or a read-only login kept out vanished without a word.
+            # A session the user already had open takes it unsaved, as the
+            # Objects draw tools have always done.
+            #: Message-bar title over a building that could not be saved.
+            #: "Objects" = BUILDINGS (see above).
+            with OperationErrors(self.tr("Objects"), core.iface) as errors:
+                placed = add_and_save(obj, [f], errors, save_open_session=False)
+            if not placed:
+                return
             _stylize_objects_layer(obj)
             core.iface.layerTreeView().setCurrentLayer(obj)
 

@@ -9,7 +9,9 @@ writes nothing, anywhere. The operation then reports success, and the user finds
 the missing features much later, or never.
 
 This module is the one place that decides what a failure looks like. Three
-pieces, and they exist together on purpose:
+pieces, and they exist together on purpose -- plus :func:`add_columns` and
+:func:`add_and_save`, which are :func:`check_commit` for a new column and for a
+new feature:
 
 :class:`OperationErrors`
     A collector for one operation. Each failing part calls
@@ -239,28 +241,21 @@ def report_error(operation, what, problem, iface=None) -> None:
     errors.report()
 
 
-def _commit_reason(layer) -> str:
-    """The provider's own account of a refused commit, folded onto one line.
+def _folded(entries) -> str:
+    """Provider messages folded onto one line, or ``""`` when there are none.
 
-    ``commitErrors()`` returns a list whose entries carry embedded newlines --
-    a summary line and then one per rejected feature, so a trigger that rejects
-    twenty thousand features answers with twenty thousand near-identical lines.
-    The message bar shows one line, so the first :data:`_MAX_REASONS` distinct
-    ones are joined and the rest are counted. Membership is tested against a
-    set, not the list being built: the list form was quadratic, and measured at
-    1.6 seconds on the UI thread for that twenty-thousand case.
+    Entries carry embedded newlines -- a summary line and then one per rejected
+    feature, so a trigger that rejects twenty thousand features answers with
+    twenty thousand near-identical lines. The message bar shows one line, so the
+    first :data:`_MAX_REASONS` distinct ones are joined and the rest are
+    counted. Membership is tested against a set, not the list being built: the
+    list form was quadratic, and measured at 1.6 seconds on the UI thread for
+    that twenty-thousand case.
     """
-    if not layer.isEditable():
-        # Asked first, because QGIS answers this case with its own untranslated
-        # "ERROR: layer not editable" in commitErrors(); folding that would win
-        # and the friendlier sentence would never be reached.
-        src = QT_TRANSLATE_NOOP('FiberQErrors', "the layer was not in edit mode")
-        return QCoreApplication.translate('FiberQErrors', src)
-
     reasons = []
     seen = set()
     extra = 0
-    for entry in layer.commitErrors() or []:
+    for entry in entries or []:
         for part in str(entry).splitlines():
             part = part.strip()
             if not part or part in seen:
@@ -270,9 +265,24 @@ def _commit_reason(layer) -> str:
                 reasons.append(part)
             else:
                 extra += 1
-    if reasons:
-        folded = "; ".join(reasons)
-        return f"{folded}; +{extra} more" if extra else folded
+    if not reasons:
+        return ""
+    folded = "; ".join(reasons)
+    return f"{folded}; +{extra} more" if extra else folded
+
+
+def _commit_reason(layer) -> str:
+    """The provider's own account of a refused commit, folded onto one line."""
+    if not layer.isEditable():
+        # Asked first, because QGIS answers this case with its own untranslated
+        # "ERROR: layer not editable" in commitErrors(); folding that would win
+        # and the friendlier sentence would never be reached.
+        src = QT_TRANSLATE_NOOP('FiberQErrors', "the layer was not in edit mode")
+        return QCoreApplication.translate('FiberQErrors', src)
+
+    folded = _folded(layer.commitErrors())
+    if folded:
+        return folded
     src = QT_TRANSLATE_NOOP('FiberQErrors', "QGIS refused the commit without saying why")
     return QCoreApplication.translate('FiberQErrors', src)
 
@@ -310,4 +320,177 @@ def check_commit(layer, errors, what=None) -> bool:
     return False
 
 
-__all__ = ['OperationErrors', 'check_commit', 'describe', 'report_error']
+#: The sentence for columns that could not be added. Held as a constant
+#: because it is used twice: as the source pylupdate6 extracts and as
+#: safe_format's fallback if a translator renames a placeholder.
+_COLUMNS_REFUSED = QT_TRANSLATE_NOOP(
+    'FiberQErrors', "could not add the column(s) {columns}: {reason}")
+
+
+#: The longest column name a shapefile keeps: its DBF table stores ten
+#: characters, and OGR shortens a longer name to fit.
+_SHAPEFILE_NAME_LIMIT = 10
+
+
+def _adding_attributes(provider) -> bool:
+    """Whether the provider may add columns, spelled the way every supported
+    QGIS accepts (measured on 3.22.16, 3.40.15 and 4.2.3)."""
+    return bool(provider.capabilities() & provider.Capability.AddAttributes)
+
+
+def _split_by_name_length(provider, fields):
+    """``(fields, too_long)``: on a shapefile, ``too_long`` holds the fields
+    whose names DBF would store shortened and ``fields`` the rest; on any other
+    data source every field is kept."""
+    if provider.storageType() != "ESRI Shapefile":
+        return fields, []
+    return ([field for field in fields if len(field.name()) <= _SHAPEFILE_NAME_LIMIT],
+            [field for field in fields if len(field.name()) > _SHAPEFILE_NAME_LIMIT])
+
+
+def _columns_refused(errors, name, fields, reason) -> None:
+    """Add the one line naming the ``fields`` that were not added, and why."""
+    errors.add(name, _safe_format(
+        QCoreApplication.translate('FiberQErrors', _COLUMNS_REFUSED), _COLUMNS_REFUSED,
+        columns=", ".join(field.name() for field in fields), reason=reason))
+
+
+def add_columns(layer, fields, errors, what=None) -> bool:
+    """Add ``fields`` to ``layer``'s data source, with a refusal reported.
+
+    The ``addAttributes()`` counterpart of :func:`check_commit`: the provider
+    answers with a bool most call sites threw away, and its reason goes into a
+    separate error list nobody read. On a PostgreSQL table every column FiberQ
+    added was refused that way until 1.6.0 -- see ``compat.new_field``, which
+    is what ``fields`` should be built with.
+
+    Straight to the provider, never through an edit session: a column needs
+    none -- it reaches the data source with ``isEditable()`` False throughout
+    (measured on 3.22.16, 3.44.15 and 4.0.3) -- and a ``startEditing()`` /
+    ``commitChanges()`` pair around it only ever committed whatever else was in
+    the layer's buffer, which is the user's own work. Nothing is started,
+    committed or rolled back here.
+
+    Asked before the provider: a layer set read-only, whose provider would add
+    the column anyway (measured), and a data source that does not allow new
+    columns -- on PostgreSQL, a login that does not own the table.
+
+    And, before anything is added, a shapefile column whose name is longer
+    than ten characters, which is refused: DBF keeps ten, so OGR added
+    ``fiberq_uuid`` as ``fiberq_uui``, the next look-up by the full name did
+    not find it, and every call added another copy -- ``fiberq_u_1``,
+    ``fiberq_u_2`` and on, at every placement and every project open
+    (measured on 3.22.16 and 4.2.3). The shorter names in the same call are
+    still added, as they always were.
+
+    Args:
+        layer: The vector layer whose data source gets the columns.
+        fields: The :class:`QgsField` objects to add.
+        errors: The :class:`OperationErrors` collecting this operation.
+        what: What to call the layer in the message. Defaults to its own name.
+
+    Returns:
+        True when every field was added.
+    """
+    fields = list(fields)
+    if not fields:
+        return True
+    name = what
+    try:
+        name = what or layer.name()
+        provider = layer.dataProvider()
+        if layer.readOnly():
+            src = QT_TRANSLATE_NOOP('FiberQErrors', "the layer is read-only")
+            reason = QCoreApplication.translate('FiberQErrors', src)
+        elif not _adding_attributes(provider):
+            src = QT_TRANSLATE_NOOP(
+                'FiberQErrors',
+                "its data source does not allow new columns; on a database, only the table's owner can add them")
+            reason = QCoreApplication.translate('FiberQErrors', src)
+        else:
+            fields, too_long = _split_by_name_length(provider, fields)
+            if too_long:
+                src = QT_TRANSLATE_NOOP('FiberQErrors', "a shapefile keeps only 10 characters of a column name")
+                _columns_refused(errors, name, too_long, QCoreApplication.translate('FiberQErrors', src))
+                if not fields:
+                    return False
+            already = len(provider.errors())
+            added = provider.addAttributes(fields)
+            # Either way: a provider that added some of the columns before it
+            # failed has them now, and the layer should show them.
+            layer.updateFields()
+            if added:
+                return not too_long
+            reason = _folded(provider.errors()[already:])
+            if not reason:
+                src = QT_TRANSLATE_NOOP('FiberQErrors', "the data source refused them without saying why")
+                reason = QCoreApplication.translate('FiberQErrors', src)
+    except (AttributeError, RuntimeError) as exc:
+        # Not a vector layer, or one whose C++ object is already gone.
+        errors.add(name, exc)
+        return False
+    _columns_refused(errors, name, fields, reason)
+    return False
+
+
+#: add_and_save's two refusals before the commit, said the way lay_cable's are.
+_NOT_EDITABLE = QT_TRANSLATE_NOOP(
+    'FiberQErrors', "the layer could not be opened for editing, so nothing was saved")
+_REFUSED = QT_TRANSLATE_NOOP(
+    'FiberQErrors', "the layer refused the new feature, so nothing was saved")
+
+
+def add_and_save(layer, features, errors, what=None, save_open_session=True) -> bool:
+    """Add ``features`` to ``layer`` and save them, with every refusal reported.
+
+    The placement tools' ``startEditing()`` / ``addFeature()`` /
+    ``commitChanges()`` threw all three answers away, and then said "Element
+    placed!" -- also when a locked GeoPackage, a read-only layer or a database
+    login without the right to insert kept every feature out of the file
+    (v1.6.0 QA, finding Q14). Each step is checked here, the reason is added to
+    ``errors``, and the caller says its success only when this answers True.
+
+    The session: one this call opens is rolled back when the layer refuses a
+    feature -- it holds nothing else -- and kept when the commit is refused, as
+    :func:`check_commit` keeps every refused commit, so the user can clear the
+    cause and save. A session the user already had open is saved with the
+    features, which is what every placement tool has always done; with
+    ``save_open_session=False`` the features join that session unsaved instead,
+    which is what the Objects tool has always done.
+
+    Args:
+        layer: The vector layer the features go into.
+        features: The new :class:`QgsFeature` objects. ``addFeature`` gives each
+            the id it has in the edit buffer, which the undo manager reads.
+        errors: The :class:`OperationErrors` collecting this operation.
+        what: What to call the layer in the message. Defaults to its own name.
+        save_open_session: See above.
+
+    Returns:
+        True when the features reached the data source -- or, with
+        ``save_open_session=False``, the user's open session.
+    """
+    name = what
+    try:
+        name = what or layer.name()
+        was_editing = layer.isEditable()
+        if not was_editing and not layer.startEditing():
+            errors.add(name, QCoreApplication.translate('FiberQErrors', _NOT_EDITABLE))
+            return False
+        for feature in features:
+            if not layer.addFeature(feature):
+                errors.add(name, QCoreApplication.translate('FiberQErrors', _REFUSED))
+                if not was_editing:
+                    layer.rollBack()
+                return False
+    except (AttributeError, RuntimeError) as exc:
+        # Not a vector layer, or one whose C++ object is already gone.
+        errors.add(name, exc)
+        return False
+    if was_editing and not save_open_session:
+        return True
+    return check_commit(layer, errors, what)
+
+
+__all__ = ['OperationErrors', 'add_and_save', 'add_columns', 'check_commit', 'describe',
+           'report_error']

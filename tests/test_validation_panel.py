@@ -23,12 +23,13 @@ def _issue(rule_id="A1", severity=vm.Severity.WARNING, layer="Underground cables
     )
 
 
-def _result(issues, rule_errors=None, ran_rules=None, feature_counts=None):
+def _result(issues, rule_errors=None, ran_rules=None, feature_counts=None, skipped_rules=None):
     result = vm.ValidationResult(project_name="t", crs="EPSG:3857")
     result.issues = list(issues)
     result.rule_errors = list(rule_errors or [])
     result.ran_rules = list(ran_rules or [])
     result.feature_counts = dict(feature_counts or {})
+    result.skipped_rules = list(skipped_rules or [])
     return result
 
 
@@ -123,6 +124,72 @@ def test_failed_rules_are_surfaced_when_there_are_no_issues(qgis_app):
     text = panel.lbl_summary.text()
     assert "2" in text
     assert "fail" in text.lower()
+
+
+SKIPPED = "Skipped by this project's settings: "
+
+
+def test_the_rules_the_projects_settings_skip_are_named(qgis_app):
+    """QA finding Q27, step K.2 of the v1.6.0 QA: with A2 and B2 disabled, the
+    panel said "0 error(s), 0 warning(s), 1 info" and nothing more; only an
+    exported report named the two. The settings travel with the project, so the
+    next person to validate it had no sign that two rules never ran."""
+    panel = ValidationPanel()
+    panel.set_result(_result([_issue(rule_id="E2", severity=vm.Severity.INFO)],
+                             skipped_rules=["B2", "A2"]))
+    assert panel.lbl_summary.text().split("\n") == [
+        "0 error(s), 0 warning(s), 1 info",
+        SKIPPED + "A2, B2",
+    ]
+
+
+def test_a_clean_run_names_the_rules_it_skipped(qgis_app):
+    """The same project with E2 disabled too: "No issues found" from 11 rules
+    must not read as all of them."""
+    panel = ValidationPanel()
+    panel.set_result(_result(
+        [],
+        ran_rules=[f"R{i}" for i in range(11)],
+        feature_counts=dict({f"Layer {i}": 2 for i in range(22)}, Poles=3),
+        skipped_rules=["A2", "B2", "E2"],
+    ))
+    assert panel.lbl_summary.text().split("\n") == [
+        "No issues found — 11 rules ran over 23 layers, 47 features.",
+        SKIPPED + "A2, B2, E2",
+    ]
+
+
+def test_the_skipped_rules_stay_named_under_a_filter_and_failed_rules(qgis_app):
+    panel = ValidationPanel()
+    panel.set_result(_result([_issue(rule_id="A1"), _issue(rule_id="D2")],
+                             rule_errors=["C1: boom"], skipped_rules=["A2"]))
+    panel.cb_rule.setCurrentIndex(panel.cb_rule.findData("D2"))
+    assert panel.lbl_summary.text().split("\n") == [
+        "0 error(s), 2 warning(s), 0 info — showing 1 of 2",
+        "1 rule(s) failed to run",
+        SKIPPED + "A2",
+    ]
+
+
+def test_a_run_that_skips_no_rule_says_nothing_of_it(qgis_app):
+    panel = ValidationPanel()
+    panel.set_result(_result([_issue()]))
+    assert panel.lbl_summary.text() == "0 error(s), 1 warning(s), 0 info"
+    panel.set_result(_result([], ran_rules=["A1"], feature_counts={"Poles": 2}))
+    assert panel.lbl_summary.text() == "No issues found — 1 rules ran over 1 layers, 2 features."
+
+
+def test_a_project_that_turns_rules_off_has_them_named_by_its_run(qgis_app):
+    """K.2's own entry, through the engine Validate project runs."""
+    from qgis.core import QgsProject
+
+    project = QgsProject()
+    assert project.writeEntry(*vm.CONFIG_ENTRY, '{"disabled_rules": ["A2", "B2"], '
+                              '"severity_overrides": {"C1": "info", "E2": "info"}}')
+    panel = ValidationPanel()
+    panel.set_result(vm.run_validation(project))
+    assert panel.lbl_summary.text().split("\n")[-1] == SKIPPED + "A2, B2"
+    project.clear()
 
 
 def test_set_result_none_clears(qgis_app):

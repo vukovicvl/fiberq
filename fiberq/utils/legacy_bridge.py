@@ -9,12 +9,12 @@ Later phases will switch `extracted_classes.py` to import from here directly.
 """
 from __future__ import annotations
 
-from qgis.PyQt.QtCore import QSettings, QVariant
+from qgis.PyQt.QtCore import QSettings
+from .compat import FieldType, new_field
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QMessageBox
 
 from qgis.core import (
-    QgsField,
     QgsFillSymbol,
     QgsLinePatternFillSymbolLayer,
     QgsPalLayerSettings,
@@ -293,11 +293,9 @@ def _ensure_region_layer(core):
                             lyr.setName('Service Area')
                         except Exception as e:
                             logger.debug(f"Error in _ensure_region_layer: {e}")
-                    try:
-                        from .uuid_utils import ensure_uuid_field
-                        ensure_uuid_field(lyr)
-                    except Exception as e:
-                        logger.debug(f"Error ensuring fiberq_uuid on Service Area layer: {e}")
+                    # False where the column cannot be added (reason logged).
+                    from .uuid_utils import ensure_uuid_field
+                    ensure_uuid_field(lyr)
                     return lyr
             except Exception as e:
                 logger.debug(f"Skipping layer while ensuring region layer: {e}")
@@ -308,21 +306,18 @@ def _ensure_region_layer(core):
         region = QgsVectorLayer(f'Polygon?crs={crs}', 'Service Area', 'memory')
         pr = region.dataProvider()
         pr.addAttributes([
-            QgsField('name', QVariant.String),
-            QgsField('created_at', QVariant.String),
-            QgsField('area_m2', QVariant.Double),
-            QgsField('perim_m', QVariant.Double),
-            QgsField('count', QVariant.Int),
+            new_field('name', FieldType.String),
+            new_field('created_at', FieldType.String),
+            new_field('area_m2', FieldType.Double),
+            new_field('perim_m', FieldType.Double),
+            new_field('count', FieldType.Int),
         ])
         region.updateFields()
 
         # WP1b identity invariant: ensure the fiberq_uuid column exists on the
         # freshly created Service Area layer.
-        try:
-            from .uuid_utils import ensure_uuid_field
-            ensure_uuid_field(region)
-        except Exception as e:
-            logger.debug(f"Error ensuring fiberq_uuid on Service Area layer: {e}")
+        from .uuid_utils import ensure_uuid_field
+        ensure_uuid_field(region)
 
         # Simple semi-transparent style
         try:
@@ -362,11 +357,9 @@ def _ensure_objects_layer(core):
                 ):
                     _apply_objects_field_aliases(lyr)
                     _set_objects_layer_alias(lyr)
-                    try:
-                        from .uuid_utils import ensure_uuid_field
-                        ensure_uuid_field(lyr)
-                    except Exception as e:
-                        logger.debug(f"Error ensuring fiberq_uuid on Objects layer: {e}")
+                    # False where the column cannot be added (reason logged).
+                    from .uuid_utils import ensure_uuid_field
+                    ensure_uuid_field(lyr)
                     return lyr
             except Exception as e:
                 logger.debug(f"Error in _ensure_objects_layer: {e}")
@@ -376,23 +369,20 @@ def _ensure_objects_layer(core):
         layer = QgsVectorLayer(f"Polygon?crs={crs}", "Objects", "memory")
         pr = layer.dataProvider()
         pr.addAttributes([
-            QgsField("tip", QVariant.String),
-            QgsField("spratova", QVariant.Int),
-            QgsField("podzemnih", QVariant.Int),
-            QgsField("ulica", QVariant.String),
-            QgsField("broj", QVariant.String),
-            QgsField("naziv", QVariant.String),
-            QgsField("napomena", QVariant.String),
+            new_field("tip", FieldType.String),
+            new_field("spratova", FieldType.Int),
+            new_field("podzemnih", FieldType.Int),
+            new_field("ulica", FieldType.String),
+            new_field("broj", FieldType.String),
+            new_field("naziv", FieldType.String),
+            new_field("napomena", FieldType.String),
         ])
         layer.updateFields()
 
         # WP1b identity invariant: ensure the fiberq_uuid column exists on the
         # freshly created Objects layer.
-        try:
-            from .uuid_utils import ensure_uuid_field
-            ensure_uuid_field(layer)
-        except Exception as e:
-            logger.debug(f"Error ensuring fiberq_uuid on Objects layer: {e}")
+        from .uuid_utils import ensure_uuid_field
+        ensure_uuid_field(layer)
 
         prj.addMapLayer(layer)
         _stylize_objects_layer(layer)

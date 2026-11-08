@@ -170,6 +170,46 @@ def test_cache_is_keyed_on_crs_and_ellipsoid(project):
 
 
 # ---------------------------------------------------------------------------
+# One layer, many features: the measurer looked up once
+# ---------------------------------------------------------------------------
+
+def test_a_layers_measurer_answers_what_ground_length_answers(project):
+    """``length_measurer`` is ground_length with the CRS and the ellipsoid looked up once."""
+    from fiberq.utils.measure import length_measurer
+
+    layer = _layer()
+    measure = length_measurer(layer, project=project)
+    multi = QgsGeometry.fromMultiPolylineXY([_mercator_line(10.0).asPolyline(),
+                                             _mercator_line(250.0).asPolyline()])
+    for geom in (_mercator_line(1000.0), _mercator_line(0.5), multi, QgsGeometry(), None):
+        assert measure(geom) == ground_length(geom, layer, project=project)
+
+    geographic = _layer("EPSG:4326")
+    line = QgsGeometry.fromPolylineXY([QgsPointXY(LON, LAT), QgsPointXY(LON + 0.01, LAT)])
+    assert length_measurer(geographic, project=project)(line) == ground_length(line, geographic, project=project)
+
+
+def test_a_layers_measurer_falls_back_to_the_planar_length_as_ground_length_does(project, monkeypatch):
+    from fiberq.utils import measure
+
+    class Broken:
+        def measureLength(self, geom):
+            raise RuntimeError("no ellipsoid today")
+
+    geom = _mercator_line(1000.0)
+    monkeypatch.setattr(measure, "distance_area", lambda *args, **kwargs: Broken())
+    assert measure.length_measurer(_layer(), project=project)(geom) == pytest.approx(geom.length())
+    assert measure.ground_length(geom, _layer(), project=project) == pytest.approx(geom.length())
+
+    def unavailable(*args, **kwargs):
+        raise RuntimeError("no measurer at all")
+
+    monkeypatch.setattr(measure, "distance_area", unavailable)
+    assert measure.length_measurer(_layer(), project=project)(geom) == pytest.approx(geom.length())
+    assert measure.ground_length(geom, _layer(), project=project) == pytest.approx(geom.length())
+
+
+# ---------------------------------------------------------------------------
 # No caller may regress to planar maths for a stored length
 # ---------------------------------------------------------------------------
 

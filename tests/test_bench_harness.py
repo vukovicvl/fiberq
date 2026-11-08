@@ -409,6 +409,131 @@ def test_the_state_fingerprint_notices_one_added_feature(qgis_app, city_xs_datas
         project.clear()
 
 
+#: Two QgisLogProbes in a child of their own, so neither stays connected to the
+#: suite's message log: one that hears a line logged after it, and one whose
+#: hook-time line never goes out -- its bench_support.QgsMessageLog is a stub
+#: while it is made -- followed by a line it must not hear.
+LOG_PROBE_CHILD = '''
+import json
+import os
+import sys
+import types
+
+sys.path.insert(0, {bench!r})
+
+from qgis.core import QgsApplication
+
+QgsApplication.setPrefixPath("/usr", True)
+APP = QgsApplication([], False)
+APP.initQgis()
+
+from qgis.core import Qgis, QgsMessageLog
+
+import bench_support as support
+
+heard = support.QgisLogProbe()
+QgsMessageLog.logMessage("a C++ complaint", "Bench test", Qgis.MessageLevel.Warning)
+heard_report = heard.report()
+
+support.QgsMessageLog = types.SimpleNamespace(logMessage=lambda *args, **kwargs: None)
+deaf = support.QgisLogProbe()
+support.QgsMessageLog = QgsMessageLog
+QgsMessageLog.logMessage("a line after it", "Bench test", Qgis.MessageLevel.Warning)
+
+print("RESULT " + json.dumps({{
+    "heard": heard_report, "deaf": deaf.report(),
+    "with_format": hasattr(QgsApplication.messageLog(), "messageReceivedWithFormat")}}), flush=True)
+sys.stdout.flush()
+os._exit(0)
+'''
+
+
+@pytest.fixture(scope="module")
+def log_probes(tmp_path_factory):
+    folder = tmp_path_factory.mktemp("log_probe")
+    script = folder / "log_probe.py"
+    script.write_text(LOG_PROBE_CHILD.format(bench=str(BENCH)), encoding="utf-8")
+    environment = dict(os.environ, QT_QPA_PLATFORM="offscreen", TMPDIR=str(folder))
+    done = subprocess.run([sys.executable, str(script)], cwd=str(folder), env=environment,
+                          timeout=120, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    output = done.stdout.decode("utf-8", "replace")
+    lines = [ln for ln in output.splitlines() if ln.startswith("RESULT ")]
+    assert done.returncode == 0 and lines, f"returncode {done.returncode}\n{output}"
+    return json.loads(lines[-1][len("RESULT "):])
+
+
+def test_the_qgis_log_probe_counts_what_qgis_logs(log_probes):
+    """QGIS 4.0 and 4.2 log on messageReceivedWithFormat. The probe listened on
+    the three-argument messageReceived alone, which they no longer emit, and
+    reported hooked with nothing counted: every QGIS 4 run looked clean."""
+    heard = log_probes["heard"]
+    assert heard["hooked"] is True, heard
+    assert heard["counts"] == {"Bench test/1": 1}, heard
+    assert heard["samples"] == ["Bench test: a C++ complaint"], heard
+
+
+def test_the_qgis_log_probe_says_which_signal_it_heard_on(log_probes):
+    expected = "messageReceivedWithFormat" if log_probes["with_format"] else "messageReceived"
+    assert log_probes["heard"].get("signal") == expected, log_probes["heard"]
+
+
+def test_a_qgis_log_probe_that_hears_nothing_is_not_hooked(log_probes):
+    """Empty counts mean a clean run only from a probe that could hear a line."""
+    deaf = log_probes["deaf"]
+    assert deaf["hooked"] is False, deaf
+    assert deaf["counts"] == {}, f"it listens although it is not hooked: {deaf}"
+
+
+class _Signal:
+    """Stands in for a Qt signal: what is connected, and a way to fire it."""
+
+    def __init__(self):
+        self.slots = []
+
+    def connect(self, slot):
+        self.slots.append(slot)
+
+    def disconnect(self, slot):
+        self.slots.remove(slot)
+
+    def emit(self, *args):
+        for slot in list(self.slots):
+            slot(*args)
+
+
+class _WithoutTheThreeArgumentOverload:
+    """``messageReceived`` on a QGIS that keeps only ``messageReceived(bool)``."""
+
+    def __getitem__(self, signature):
+        raise KeyError("there is no matching overloaded signal")
+
+
+def test_a_qgis_without_the_three_argument_messagereceived_still_hooks(qgis_app, monkeypatch):
+    """The overload is looked up defensively, and messageReceivedWithFormat is
+    preferred: a QGIS that drops the old signature costs nothing."""
+    import types
+
+    from qgis.core import Qgis
+
+    import bench_support as support
+
+    with_format = _Signal()
+    log = types.SimpleNamespace(messageReceived=_WithoutTheThreeArgumentOverload(),
+                                messageReceivedWithFormat=with_format)
+    monkeypatch.setattr(support.QgsApplication, "messageLog", staticmethod(lambda: log))
+    monkeypatch.setattr(support, "QgsMessageLog", types.SimpleNamespace(
+        logMessage=lambda message, tag, level: with_format.emit(message, tag, level, 0)),
+        raising=False)
+
+    probe = support.QgisLogProbe()
+    with_format.emit("a C++ complaint", "Bench test", Qgis.MessageLevel.Warning, 0)
+
+    report = probe.report()
+    assert report["hooked"] is True, report
+    assert report.get("signal") == "messageReceivedWithFormat", report
+    assert report["counts"] == {"Bench test/1": 1}, report
+
+
 def test_the_redactor_drops_a_hostname_that_starts_with_the_username(monkeypatch,
                                                                      tmp_path):
     """Longest token first, or the username eats the start of the hostname.

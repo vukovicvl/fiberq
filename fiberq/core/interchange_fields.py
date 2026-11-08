@@ -273,9 +273,13 @@ VALUE_DOMAINS: Dict[str, Dict[str, str]] = {
         "sredina": "mid_span",
     },
     "cable/cable_type": {
+        # What FiberQ stores, first: an import writes the first match back.
+        "Optical": "optical",
+        "Copper": "copper",
+        # What older projects store until FiberQ restyles the layer
+        # (models/schema.py CABLE_TYPE_LEGACY_VALUES). The capital I is the
+        # as-built typo, present in real projects: mapped, not corrected.
         "opticki": "optical",
-        # As-built typo (capital I), preserved in the plugin's schema and
-        # therefore present in real projects. Mapped, not corrected.
         "bakarnI": "copper",
         "bakarni": "copper",
     },
@@ -304,7 +308,6 @@ ENGLISH_ALIASES: Dict[str, Dict[str, str]] = {
     },
     "slack/location": {"Manhole": "manhole", "Pole": "pole", "Object": "building"},
     "slack/side": {"FROM": "from", "TO": "to", "MID SPAN": "mid_span"},
-    "cable/cable_type": {"Optical": "optical", "Copper": "copper"},
     "cable/cable_subtype": {
         "Backbone": "backbone", "Distribution": "distribution", "Drop": "drop",
     },
@@ -423,6 +426,17 @@ def canonical_value(roster: str, canonical_name: str, value):
     return ENGLISH_ALIASES.get(key, {}).get(text, value)
 
 
+def has_value_domain(roster: str, canonical_name: str) -> bool:
+    """True when :func:`canonical_value` can change a value of this column.
+
+    It answers every value of a column with no value domain unchanged, and most
+    columns have none, so a caller translating many rows asks this once per
+    column rather than calling canonical_value() for every value (QA finding
+    Q30 of the 1.6.0 QA).
+    """
+    return VALUE_DOMAINS.get(_domain_key(roster, canonical_name)) is not None
+
+
 def stored_value(roster: str, canonical_name: str, value):
     """Translate a canonical value back to what FiberQ stores, or leave it be."""
     if value is None:
@@ -442,5 +456,5 @@ __all__ = [
     "LEGACY_FIELD_NAMES", "STRUCTURAL_FIELDS", "TYPE_ROSTER", "VALUE_DOMAINS",
     "actual_field", "cable_link_fields", "canonical_field", "legacy_names",
     "modern_field",
-    "canonical_value", "roster_for_type", "stored_field", "stored_value",
+    "canonical_value", "has_value_domain", "roster_for_type", "stored_field", "stored_value",
 ]

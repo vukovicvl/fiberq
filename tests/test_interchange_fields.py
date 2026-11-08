@@ -177,7 +177,19 @@ def test_a_field_with_no_domain_leaves_its_value_alone():
 
 
 def test_the_as_built_copper_typo_is_mapped_not_corrected():
-    """The plugin stores 'bakarnI' with a capital I. Real projects contain it."""
+    """Older projects store 'bakarnI' with a capital I. Real projects contain it."""
     assert fm.canonical_value("cable", "cable_type", "bakarnI") == "copper"
     assert fm.canonical_value("cable", "cable_type", "bakarni") == "copper"
-    assert fm.stored_value("cable", "cable_type", "copper") == "bakarnI"
+    assert fm.canonical_value("cable", "cable_type", "opticki") == "optical"
+
+
+def test_an_import_writes_the_cable_type_fiberq_stores():
+    """``Optical`` / ``Copper``: what Lay cable writes and every restyle rewrites to.
+
+    An import used to write the older ``opticki`` / ``bakarnI``, which the next
+    restyle then rewrote -- and which the attribute form showed in brackets.
+    """
+    assert fm.stored_value("cable", "cable_type", "optical") == "Optical"
+    assert fm.stored_value("cable", "cable_type", "copper") == "Copper"
+    assert fm.canonical_value("cable", "cable_type", "Optical") == "optical"
+    assert fm.canonical_value("cable", "cable_type", "Copper") == "copper"

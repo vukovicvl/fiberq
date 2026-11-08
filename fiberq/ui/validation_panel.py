@@ -298,6 +298,12 @@ class ValidationPanel(QDockWidget):
         if self._result.rule_errors:
             text += '\n' + self.tr('%n rule(s) failed to run',
                                    '', len(self._result.rule_errors))
+        # The settings travel with the project: whoever validates it next sees
+        # here which rules they turn off, not only in an exported report.
+        if self._result.skipped_rules:
+            src = QT_TRANSLATE_NOOP('ValidationPanel', "Skipped by this project's settings: {rules}")
+            text += '\n' + safe_format(self.tr(src), src,
+                                       rules=', '.join(sorted(self._result.skipped_rules)))
         self.lbl_summary.setText(text)
 
     def _scope(self):

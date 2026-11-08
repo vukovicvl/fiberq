@@ -16,20 +16,21 @@ import unicodedata
 from datetime import datetime
 
 from qgis.core import (
-    QgsProject, QgsVectorLayer, QgsField, QgsWkbTypes,
+    QgsProject, QgsVectorLayer, QgsWkbTypes,
     QgsMarkerSymbol, QgsSymbol, QgsUnitTypes,
     QgsSingleSymbolRenderer, QgsSvgMarkerSymbolLayer,
     QgsPalLayerSettings, QgsVectorLayerSimpleLabeling,
     QgsFeature, QgsGeometry,
     QgsFillSymbol, QgsLinePatternFillSymbolLayer, QgsSimpleFillSymbolLayer,
 )
-from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP, QVariant
+from qgis.PyQt.QtCore import QCoreApplication, QT_TRANSLATE_NOOP
+from ..utils.compat import FieldType, new_field
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import QMessageBox
 
 # Phase 5.2: Logging
 from ..i18n import safe_format
-from ..utils.errors import OperationErrors, describe
+from ..utils.errors import OperationErrors, add_and_save, add_columns, describe
 from ..utils.logger import get_logger
 logger = get_logger(__name__)
 
@@ -51,6 +52,7 @@ _NO_COLUMNS_ADDED = QT_TRANSLATE_NOOP(
 _VALUE_UNREADABLE = QT_TRANSLATE_NOOP(
     'FiberQLayers', "could not read {column} from the element being moved, so it was left empty")
 _COPY_TITLE = QT_TRANSLATE_NOOP('FiberQLayers', "Change element type")
+_AREA_TITLE = QT_TRANSLATE_NOOP('FiberQLayers', "Create Service Area")
 
 # Phase 0.1: UUID support for FiberQ Designer
 from ..utils.uuid_utils import FIBERQ_UUID_FIELD, ensure_uuid_field, set_feature_uuid  # noqa: E402
@@ -211,21 +213,21 @@ def _ensure_element_layer_with_style(plugin, layer_name: str):
 
         fields = []
         for (key, label, kind, default, opts) in specs:
-            qt = QVariant.String
+            qt = FieldType.String
             if kind in ("int", "year"):
-                qt = QVariant.Int
+                qt = FieldType.Int
             elif kind == "double":
-                qt = QVariant.Double
+                qt = FieldType.Double
             elif kind == "enum":
-                qt = QVariant.String
-            fields.append(QgsField(key, qt))
+                qt = FieldType.String
+            fields.append(new_field(key, qt))
 
         if not any(f.name() == "naziv" for f in fields):
-            fields.insert(0, QgsField("naziv", QVariant.String))
+            fields.insert(0, new_field("naziv", FieldType.String))
 
         # Phase 0.1: Add fiberq_uuid field for Designer compatibility
         if not any(f.name() == FIBERQ_UUID_FIELD for f in fields):
-            fields.append(QgsField(FIBERQ_UUID_FIELD, QVariant.String))
+            fields.append(new_field(FIBERQ_UUID_FIELD, FieldType.String))
 
         pr.addAttributes(fields)
         elem_layer.updateFields()
@@ -376,22 +378,27 @@ def _copy_attributes(src_feat, dst_layer, errors):
             continue
         if key not in dst_map:
             try:
-                to_add.append(QgsField(f.name(), f.type() if hasattr(f, "type") else QVariant.String))
+                to_add.append(new_field(f.name(), f.type() if hasattr(f, "type") else FieldType.String))
             except (AttributeError, TypeError, ValueError):
-                to_add.append(QgsField(f.name(), QVariant.String))
+                to_add.append(new_field(f.name(), FieldType.String))
 
     if to_add and allow_schema_change:
-        # No edit session: addAttributes goes straight to the provider, and the
+        # No edit session: add_columns goes straight to the provider, and the
         # startEditing/commitChanges pair that used to be here only ever
         # committed the user's own buffered work. Measured on all three legs.
-        if not dst_layer.dataProvider().addAttributes(to_add):
-            errors.add(name, safe_format(
-                QCoreApplication.translate('FiberQLayers', _NO_COLUMNS_ADDED), _NO_COLUMNS_ADDED,
-                columns=", ".join(f.name() for f in to_add), name=name))
+        # It also names the provider's reason, and refuses a shapefile column
+        # longer than ten characters, which OGR added shortened -- and again at
+        # every move: proizvodja, proizvod_1, proizvod_2 (measured on 4.2.3).
+        added = add_columns(dst_layer, to_add, errors)
         # updateFields and the rebuild run either way, so the values that CAN
         # be written still are.
         dst_layer.updateFields()
         dst_map = {_normalize_name(f.name()): f for f in dst_layer.fields()}
+        missing = [f.name() for f in to_add if _normalize_name(f.name()) not in dst_map]
+        if not added and missing:
+            errors.add(name, safe_format(
+                QCoreApplication.translate('FiberQLayers', _NO_COLUMNS_ADDED), _NO_COLUMNS_ADDED,
+                columns=", ".join(missing), name=name))
 
     # Build attribute dict (skip PK fields)
     vals = {}
@@ -450,12 +457,12 @@ def _ensure_region_layer(core):
         region = QgsVectorLayer(f'Polygon?crs={crs}', 'Service Area', 'memory')
         pr = region.dataProvider()
         pr.addAttributes([
-            QgsField('name', QVariant.String),
-            QgsField('created_at', QVariant.String),
-            QgsField('area_m2', QVariant.Double),
-            QgsField('perim_m', QVariant.Double),
-            QgsField('count', QVariant.Int),
-            QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+            new_field('name', FieldType.String),
+            new_field('created_at', FieldType.String),
+            new_field('area_m2', FieldType.Double),
+            new_field('perim_m', FieldType.Double),
+            new_field('count', FieldType.Int),
+            new_field(FIBERQ_UUID_FIELD, FieldType.String),
         ])
         region.updateFields()
 
@@ -609,10 +616,12 @@ def _create_region_from_selection(core, name: str, buf_m: float):
     from ..utils.measure import ground_area, ground_perimeter
     crs = QgsProject.instance().crs()
 
-    # Add features
-    added = 0
+    # Build the features, then save them through utils.errors.add_and_save:
+    # startEditing, every addFeature and commitChanges used to be unchecked, and
+    # "Created: N polygon(s)" counted what had been handed to the layer, not
+    # what it kept.
+    features = []
     try:
-        region.startEditing()
         for part in parts:
             if not part or part.isEmpty():
                 continue
@@ -635,24 +644,23 @@ def _create_region_from_selection(core, name: str, buf_m: float):
                 set_feature_uuid(f)
             except Exception as e:
                 logger.debug(f"Error in _create_region_from_selection: {e}")
-            region.addFeature(f)
-            added += 1
-        region.commitChanges()
-        region.triggerRepaint()
+            features.append(f)
     except Exception as e:
-        try:
-            region.rollBack()
-        except Exception as e:
-            logger.debug(f"Error in _create_region_from_selection: {e}")
         try:
             QMessageBox.critical(core.iface.mainWindow(), 'Create Service Area', f'Error: {e}')
         except Exception as e:
             logger.debug(f"Error in _create_region_from_selection: {e}")
         return False
 
+    with OperationErrors(QCoreApplication.translate('FiberQLayers', _AREA_TITLE), core.iface) as errors:
+        saved = add_and_save(region, features, errors)
+    region.triggerRepaint()
+    if not saved:
+        return False
+
     try:
         QMessageBox.information(core.iface.mainWindow(), 'Create Service Area',
-                                f'Created: {added} polygon(s) in "Service Area" layer.')
+                                f'Created: {len(features)} polygon(s) in "Service Area" layer.')
     except Exception as e:
         logger.debug(f"Error in _create_region_from_selection: {e}")
     return True
@@ -717,14 +725,14 @@ def _ensure_objects_layer(core):
         layer = QgsVectorLayer(f"Polygon?crs={crs}", "Objects", "memory")
         pr = layer.dataProvider()
         pr.addAttributes([
-            QgsField("tip", QVariant.String),
-            QgsField("spratova", QVariant.Int),
-            QgsField("podzemnih", QVariant.Int),
-            QgsField("ulica", QVariant.String),
-            QgsField("broj", QVariant.String),
-            QgsField("naziv", QVariant.String),
-            QgsField("napomena", QVariant.String),
-            QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+            new_field("tip", FieldType.String),
+            new_field("spratova", FieldType.Int),
+            new_field("podzemnih", FieldType.Int),
+            new_field("ulica", FieldType.String),
+            new_field("broj", FieldType.String),
+            new_field("naziv", FieldType.String),
+            new_field("napomena", FieldType.String),
+            new_field(FIBERQ_UUID_FIELD, FieldType.String),
         ])
         layer.updateFields()
 
@@ -859,11 +867,11 @@ class LayerManager:
         layer = QgsVectorLayer(f"Point?crs={crs}", "Poles", "memory")
         pr = layer.dataProvider()
         pr.addAttributes([
-            QgsField("tip", QVariant.String),
-            QgsField("podtip", QVariant.String),
-            QgsField("visina", QVariant.Double),
-            QgsField("materijal", QVariant.String),
-            QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+            new_field("tip", FieldType.String),
+            new_field("podtip", FieldType.String),
+            new_field("visina", FieldType.Double),
+            new_field("materijal", FieldType.String),
+            new_field(FIBERQ_UUID_FIELD, FieldType.String),
         ])
         layer.updateFields()
 
@@ -924,14 +932,14 @@ class LayerManager:
         vl = QgsVectorLayer(f"Point?crs={crs}", "Optical slacks", "memory")  # Issue #2: Use plural name
         pr = vl.dataProvider()
         pr.addAttributes([
-            QgsField("tip", QVariant.String),
-            QgsField("duzina_m", QVariant.Double),
-            QgsField("lokacija", QVariant.String),
-            QgsField("cable_layer_id", QVariant.String),
-            QgsField("cable_fid", QVariant.Int),
-            QgsField("strana", QVariant.String),
-            QgsField("napomena", QVariant.String),
-            QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+            new_field("tip", FieldType.String),
+            new_field("duzina_m", FieldType.Double),
+            new_field("lokacija", FieldType.String),
+            new_field("cable_layer_id", FieldType.String),
+            new_field("cable_fid", FieldType.Int),
+            new_field("strana", FieldType.String),
+            new_field("napomena", FieldType.String),
+            new_field(FIBERQ_UUID_FIELD, FieldType.String),
         ])
         vl.updateFields()
 
@@ -1002,24 +1010,24 @@ class LayerManager:
         layer = QgsVectorLayer(f"Point?crs={crs}", "Manholes", "memory")
         pr = layer.dataProvider()
         fields = [
-            QgsField("broj_okna", QVariant.String),
-            QgsField("tip_okna", QVariant.String),
-            QgsField("vrsta_okna", QVariant.String),
-            QgsField("polozaj_okna", QVariant.String),
-            QgsField("adresa", QVariant.String),
-            QgsField("stanje", QVariant.String),
-            QgsField("god_ugrad", QVariant.Int),
-            QgsField("opis", QVariant.String),
-            QgsField("dimenzije", QVariant.String),
-            QgsField("mat_zida", QVariant.String),
-            QgsField("mat_poklop", QVariant.String),
-            QgsField("odvodnj", QVariant.String),
-            QgsField("poklop_tes", QVariant.Bool),
-            QgsField("poklop_lak", QVariant.Bool),
-            QgsField("br_nosaca", QVariant.Int),
-            QgsField("debl_zida", QVariant.Double),
-            QgsField("lestve", QVariant.String),
-            QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+            new_field("broj_okna", FieldType.String),
+            new_field("tip_okna", FieldType.String),
+            new_field("vrsta_okna", FieldType.String),
+            new_field("polozaj_okna", FieldType.String),
+            new_field("adresa", FieldType.String),
+            new_field("stanje", FieldType.String),
+            new_field("god_ugrad", FieldType.Int),
+            new_field("opis", FieldType.String),
+            new_field("dimenzije", FieldType.String),
+            new_field("mat_zida", FieldType.String),
+            new_field("mat_poklop", FieldType.String),
+            new_field("odvodnj", FieldType.String),
+            new_field("poklop_tes", FieldType.Bool),
+            new_field("poklop_lak", FieldType.Bool),
+            new_field("br_nosaca", FieldType.Int),
+            new_field("debl_zida", FieldType.Double),
+            new_field("lestve", FieldType.String),
+            new_field(FIBERQ_UUID_FIELD, FieldType.String),
         ]
         pr.addAttributes(fields)
         layer.updateFields()
@@ -1116,13 +1124,13 @@ class LayerManager:
         layer = QgsVectorLayer(f"LineString?crs={crs}", name, "memory")
         pr = layer.dataProvider()
         pr.addAttributes([
-            QgsField("materijal", QVariant.String),
-            QgsField("kapacitet", QVariant.String),
-            QgsField("fi", QVariant.Int),
-            QgsField("od", QVariant.String),
-            QgsField("do", QVariant.String),
-            QgsField("duzina_m", QVariant.Double),
-            QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+            new_field("materijal", FieldType.String),
+            new_field("kapacitet", FieldType.String),
+            new_field("fi", FieldType.Int),
+            new_field("od", FieldType.String),
+            new_field("do", FieldType.String),
+            new_field("duzina_m", FieldType.Double),
+            new_field(FIBERQ_UUID_FIELD, FieldType.String),
         ])
         layer.updateFields()
 
@@ -1240,12 +1248,12 @@ class LayerManager:
             region = QgsVectorLayer(f'Polygon?crs={crs}', 'Service Area', 'memory')
             pr = region.dataProvider()
             pr.addAttributes([
-                QgsField('name', QVariant.String),
-                QgsField('created_at', QVariant.String),
-                QgsField('area_m2', QVariant.Double),
-                QgsField('perim_m', QVariant.Double),
-                QgsField('count', QVariant.Int),
-                QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+                new_field('name', FieldType.String),
+                new_field('created_at', FieldType.String),
+                new_field('area_m2', FieldType.Double),
+                new_field('perim_m', FieldType.Double),
+                new_field('count', FieldType.Int),
+                new_field(FIBERQ_UUID_FIELD, FieldType.String),
             ])
             region.updateFields()
 
@@ -1300,14 +1308,14 @@ class LayerManager:
             layer = QgsVectorLayer(f"Polygon?crs={crs}", "Objects", "memory")
             pr = layer.dataProvider()
             pr.addAttributes([
-                QgsField("tip", QVariant.String),
-                QgsField("spratova", QVariant.Int),
-                QgsField("podzemnih", QVariant.Int),
-                QgsField("ulica", QVariant.String),
-                QgsField("broj", QVariant.String),
-                QgsField("naziv", QVariant.String),
-                QgsField("napomena", QVariant.String),
-                QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+                new_field("tip", FieldType.String),
+                new_field("spratova", FieldType.Int),
+                new_field("podzemnih", FieldType.Int),
+                new_field("ulica", FieldType.String),
+                new_field("broj", FieldType.String),
+                new_field("naziv", FieldType.String),
+                new_field("napomena", FieldType.String),
+                new_field(FIBERQ_UUID_FIELD, FieldType.String),
             ])
             layer.updateFields()
 
@@ -1394,19 +1402,19 @@ class LayerManager:
 
         fields = []
         for (key, label, kind, default, opts) in specs:
-            qt = QVariant.String
+            qt = FieldType.String
             if kind in ("int", "year"):
-                qt = QVariant.Int
+                qt = FieldType.Int
             elif kind == "double":
-                qt = QVariant.Double
-            fields.append(QgsField(key, qt))
+                qt = FieldType.Double
+            fields.append(new_field(key, qt))
 
         if not any(f.name() == "naziv" for f in fields):
-            fields.insert(0, QgsField("naziv", QVariant.String))
+            fields.insert(0, new_field("naziv", FieldType.String))
 
         # Phase 0.1: Add fiberq_uuid field for Designer compatibility
         if not any(f.name() == FIBERQ_UUID_FIELD for f in fields):
-            fields.append(QgsField(FIBERQ_UUID_FIELD, QVariant.String))
+            fields.append(new_field(FIBERQ_UUID_FIELD, FieldType.String))
 
         return fields
 
@@ -1484,11 +1492,11 @@ class LayerManager:
         layer = QgsVectorLayer(f"LineString?crs={crs}", "Route", "memory")
         pr = layer.dataProvider()
         pr.addAttributes([
-            QgsField("naziv", QVariant.String),
-            QgsField("duzina", QVariant.Double),
-            QgsField("duzina_km", QVariant.Double),
-            QgsField("tip_trase", QVariant.String),
-            QgsField(FIBERQ_UUID_FIELD, QVariant.String),
+            new_field("naziv", FieldType.String),
+            new_field("duzina", FieldType.Double),
+            new_field("duzina_km", FieldType.Double),
+            new_field("tip_trase", FieldType.String),
+            new_field(FIBERQ_UUID_FIELD, FieldType.String),
         ])
         layer.updateFields()
 

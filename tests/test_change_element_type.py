@@ -279,6 +279,38 @@ def test_a_caller_without_a_collector_still_surfaces_the_problem(project, tmp_pa
         f"a caller with no collector lost the message: {pushed}")
 
 
+def test_a_long_column_is_not_added_to_a_shapefile_again_at_every_move(project, tmp_path):
+    """v1.6.0 QA, finding Q13. A shapefile keeps ten characters of a column name.
+    OGR added ``proizvodjac`` as ``proizvodja``, the next move did not find it
+    under its full name and added ``proizvod_1``, then ``proizvod_2``: one more
+    empty column at every move, and nothing said (measured on 4.2.3 before
+    this fix). Now the long columns are refused with the reason, at every move,
+    and the file keeps the columns it had."""
+    seed = QgsVectorLayer("Point?crs=EPSG:3857&field=naziv:string(20)", "seed", "memory")
+    path = str(tmp_path / "tb.shp")
+    options = QgsVectorFileWriter.SaveVectorOptions()
+    options.driverName = "ESRI Shapefile"
+    written = QgsVectorFileWriter.writeAsVectorFormatV3(
+        seed, path, QgsCoordinateTransformContext(), options)
+    assert written[0] == QgsVectorFileWriter.WriterError.NoError, written
+    layer = QgsVectorLayer(path, "TB", "ogr")
+    assert layer.isValid()
+    project.addMapLayer(layer)
+    source = _source_feature([("naziv", QVariant.String, "E1"),
+                              ("proizvodjac", QVariant.String, "Acme"),
+                              ("oznaka_izvoda", QVariant.String, "IZ-7")])
+
+    for _move in range(3):
+        with OperationErrors("test") as errors:
+            vals = _copy_attributes_between_layers(source, layer, errors)
+        assert vals == {"naziv": "E1"}, vals
+        reported = errors.message()
+        assert "10 characters" in reported and "proizvodjac" in reported, reported
+
+    on_disk = QgsVectorLayer(path, "again", "ogr").fields().names()
+    assert on_disk == ["naziv"], f"the shapefile grew shortened copies: {on_disk}"
+
+
 # ---------------------------------------------------------------------------
 # the operation itself: Change element type, and Delete selected
 # ---------------------------------------------------------------------------

@@ -28,12 +28,23 @@ Measured to survive on both 3.44.15 and 4.0.3.
 
 **Reading the old keys.** :func:`link_get` falls back to the per-feature keys,
 under ``FiberQPlugin`` and then the pre-1.0 ``StuboviPlugin`` scope, and
-migrates whatever it finds into the JSON entry as it goes. That is deliberately
-lazy rather than a sweep on project open, because the keys cannot be
-enumerated: ``QgsProject.subkeyList`` answered ``[]`` for three layers whose
-entries ``readEntry`` then returned correctly (measured, 3.44.15), so any
-listing-based migration would silently skip links. ``readEntry`` is reliable,
-and the layer and feature id are always known at the point of use.
+migrates whatever it finds into the JSON entry as it goes, lazily, because the
+layer and feature id are always known at the point of use.
+
+It *lists* the layer's old keys before it reads one, and that is not a nicety.
+QGIS 3 checks every key segment of a ``readEntry`` -- a read, not only a write
+-- and logs "Entry token invalid : '12'. The token will not be saved to file."
+at Critical level for a numeric one, whether or not the key exists (measured
+on 3.22.16, 3.40.15 and 3.44.15; QGIS 4 no longer has the message -- it is not
+in 4.2.3's libqgis_core). The picture watcher asks about every
+feature under every click on the map, so reading blind filled QGIS 3's log with
+two Critical lines per feature clicked (found in the v1.6.0 QA on 3.40).
+``entryList(scope, "image_map/<layer id>")`` names no numeric segment, lists
+the feature ids that do have a key, before and after a save, and puts no line
+in the log (measured on 3.22.16, 3.40.15, 3.44.15, 4.0.3 and 4.2.3).
+``subkeyList`` is the wrong call for this: it lists keys that have keys under
+them, and answers ``[]`` here, which is what an earlier version of this note
+measured and took to mean the keys could not be enumerated.
 
 **What cannot be recovered.** A link destroyed by an earlier QGIS 3 save is not
 in the file any more, so nothing here can bring it back -- after a round trip
@@ -43,8 +54,9 @@ v1.6.0 on are safe; older ones have to be attached once more. The release notes
 say so.
 """
 import json
+import re
 
-from qgis.core import QgsProject
+from qgis.core import Qgis, QgsProject
 
 from ..utils.logger import get_logger
 
@@ -104,8 +116,29 @@ def _write_all(kind, data, project=None) -> bool:
     return bool(_project(project).writeEntry(SCOPE, _ENTRY % kind, payload))
 
 
+def _legacy_parent(kind, layer_id) -> str:
+    return f"{_LEGACY_PREFIX[kind]}/{layer_id}"
+
+
 def _legacy_key(kind, layer_id, fid) -> str:
-    return f"{_LEGACY_PREFIX[kind]}/{layer_id}/{int(fid)}"
+    return f"{_legacy_parent(kind, layer_id)}/{int(fid)}"
+
+
+#: A key segment QGIS 3 accepts: an XML name, so no digit, "-" or "." first.
+_XML_NAME = re.compile(r"(?![\d.\-])[\w.\-:]+")
+
+
+def _legacy_fids(prj, scope, kind, layer_id) -> set:
+    """The feature ids of one layer that still have an old key under ``scope``.
+
+    Listed, never read blind: see "Reading the old keys" in the module
+    docstring. A layer id QGIS 3 would itself log as an invalid token (one that
+    starts with a digit: a layer named "2024 survey") is not listed there at
+    all, because QGIS 3 cannot have saved a key under it in the first place.
+    """
+    if Qgis.QGIS_VERSION_INT < 40000 and not _XML_NAME.fullmatch(str(layer_id)):
+        return set()
+    return set(prj.entryList(scope, _legacy_parent(kind, layer_id)))
 
 
 def _read_legacy(kind, layer_id, fid, project=None) -> str:
@@ -113,6 +146,8 @@ def _read_legacy(kind, layer_id, fid, project=None) -> str:
     prj = _project(project)
     key = _legacy_key(kind, layer_id, fid)
     for scope in (SCOPE, LEGACY_SCOPE):
+        if str(int(fid)) not in _legacy_fids(prj, scope, kind, layer_id):
+            continue
         value = prj.readEntry(scope, key, "")[0]
         if value:
             return value
@@ -139,8 +174,10 @@ def link_get(kind, layer_id, fid, project=None, default=""):
     legacy = _read_legacy(kind, layer_id, fid, project)
     if not legacy:
         return default
-    # Migrate on the way past. Lazy on purpose: the old keys cannot be listed
-    # (see the module docstring), so there is no sweep to do this in one go.
+    # Migrate on the way past, where the layer and feature id are known (see
+    # "Reading the old keys" in the module docstring). The old keys can be
+    # listed a layer at a time, as _legacy_fids does, but nothing sweeps them
+    # into the JSON entry in one go.
     if kind == DRAWING_LAYERS:
         value = [part for part in str(legacy).split(",") if part]
     else:
@@ -183,11 +220,11 @@ def link_set_many(kind, layer_id, values, project=None) -> bool:
     written = _write_all(kind, data, project)
 
     prj = _project(project)
-    for fid in values:
-        key = _legacy_key(kind, layer_id, fid)
-        for scope in (SCOPE, LEGACY_SCOPE):
-            if prj.readEntry(scope, key, "")[0]:
-                prj.removeEntry(scope, key)
+    for scope in (SCOPE, LEGACY_SCOPE):
+        present = _legacy_fids(prj, scope, kind, layer_id)
+        for fid in values:
+            if str(int(fid)) in present:
+                prj.removeEntry(scope, _legacy_key(kind, layer_id, fid))
     return written
 
 

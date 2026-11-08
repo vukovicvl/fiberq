@@ -329,6 +329,134 @@ def get_wkb_type(type_name: str):
 
 
 # =============================================================================
+# FIELD TYPES, STYLE STORAGE AND GEOMETRY EQUALITY
+# =============================================================================
+# QGIS 3.38 gave QgsField a constructor that takes a QMetaType.Type and
+# deprecated the one that takes a QVariant.Type, so on 3.38-3.44 every
+# QgsField(name, QVariant.String) prints "QgsField constructor is deprecated"
+# into the Python warning log, once per call site (measured on 3.40.15: 49
+# lines in one QA session). QGIS 3.22 has only the QVariant.Type constructor,
+# and on QGIS 4 QVariant.String already *is* QMetaType.Type.QString. So the
+# form is asked of QgsField itself, once, instead of read off a version number.
+
+def _field_types():
+    """``(String, Int, LongLong, Double, Bool)`` in the form this QgsField takes."""
+    try:
+        from qgis.PyQt.QtCore import QVariant
+    except ImportError:
+        return (None,) * 5
+    try:
+        from qgis.PyQt.QtCore import QMetaType
+        from qgis.core import QgsField
+        QgsField("probe", QMetaType.Type.QString)
+    except (ImportError, AttributeError, TypeError):
+        return QVariant.String, QVariant.Int, QVariant.LongLong, QVariant.Double, QVariant.Bool
+    return (QMetaType.Type.QString, QMetaType.Type.Int, QMetaType.Type.LongLong,
+            QMetaType.Type.Double, QMetaType.Type.Bool)
+
+
+class FieldType:
+    """The types to build a field with: ``new_field("naziv", FieldType.String)``.
+
+    Never ``QVariant.String`` -- see the block comment above; the package scan
+    in ``tests/test_qgis4_deprecations.py`` refuses it. Qt numbers its built-in
+    types the same in ``QVariant`` and ``QMetaType`` (Bool 1, Int 2, LongLong 4,
+    Double 6, String 10), so a comparison such as ``field.type() == FieldType.Int``
+    holds on every supported QGIS as well.
+    """
+    String, Int, LongLong, Double, Bool = _field_types()
+
+
+def _type_number(field_type):
+    """Qt's number for a type: a ``QVariant.Type`` is an int, a ``QMetaType.Type``
+    an enum member on PyQt6."""
+    try:
+        return int(field_type)
+    except TypeError:
+        return int(field_type.value)
+
+
+#: The column type each kind is created with, written into SQL as it stands by
+#: the PostgreSQL and SpatiaLite providers. QgsField's own default is an empty
+#: name, and the PostgreSQL provider then sends ``ALTER TABLE ... ADD COLUMN
+#: "fiberq_uuid"`` with nothing after it: a syntax error, for every kind
+#: (measured on 3.22.16, 3.40.15 and 4.2.3 against PostGIS 16). SpatiaLite
+#: accepts a column with no type and then reads numbers back as text. These
+#: five are valid SQL on both. ``float8`` is not: SpatiaLite reads it as text.
+#: A GeoPackage ignores the name and a memory layer only displays it, so the
+#: columns there are what they were.
+_TYPE_NAMES = {
+    _type_number(FieldType.String): "text",
+    _type_number(FieldType.Int): "integer",
+    _type_number(FieldType.LongLong): "bigint",
+    _type_number(FieldType.Double): "double precision",
+    _type_number(FieldType.Bool): "boolean",
+} if FieldType.String is not None else {}
+
+
+def new_field(name, field_type):
+    """A :class:`QgsField` that every provider FiberQ writes to can add as a column.
+
+    ``QgsField(name, FieldType.String)`` carries no type name, which is enough
+    for a memory layer or a GeoPackage and makes a PostgreSQL table refuse the
+    column (see :data:`_TYPE_NAMES`). Every field FiberQ builds goes through
+    here, so a field list written for a new memory layer stays right when it is
+    reused on a database table; ``tests/test_field_type_names.py`` refuses a
+    ``QgsField(name, type)`` anywhere else. A type outside the five keeps QGIS's
+    empty name, as before.
+    """
+    from qgis.core import QgsField
+    return QgsField(name, field_type, _TYPE_NAMES.get(_type_number(field_type), ""))
+
+
+def save_style_to_database(layer, name, description, use_as_default, ui_file_content=""):
+    """Store ``layer``'s style in its own database: the error text, or ``""``.
+
+    ``saveStyleToDatabase`` prints a deprecation into the Python warning log
+    from QGIS 3.40, whose ``saveStyleToDatabaseV2`` QGIS 3.22 does not have.
+    Both say what went wrong the same way, as the provider's message (measured
+    on 3.40.15 and 4.2.3: ``""`` on a GeoPackage, "Provider memory has no
+    saveStyle method" on a memory layer).
+    """
+    save = getattr(layer, "saveStyleToDatabaseV2", None)
+    if save is None:
+        return layer.saveStyleToDatabase(name, description, use_as_default, ui_file_content)
+    _results, message = save(name, description, use_as_default, ui_file_content)
+    return message
+
+
+def save_file_name(parent, caption, directory, filters):
+    """``QFileDialog.getSaveFileName`` without the dialog's own "replace?": ``(path, filter)``.
+
+    For a file FiberQ writes *into* and never replaces -- a GeoPackage keeps
+    every table FiberQ does not write -- "already exists, replace?" misdescribes
+    what happens, and whatever the user answers, FiberQ does the same thing.
+    FiberQ asks its own question where one is needed. Qt5 has the flag on
+    QFileDialog, Qt6 on QFileDialog.Option; a binding without it gets the plain
+    dialog, which then asks as well.
+    """
+    from qgis.PyQt.QtWidgets import QFileDialog
+
+    no_confirm = getattr(getattr(QFileDialog, 'Option', QFileDialog), 'DontConfirmOverwrite', None)
+    if no_confirm is None:
+        return QFileDialog.getSaveFileName(parent, caption, directory, filters)
+    return QFileDialog.getSaveFileName(parent, caption, directory, filters, '', no_confirm)
+
+
+def geometries_equal(first, second):
+    """True when two geometries are exactly equal: type, vertices and vertex order.
+
+    ``QgsGeometry.equals`` prints a deprecation from QGIS 4.2, whose
+    ``isExactlyEqual`` is the same strict check (measured on 4.2.3: both say a
+    reversed line differs); 3.22 to 4.0 have only ``equals``.
+    """
+    exactly = getattr(first, "isExactlyEqual", None)
+    if exactly is None:
+        return first.equals(second)
+    return exactly(second)
+
+
+# =============================================================================
 # DEPRECATED API WARNINGS
 # =============================================================================
 
@@ -505,6 +633,13 @@ __all__ = [
     # Wrapper classes
     'UnitTypes',
     'RenderUnit',
+    # Field types and style storage
+    'FieldType',
+    'new_field',
+    'save_style_to_database',
+    'geometries_equal',
+    # File dialogs
+    'save_file_name',
     # Utilities
     'has_feature',
     'safe_import_qgis_core',

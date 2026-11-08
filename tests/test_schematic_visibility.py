@@ -20,8 +20,11 @@ Qt 6.8.2, measured).
 
 Two tests fail on v1.5.0, each on the one hidden rebuild it counts:
 test_a_closed_view_does_not_rebuild_on_a_commit and
-test_a_view_closed_before_its_timer_fires_catches_up_on_show. The others pin
-what v1.5.0 did and pass on it. The driver runs in a child process: an
+test_a_view_closed_before_its_timer_fires_catches_up_on_show. A third,
+test_the_first_paint_shows_the_whole_drawing (v1.6.0 QA finding Q20), fails
+on v1.5.0 and on every version before that fix: the first paint drew the
+drawing at 0.039-0.046 of the scale that fits it. The others pin what v1.5.0
+did and pass on it. The driver runs in a child process: an
 exception escaping a Qt slot kills the interpreter (exit 139, measured), and
 the driver installs its own ``sys.excepthook`` to report one instead.
 """
@@ -123,6 +126,24 @@ class PaintSpy(QObject):
         return False
 
 
+class ScaleSpy(QObject):
+    """At each real paint of the view: its scale over the one that fits it."""
+
+    def __init__(self, dlg):
+        super().__init__()
+        self.dlg = dlg
+        self.seen = []
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.Paint:
+            view = self.dlg.view
+            drawing = self.dlg.scene.itemsBoundingRect().adjusted(-40, -40, 40, 40)
+            room = view.viewport().rect().adjusted(2, 2, -2, -2)
+            best = min(room.width() / drawing.width(), room.height() / drawing.height())
+            self.seen.append(round(view.transform().m11() / best, 4))
+        return False
+
+
 project = QgsProject.instance()
 nodes = layer("Point?crs=EPSG:3857&field=naziv:string", "ODF",
               [(pt(0, 0), {{"naziv": "ODF-1"}}), (pt(300, 0), {{"naziv": "TB-1"}})])
@@ -140,9 +161,12 @@ core.list_all_cables = data.list_all_cables
 core.list_all_pipes = data.list_all_pipes
 
 dlg = OpticalSchematicDialog(core)
+first = ScaleSpy(dlg)
+dlg.view.viewport().installEventFilter(first)
 dlg.show()
 pump(0.8)
-out = {{"first_open_rebuilds": len(REBUILDS), "before": labels(dlg)}}
+dlg.view.viewport().removeEventFilter(first)
+out = {{"first_open_rebuilds": len(REBUILDS), "before": labels(dlg), "first_paints": first.seen}}
 dlg.close()
 pump(0.2)
 
@@ -252,6 +276,16 @@ def test_search_and_center_find_an_element_added_while_closed(child):
     result, output = _ok(child)
     assert result["found_settled"], output
     assert result["found_at_show"], "Search/Center could not find TB-2 when the view came back"
+
+
+def test_the_first_paint_shows_the_whole_drawing(child):
+    """Fitted to the viewport as shown, not to the 98 x 28 one the view has
+    before it: that first paint drew the drawing at 0.039-0.046 of the
+    fitting scale, a few pixels in the middle of the window (3.22.16 to
+    4.2.3)."""
+    result, output = _ok(child)
+    assert result["first_paints"], f"the view was never painted\n{output}"
+    assert 0.98 <= result["first_paints"][0] <= 1.02, result["first_paints"]
 
 
 def test_the_first_open_builds_the_scene_once(child):

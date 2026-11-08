@@ -25,3 +25,17 @@ def test_manual_fiber_count_is_respected(qgis_app):
     dlg.sb_cevcice.setValue(4)             # total would be 48
     assert dlg.sb_vlakna.value() == 30     # manual value preserved
     assert dlg.lbl_total_fibers.text() == "48"
+
+
+def test_every_cable_type_the_dialog_offers_is_one_the_form_lists(qgis_app):
+    """The dialog stores its code; the form shows a code its value map lacks in
+    brackets, which is how every cable came to read "(Optical)" (v1.6.0 QA)."""
+    from fiberq.dialogs.cable_dialog import CablePickerDialog
+    from fiberq.utils.field_aliases import CABLE_TYPE_VALUE_MAP
+    dlg = CablePickerDialog()
+    offered = set()
+    for row in range(dlg.cb_vrsta.count()):
+        dlg.cb_vrsta.setCurrentIndex(row)
+        offered |= {dlg.cb_tip.itemData(i) for i in range(dlg.cb_tip.count())}
+    assert offered, "premise: the dialog offers cable types"
+    assert offered <= set(CABLE_TYPE_VALUE_MAP.values()), offered
