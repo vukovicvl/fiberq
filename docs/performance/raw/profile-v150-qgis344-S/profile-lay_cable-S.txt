@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   lay_cable
+# size       S
+# code        1.5.0 (c208d1a607bf7499)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    13812 features, digest ae4011b9fe9cf3a5
+# result     {"between":[1000,1063],"cables_added":1}
+
+
+==== sorted by cumulative (top 25) ====
+         149185 function calls in 0.278 seconds
+
+   Ordered by: cumulative time
+   List reduced from 185 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.296    0.296 <harness>/bench_scenarios.py:528(run)
+        1    0.000    0.000    0.288    0.288 <code>/fiberq/main_plugin.py:3268(lay_cable)
+        1    0.036    0.036    0.288    0.288 <code>/fiberq/core/cable_manager.py:610(lay_cable)
+        1    0.000    0.000    0.073    0.073 <code>/fiberq/main_plugin.py:3276(<lambda>)
+        1    0.000    0.000    0.073    0.073 <code>/fiberq/main_plugin.py:1469(_build_path_across_network)
+        1    0.001    0.001    0.073    0.073 <code>/fiberq/core/route_manager.py:131(build_path_across_network)
+        1    0.000    0.000    0.072    0.072 <code>/fiberq/utils/routing.py:184(build_path_across_network)
+        1    0.014    0.014    0.058    0.058 <code>/fiberq/utils/routing.py:32(build_network_graph)
+        1    0.000    0.000    0.056    0.056 <code>/fiberq/core/cable_manager.py:201(stylize_cable_layer)
+        1    0.000    0.000    0.056    0.056 <code>/fiberq/core/cable_manager.py:75(apply_cable_field_aliases)
+        1    0.000    0.000    0.056    0.056 <code>/fiberq/utils/field_aliases.py:340(apply_cable_field_aliases)
+        1    0.019    0.019    0.055    0.055 <code>/fiberq/utils/field_aliases.py:364(_migrate_cable_type_values)
+        1    0.000    0.000    0.044    0.044 <code>/fiberq/core/undo_manager.py:160(record_add)
+        1    0.020    0.020    0.044    0.044 <code>/fiberq/core/undo_manager.py:522(_find_committed_fid)
+     1816    0.017    0.000    0.039    0.000 <code>/fiberq/utils/routing.py:75(_process_line_part)
+        1    0.036    0.036    0.036    0.036 {built-in method commitChanges}
+        2    0.036    0.018    0.036    0.018 {built-in method startEditing}
+    12712    0.013    0.000    0.021    0.000 <code>/fiberq/utils/geometry.py:37(fuzzy_key)
+        4    0.017    0.004    0.017    0.004 {built-in method getFeatures}
+        5    0.008    0.002    0.008    0.002 {built-in method featureCount}
+        2    0.000    0.000    0.008    0.004 {built-in method builtins.sum}
+        2    0.004    0.002    0.007    0.003 <code>/fiberq/utils/geometry.py:195(find_nearest_vertex)
+     3632    0.007    0.000    0.007    0.000 {built-in method asPolyline}
+       15    0.006    0.000    0.006    0.000 {built-in method selectedFeatures}
+    10896    0.006    0.000    0.006    0.000 {built-in method distance}
+
+
+
+==== sorted by tottime (top 25) ====
+         149185 function calls in 0.278 seconds
+
+   Ordered by: internal time
+   List reduced from 185 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.036    0.036    0.036    0.036 {built-in method commitChanges}
+        1    0.036    0.036    0.288    0.288 <code>/fiberq/core/cable_manager.py:610(lay_cable)
+        2    0.036    0.018    0.036    0.018 {built-in method startEditing}
+        1    0.020    0.020    0.044    0.044 <code>/fiberq/core/undo_manager.py:522(_find_committed_fid)
+        1    0.019    0.019    0.055    0.055 <code>/fiberq/utils/field_aliases.py:364(_migrate_cable_type_values)
+        4    0.017    0.004    0.017    0.004 {built-in method getFeatures}
+     1816    0.017    0.000    0.039    0.000 <code>/fiberq/utils/routing.py:75(_process_line_part)
+        1    0.014    0.014    0.058    0.058 <code>/fiberq/utils/routing.py:32(build_network_graph)
+    12712    0.013    0.000    0.021    0.000 <code>/fiberq/utils/geometry.py:37(fuzzy_key)
+        5    0.008    0.002    0.008    0.002 {built-in method featureCount}
+     3632    0.007    0.000    0.007    0.000 {built-in method asPolyline}
+       15    0.006    0.000    0.006    0.000 {built-in method selectedFeatures}
+    10896    0.006    0.000    0.006    0.000 {built-in method distance}
+        1    0.006    0.006    0.006    0.006 {built-in method rollBack}
+    25424    0.005    0.000    0.005    0.000 {built-in method builtins.round}
+        2    0.004    0.002    0.007    0.003 <code>/fiberq/utils/geometry.py:195(find_nearest_vertex)
+    24072    0.003    0.000    0.003    0.000 {built-in method x}
+    24072    0.003    0.000    0.003    0.000 {built-in method y}
+        1    0.003    0.003    0.004    0.004 <code>/fiberq/utils/routing.py:108(build_adjacency_list)
+     5116    0.003    0.000    0.003    0.000 {built-in method geometry}
+        1    0.002    0.002    0.004    0.004 <code>/fiberq/utils/routing.py:135(find_path_bfs)
+    11017    0.002    0.000    0.002    0.000 {method 'append' of 'list' objects}
+        1    0.001    0.001    0.073    0.073 <code>/fiberq/core/route_manager.py:131(build_path_across_network)
+     1870    0.001    0.000    0.002    0.000 /usr/lib/python3.13/enum.py:695(__call__)
+     4783    0.001    0.000    0.001    0.000 {built-in method isEmpty}
+
+

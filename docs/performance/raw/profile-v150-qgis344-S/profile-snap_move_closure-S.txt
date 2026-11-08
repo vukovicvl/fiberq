@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   snap_move_closure
+# size       S
+# code        1.5.0 (c208d1a607bf7499)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    13812 features, digest ae4011b9fe9cf3a5
+# result     {"events":9,"snapped":4}
+
+
+==== sorted by cumulative (top 25) ====
+         2609 function calls in 0.015 seconds
+
+   Ordered by: cumulative time
+   List reduced from 35 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.015    0.015 <harness>/bench_scenarios.py:334(run)
+        9    0.000    0.000    0.015    0.002 <code>/fiberq/tools/extension_tool.py:147(canvasMoveEvent)
+        9    0.008    0.001    0.014    0.002 <code>/fiberq/tools/extension_tool.py:78(_snap_candidate)
+       45    0.003    0.000    0.003    0.000 {built-in method getFeatures}
+        9    0.001    0.000    0.001    0.000 {built-in method mapLayers}
+      216    0.000    0.000    0.000    0.000 {built-in method geometryType}
+       76    0.000    0.000    0.000    0.000 <code>/fiberq/tools/extension_tool.py:89(consider)
+      612    0.000    0.000    0.000    0.000 {built-in method name}
+      216    0.000    0.000    0.000    0.000 /usr/lib/python3.13/enum.py:695(__call__)
+        9    0.000    0.000    0.000    0.000 {instance}
+      216    0.000    0.000    0.000    0.000 {built-in method isValid}
+        9    0.000    0.000    0.000    0.000 <harness>/bench_scenarios.py:412(snapped)
+      216    0.000    0.000    0.000    0.000 /usr/lib/python3.13/enum.py:1156(__new__)
+        9    0.000    0.000    0.000    0.000 {built-in method builtins.getattr}
+       45    0.000    0.000    0.000    0.000 {built-in method setFilterRect}
+       76    0.000    0.000    0.000    0.000 {built-in method distance}
+      216    0.000    0.000    0.000    0.000 {method 'lower' of 'str' objects}
+      198    0.000    0.000    0.000    0.000 {method 'strip' of 'str' objects}
+      216    0.000    0.000    0.000    0.000 {built-in method builtins.isinstance}
+       22    0.000    0.000    0.000    0.000 {built-in method geometry}
+       22    0.000    0.000    0.000    0.000 /usr/lib/python3/dist-packages/qgis/core/additions/qgsgeometry.py:19(_geometryNonZero)
+       22    0.000    0.000    0.000    0.000 {built-in method vertices}
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+        9    0.000    0.000    0.000    0.000 {built-in method toMapCoordinates}
+       44    0.000    0.000    0.000    0.000 {built-in method isEmpty}
+
+
+
+==== sorted by tottime (top 25) ====
+         2609 function calls in 0.015 seconds
+
+   Ordered by: internal time
+   List reduced from 35 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        9    0.008    0.001    0.014    0.002 <code>/fiberq/tools/extension_tool.py:78(_snap_candidate)
+       45    0.003    0.000    0.003    0.000 {built-in method getFeatures}
+        9    0.001    0.000    0.001    0.000 {built-in method mapLayers}
+       76    0.000    0.000    0.000    0.000 <code>/fiberq/tools/extension_tool.py:89(consider)
+      612    0.000    0.000    0.000    0.000 {built-in method name}
+      216    0.000    0.000    0.000    0.000 {built-in method geometryType}
+        9    0.000    0.000    0.000    0.000 {instance}
+      216    0.000    0.000    0.000    0.000 /usr/lib/python3.13/enum.py:695(__call__)
+      216    0.000    0.000    0.000    0.000 {built-in method isValid}
+        9    0.000    0.000    0.015    0.002 <code>/fiberq/tools/extension_tool.py:147(canvasMoveEvent)
+      216    0.000    0.000    0.000    0.000 /usr/lib/python3.13/enum.py:1156(__new__)
+        9    0.000    0.000    0.000    0.000 {built-in method builtins.getattr}
+       45    0.000    0.000    0.000    0.000 {built-in method setFilterRect}
+       76    0.000    0.000    0.000    0.000 {built-in method distance}
+      216    0.000    0.000    0.000    0.000 {method 'lower' of 'str' objects}
+      198    0.000    0.000    0.000    0.000 {method 'strip' of 'str' objects}
+      216    0.000    0.000    0.000    0.000 {built-in method builtins.isinstance}
+       22    0.000    0.000    0.000    0.000 {built-in method geometry}
+        1    0.000    0.000    0.015    0.015 <harness>/bench_scenarios.py:334(run)
+       22    0.000    0.000    0.000    0.000 {built-in method vertices}
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+        9    0.000    0.000    0.000    0.000 {built-in method toMapCoordinates}
+       22    0.000    0.000    0.000    0.000 /usr/lib/python3/dist-packages/qgis/core/additions/qgsgeometry.py:19(_geometryNonZero)
+       44    0.000    0.000    0.000    0.000 {built-in method isEmpty}
+        9    0.000    0.000    0.000    0.000 {built-in method pos}
+
+

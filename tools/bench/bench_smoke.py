@@ -12,7 +12,7 @@ also what ``tests/test_bench_harness.py`` asks in CI.
 
 One process for all rows, where ``bench.py`` gives each row its own: fairness
 rule 9 (nothing leaks between scenarios) is there to protect a published
-number, and a smoke run publishes none. The 22 QgsApplication starts it saves
+number, and a smoke run publishes none. The 23 QgsApplication starts it saves
 are most of the cost. The timings in the output are there to tell a human which
 row is slow; they are not comparable with anything, having had no warm-up and
 no repetitions.

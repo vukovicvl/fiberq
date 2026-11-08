@@ -3,7 +3,7 @@ name=FiberQ
 description=Open-source fiber network design tools for QGIS (FTTH/GPON/FTTx)
 about=FiberQ helps telecom engineers and GIS professionals design, analyze, and document fiber optic networks inside QGIS. FiberQ supports QGIS 4 / Qt6 while keeping support for QGIS 3.22 LTR and later, and clears all findings from the QGIS repository security scan. Some advanced features may require an activation key.
 
-version=1.5.0
+version=1.6.0
 qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
 
@@ -23,6 +23,148 @@ license=GPL-3.0-or-later
 class_name=FiberQPlugin
 
 changelog=
+    1.6.0 - Fast on large projects, and failures you can see
+        * Faster on large projects: the Optical Schematic View, the list of
+          latent elements, the route correction check, Generate terminal
+          slacks, placing a slack, FiberQ's own snapping in the placement
+          tools, the undo record after every placement, and Lay cable now use
+          spatial indexes and batched reads instead of scanning every feature.
+          Measured before and after on generated test cities of 13,800 to
+          88,600 features: docs/performance.md.
+        * Failures are reported instead of hidden. These operations now say
+          when something went wrong, and why, instead of failing silently or
+          reporting success: Save all layers to GeoPackage, Auto-save to
+          GeoPackage, Export layer, the BOM export, Import points, Import
+          route, Merge routes, Change route type, Change element type, Delete
+          selected, Undo and Redo, Lay cable, and reading the project's
+          relations, latent elements and colour catalogues - an unreadable
+          entry is no longer read as empty and then saved over. One message
+          per operation; the details are in Log Messages > FiberQ.
+        * Unhandled Python errors fixed: route correction (a pole without a
+          geometry, a multipart route, a raster layer in the project), the
+          Optical Schematic View's Center button, Import route on point or
+          empty geometry (it also left the Route layer in edit mode), Import
+          points and Import route on a coordinate that cannot be transformed,
+          the BOM export to a locked or read-only file, and Generate terminal
+          slacks and Place slack on a pre-1.0 project. On QGIS 4, clicking an
+          element with a picture now opens the picture.
+        * The hardening covers the operations that write, export, import or
+          migrate data, not every error handler in the plugin; a test now
+          stops silent handlers from growing back.
+        * Lengths follow your edits: change a route's or a cable's geometry
+          and its stored length follows by the time the edit is saved (except
+          in projects using buffered transaction groups).
+        * The placement tools follow QGIS's snapping settings and show QGIS's
+          snap indicator. With snapping off, FiberQ's own snap measures
+          distances correctly, prefers a vertex, and works with pre-1.0 layer
+          names.
+        * Validation settings (snap tolerance, length tolerances, disabled
+          rules, severity overrides) are stored in the project, and every run
+          and Recalculate lengths read them. docs/validation-rules.md shows how
+          to set them.
+        * Interchange bundles: an import adds and never replaces what the
+          project already has; side-car tables and columns a later format
+          version adds, date-time text exactly as stored and text in any
+          encoding all travel through; an export refuses or warns instead of
+          writing something other than the project. Exporting a project edited
+          in the latent elements dialog no longer fails, and the dialog's Save
+          keeps the cable's order.
+        * Picture and drawing links survive saving the project in QGIS 3. A
+          project saved in QGIS 4 and opened in QGIS 3 warns once, and the
+          exports no longer write its unreadable entries over good data.
+        * Save all layers to GeoPackage keeps the metadata other tools stored
+          in the file. Auto-save gives one warning naming the file instead of
+          one per layer, asks again for a missing target, and no longer
+          overwrites an existing table when a layer is renamed.
+        * Lay cable no longer discards unsaved edits in projects using
+          transaction groups. A closed Optical Schematic View no longer
+          rebuilds after every edit.
+        * Publish to PostGIS reports a failed export instead of "has been
+          published", refuses a table name already in use, checks that every
+          feature arrived, and never edits the published layer.
+        * FiberQ follows QGIS's language until you pick one in FiberQ's own
+          menu, and only finished translations ship. Service Area area and
+          perimeter are ground measurements. The plugin loads on QGIS 3.22
+          again, as its metadata promises, and so do the duct tools.
+        * Route correction no longer reports a route end that meets a joint
+          closure, an element or a vertex of another route. An end that
+          touches another route between two of its vertices is reported with
+          what to do about it, and Select on map selects the route and
+          centres the map on that end.
+        * The Optical Schematic View opens fitted to its window, with its
+          controls in two rows. Center zooms in on the element and rings it,
+          finds a name in any case and says when none matches, and Enter in
+          the Find box runs it. The PNG, JPG and SVG exports show the whole
+          drawing, and a file that could not be written is reported.
+        * Import route reads every folder of a KML file and the tracks and
+          routes of a GPX file, and says what it left out: features that are
+          not lines, folders with no lines, waypoints.
+        * The placement and drawing tools, Add breakpoint and Branch cables
+          say when the layer refused a save, and why, instead of reporting
+          success or saying nothing. Add breakpoint saves the two halves
+          before it removes the original, so a refused save no longer loses
+          the route.
+        * FiberQ adds its own columns, such as the feature ID, with a type
+          every data source accepts. On PostGIS the add failed and left every
+          later save on that layer failing; on a shapefile, a column name
+          longer than ten characters is refused instead of being added again,
+          shortened, at every placement and project open. When FiberQ cannot
+          finish upgrading a project, it says so, and tries again the next
+          time the project is opened.
+        * With snapping off, a joint closure also snaps along a route or
+          cable span, as the other placement tools do.
+        * FiberQ no longer fills QGIS's logs: no "Entry token invalid" lines
+          for each feature clicked on the map in QGIS 3, and no deprecation
+          warnings when it creates fields, saves layer styles or makes a
+          relation on recent QGIS versions.
+        * Smaller fixes: the fibre-break distance, the mid-span slack point,
+          the slack tool on multipart cables, Delete selected on "Optical
+          slacks", route correction with old layer names and manholes, the
+          Import points file filter, the schematic view following layers
+          added after it opened, a cable's type shown as "(Optical)" in the
+          attribute form, a GeoPackage layer's fid labelled "Cable feature
+          ID", and the pipe tools on a pipe layer without a length column.
+        * Changed: the "Check (health check)" button is gone; Validate project
+          covers the same checks in more detail.
+        * Changed: the BOM now measures lengths the way the attribute table
+          does, on the ground in each layer's own CRS, so its figures differ
+          from 1.5.0's. The new ones are correct.
+        * Changed: Merge routes, Change route type, Change element type, Lay
+          cable and Undo no longer save your other unsaved edits; use Layer >
+          Save Layer Edits. Change route type refuses on a Route layer without
+          a tip_trase column, and the BOM offers Excel only when xlsxwriter is
+          installed.
+        * Changed: FiberQ's own snap skips features with broken geometry (a
+          coordinate that is not a number, a one-vertex part, a degenerate
+          arc).
+        * Changed: Publish to PostGIS no longer has the "Delete existing table
+          and recreate" box (it never took effect), and publishes column names
+          in lowercase.
+        * Changed: three toolbar icons (Change element type, Clear picture,
+          Open drawing). A slack layer still named Opticke_rezerve is no longer
+          restyled when the project opens. After upgrading from 1.5.0 without
+          restarting QGIS, restart it once.
+        * Changed: Save all layers to GeoPackage, and turning Auto-save on,
+          ask before writing over a table of the same name that no layer of
+          the project uses (1.5.0 wrote over it without asking): replace it,
+          keep it and save beside it, or cancel. Their file dialogs no longer
+          offer to replace the whole file, which FiberQ never does.
+        * Changed: Route correction's Correct moves a route end onto the
+          nearest pole, manhole, joint closure or element within 5 m, and
+          leaves it where it is, saying why, when a cable or duct passes
+          through or ends there.
+        * Changed: Add breakpoint and Digitized object (from selection), on a
+          layer you already have in edit mode, no longer save your other
+          unsaved edits: their result stays in your edit session; use Layer >
+          Save Layer Edits.
+        (The spatial indexing and batching behind the speed-ups, their
+        benchmark, the failure reporting and the crash fixes were developed
+        with support from the NLnet NGI0 Commons Fund. Everything else in this
+        release, including the fixes made during its release testing, was not
+        funded by it.)
+        If FiberQ helps your work, you can sponsor its development:
+        https://github.com/sponsors/vukovicvl
+
     1.5.0 - An open interchange format: move a design between tools, lose nothing
         * New: "Export interchange bundle" writes the whole design as an open,
           documented format - a GeoPackage any GIS tool can open, or a folder of

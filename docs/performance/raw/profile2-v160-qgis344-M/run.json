@@ -1,0 +1,140 @@
+{
+ "code_sha256": [
+  "d01d1ea87e3eff23de7087bce7fe86e307ff0e92463e4e61f8447b46014d1f82"
+ ],
+ "controls": [
+  "run_validation",
+  "plan_recalculation",
+  "save_gpkg",
+  "branch_offset"
+ ],
+ "finished_utc": "2026-11-08T01:06:31Z",
+ "host": {
+  "cpu_count": 8,
+  "cpu_governor": "performance",
+  "cpu_model": "Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz",
+  "cpuset_effective": "2-6",
+  "image": "qgis/qgis:3.44-trixie",
+  "image_digest": "sha256:6df39d4b09c7ccceb18b80644a377e27829f408f64b33ca55e6fd7d7eaa92006",
+  "in_container": true,
+  "kernel": "7.0.0-38-generic",
+  "machine": "x86_64",
+  "mem_total": "31438232 kB",
+  "python": "3.13.5"
+ },
+ "k": 50,
+ "label": "v1.6.0",
+ "profile_run": true,
+ "results": [
+  {
+   "code_sha256": "d01d1ea87e3eff23de7087bce7fe86e307ff0e92463e4e61f8447b46014d1f82",
+   "cold_s": 0.024248,
+   "control": false,
+   "detail": null,
+   "errors": 0,
+   "file": "snap_move_closure-M.json",
+   "mad_s": null,
+   "median_s": null,
+   "n": null,
+   "pf": "PF-5",
+   "result_digest": "3529433ce2b31fd2e2887c8ef5741831dfd3c596859886ee9d4aa65307586bab",
+   "scenario": "snap_move_closure",
+   "size": "M",
+   "status": "profiled",
+   "swallowed_debug": 0,
+   "worker": "wrote",
+   "worker_s": 2.049
+  },
+  {
+   "code_sha256": "d01d1ea87e3eff23de7087bce7fe86e307ff0e92463e4e61f8447b46014d1f82",
+   "cold_s": 7.64309,
+   "control": true,
+   "detail": null,
+   "errors": 0,
+   "file": "run_validation-M.json",
+   "mad_s": null,
+   "median_s": null,
+   "n": null,
+   "pf": null,
+   "result_digest": "ce93a50b3e784fe803a24d61323f3e7b8f730f37db02100a0f76e44e0ecd824e",
+   "scenario": "run_validation",
+   "size": "M",
+   "status": "profiled",
+   "swallowed_debug": 1,
+   "worker": "wrote",
+   "worker_s": 18.011
+  },
+  {
+   "code_sha256": "d01d1ea87e3eff23de7087bce7fe86e307ff0e92463e4e61f8447b46014d1f82",
+   "cold_s": 0.34413,
+   "control": true,
+   "detail": null,
+   "errors": 0,
+   "file": "plan_recalculation-M.json",
+   "mad_s": null,
+   "median_s": null,
+   "n": null,
+   "pf": null,
+   "result_digest": "51b8b5613521d0ce6149a5f198a95f3a4ac68dc2d01ab0bfc917ec000e932d91",
+   "scenario": "plan_recalculation",
+   "size": "M",
+   "status": "profiled",
+   "swallowed_debug": 0,
+   "worker": "wrote",
+   "worker_s": 2.219
+  },
+  {
+   "code_sha256": "d01d1ea87e3eff23de7087bce7fe86e307ff0e92463e4e61f8447b46014d1f82",
+   "cold_s": 2.893418,
+   "control": true,
+   "detail": null,
+   "errors": 0,
+   "file": "save_gpkg-M.json",
+   "mad_s": null,
+   "median_s": null,
+   "n": null,
+   "pf": null,
+   "result_digest": "5002e158a2c2b30c9f6bc752fb0d622cf841a5ac28c3224e341dc48e3a96428b",
+   "scenario": "save_gpkg",
+   "size": "M",
+   "status": "profiled",
+   "swallowed_debug": 0,
+   "worker": "wrote",
+   "worker_s": 7.809
+  },
+  {
+   "code_sha256": "d01d1ea87e3eff23de7087bce7fe86e307ff0e92463e4e61f8447b46014d1f82",
+   "cold_s": 0.157944,
+   "control": true,
+   "detail": null,
+   "errors": 0,
+   "file": "branch_offset-M.json",
+   "mad_s": null,
+   "median_s": null,
+   "n": null,
+   "pf": null,
+   "result_digest": "78043bd2c278827f1cf175759ca99e2bb7d33014e3a730e2b89d2bdbc01468af",
+   "scenario": "branch_offset",
+   "size": "M",
+   "status": "profiled",
+   "swallowed_debug": 0,
+   "worker": "wrote",
+   "worker_s": 2.379
+  }
+ ],
+ "run_id": "profile2-v160-qgis344-M",
+ "scenarios": [
+  "snap_move_closure",
+  "run_validation",
+  "plan_recalculation",
+  "save_gpkg",
+  "branch_offset"
+ ],
+ "schema": "fiberq-bench/1",
+ "sizes": [
+  "M"
+ ],
+ "targets_41": [
+  "snap_move_closure"
+ ]
+}

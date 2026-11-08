@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   slack_click
+# size       S
+# code        1.5.0 (c208d1a607bf7499)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    13812 features, digest ae4011b9fe9cf3a5
+# result     {"slacks_added":1}
+
+
+==== sorted by cumulative (top 25) ====
+         21661 function calls in 0.240 seconds
+
+   Ordered by: cumulative time
+   List reduced from 145 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.240    0.240 <harness>/bench_scenarios.py:317(run)
+        1    0.000    0.000    0.237    0.237 <code>/fiberq/tools/slack_tool.py:157(canvasReleaseEvent)
+        1    0.000    0.000    0.088    0.088 <code>/fiberq/main_plugin.py:1407(_recompute_slack_for_cable)
+        1    0.000    0.000    0.088    0.088 <code>/fiberq/core/slack_manager.py:171(recompute_slack_for_cable)
+        2    0.056    0.028    0.056    0.028 {built-in method commitChanges}
+        1    0.036    0.036    0.050    0.050 <code>/fiberq/tools/slack_tool.py:103(_nearest_cable_endpoint)
+        3    0.046    0.015    0.046    0.015 {built-in method startEditing}
+        1    0.000    0.000    0.046    0.046 <code>/fiberq/main_plugin.py:884(<lambda>)
+        1    0.000    0.000    0.046    0.046 <code>/fiberq/main_plugin.py:3165(_stylize_cable_layer)
+        1    0.000    0.000    0.046    0.046 <code>/fiberq/core/cable_manager.py:201(stylize_cable_layer)
+        1    0.000    0.000    0.045    0.045 <code>/fiberq/core/cable_manager.py:75(apply_cable_field_aliases)
+        1    0.000    0.000    0.045    0.045 <code>/fiberq/utils/field_aliases.py:340(apply_cable_field_aliases)
+        1    0.018    0.018    0.045    0.045 <code>/fiberq/utils/field_aliases.py:364(_migrate_cable_type_values)
+        1    0.020    0.020    0.025    0.025 <code>/fiberq/tools/slack_tool.py:84(_nearest_node)
+        8    0.019    0.002    0.019    0.002 {built-in method getFeatures}
+        1    0.000    0.000    0.014    0.014 <code>/fiberq/core/undo_manager.py:160(record_add)
+        1    0.007    0.007    0.014    0.014 <code>/fiberq/core/undo_manager.py:522(_find_committed_fid)
+        1    0.011    0.011    0.011    0.011 {built-in method rollBack}
+        1    0.006    0.006    0.006    0.006 {built-in method updateFeature}
+     6742    0.005    0.000    0.005    0.000 {built-in method distance}
+     2041    0.004    0.000    0.004    0.000 {built-in method asPolyline}
+     5854    0.003    0.000    0.003    0.000 {built-in method geometry}
+        2    0.003    0.002    0.003    0.002 {built-in method featureCount}
+        2    0.000    0.000    0.001    0.001 <code>/fiberq/core/slack_manager.py:79(ensure_slack_layer)
+     2660    0.001    0.000    0.001    0.000 {built-in method asPoint}
+
+
+
+==== sorted by tottime (top 25) ====
+         21661 function calls in 0.240 seconds
+
+   Ordered by: internal time
+   List reduced from 145 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        2    0.056    0.028    0.056    0.028 {built-in method commitChanges}
+        3    0.046    0.015    0.046    0.015 {built-in method startEditing}
+        1    0.036    0.036    0.050    0.050 <code>/fiberq/tools/slack_tool.py:103(_nearest_cable_endpoint)
+        1    0.020    0.020    0.025    0.025 <code>/fiberq/tools/slack_tool.py:84(_nearest_node)
+        8    0.019    0.002    0.019    0.002 {built-in method getFeatures}
+        1    0.018    0.018    0.045    0.045 <code>/fiberq/utils/field_aliases.py:364(_migrate_cable_type_values)
+        1    0.011    0.011    0.011    0.011 {built-in method rollBack}
+        1    0.007    0.007    0.014    0.014 <code>/fiberq/core/undo_manager.py:522(_find_committed_fid)
+        1    0.006    0.006    0.006    0.006 {built-in method updateFeature}
+     6742    0.005    0.000    0.005    0.000 {built-in method distance}
+     2041    0.004    0.000    0.004    0.000 {built-in method asPolyline}
+     5854    0.003    0.000    0.003    0.000 {built-in method geometry}
+        2    0.003    0.002    0.003    0.002 {built-in method featureCount}
+     2660    0.001    0.000    0.001    0.000 {built-in method asPoint}
+        5    0.001    0.000    0.001    0.000 {built-in method mapLayers}
+        1    0.000    0.000    0.000    0.000 <code>/fiberq/core/slack_manager.py:208(<genexpr>)
+       12    0.000    0.000    0.001    0.000 <code>/fiberq/utils/field_aliases.py:264(apply_value_map)
+     2307    0.000    0.000    0.000    0.000 {built-in method isEmpty}
+       63    0.000    0.000    0.000    0.000 {built-in method setFieldAlias}
+        1    0.000    0.000    0.088    0.088 <code>/fiberq/core/slack_manager.py:171(recompute_slack_for_cable)
+       12    0.000    0.000    0.000    0.000 {built-in method setEditorWidgetSetup}
+     1153    0.000    0.000    0.000    0.000 /usr/lib/python3/dist-packages/qgis/core/additions/qgsgeometry.py:19(_geometryNonZero)
+        1    0.000    0.000    0.001    0.001 <code>/fiberq/core/style_manager.py:82(stylize_cable_layer)
+        9    0.000    0.000    0.000    0.000 {instance}
+        1    0.000    0.000    0.237    0.237 <code>/fiberq/tools/slack_tool.py:157(canvasReleaseEvent)
+
+

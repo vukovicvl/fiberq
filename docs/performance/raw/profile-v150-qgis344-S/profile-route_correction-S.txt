@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   route_correction
+# size       S
+# code        1.5.0 (c208d1a607bf7499)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    13812 features, digest ae4011b9fe9cf3a5
+# result     {"findings":602,"messages":[]}
+
+
+==== sorted by cumulative (top 25) ====
+         10239538 function calls in 7.484 seconds
+
+   Ordered by: cumulative time
+   List reduced from 32 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    7.484    7.484 <harness>/bench_scenarios.py:268(run)
+        1    0.045    0.045    7.484    7.484 <code>/fiberq/main_plugin.py:3702(check_consistency)
+     3632    0.668    0.000    7.369    0.002 {built-in method builtins.any}
+  2578581    2.093    0.000    3.380    0.000 <code>/fiberq/main_plugin.py:3739(<genexpr>)
+  2532752    2.059    0.000    3.321    0.000 <code>/fiberq/main_plugin.py:3730(<genexpr>)
+  5110731    2.549    0.000    2.549    0.000 {built-in method distance}
+        1    0.019    0.019    0.061    0.061 <code>/fiberq/dialogs/correction_dialog.py:26(__init__)
+        1    0.025    0.025    0.025    0.025 {built-in method setWidget}
+     1205    0.011    0.000    0.011    0.000 {method 'connect' of 'PyQt5.QtCore.pyqtBoundSignal' objects}
+     1816    0.005    0.000    0.005    0.000 {built-in method asPolyline}
+        1    0.003    0.003    0.003    0.003 {built-in method setLayout}
+     4476    0.002    0.000    0.002    0.000 {built-in method geometry}
+     1808    0.002    0.000    0.002    0.000 {built-in method addWidget}
+     2660    0.001    0.000    0.001    0.000 {built-in method asPoint}
+     1204    0.001    0.000    0.001    0.000 {built-in method id}
+        3    0.000    0.000    0.000    0.000 {built-in method getFeatures}
+      602    0.000    0.000    0.000    0.000 {method 'append' of 'list' objects}
+        1    0.000    0.000    0.000    0.000 {built-in method mapLayers}
+        1    0.000    0.000    0.000    0.000 {instance}
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+        1    0.000    0.000    0.000    0.000 <code>/fiberq/tools/command_manager.py:67(eventFilter)
+       24    0.000    0.000    0.000    0.000 {built-in method name}
+        1    0.000    0.000    0.000    0.000 {built-in method setWindowTitle}
+        1    0.000    0.000    0.000    0.000 {built-in method setWidgetResizable}
+       24    0.000    0.000    0.000    0.000 {built-in method builtins.isinstance}
+
+
+
+==== sorted by tottime (top 25) ====
+         10239538 function calls in 7.484 seconds
+
+   Ordered by: internal time
+   List reduced from 32 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+  5110731    2.549    0.000    2.549    0.000 {built-in method distance}
+  2578581    2.093    0.000    3.380    0.000 <code>/fiberq/main_plugin.py:3739(<genexpr>)
+  2532752    2.059    0.000    3.321    0.000 <code>/fiberq/main_plugin.py:3730(<genexpr>)
+     3632    0.668    0.000    7.369    0.002 {built-in method builtins.any}
+        1    0.045    0.045    7.484    7.484 <code>/fiberq/main_plugin.py:3702(check_consistency)
+        1    0.025    0.025    0.025    0.025 {built-in method setWidget}
+        1    0.019    0.019    0.061    0.061 <code>/fiberq/dialogs/correction_dialog.py:26(__init__)
+     1205    0.011    0.000    0.011    0.000 {method 'connect' of 'PyQt5.QtCore.pyqtBoundSignal' objects}
+     1816    0.005    0.000    0.005    0.000 {built-in method asPolyline}
+        1    0.003    0.003    0.003    0.003 {built-in method setLayout}
+     4476    0.002    0.000    0.002    0.000 {built-in method geometry}
+     1808    0.002    0.000    0.002    0.000 {built-in method addWidget}
+     2660    0.001    0.000    0.001    0.000 {built-in method asPoint}
+     1204    0.001    0.000    0.001    0.000 {built-in method id}
+        1    0.000    0.000    7.484    7.484 <harness>/bench_scenarios.py:268(run)
+        3    0.000    0.000    0.000    0.000 {built-in method getFeatures}
+      602    0.000    0.000    0.000    0.000 {method 'append' of 'list' objects}
+        1    0.000    0.000    0.000    0.000 {built-in method mapLayers}
+        1    0.000    0.000    0.000    0.000 {instance}
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+       24    0.000    0.000    0.000    0.000 {built-in method name}
+        1    0.000    0.000    0.000    0.000 <code>/fiberq/tools/command_manager.py:67(eventFilter)
+        1    0.000    0.000    0.000    0.000 {built-in method setWindowTitle}
+        1    0.000    0.000    0.000    0.000 {built-in method setWidgetResizable}
+       24    0.000    0.000    0.000    0.000 {built-in method builtins.isinstance}
+
+

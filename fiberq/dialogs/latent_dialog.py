@@ -1,8 +1,10 @@
 # pyright: reportMissingImports=false, reportMissingModuleSource=false
 """FiberQ Latent Elements Dialog.
 
-This module contains dialogs for managing latent (hidden/planned) elements
-along cable routes.
+The dialog for a cable's latent elements: the elements along its route that
+the cable passes through without being cut, such as a closure where only one
+tube is opened to splice a few fibres. The cable's order of elements is kept
+as listed, and a bundle carries it in its ``fq_path_stop`` table.
 """
 
 from qgis.PyQt.QtWidgets import (

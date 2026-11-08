@@ -1,6 +1,54 @@
-# FiberQ v1.4
+# FiberQ v1.6
 
 A QGIS plugin for fiber optic network design and documentation.
+
+## What's New in v1.6.0 — Performance & Reliability
+
+- **Fast on large projects** — the Optical Schematic View, the list of latent
+  elements, the route correction check, Generate terminal slacks, placing a
+  slack, FiberQ's own snapping, the undo record after every placement and Lay
+  cable use spatial indexes and batched reads instead of scanning every feature.
+  The before/after benchmark, on generated test cities of 13,800 to 88,600
+  features, is in
+  [docs/performance.md](https://github.com/vukovicvl/fiberq/blob/main/docs/performance.md).
+- **Failures you can see** — saving to GeoPackage, auto-save, exports, the BOM,
+  the importers, the route and cable tools and Undo/Redo now report what went
+  wrong, and why, instead of failing silently or reporting success. One message
+  per operation; the details are in *Log Messages > FiberQ*.
+- **Crash fixes** — route correction, the schematic view's Center button,
+  Import route and Import points on geometry or coordinates they cannot use, the
+  BOM export to a locked file, and slacks on pre-1.0 projects. On QGIS 4,
+  clicking an element with a picture now opens the picture.
+- **Lengths follow your edits**, the **placement tools follow QGIS's snapping
+  settings**, and **validation settings are stored in the project**.
+- **Interchange bundles** — an import adds and never replaces what you have,
+  more of what another tool wrote travels through, and an export refuses or
+  warns instead of writing something other than the project.
+- **Route correction** no longer reports a route end that meets a joint
+  closure, an element or a vertex of another route, the
+  **Optical Schematic View** opens fitted and its exports show the whole
+  drawing, and **Import route** reads every folder of a KML and the tracks and
+  routes of a GPX.
+- **Saves** — the placement tools say when the layer refused a save instead
+  of reporting success, Add breakpoint no longer loses the route when that
+  happens, FiberQ adds its own columns with a type PostGIS accepts, and
+  saving to GeoPackage asks before writing over a table no layer uses.
+- **Removed** — the "Check (health check)" button (Validate project covers it),
+  and Publish to PostGIS's "Delete existing table and recreate" box, which
+  never took effect.
+
+The full list, including what changed behaviour, is in the changelog
+(Plugin Manager > FiberQ).
+
+## What's New in v1.5.0 — An Open Interchange Format
+
+**Export interchange bundle** writes the whole design in an open, documented
+format — a GeoPackage any GIS tool can open, or a folder of GeoJSON files — and
+**Import interchange bundle** reads one back. Cable references, the elements a
+cable passes through and named cable groupings travel with it, keyed by stable
+feature identity, and data FiberQ does not model survives a round trip. See the
+[interchange guide](https://github.com/vukovicvl/fiberq/blob/main/docs/interchange-guide.md)
+and the [specification](https://github.com/vukovicvl/fiberq/blob/main/docs/interchange-format.md).
 
 ## What's New in v1.4.0 — Project Validation
 
@@ -146,6 +194,8 @@ fiberq/
 - Relations management
 - Fiber break tracking
 - Infrastructure cut tools
+- Validate project (fourteen checks) and Recalculate lengths
+- Export and import interchange bundles (an open format)
 
 ### Productivity Features (v1.2)
 
@@ -189,7 +239,7 @@ Only these two ask for a licence key. Everything else in FiberQ is free.
 
 ## Backward Compatibility
 
-v1.3 maintains full backward compatibility with v1.0, v1.1, and v1.2 projects.
+v1.6 opens projects made with any earlier version, from v1.0 on.
 Older projects are migrated automatically on load (see *What's New in v1.3.0*):
 
 - All layer names work in both Serbian and English

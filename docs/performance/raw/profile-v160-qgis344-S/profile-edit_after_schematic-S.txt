@@ -1,0 +1,52 @@
+# FiberQ WP4 benchmark profile
+# scenario   edit_after_schematic
+# size       S
+# code        1.6.0 (d01d1ea87e3eff23)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    13812 features, digest ae4011b9fe9cf3a5
+# result     {"_rebuild_scheduled_while_hidden":false,"_scene_items":14846,"edited_fid":1000,"edited_field":"naziv"}
+
+
+==== sorted by cumulative (top 25) ====
+         17 function calls in 0.127 seconds
+
+   Ordered by: cumulative time
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.003    0.003    0.127    0.127 <harness>/bench_scenarios.py:218(run)
+        1    0.061    0.061    0.061    0.061 {built-in method items}
+        1    0.032    0.032    0.032    0.032 {built-in method startEditing}
+        1    0.023    0.023    0.023    0.023 {built-in method commitChanges}
+        1    0.009    0.009    0.009    0.009 {built-in method getFeature}
+        1    0.000    0.000    0.000    0.000 {built-in method changeAttributeValue}
+        2    0.000    0.000    0.000    0.000 <code>/fiberq/dialogs/schematic_dialog.py:1295(_layer_committed)
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+        2    0.000    0.000    0.000    0.000 <code>/fiberq/dialogs/schematic_dialog.py:1203(_schedule_rebuild)
+        2    0.000    0.000    0.000    0.000 {built-in method isVisible}
+        2    0.000    0.000    0.000    0.000 {built-in method builtins.getattr}
+        1    0.000    0.000    0.000    0.000 <code>/fiberq/dialogs/schematic_dialog.py:1228(_do_rebuild_if_needed)
+        1    0.000    0.000    0.000    0.000 {built-in method builtins.len}
+
+
+
+==== sorted by tottime (top 25) ====
+         17 function calls in 0.127 seconds
+
+   Ordered by: internal time
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.061    0.061    0.061    0.061 {built-in method items}
+        1    0.032    0.032    0.032    0.032 {built-in method startEditing}
+        1    0.023    0.023    0.023    0.023 {built-in method commitChanges}
+        1    0.009    0.009    0.009    0.009 {built-in method getFeature}
+        1    0.003    0.003    0.127    0.127 <harness>/bench_scenarios.py:218(run)
+        1    0.000    0.000    0.000    0.000 {built-in method changeAttributeValue}
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+        2    0.000    0.000    0.000    0.000 <code>/fiberq/dialogs/schematic_dialog.py:1203(_schedule_rebuild)
+        2    0.000    0.000    0.000    0.000 <code>/fiberq/dialogs/schematic_dialog.py:1295(_layer_committed)
+        2    0.000    0.000    0.000    0.000 {built-in method isVisible}
+        2    0.000    0.000    0.000    0.000 {built-in method builtins.getattr}
+        1    0.000    0.000    0.000    0.000 <code>/fiberq/dialogs/schematic_dialog.py:1228(_do_rebuild_if_needed)
+        1    0.000    0.000    0.000    0.000 {built-in method builtins.len}
+
+

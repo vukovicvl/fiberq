@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   route_path
+# size       S
+# code        1.6.0 (d01d1ea87e3eff23)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    13812 features, digest ae4011b9fe9cf3a5
+# result     {"paths":5,"vertices":[47,45,39,41,53]}
+
+
+==== sorted by cumulative (top 25) ====
+         487804 function calls in 0.326 seconds
+
+   Ordered by: cumulative time
+   List reduced from 28 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.005    0.005    0.326    0.326 <harness>/bench_scenarios.py:564(run)
+        5    0.000    0.000    0.321    0.064 <code>/fiberq/utils/routing.py:245(build_path_across_network)
+        5    0.072    0.014    0.297    0.059 <code>/fiberq/utils/routing.py:34(build_network_graph)
+     9080    0.080    0.000    0.182    0.000 <code>/fiberq/utils/routing.py:69(_process_line_part)
+    63560    0.058    0.000    0.097    0.000 <code>/fiberq/utils/geometry.py:41(fuzzy_key)
+     9080    0.017    0.000    0.039    0.000 <code>/fiberq/utils/geometry.py:220(line_parts)
+   127140    0.020    0.000    0.020    0.000 {built-in method builtins.round}
+     9080    0.015    0.000    0.015    0.000 {built-in method asPolyline}
+        5    0.010    0.002    0.014    0.003 <code>/fiberq/utils/routing.py:102(build_adjacency_list)
+    63590    0.010    0.000    0.010    0.000 {built-in method x}
+        5    0.006    0.001    0.010    0.002 <code>/fiberq/utils/routing.py:129(find_path_bfs)
+    63590    0.009    0.000    0.009    0.000 {built-in method y}
+    54710    0.007    0.000    0.007    0.000 {method 'append' of 'list' objects}
+     9080    0.004    0.000    0.004    0.000 {built-in method geometry}
+    27246    0.004    0.000    0.004    0.000 {built-in method builtins.len}
+     9080    0.002    0.000    0.002    0.000 {built-in method isNull}
+     9080    0.002    0.000    0.002    0.000 {built-in method isEmpty}
+     9080    0.002    0.000    0.002    0.000 {built-in method isMultipart}
+     8826    0.002    0.000    0.002    0.000 {method 'get' of 'dict' objects}
+     7859    0.001    0.000    0.001    0.000 {method 'append' of 'collections.deque' objects}
+     7621    0.001    0.000    0.001    0.000 {method 'popleft' of 'collections.deque' objects}
+       10    0.000    0.000    0.001    0.000 <code>/fiberq/utils/routing.py:193(_nearest_key)
+        5    0.000    0.000    0.000    0.000 {built-in method getFeatures}
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+       30    0.000    0.000    0.000    0.000 {built-in method math.isfinite}
+
+
+
+==== sorted by tottime (top 25) ====
+         487804 function calls in 0.326 seconds
+
+   Ordered by: internal time
+   List reduced from 28 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+     9080    0.080    0.000    0.182    0.000 <code>/fiberq/utils/routing.py:69(_process_line_part)
+        5    0.072    0.014    0.297    0.059 <code>/fiberq/utils/routing.py:34(build_network_graph)
+    63560    0.058    0.000    0.097    0.000 <code>/fiberq/utils/geometry.py:41(fuzzy_key)
+   127140    0.020    0.000    0.020    0.000 {built-in method builtins.round}
+     9080    0.017    0.000    0.039    0.000 <code>/fiberq/utils/geometry.py:220(line_parts)
+     9080    0.015    0.000    0.015    0.000 {built-in method asPolyline}
+        5    0.010    0.002    0.014    0.003 <code>/fiberq/utils/routing.py:102(build_adjacency_list)
+    63590    0.010    0.000    0.010    0.000 {built-in method x}
+    63590    0.009    0.000    0.009    0.000 {built-in method y}
+    54710    0.007    0.000    0.007    0.000 {method 'append' of 'list' objects}
+        5    0.006    0.001    0.010    0.002 <code>/fiberq/utils/routing.py:129(find_path_bfs)
+        1    0.005    0.005    0.326    0.326 <harness>/bench_scenarios.py:564(run)
+     9080    0.004    0.000    0.004    0.000 {built-in method geometry}
+    27246    0.004    0.000    0.004    0.000 {built-in method builtins.len}
+     9080    0.002    0.000    0.002    0.000 {built-in method isNull}
+     9080    0.002    0.000    0.002    0.000 {built-in method isEmpty}
+     9080    0.002    0.000    0.002    0.000 {built-in method isMultipart}
+     8826    0.002    0.000    0.002    0.000 {method 'get' of 'dict' objects}
+     7859    0.001    0.000    0.001    0.000 {method 'append' of 'collections.deque' objects}
+     7621    0.001    0.000    0.001    0.000 {method 'popleft' of 'collections.deque' objects}
+        5    0.000    0.000    0.000    0.000 {built-in method getFeatures}
+       10    0.000    0.000    0.001    0.000 <code>/fiberq/utils/routing.py:193(_nearest_key)
+        5    0.000    0.000    0.321    0.064 <code>/fiberq/utils/routing.py:245(build_path_across_network)
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+       30    0.000    0.000    0.000    0.000 {built-in method math.isfinite}
+
+

@@ -22,9 +22,11 @@ from bench_support import (centre_canvas, first_name, layer_by_name, point_of,
                            polyline)
 
 #: Nine mouse positions around a route vertex, in metres, used by every
-#: placement row. Three of them are inside the snap tolerance at 0.5 m/px and
-#: six are not, so one call exercises both branches. Divide a reported median by
-#: ``events`` for the per-move cost the plan's section 1.2 table quotes.
+#: placement row. Four of them are within 3.6 m of the vertex, inside every
+#: placement tool's snap tolerance at 0.5 m/px, and five are 30 to 50 m away,
+#: where a tool can still find a span or another feature in reach, so one call
+#: exercises both branches. Divide a reported median by ``events`` for the
+#: per-move cost the plan's section 1.2 table quotes.
 SNAP_OFFSETS = [(dx, dy) for dx in (-3.0, 0.0, 40.0) for dy in (-2.0, 0.0, 30.0)]
 
 #: Candidate names for the layers the scenarios need, newest canonical name
@@ -396,6 +398,26 @@ def sc_snap_move_breakpoint(ctx):
     plugin = ctx["plugin"]
     return _snap_move(ctx, lambda canvas: BreakpointTool(canvas, iface, plugin),
                       lambda tool: tool.snap_info is not None)
+
+
+@scenario("snap_move_closure", pf="PF-5", needs=("route", "poles"),
+          post="at least one of the moves snaps")
+def sc_snap_move_closure(ctx):
+    """The joint-closure tool, the one placement tool v1.5.0 already rect-filtered.
+
+    Added at release, after the baseline: its v1.5.0 numbers come from the final
+    A/B/A run alone. Without it, PF-5's shared box read could have made this tool
+    slower than v1.5.0 with no row to show it.
+    """
+    from fiberq.tools.extension_tool import ExtensionTool
+
+    def snapped(tool):
+        # 1.6.0 shows a snap on QGIS's own indicator, 1.5.0 on the tool's marker.
+        snapper = getattr(tool, "snapper", None)
+        if snapper is not None:
+            return snapper.indicator.isVisible()
+        return tool.snap_marker.isVisible()
+    return _snap_move(ctx, lambda canvas: ExtensionTool(canvas), snapped)
 
 
 @scenario("manhole_click", pf="PF-5", mutating=True, needs=("route",),

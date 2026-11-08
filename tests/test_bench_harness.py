@@ -68,7 +68,7 @@ def test_every_scenario_runs_once_on_the_xs_dataset(city_xs_dataset, tmp_path):
 
     Marked slow for the sake of ``-m 'not slow'``, which is a developer's
     shortcut and not a CI setting: the suite runs plain ``pytest``, so this does
-    run on both images. It is about 17 s of them, which is what one pass over 22
+    run on both images. It is about 17 s of them, which is what one pass over 23
     scenarios costs; ``--k 2`` is what keeps the slack row from being 11 s of it.
     """
     from bench_scenarios import REGISTRY

@@ -1,0 +1,76 @@
+{
+ "code_sha256": [
+  "8bbfaf4c5df4a1c18053660fa77a41b6eaaf880f8ab236bb336e82c8a1c83d11"
+ ],
+ "controls": [],
+ "finished_utc": "2026-11-07T18:03:23Z",
+ "host": {
+  "cpu_count": 8,
+  "cpu_governor": "performance",
+  "cpu_model": "Intel(R) Core(TM) i7-6820HQ CPU @ 2.70GHz",
+  "cpuset_effective": "2-6",
+  "image": "qgis/qgis:4.0-trixie",
+  "image_digest": "sha256:23c12670e69909e8659a5c098aa307996735a5763b9ff9c3268bdeeee1a10916",
+  "in_container": true,
+  "kernel": "7.0.0-38-generic",
+  "machine": "x86_64",
+  "mem_total": "31438232 kB",
+  "python": "3.13.5"
+ },
+ "k": 50,
+ "label": "mid-pf7-parent-69555e8",
+ "profile_run": false,
+ "results": [
+  {
+   "code_sha256": "8bbfaf4c5df4a1c18053660fa77a41b6eaaf880f8ab236bb336e82c8a1c83d11",
+   "cold_s": 0.294254,
+   "control": false,
+   "detail": null,
+   "errors": 0,
+   "file": "lay_cable-M.json",
+   "mad_s": 0.005899,
+   "median_s": 0.301916,
+   "n": 7,
+   "pf": "PF-7",
+   "result_digest": "2abd0f9976577dd1e6cf21dc10998ef4271b58ef575249d4c330e189d30e2b25",
+   "scenario": "lay_cable",
+   "size": "M",
+   "status": "ok",
+   "swallowed_debug": 2,
+   "worker": "wrote",
+   "worker_s": 9.825
+  },
+  {
+   "code_sha256": "8bbfaf4c5df4a1c18053660fa77a41b6eaaf880f8ab236bb336e82c8a1c83d11",
+   "cold_s": 0.50237,
+   "control": false,
+   "detail": null,
+   "errors": 0,
+   "file": "route_path-M.json",
+   "mad_s": 0.008041,
+   "median_s": 0.503289,
+   "n": 7,
+   "pf": "PF-7",
+   "result_digest": "8ab8a2a240c1ac787cb8927095069d9244746aff57507f1186f8ca20c6481ec7",
+   "scenario": "route_path",
+   "size": "M",
+   "status": "ok",
+   "swallowed_debug": 0,
+   "worker": "wrote",
+   "worker_s": 6.759
+  }
+ ],
+ "run_id": "final-mid-pf7-qgis40-M",
+ "scenarios": [
+  "lay_cable",
+  "route_path"
+ ],
+ "schema": "fiberq-bench/1",
+ "sizes": [
+  "M"
+ ],
+ "targets_41": [
+  "lay_cable",
+  "route_path"
+ ]
+}

@@ -1,0 +1,731 @@
+START 2026-11-07T14:26:53Z release tree cf7ce22 (merge tree 83bec50)  governor performance  cpuset 2-6  dry 0
+code mid-q9b-cf7ce22 093d59df69544931043f20384e87b45018f438f4be3cd84f959d1bb3bb5ede3f
+code mid-pf7-69555e8 8bbfaf4c5df4a1c18053660fa77a41b6eaaf880f8ab236bb336e82c8a1c83d11
+code v150 c208d1a607bf74998fca62cbcf7bd7dc7d1d1cddb0db59700def56b379749fac
+code v160-cf7ce22 d01d1ea87e3eff23de7087bce7fe86e307ff0e92463e4e61f8447b46014d1f82
+code mid-pf3-cf7ce22 4f4a9e8dce7e9ee039427c6380c50f64699ddeb3496c2210d44bb66abd30cdea
+code mid-gate-cf7ce22 e34597460b92d53231bb982e9ca32eff1029f443a33449d7e42c78eb11c8642f
+code mid-pf5-473a149 26b73b69a90fb660ae3b108cc1d7137c93946b84c6701c82dcd573a58f411eec
+  waiting for load 4.12 < 1.5 (14:26:53Z)
+  waiting for load 2.77 < 1.5 (14:27:23Z)
+  waiting for load 1.87 < 1.5 (14:27:53Z)
+=== final-v150-a1-qgis344-S  2026-11-07T14:28:23Z  load 1.39 1.46 1.29  governor performance
+run final-v150-a1-qgis344-S: 23 rows (23 scenarios x 1 sizes) -> final-v150-a1-qgis344-S
+         load 1.39 before the first row (limit 2.00)
+[ 1/23] schematic_open           S   4.1 ok             median   22.879s  mad  0.0431s  n=3  cold   21.787s  err 0/0
+[ 2/23] edit_after_schematic     S   4.1 ok             median   21.227s  mad  0.0045s  n=3  cold   21.006s  err 0/0
+[ 3/23] latent_open              S   4.1 ok             median   58.747s  mad  0.1173s  n=3  cold   58.791s  err 0/0
+[ 4/23] route_correction         S   4.1 ok             median    5.282s  mad  0.0794s  n=3  cold    5.335s  err 0/0
+[ 5/23] slack_generate           S   4.1 ok             median   17.021s  mad  0.0648s  n=3  cold   16.716s  err 0/501
+[ 6/23] slack_click              S   4.1 ok             median    0.228s  mad  0.0038s  n=7  cold    0.275s  err 0/6
+[ 7/23] snap_move_element        S   4.1 ok             median    0.525s  mad  0.0034s  n=7  cold    0.568s  err 0/0
+[ 8/23] snap_move_point          S   4.1 ok             median    0.278s  mad  0.0019s  n=7  cold    0.284s  err 0/0
+[ 9/23] snap_move_route          S   4.1 ok             median    0.720s  mad  0.0053s  n=7  cold    0.767s  err 0/0
+[10/23] snap_move_pipe           S   4.1 ok             median    0.485s  mad  0.0030s  n=7  cold    0.491s  err 0/0
+[11/23] snap_move_breakpoint     S   4.1 ok             median    0.092s  mad  0.0003s  n=7  cold    0.100s  err 0/0
+[12/23] snap_move_closure        S   4.1 ok             median    0.013s  mad  0.0001s  n=7  cold    0.021s  err 0/0
+[13/23] manhole_click            S   4.1 ok             median    0.120s  mad  0.0022s  n=7  cold    0.121s  err 0/4
+[14/23] record_add               S   4.1 ok             median    0.014s  mad  0.0005s  n=7  cold    0.015s  err 0/4
+[15/23] record_add_memory        S   4.1 ok             median    0.003s  mad  0.0001s  n=7  cold    0.004s  err 0/4
+[16/23] lay_cable                S   4.1 ok             median    0.244s  mad  0.0060s  n=7  cold    0.289s  err 0/2
+[17/23] route_path               S   4.1 ok             median    0.183s  mad  0.0034s  n=7  cold    0.217s  err 0/0
+[18/23] run_validation           S   ctl ok             median    3.059s  mad  0.0090s  n=3  cold    3.101s  err 0/1
+[19/23] plan_recalculation       S   ctl ok             median    0.173s  mad  0.0031s  n=7  cold    0.210s  err 0/0
+[20/23] save_gpkg                S   ctl ok             median    2.472s  mad  0.0211s  n=3  cold    7.756s  err 0/0
+[21/23] project_open             S   ctl ok             median    0.874s  mad  0.0157s  n=7  cold    0.962s  err 0/17
+[22/23] bom_open                 S   ctl ok             median    0.101s  mad  0.0007s  n=7  cold    0.119s  err 0/0
+[23/23] branch_offset            S   ctl ok             median    0.093s  mad  0.0024s  n=7  cold    0.090s  err 0/0
+
+23 rows: 23 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-v160-qgis344-S  2026-11-07T14:43:03Z  load 1.11 1.13 1.19  governor performance
+run final-v160-qgis344-S: 23 rows (23 scenarios x 1 sizes) -> final-v160-qgis344-S
+         load 1.11 before the first row (limit 2.00)
+[ 1/23] schematic_open           S   4.1 ok             median    1.729s  mad  0.0102s  n=7  cold    1.834s  err 0/0
+[ 2/23] edit_after_schematic     S   4.1 ok             median    0.109s  mad  0.0010s  n=7  cold    0.108s  err 0/0
+[ 3/23] latent_open              S   4.1 ok             median    0.751s  mad  0.0207s  n=7  cold    0.776s  err 0/0
+[ 4/23] route_correction         S   4.1 ok             median    0.112s  mad  0.0018s  n=7  cold    0.131s  err 0/0
+[ 5/23] slack_generate           S   4.1 ok             median    0.355s  mad  0.0054s  n=7  cold    0.407s  err 0/400
+[ 6/23] slack_click              S   4.1 ok             median    0.136s  mad  0.0016s  n=7  cold    0.186s  err 0/4
+[ 7/23] snap_move_element        S   4.1 ok             median    0.010s  mad  0.0002s  n=7  cold    0.024s  err 0/0
+[ 8/23] snap_move_point          S   4.1 ok             median    0.004s  mad  0.0001s  n=7  cold    0.016s  err 0/0
+[ 9/23] snap_move_route          S   4.1 ok             median    0.036s  mad  0.0001s  n=7  cold    0.055s  err 0/0
+[10/23] snap_move_pipe           S   4.1 ok             median    0.010s  mad  0.0001s  n=7  cold    0.023s  err 0/0
+[11/23] snap_move_breakpoint     S   4.1 ok             median    0.004s  mad  0.0001s  n=7  cold    0.019s  err 0/0
+[12/23] snap_move_closure        S   4.1 ok             median    0.011s  mad  0.0007s  n=7  cold    0.025s  err 0/0
+[13/23] manhole_click            S   4.1 ok             median    0.083s  mad  0.0003s  n=7  cold    0.078s  err 0/2
+[14/23] record_add               S   4.1 ok             median    0.006s  mad  0.0001s  n=7  cold    0.008s  err 0/4
+[15/23] record_add_memory        S   4.1 ok             median    0.001s  mad  0.0001s  n=7  cold    0.002s  err 0/4
+[16/23] lay_cable                S   4.1 ok             median    0.148s  mad  0.0033s  n=7  cold    0.204s  err 0/2
+[17/23] route_path               S   4.1 ok             median    0.175s  mad  0.0013s  n=7  cold    0.206s  err 0/0
+[18/23] run_validation           S   ctl ok             median    3.042s  mad  0.0037s  n=3  cold    3.114s  err 0/1
+[19/23] plan_recalculation       S   ctl ok             median    0.138s  mad  0.0045s  n=7  cold    0.145s  err 0/0
+[20/23] save_gpkg                S   ctl ok             median    2.494s  mad  0.0442s  n=3  cold    2.476s  err 0/0
+[21/23] project_open             S   ctl ok             median    0.711s  mad  0.0105s  n=7  cold    0.770s  err 0/0
+[22/23] bom_open                 S   ctl ok             median    0.098s  mad  0.0021s  n=7  cold    0.113s  err 0/0
+[23/23] branch_offset            S   ctl ok             median    0.090s  mad  0.0015s  n=7  cold    0.089s  err 0/0
+
+23 rows: 23 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-pf5-qgis344-S  2026-11-07T14:45:56Z  load 1.19 1.19 1.20  governor performance
+run final-mid-pf5-qgis344-S: 7 rows (7 scenarios x 1 sizes) -> final-mid-pf5-qgis344-S
+         load 1.19 before the first row (limit 2.00)
+[ 1/ 7] snap_move_element        S   4.1 ok             median    0.538s  mad  0.0036s  n=7  cold    0.546s  err 0/0
+[ 2/ 7] snap_move_point          S   4.1 ok             median    0.122s  mad  0.0016s  n=7  cold    0.129s  err 0/0
+[ 3/ 7] snap_move_route          S   4.1 ok             median    0.743s  mad  0.0078s  n=7  cold    0.776s  err 0/0
+[ 4/ 7] snap_move_pipe           S   4.1 ok             median    0.515s  mad  0.0073s  n=7  cold    0.528s  err 0/0
+[ 5/ 7] snap_move_breakpoint     S   4.1 ok             median    0.099s  mad  0.0008s  n=7  cold    0.105s  err 0/0
+[ 6/ 7] snap_move_closure        S   4.1 ok             median    0.479s  mad  0.0040s  n=7  cold    0.486s  err 0/0
+[ 7/ 7] manhole_click            S   4.1 ok             median    0.091s  mad  0.0016s  n=7  cold    0.088s  err 0/2
+
+7 rows: 7 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-pf7-qgis344-S  2026-11-07T14:46:36Z  load 1.25 1.21 1.20  governor performance
+run final-mid-pf7-qgis344-S: 2 rows (2 scenarios x 1 sizes) -> final-mid-pf7-qgis344-S
+         load 1.25 before the first row (limit 2.00)
+[ 1/ 2] lay_cable                S   4.1 ok             median    0.164s  mad  0.0027s  n=7  cold    0.167s  err 0/2
+[ 2/ 2] route_path               S   4.1 ok             median    0.191s  mad  0.0042s  n=7  cold    0.227s  err 0/0
+
+2 rows: 2 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-gate-qgis344-S  2026-11-07T14:46:49Z  load 1.21 1.20 1.20  governor performance
+run final-mid-gate-qgis344-S: 1 rows (1 scenarios x 1 sizes) -> final-mid-gate-qgis344-S
+         load 1.21 before the first row (limit 2.00)
+[ 1/ 1] edit_after_schematic     S   4.1 ok             median    1.766s  mad  0.0170s  n=7  cold    1.799s  err 0/0
+
+1 rows: 1 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-pf3-qgis344-S  2026-11-07T14:47:30Z  load 1.27 1.22 1.20  governor performance
+run final-mid-pf3-qgis344-S: 1 rows (1 scenarios x 1 sizes) -> final-mid-pf3-qgis344-S
+         load 1.27 before the first row (limit 2.00)
+[ 1/ 1] route_correction         S   4.1 ok             median    0.208s  mad  0.0047s  n=7  cold    0.215s  err 0/0
+
+1 rows: 1 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-q9b-qgis344-S  2026-11-07T14:47:35Z  load 1.25 1.21 1.20  governor performance
+run final-mid-q9b-qgis344-S: 1 rows (1 scenarios x 1 sizes) -> final-mid-q9b-qgis344-S
+         load 1.25 before the first row (limit 2.00)
+[ 1/ 1] snap_move_closure        S   4.1 ok             median    0.010s  mad  0.0003s  n=7  cold    0.025s  err 0/0
+
+1 rows: 1 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-v150-a2-qgis344-S  2026-11-07T14:47:39Z  load 1.25 1.21 1.20  governor performance
+run final-v150-a2-qgis344-S: 23 rows (23 scenarios x 1 sizes) -> final-v150-a2-qgis344-S
+         load 1.25 before the first row (limit 2.00)
+[ 1/23] schematic_open           S   4.1 ok             median   23.086s  mad  0.1229s  n=3  cold   21.523s  err 0/0
+[ 2/23] edit_after_schematic     S   4.1 ok             median   21.483s  mad  0.0188s  n=3  cold   21.209s  err 0/0
+[ 3/23] latent_open              S   4.1 ok             median   59.670s  mad  0.0025s  n=3  cold   59.726s  err 0/0
+[ 4/23] route_correction         S   4.1 ok             median    5.521s  mad  0.0337s  n=3  cold    5.474s  err 0/0
+[ 5/23] slack_generate           S   4.1 ok             median   16.932s  mad  0.0034s  n=3  cold   16.841s  err 0/501
+[ 6/23] slack_click              S   4.1 ok             median    0.230s  mad  0.0020s  n=7  cold    0.279s  err 0/6
+[ 7/23] snap_move_element        S   4.1 ok             median    0.543s  mad  0.0061s  n=7  cold    0.547s  err 0/0
+[ 8/23] snap_move_point          S   4.1 ok             median    0.289s  mad  0.0033s  n=7  cold    0.294s  err 0/0
+[ 9/23] snap_move_route          S   4.1 ok             median    0.713s  mad  0.0051s  n=7  cold    0.730s  err 0/0
+[10/23] snap_move_pipe           S   4.1 ok             median    0.475s  mad  0.0054s  n=7  cold    0.517s  err 0/0
+[11/23] snap_move_breakpoint     S   4.1 ok             median    0.093s  mad  0.0010s  n=7  cold    0.099s  err 0/0
+[12/23] snap_move_closure        S   4.1 ok             median    0.013s  mad  0.0002s  n=7  cold    0.023s  err 0/0
+[13/23] manhole_click            S   4.1 ok             median    0.119s  mad  0.0025s  n=7  cold    0.118s  err 0/4
+[14/23] record_add               S   4.1 ok             median    0.014s  mad  0.0001s  n=7  cold    0.016s  err 0/4
+[15/23] record_add_memory        S   4.1 ok             median    0.003s  mad  0.0001s  n=7  cold    0.005s  err 0/4
+[16/23] lay_cable                S   4.1 ok             median    0.234s  mad  0.0045s  n=7  cold    0.288s  err 0/2
+[17/23] route_path               S   4.1 ok             median    0.185s  mad  0.0025s  n=7  cold    0.221s  err 0/0
+[18/23] run_validation           S   ctl ok             median    3.025s  mad  0.0138s  n=3  cold    3.063s  err 0/1
+[19/23] plan_recalculation       S   ctl ok             median    0.179s  mad  0.0018s  n=7  cold    0.193s  err 0/0
+[20/23] save_gpkg                S   ctl ok             median    2.529s  mad  0.0172s  n=3  cold    2.504s  err 0/0
+[21/23] project_open             S   ctl ok             median    0.883s  mad  0.0178s  n=7  cold    0.929s  err 0/17
+[22/23] bom_open                 S   ctl ok             median    0.107s  mad  0.0011s  n=7  cold    0.131s  err 0/0
+[23/23] branch_offset            S   ctl ok             median    0.090s  mad  0.0007s  n=7  cold    0.089s  err 0/0
+
+23 rows: 23 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-v150-a1-qgis40-S  2026-11-07T15:02:23Z  load 1.24 1.18 1.17  governor performance
+run final-v150-a1-qgis40-S: 23 rows (23 scenarios x 1 sizes) -> final-v150-a1-qgis40-S
+         load 1.24 before the first row (limit 2.00)
+[ 1/23] schematic_open           S   4.1 ok             median   26.496s  mad  0.1180s  n=3  cold   24.222s  err 0/0
+[ 2/23] edit_after_schematic     S   4.1 ok             median   25.315s  mad  0.0647s  n=3  cold   24.566s  err 0/0
+[ 3/23] latent_open              S   4.1 ok             median   63.221s  mad  0.0000s  n=1  cold   63.101s  err 0/0
+[ 4/23] route_correction         S   4.1 ok             median    5.477s  mad  0.0580s  n=3  cold    5.530s  err 0/0
+[ 5/23] slack_generate           S   4.1 ok             median   17.370s  mad  0.0343s  n=3  cold   17.316s  err 0/400
+[ 6/23] slack_click              S   4.1 ok             median    0.238s  mad  0.0025s  n=7  cold    0.294s  err 0/4
+[ 7/23] snap_move_element        S   4.1 ok             median    0.581s  mad  0.0083s  n=7  cold    0.581s  err 0/0
+[ 8/23] snap_move_point          S   4.1 ok             median    0.299s  mad  0.0051s  n=7  cold    0.305s  err 0/0
+[ 9/23] snap_move_route          S   4.1 ok             median    0.766s  mad  0.0070s  n=7  cold    0.781s  err 0/0
+[10/23] snap_move_pipe           S   4.1 ok             median    0.514s  mad  0.0052s  n=7  cold    0.522s  err 0/0
+[11/23] snap_move_breakpoint     S   4.1 ok             median    0.107s  mad  0.0003s  n=7  cold    0.111s  err 0/0
+[12/23] snap_move_closure        S   4.1 ok             median    0.012s  mad  0.0001s  n=7  cold    0.020s  err 0/0
+[13/23] manhole_click            S   4.1 ok             median    0.120s  mad  0.0014s  n=7  cold    0.116s  err 0/2
+[14/23] record_add               S   4.1 ok             median    0.015s  mad  0.0003s  n=7  cold    0.015s  err 0/4
+[15/23] record_add_memory        S   4.1 ok             median    0.004s  mad  0.0001s  n=7  cold    0.005s  err 0/4
+[16/23] lay_cable                S   4.1 ok             median    0.244s  mad  0.0029s  n=7  cold    0.313s  err 0/2
+[17/23] route_path               S   4.1 ok             median    0.191s  mad  0.0038s  n=7  cold    0.214s  err 0/0
+[18/23] run_validation           S   ctl ok             median    2.996s  mad  0.0131s  n=3  cold    3.034s  err 0/1
+[19/23] plan_recalculation       S   ctl ok             median    0.166s  mad  0.0019s  n=7  cold    0.215s  err 0/0
+[20/23] save_gpkg                S   ctl ok             median    2.237s  mad  0.0150s  n=3  cold    2.197s  err 0/0
+[21/23] project_open             S   ctl ok             median    0.883s  mad  0.0097s  n=7  cold    0.939s  err 0/0
+[22/23] bom_open                 S   ctl ok             median    0.116s  mad  0.0022s  n=7  cold    0.126s  err 0/0
+[23/23] branch_offset            S   ctl ok             median    0.096s  mad  0.0016s  n=7  cold    0.104s  err 0/0
+
+23 rows: 23 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-v160-qgis40-S  2026-11-07T15:16:17Z  load 1.32 1.18 1.14  governor performance
+run final-v160-qgis40-S: 23 rows (23 scenarios x 1 sizes) -> final-v160-qgis40-S
+         load 1.32 before the first row (limit 2.00)
+[ 1/23] schematic_open           S   4.1 ok             median    1.850s  mad  0.0097s  n=7  cold    1.839s  err 0/0
+[ 2/23] edit_after_schematic     S   4.1 ok             median    0.108s  mad  0.0024s  n=7  cold    0.114s  err 0/0
+[ 3/23] latent_open              S   4.1 ok             median    0.839s  mad  0.0085s  n=7  cold    0.849s  err 0/0
+[ 4/23] route_correction         S   4.1 ok             median    0.116s  mad  0.0017s  n=7  cold    0.131s  err 0/0
+[ 5/23] slack_generate           S   4.1 ok             median    0.346s  mad  0.0030s  n=7  cold    0.418s  err 0/400
+[ 6/23] slack_click              S   4.1 ok             median    0.134s  mad  0.0004s  n=7  cold    0.191s  err 0/4
+[ 7/23] snap_move_element        S   4.1 ok             median    0.009s  mad  0.0001s  n=7  cold    0.029s  err 0/0
+[ 8/23] snap_move_point          S   4.1 ok             median    0.003s  mad  0.0000s  n=7  cold    0.015s  err 0/0
+[ 9/23] snap_move_route          S   4.1 ok             median    0.035s  mad  0.0003s  n=7  cold    0.055s  err 0/0
+[10/23] snap_move_pipe           S   4.1 ok             median    0.010s  mad  0.0002s  n=7  cold    0.022s  err 0/0
+[11/23] snap_move_breakpoint     S   4.1 ok             median    0.004s  mad  0.0001s  n=7  cold    0.015s  err 0/0
+[12/23] snap_move_closure        S   4.1 ok             median    0.010s  mad  0.0002s  n=7  cold    0.024s  err 0/0
+[13/23] manhole_click            S   4.1 ok             median    0.085s  mad  0.0028s  n=7  cold    0.084s  err 0/2
+[14/23] record_add               S   4.1 ok             median    0.006s  mad  0.0003s  n=7  cold    0.007s  err 0/4
+[15/23] record_add_memory        S   4.1 ok             median    0.001s  mad  0.0000s  n=7  cold    0.002s  err 0/4
+[16/23] lay_cable                S   4.1 ok             median    0.150s  mad  0.0027s  n=7  cold    0.210s  err 0/2
+[17/23] route_path               S   4.1 ok             median    0.182s  mad  0.0010s  n=7  cold    0.208s  err 0/0
+[18/23] run_validation           S   ctl ok             median    3.039s  mad  0.0001s  n=3  cold    3.056s  err 0/1
+[19/23] plan_recalculation       S   ctl ok             median    0.138s  mad  0.0013s  n=7  cold    0.169s  err 0/0
+[20/23] save_gpkg                S   ctl ok             median    2.226s  mad  0.0075s  n=3  cold    2.267s  err 0/0
+[21/23] project_open             S   ctl ok             median    0.715s  mad  0.0078s  n=7  cold    0.764s  err 0/0
+[22/23] bom_open                 S   ctl ok             median    0.110s  mad  0.0004s  n=7  cold    0.126s  err 0/0
+[23/23] branch_offset            S   ctl ok             median    0.094s  mad  0.0007s  n=7  cold    0.095s  err 0/0
+
+23 rows: 23 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-pf5-qgis40-S  2026-11-07T15:19:14Z  load 1.20 1.24 1.17  governor performance
+run final-mid-pf5-qgis40-S: 7 rows (7 scenarios x 1 sizes) -> final-mid-pf5-qgis40-S
+         load 1.18 before the first row (limit 2.00)
+[ 1/ 7] snap_move_element        S   4.1 ok             median    0.580s  mad  0.0050s  n=7  cold    0.613s  err 0/0
+[ 2/ 7] snap_move_point          S   4.1 ok             median    0.133s  mad  0.0014s  n=7  cold    0.142s  err 0/0
+[ 3/ 7] snap_move_route          S   4.1 ok             median    0.791s  mad  0.0124s  n=7  cold    0.829s  err 0/0
+[ 4/ 7] snap_move_pipe           S   4.1 ok             median    0.554s  mad  0.0118s  n=7  cold    0.559s  err 0/0
+[ 5/ 7] snap_move_breakpoint     S   4.1 ok             median    0.111s  mad  0.0054s  n=7  cold    0.117s  err 0/0
+[ 6/ 7] snap_move_closure        S   4.1 ok             median    0.536s  mad  0.0066s  n=7  cold    0.538s  err 0/0
+[ 7/ 7] manhole_click            S   4.1 ok             median    0.092s  mad  0.0009s  n=7  cold    0.091s  err 0/2
+
+7 rows: 7 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-pf7-qgis40-S  2026-11-07T15:19:58Z  load 1.09 1.20 1.16  governor performance
+run final-mid-pf7-qgis40-S: 2 rows (2 scenarios x 1 sizes) -> final-mid-pf7-qgis40-S
+         load 1.09 before the first row (limit 2.00)
+[ 1/ 2] lay_cable                S   4.1 ok             median    0.172s  mad  0.0064s  n=7  cold    0.166s  err 0/2
+[ 2/ 2] route_path               S   4.1 ok             median    0.197s  mad  0.0022s  n=7  cold    0.231s  err 0/0
+
+2 rows: 2 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-gate-qgis40-S  2026-11-07T15:20:12Z  load 1.07 1.19 1.16  governor performance
+run final-mid-gate-qgis40-S: 1 rows (1 scenarios x 1 sizes) -> final-mid-gate-qgis40-S
+         load 1.07 before the first row (limit 2.00)
+[ 1/ 1] edit_after_schematic     S   4.1 ok             median    1.847s  mad  0.0093s  n=7  cold    1.900s  err 0/0
+
+1 rows: 1 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-pf3-qgis40-S  2026-11-07T15:20:55Z  load 1.11 1.18 1.16  governor performance
+run final-mid-pf3-qgis40-S: 1 rows (1 scenarios x 1 sizes) -> final-mid-pf3-qgis40-S
+         load 1.11 before the first row (limit 2.00)
+[ 1/ 1] route_correction         S   4.1 ok             median    0.222s  mad  0.0055s  n=7  cold    0.226s  err 0/0
+
+1 rows: 1 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-q9b-qgis40-S  2026-11-07T15:21:01Z  load 1.10 1.18 1.15  governor performance
+run final-mid-q9b-qgis40-S: 1 rows (1 scenarios x 1 sizes) -> final-mid-q9b-qgis40-S
+         load 1.10 before the first row (limit 2.00)
+[ 1/ 1] snap_move_closure        S   4.1 ok             median    0.009s  mad  0.0002s  n=7  cold    0.022s  err 0/0
+
+1 rows: 1 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-v150-a2-qgis40-S  2026-11-07T15:21:05Z  load 1.10 1.18 1.15  governor performance
+run final-v150-a2-qgis40-S: 23 rows (23 scenarios x 1 sizes) -> final-v150-a2-qgis40-S
+         load 1.09 before the first row (limit 2.00)
+[ 1/23] schematic_open           S   4.1 ok             median   26.339s  mad  0.0754s  n=3  cold   24.016s  err 0/0
+[ 2/23] edit_after_schematic     S   4.1 ok             median   25.087s  mad  0.0850s  n=3  cold   24.555s  err 0/0
+[ 3/23] latent_open              S   4.1 ok             median   65.136s  mad  0.0000s  n=1  cold   64.888s  err 0/0
+[ 4/23] route_correction         S   4.1 ok             median    5.725s  mad  0.1595s  n=3  cold    6.012s  err 0/0
+[ 5/23] slack_generate           S   4.1 ok             median   17.140s  mad  0.0294s  n=3  cold   17.062s  err 0/400
+[ 6/23] slack_click              S   4.1 ok             median    0.234s  mad  0.0013s  n=7  cold    0.283s  err 0/4
+[ 7/23] snap_move_element        S   4.1 ok             median    0.589s  mad  0.0173s  n=7  cold    0.582s  err 0/0
+[ 8/23] snap_move_point          S   4.1 ok             median    0.301s  mad  0.0052s  n=7  cold    0.308s  err 0/0
+[ 9/23] snap_move_route          S   4.1 ok             median    0.763s  mad  0.0139s  n=7  cold    0.772s  err 0/0
+[10/23] snap_move_pipe           S   4.1 ok             median    0.492s  mad  0.0011s  n=7  cold    0.509s  err 0/0
+[11/23] snap_move_breakpoint     S   4.1 ok             median    0.102s  mad  0.0022s  n=7  cold    0.108s  err 0/0
+[12/23] snap_move_closure        S   4.1 ok             median    0.012s  mad  0.0000s  n=7  cold    0.020s  err 0/0
+[13/23] manhole_click            S   4.1 ok             median    0.121s  mad  0.0016s  n=7  cold    0.144s  err 0/2
+[14/23] record_add               S   4.1 ok             median    0.015s  mad  0.0003s  n=7  cold    0.018s  err 0/4
+[15/23] record_add_memory        S   4.1 ok             median    0.004s  mad  0.0002s  n=7  cold    0.005s  err 0/4
+[16/23] lay_cable                S   4.1 ok             median    0.245s  mad  0.0084s  n=7  cold    0.299s  err 0/2
+[17/23] route_path               S   4.1 ok             median    0.190s  mad  0.0021s  n=7  cold    0.216s  err 0/0
+[18/23] run_validation           S   ctl ok             median    3.006s  mad  0.0394s  n=3  cold    2.958s  err 0/1
+[19/23] plan_recalculation       S   ctl ok             median    0.168s  mad  0.0015s  n=7  cold    0.179s  err 0/0
+[20/23] save_gpkg                S   ctl ok             median    2.226s  mad  0.0655s  n=3  cold    2.302s  err 0/0
+[21/23] project_open             S   ctl ok             median    0.870s  mad  0.0105s  n=7  cold    0.929s  err 0/0
+[22/23] bom_open                 S   ctl ok             median    0.113s  mad  0.0006s  n=7  cold    0.126s  err 0/0
+[23/23] branch_offset            S   ctl ok             median    0.098s  mad  0.0028s  n=7  cold    0.106s  err 0/0
+
+23 rows: 23 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-v150-a1-qgis344-M  2026-11-07T15:35:05Z  load 1.39 1.20 1.16  governor performance
+run final-v150-a1-qgis344-M: 23 rows (23 scenarios x 1 sizes) -> final-v150-a1-qgis344-M
+         load 1.40 before the first row (limit 2.00)
+[ 1/23] schematic_open           M   4.1 ok             median  130.220s  mad  0.0000s  n=1  cold  118.936s  err 0/0
+[ 2/23] edit_after_schematic     M   4.1 ok             median  121.337s  mad  0.0000s  n=1  cold  120.966s  err 0/0
+[ 3/23] latent_open              M   4.1 ok             median  340.696s  mad  0.0000s  n=1  cold  340.535s  err 0/0
+[ 4/23] route_correction         M   4.1 ok             median   32.545s  mad  1.0344s  n=3  cold   31.615s  err 0/0
+[ 5/23] slack_generate           M   4.1 ok             median   23.850s  mad  0.0274s  n=3  cold   23.768s  err 0/501
+[ 6/23] slack_click              M   4.1 ok             median    0.369s  mad  0.0110s  n=7  cold    0.410s  err 0/6
+[ 7/23] snap_move_element        M   4.1 ok             median    1.328s  mad  0.0037s  n=7  cold    1.340s  err 0/0
+[ 8/23] snap_move_point          M   4.1 ok             median    0.685s  mad  0.0076s  n=7  cold    0.683s  err 0/0
+[ 9/23] snap_move_route          M   4.1 ok             median    1.815s  mad  0.0141s  n=7  cold    1.842s  err 0/0
+[10/23] snap_move_pipe           M   4.1 ok             median    1.194s  mad  0.0108s  n=7  cold    1.206s  err 0/0
+[11/23] snap_move_breakpoint     M   4.1 ok             median    0.220s  mad  0.0027s  n=7  cold    0.229s  err 0/0
+[12/23] snap_move_closure        M   4.1 ok             median    0.013s  mad  0.0002s  n=7  cold    0.025s  err 0/0
+[13/23] manhole_click            M   4.1 ok             median    0.188s  mad  0.0031s  n=7  cold    0.181s  err 0/4
+[14/23] record_add               M   4.1 ok             median    0.026s  mad  0.0007s  n=7  cold    0.028s  err 0/4
+[15/23] record_add_memory        M   4.1 ok             median    0.008s  mad  0.0003s  n=7  cold    0.009s  err 0/4
+[16/23] lay_cable                M   4.1 ok             median    0.464s  mad  0.0073s  n=7  cold    0.519s  err 0/2
+[17/23] route_path               M   4.1 ok             median    0.463s  mad  0.0088s  n=7  cold    0.493s  err 0/0
+[18/23] run_validation           M   ctl ok             median    7.535s  mad  0.0177s  n=3  cold    7.631s  err 0/1
+[19/23] plan_recalculation       M   ctl ok             median    0.439s  mad  0.0046s  n=7  cold    0.447s  err 0/0
+[20/23] save_gpkg                M   ctl ok             median    2.868s  mad  0.0284s  n=3  cold    2.814s  err 0/0
+[21/23] project_open             M   ctl ok             median    1.116s  mad  0.0260s  n=7  cold    1.204s  err 0/17
+[22/23] bom_open                 M   ctl ok             median    0.253s  mad  0.0050s  n=7  cold    0.273s  err 0/0
+[23/23] branch_offset            M   ctl ok             median    0.158s  mad  0.0080s  n=7  cold    0.167s  err 0/0
+
+23 rows: 23 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-v160-qgis344-M  2026-11-07T16:18:49Z  load 1.38 1.28 1.19  governor performance
+run final-v160-qgis344-M: 23 rows (23 scenarios x 1 sizes) -> final-v160-qgis344-M
+         load 1.38 before the first row (limit 2.00)
+[ 1/23] schematic_open           M   4.1 ok             median    4.330s  mad  0.0070s  n=3  cold    4.412s  err 0/0
+[ 2/23] edit_after_schematic     M   4.1 ok             median    0.202s  mad  0.0044s  n=7  cold    0.222s  err 0/0
+[ 3/23] latent_open              M   4.1 ok             median    1.873s  mad  0.0648s  n=7  cold    1.893s  err 0/0
+[ 4/23] route_correction         M   4.1 ok             median    0.277s  mad  0.0044s  n=7  cold    0.304s  err 0/0
+[ 5/23] slack_generate           M   4.1 ok             median    0.368s  mad  0.0043s  n=7  cold    0.420s  err 0/400
+[ 6/23] slack_click              M   4.1 ok             median    0.140s  mad  0.0003s  n=7  cold    0.190s  err 0/4
+[ 7/23] snap_move_element        M   4.1 ok             median    0.010s  mad  0.0002s  n=7  cold    0.025s  err 0/0
+[ 8/23] snap_move_point          M   4.1 ok             median    0.004s  mad  0.0000s  n=7  cold    0.016s  err 0/0
+[ 9/23] snap_move_route          M   4.1 ok             median    0.035s  mad  0.0002s  n=7  cold    0.054s  err 0/0
+[10/23] snap_move_pipe           M   4.1 ok             median    0.010s  mad  0.0001s  n=7  cold    0.023s  err 0/0
+[11/23] snap_move_breakpoint     M   4.1 ok             median    0.004s  mad  0.0001s  n=7  cold    0.015s  err 0/0
+[12/23] snap_move_closure        M   4.1 ok             median    0.011s  mad  0.0005s  n=7  cold    0.024s  err 0/0
+[13/23] manhole_click            M   4.1 ok             median    0.090s  mad  0.0010s  n=7  cold    0.091s  err 0/2
+[14/23] record_add               M   4.1 ok             median    0.006s  mad  0.0002s  n=7  cold    0.008s  err 0/4
+[15/23] record_add_memory        M   4.1 ok             median    0.002s  mad  0.0001s  n=7  cold    0.004s  err 0/4
+[16/23] lay_cable                M   4.1 ok             median    0.243s  mad  0.0143s  n=7  cold    0.305s  err 0/2
+[17/23] route_path               M   4.1 ok             median    0.437s  mad  0.0012s  n=7  cold    0.458s  err 0/0
+[18/23] run_validation           M   ctl ok             median    7.555s  mad  0.0020s  n=3  cold    7.581s  err 0/1
+[19/23] plan_recalculation       M   ctl ok             median    0.332s  mad  0.0031s  n=7  cold    0.347s  err 0/0
+[20/23] save_gpkg                M   ctl ok             median    2.881s  mad  0.0404s  n=3  cold    2.793s  err 0/0
+[21/23] project_open             M   ctl ok             median    0.878s  mad  0.0133s  n=7  cold    0.927s  err 0/0
+[22/23] bom_open                 M   ctl ok             median    0.236s  mad  0.0037s  n=7  cold    0.254s  err 0/0
+[23/23] branch_offset            M   ctl ok             median    0.160s  mad  0.0013s  n=7  cold    0.173s  err 0/0
+
+23 rows: 23 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-pf5-qgis344-M  2026-11-07T16:22:59Z  load 1.20 1.20 1.18  governor performance
+run final-mid-pf5-qgis344-M: 7 rows (7 scenarios x 1 sizes) -> final-mid-pf5-qgis344-M
+         load 1.20 before the first row (limit 2.00)
+[ 1/ 7] snap_move_element        M   4.1 ok             median    1.298s  mad  0.0239s  n=7  cold    1.303s  err 0/0
+[ 2/ 7] snap_move_point          M   4.1 ok             median    0.293s  mad  0.0054s  n=7  cold    0.305s  err 0/0
+[ 3/ 7] snap_move_route          M   4.1 ok             median    1.872s  mad  0.0104s  n=7  cold    1.930s  err 0/0
+[ 4/ 7] snap_move_pipe           M   4.1 ok             median    1.260s  mad  0.0109s  n=7  cold    1.260s  err 0/0
+[ 5/ 7] snap_move_breakpoint     M   4.1 ok             median    0.239s  mad  0.0042s  n=7  cold    0.243s  err 0/0
+[ 6/ 7] snap_move_closure        M   4.1 ok             median    1.204s  mad  0.0131s  n=7  cold    1.194s  err 0/0
+[ 7/ 7] manhole_click            M   4.1 ok             median    0.120s  mad  0.0011s  n=7  cold    0.114s  err 0/2
+
+7 rows: 7 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-pf7-qgis344-M  2026-11-07T16:24:13Z  load 1.15 1.18 1.17  governor performance
+run final-mid-pf7-qgis344-M: 2 rows (2 scenarios x 1 sizes) -> final-mid-pf7-qgis344-M
+         load 1.15 before the first row (limit 2.00)
+[ 1/ 2] lay_cable                M   4.1 ok             median    0.296s  mad  0.0093s  n=7  cold    0.291s  err 0/2
+[ 2/ 2] route_path               M   4.1 ok             median    0.480s  mad  0.0111s  n=7  cold    0.495s  err 0/0
+
+2 rows: 2 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-gate-qgis344-M  2026-11-07T16:24:30Z  load 1.19 1.19 1.18  governor performance
+run final-mid-gate-qgis344-M: 1 rows (1 scenarios x 1 sizes) -> final-mid-gate-qgis344-M
+         load 1.18 before the first row (limit 2.00)
+[ 1/ 1] edit_after_schematic     M   4.1 ok             median    4.298s  mad  0.0014s  n=3  cold    4.328s  err 0/0
+
+1 rows: 1 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-pf3-qgis344-M  2026-11-07T16:25:21Z  load 1.18 1.19 1.18  governor performance
+run final-mid-pf3-qgis344-M: 1 rows (1 scenarios x 1 sizes) -> final-mid-pf3-qgis344-M
+         load 1.17 before the first row (limit 2.00)
+[ 1/ 1] route_correction         M   4.1 ok             median    0.520s  mad  0.0064s  n=7  cold    0.509s  err 0/0
+
+1 rows: 1 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-q9b-qgis344-M  2026-11-07T16:25:28Z  load 1.16 1.18 1.18  governor performance
+run final-mid-q9b-qgis344-M: 1 rows (1 scenarios x 1 sizes) -> final-mid-q9b-qgis344-M
+         load 1.16 before the first row (limit 2.00)
+[ 1/ 1] snap_move_closure        M   4.1 ok             median    0.010s  mad  0.0002s  n=7  cold    0.024s  err 0/0
+
+1 rows: 1 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-v150-a2-qgis344-M  2026-11-07T16:25:31Z  load 1.14 1.18 1.17  governor performance
+run final-v150-a2-qgis344-M: 23 rows (23 scenarios x 1 sizes) -> final-v150-a2-qgis344-M
+         load 1.14 before the first row (limit 2.00)
+[ 1/23] schematic_open           M   4.1 ok             median  130.650s  mad  0.0000s  n=1  cold  119.866s  err 0/0
+[ 2/23] edit_after_schematic     M   4.1 ok             median  123.786s  mad  0.0000s  n=1  cold  123.908s  err 0/0
+[ 3/23] latent_open              M   4.1 ok             median  335.268s  mad  0.0000s  n=1  cold  335.205s  err 0/0
+[ 4/23] route_correction         M   4.1 ok             median   31.469s  mad  0.7318s  n=3  cold   30.843s  err 0/0
+[ 5/23] slack_generate           M   4.1 ok             median   23.705s  mad  0.0150s  n=3  cold   23.594s  err 0/501
+[ 6/23] slack_click              M   4.1 ok             median    0.353s  mad  0.0033s  n=7  cold    0.397s  err 0/6
+[ 7/23] snap_move_element        M   4.1 ok             median    1.324s  mad  0.0227s  n=7  cold    1.310s  err 0/0
+[ 8/23] snap_move_point          M   4.1 ok             median    0.682s  mad  0.0065s  n=7  cold    0.683s  err 0/0
+[ 9/23] snap_move_route          M   4.1 ok             median    1.751s  mad  0.0035s  n=7  cold    1.859s  err 0/0
+[10/23] snap_move_pipe           M   4.1 ok             median    1.187s  mad  0.0133s  n=7  cold    1.222s  err 0/0
+[11/23] snap_move_breakpoint     M   4.1 ok             median    0.233s  mad  0.0058s  n=7  cold    0.236s  err 0/0
+[12/23] snap_move_closure        M   4.1 ok             median    0.013s  mad  0.0003s  n=7  cold    0.022s  err 0/0
+[13/23] manhole_click            M   4.1 ok             median    0.187s  mad  0.0042s  n=7  cold    0.176s  err 0/4
+[14/23] record_add               M   4.1 ok             median    0.026s  mad  0.0001s  n=7  cold    0.027s  err 0/4
+[15/23] record_add_memory        M   4.1 ok             median    0.008s  mad  0.0002s  n=7  cold    0.009s  err 0/4
+[16/23] lay_cable                M   4.1 ok             median    0.453s  mad  0.0197s  n=7  cold    0.502s  err 0/2
+[17/23] route_path               M   4.1 ok             median    0.454s  mad  0.0020s  n=7  cold    0.506s  err 0/0
+[18/23] run_validation           M   ctl ok             median    7.543s  mad  0.0002s  n=3  cold    7.546s  err 0/1
+[19/23] plan_recalculation       M   ctl ok             median    0.447s  mad  0.0028s  n=7  cold    0.454s  err 0/0
+[20/23] save_gpkg                M   ctl ok             median    2.879s  mad  0.0055s  n=3  cold    2.855s  err 0/0
+[21/23] project_open             M   ctl ok             median    1.111s  mad  0.0079s  n=7  cold    1.178s  err 0/17
+[22/23] bom_open                 M   ctl ok             median    0.246s  mad  0.0046s  n=7  cold    0.270s  err 0/0
+[23/23] branch_offset            M   ctl ok             median    0.159s  mad  0.0022s  n=7  cold    0.163s  err 0/0
+
+23 rows: 23 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-v150-a1-qgis40-M  2026-11-07T17:09:13Z  load 1.27 1.21 1.18  governor performance
+run final-v150-a1-qgis40-M: 23 rows (23 scenarios x 1 sizes) -> final-v150-a1-qgis40-M
+         load 1.27 before the first row (limit 2.00)
+[ 1/23] schematic_open           M   4.1 ok             median  154.238s  mad  0.0000s  n=1  cold  136.166s  err 0/0
+[ 2/23] edit_after_schematic     M   4.1 ok             median  137.679s  mad  0.0000s  n=1  cold  138.369s  err 0/0
+[ 3/23] latent_open              M   4.1 ok             median  369.113s  mad  0.0000s  n=1  cold  367.888s  err 0/0
+[ 4/23] route_correction         M   4.1 ok             median   32.331s  mad  0.1480s  n=3  cold   32.077s  err 0/0
+[ 5/23] slack_generate           M   4.1 ok             median   25.408s  mad  0.0464s  n=3  cold   25.022s  err 0/400
+[ 6/23] slack_click              M   4.1 ok             median    0.374s  mad  0.0052s  n=7  cold    0.420s  err 0/4
+[ 7/23] snap_move_element        M   4.1 ok             median    1.465s  mad  0.0127s  n=7  cold    1.459s  err 0/0
+[ 8/23] snap_move_point          M   4.1 ok             median    0.766s  mad  0.0063s  n=7  cold    0.754s  err 0/0
+[ 9/23] snap_move_route          M   4.1 ok             median    1.931s  mad  0.0100s  n=7  cold    1.973s  err 0/0
+[10/23] snap_move_pipe           M   4.1 ok             median    1.260s  mad  0.0123s  n=7  cold    1.254s  err 0/0
+[11/23] snap_move_breakpoint     M   4.1 ok             median    0.246s  mad  0.0027s  n=7  cold    0.253s  err 0/0
+[12/23] snap_move_closure        M   4.1 ok             median    0.012s  mad  0.0001s  n=7  cold    0.020s  err 0/0
+[13/23] manhole_click            M   4.1 ok             median    0.191s  mad  0.0066s  n=7  cold    0.184s  err 0/2
+[14/23] record_add               M   4.1 ok             median    0.027s  mad  0.0003s  n=7  cold    0.028s  err 0/4
+[15/23] record_add_memory        M   4.1 ok             median    0.008s  mad  0.0002s  n=7  cold    0.010s  err 0/4
+[16/23] lay_cable                M   4.1 ok             median    0.456s  mad  0.0112s  n=7  cold    0.506s  err 0/2
+[17/23] route_path               M   4.1 ok             median    0.494s  mad  0.0068s  n=7  cold    0.527s  err 0/0
+[18/23] run_validation           M   ctl ok             median    7.457s  mad  0.0015s  n=3  cold    7.488s  err 0/1
+[19/23] plan_recalculation       M   ctl ok             median    0.419s  mad  0.0022s  n=7  cold    0.430s  err 0/0
+[20/23] save_gpkg                M   ctl ok             median    2.671s  mad  0.0017s  n=3  cold    2.650s  err 0/0
+[21/23] project_open             M   ctl ok             median    1.170s  mad  0.0105s  n=7  cold    1.215s  err 0/0
+[22/23] bom_open                 M   ctl ok             median    0.278s  mad  0.0023s  n=7  cold    0.291s  err 0/0
+[23/23] branch_offset            M   ctl ok             median    0.172s  mad  0.0094s  n=7  cold    0.164s  err 0/0
+
+23 rows: 23 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-v160-qgis40-M  2026-11-07T17:57:25Z  load 1.04 1.10 1.16  governor performance
+run final-v160-qgis40-M: 23 rows (23 scenarios x 1 sizes) -> final-v160-qgis40-M
+         load 1.04 before the first row (limit 2.00)
+[ 1/23] schematic_open           M   4.1 ok             median    4.663s  mad  0.0029s  n=3  cold    4.621s  err 0/0
+[ 2/23] edit_after_schematic     M   4.1 ok             median    0.203s  mad  0.0057s  n=7  cold    0.196s  err 0/0
+[ 3/23] latent_open              M   4.1 ok             median    2.076s  mad  0.0118s  n=3  cold    2.085s  err 0/0
+[ 4/23] route_correction         M   4.1 ok             median    0.287s  mad  0.0077s  n=7  cold    0.324s  err 0/0
+[ 5/23] slack_generate           M   4.1 ok             median    0.360s  mad  0.0003s  n=7  cold    0.428s  err 0/400
+[ 6/23] slack_click              M   4.1 ok             median    0.144s  mad  0.0043s  n=7  cold    5.670s  err 0/4
+[ 7/23] snap_move_element        M   4.1 ok             median    0.010s  mad  0.0002s  n=7  cold    0.023s  err 0/0
+[ 8/23] snap_move_point          M   4.1 ok             median    0.004s  mad  0.0001s  n=7  cold    0.017s  err 0/0
+[ 9/23] snap_move_route          M   4.1 ok             median    0.034s  mad  0.0003s  n=7  cold    0.055s  err 0/0
+[10/23] snap_move_pipe           M   4.1 ok             median    0.010s  mad  0.0002s  n=7  cold    0.022s  err 0/0
+[11/23] snap_move_breakpoint     M   4.1 ok             median    0.004s  mad  0.0000s  n=7  cold    0.015s  err 0/0
+[12/23] snap_move_closure        M   4.1 ok             median    0.010s  mad  0.0001s  n=7  cold    0.023s  err 0/0
+[13/23] manhole_click            M   4.1 ok             median    0.092s  mad  0.0022s  n=7  cold    0.102s  err 0/2
+[14/23] record_add               M   4.1 ok             median    0.007s  mad  0.0003s  n=7  cold    0.008s  err 0/4
+[15/23] record_add_memory        M   4.1 ok             median    0.002s  mad  0.0001s  n=7  cold    0.003s  err 0/4
+[16/23] lay_cable                M   4.1 ok             median    0.250s  mad  0.0146s  n=7  cold    0.299s  err 0/2
+[17/23] route_path               M   4.1 ok             median    0.464s  mad  0.0122s  n=7  cold    0.475s  err 0/0
+[18/23] run_validation           M   ctl ok             median    7.463s  mad  0.0329s  n=3  cold    7.391s  err 0/1
+[19/23] plan_recalculation       M   ctl ok             median    0.348s  mad  0.0034s  n=7  cold    0.352s  err 0/0
+[20/23] save_gpkg                M   ctl ok             median    2.650s  mad  0.0003s  n=3  cold    2.638s  err 0/0
+[21/23] project_open             M   ctl ok             median    0.913s  mad  0.0135s  n=7  cold    1.002s  err 0/0
+[22/23] bom_open                 M   ctl ok             median    0.261s  mad  0.0041s  n=7  cold    0.276s  err 0/0
+[23/23] branch_offset            M   ctl ok             median    0.169s  mad  0.0026s  n=7  cold    0.179s  err 0/0
+
+23 rows: 23 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-pf5-qgis40-M  2026-11-07T18:01:44Z  load 1.36 1.31 1.23  governor performance
+run final-mid-pf5-qgis40-M: 7 rows (7 scenarios x 1 sizes) -> final-mid-pf5-qgis40-M
+         load 1.36 before the first row (limit 2.00)
+[ 1/ 7] snap_move_element        M   4.1 ok             median    1.499s  mad  0.0159s  n=7  cold    1.519s  err 0/0
+[ 2/ 7] snap_move_point          M   4.1 ok             median    0.314s  mad  0.0035s  n=7  cold    0.382s  err 0/0
+[ 3/ 7] snap_move_route          M   4.1 ok             median    1.986s  mad  0.0236s  n=7  cold    2.009s  err 0/0
+[ 4/ 7] snap_move_pipe           M   4.1 ok             median    1.369s  mad  0.0096s  n=7  cold    1.377s  err 0/0
+[ 5/ 7] snap_move_breakpoint     M   4.1 ok             median    0.258s  mad  0.0005s  n=7  cold    0.262s  err 0/0
+[ 6/ 7] snap_move_closure        M   4.1 ok             median    1.330s  mad  0.0061s  n=7  cold    1.343s  err 0/0
+[ 7/ 7] manhole_click            M   4.1 ok             median    0.121s  mad  0.0027s  n=7  cold    0.117s  err 0/2
+
+7 rows: 7 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-pf7-qgis40-M  2026-11-07T18:03:05Z  load 1.19 1.26 1.22  governor performance
+run final-mid-pf7-qgis40-M: 2 rows (2 scenarios x 1 sizes) -> final-mid-pf7-qgis40-M
+         load 1.19 before the first row (limit 2.00)
+[ 1/ 2] lay_cable                M   4.1 ok             median    0.302s  mad  0.0059s  n=7  cold    0.294s  err 0/2
+[ 2/ 2] route_path               M   4.1 ok             median    0.503s  mad  0.0080s  n=7  cold    0.502s  err 0/0
+
+2 rows: 2 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-gate-qgis40-M  2026-11-07T18:03:23Z  load 1.14 1.24 1.21  governor performance
+run final-mid-gate-qgis40-M: 1 rows (1 scenarios x 1 sizes) -> final-mid-gate-qgis40-M
+         load 1.14 before the first row (limit 2.00)
+[ 1/ 1] edit_after_schematic     M   4.1 ok             median    4.583s  mad  0.0020s  n=3  cold    4.634s  err 0/0
+
+1 rows: 1 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-pf3-qgis40-M  2026-11-07T18:04:17Z  load 1.18 1.23 1.21  governor performance
+run final-mid-pf3-qgis40-M: 1 rows (1 scenarios x 1 sizes) -> final-mid-pf3-qgis40-M
+         load 1.18 before the first row (limit 2.00)
+[ 1/ 1] route_correction         M   4.1 ok             median    0.554s  mad  0.0038s  n=7  cold    0.557s  err 0/0
+
+1 rows: 1 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-q9b-qgis40-M  2026-11-07T18:04:26Z  load 1.16 1.23 1.20  governor performance
+run final-mid-q9b-qgis40-M: 1 rows (1 scenarios x 1 sizes) -> final-mid-q9b-qgis40-M
+         load 1.23 before the first row (limit 2.00)
+[ 1/ 1] snap_move_closure        M   4.1 ok             median    0.010s  mad  0.0003s  n=7  cold    0.025s  err 0/0
+
+1 rows: 1 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-v150-a2-qgis40-M  2026-11-07T18:04:30Z  load 1.23 1.24 1.21  governor performance
+run final-v150-a2-qgis40-M: 23 rows (23 scenarios x 1 sizes) -> final-v150-a2-qgis40-M
+         load 1.23 before the first row (limit 2.00)
+[ 1/23] schematic_open           M   4.1 ok             median  156.181s  mad  0.0000s  n=1  cold  139.111s  err 0/0
+[ 2/23] edit_after_schematic     M   4.1 ok             median  137.758s  mad  0.0000s  n=1  cold  138.004s  err 0/0
+[ 3/23] latent_open              M   4.1 ok             median  368.678s  mad  0.0000s  n=1  cold  368.190s  err 0/0
+[ 4/23] route_correction         M   4.1 ok             median   33.152s  mad  0.1523s  n=3  cold   32.719s  err 0/0
+[ 5/23] slack_generate           M   4.1 ok             median   25.180s  mad  0.0254s  n=3  cold   24.944s  err 0/400
+[ 6/23] slack_click              M   4.1 ok             median    0.376s  mad  0.0036s  n=7  cold    0.431s  err 0/4
+[ 7/23] snap_move_element        M   4.1 ok             median    1.441s  mad  0.0142s  n=7  cold    1.427s  err 0/0
+[ 8/23] snap_move_point          M   4.1 ok             median    0.750s  mad  0.0047s  n=7  cold    0.778s  err 0/0
+[ 9/23] snap_move_route          M   4.1 ok             median    1.888s  mad  0.0135s  n=7  cold    1.906s  err 0/0
+[10/23] snap_move_pipe           M   4.1 ok             median    1.240s  mad  0.0030s  n=7  cold    1.245s  err 0/0
+[11/23] snap_move_breakpoint     M   4.1 ok             median    0.255s  mad  0.0044s  n=7  cold    0.259s  err 0/0
+[12/23] snap_move_closure        M   4.1 ok             median    0.012s  mad  0.0000s  n=7  cold    0.020s  err 0/0
+[13/23] manhole_click            M   4.1 ok             median    0.190s  mad  0.0035s  n=7  cold    0.194s  err 0/2
+[14/23] record_add               M   4.1 ok             median    0.028s  mad  0.0005s  n=7  cold    0.028s  err 0/4
+[15/23] record_add_memory        M   4.1 ok             median    0.009s  mad  0.0001s  n=7  cold    0.010s  err 0/4
+[16/23] lay_cable                M   4.1 ok             median    0.462s  mad  0.0098s  n=7  cold    0.516s  err 0/2
+[17/23] route_path               M   4.1 ok             median    0.515s  mad  0.0137s  n=7  cold    0.514s  err 0/0
+[18/23] run_validation           M   ctl ok             median    7.406s  mad  0.0056s  n=3  cold    7.393s  err 0/1
+[19/23] plan_recalculation       M   ctl ok             median    0.416s  mad  0.0051s  n=7  cold    0.433s  err 0/0
+[20/23] save_gpkg                M   ctl ok             median    2.694s  mad  0.0104s  n=3  cold    2.653s  err 0/0
+[21/23] project_open             M   ctl ok             median    1.165s  mad  0.0137s  n=7  cold    1.197s  err 0/0
+[22/23] bom_open                 M   ctl ok             median    0.273s  mad  0.0037s  n=7  cold    0.285s  err 0/0
+[23/23] branch_offset            M   ctl ok             median    0.168s  mad  0.0042s  n=7  cold    0.165s  err 0/0
+
+23 rows: 23 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-v150-a1-qgis344-L  2026-11-07T18:52:50Z  load 1.20 1.16 1.16  governor performance
+run final-v150-a1-qgis344-L: 23 rows (23 scenarios x 1 sizes) -> final-v150-a1-qgis344-L
+         load 1.20 before the first row (limit 2.00)
+[ 1/23] schematic_open           L   4.1 ok             median 1030.824s  mad  0.0000s  n=1  cold  806.898s  err 0/0
+[ 2/23] edit_after_schematic     L   4.1 ok             median  824.342s  mad  0.0000s  n=1  cold  829.343s  err 0/0
+[ 3/23] latent_open              L   4.1 dnf            over the 1800 s budget
+[ 4/23] route_correction         L   4.1 ok             median  202.686s  mad  0.0000s  n=1  cold  204.731s  err 0/0
+[ 5/23] slack_generate           L   4.1 ok             median   42.179s  mad  0.0038s  n=3  cold   42.032s  err 0/501
+[ 6/23] slack_click              L   4.1 ok             median    0.689s  mad  0.0150s  n=7  cold    0.724s  err 0/6
+[ 7/23] snap_move_element        L   4.1 ok             median    3.452s  mad  0.0257s  n=3  cold    3.566s  err 0/0
+[ 8/23] snap_move_point          L   4.1 ok             median    1.847s  mad  0.0060s  n=7  cold    1.815s  err 0/0
+[ 9/23] snap_move_route          L   4.1 ok             median    4.539s  mad  0.0029s  n=3  cold    4.545s  err 0/0
+[10/23] snap_move_pipe           L   4.1 ok             median    3.019s  mad  0.0113s  n=3  cold    3.089s  err 0/0
+[11/23] snap_move_breakpoint     L   4.1 ok             median    0.606s  mad  0.0083s  n=7  cold    0.606s  err 0/0
+[12/23] snap_move_closure        L   4.1 ok             median    0.013s  mad  0.0003s  n=7  cold    0.021s  err 0/0
+[13/23] manhole_click            L   4.1 ok             median    0.357s  mad  0.0046s  n=7  cold    0.342s  err 0/4
+[14/23] record_add               L   4.1 ok             median    0.058s  mad  0.0013s  n=7  cold    0.058s  err 0/4
+[15/23] record_add_memory        L   4.1 ok             median    0.022s  mad  0.0007s  n=7  cold    0.024s  err 0/4
+[16/23] lay_cable                L   4.1 ok             median    1.052s  mad  0.0097s  n=7  cold    1.139s  err 0/2
+[17/23] route_path               L   4.1 ok             median    1.228s  mad  0.0085s  n=7  cold    1.289s  err 0/0
+[18/23] run_validation           L   ctl ok             median   19.695s  mad  0.0785s  n=3  cold   19.522s  err 0/1
+[19/23] plan_recalculation       L   ctl ok             median    1.117s  mad  0.0141s  n=7  cold    1.180s  err 0/0
+[20/23] save_gpkg                L   ctl ok             median    3.867s  mad  0.0114s  n=3  cold    3.775s  err 0/0
+[21/23] project_open             L   ctl ok             median    1.816s  mad  0.0224s  n=7  cold    1.871s  err 0/17
+[22/23] bom_open                 L   ctl ok             median    0.636s  mad  0.0039s  n=7  cold    0.670s  err 0/0
+[23/23] branch_offset            L   ctl ok             median    0.357s  mad  0.0071s  n=7  cold    0.379s  err 0/0
+
+23 rows: 22 ok, 0 skipped, 1 not ok -> run.json
+  not ok: latent_open              L   dnf over the 1800 s budget
+    exit 1
+=== final-v160-qgis344-L  2026-11-07T21:50:58Z  load 1.19 1.20 1.18  governor performance
+run final-v160-qgis344-L: 23 rows (23 scenarios x 1 sizes) -> final-v160-qgis344-L
+         load 1.19 before the first row (limit 2.00)
+[ 1/23] schematic_open           L   4.1 ok             median   11.348s  mad  0.0356s  n=3  cold   11.235s  err 0/0
+[ 2/23] edit_after_schematic     L   4.1 ok             median    0.456s  mad  0.0081s  n=7  cold    0.487s  err 0/0
+[ 3/23] latent_open              L   4.1 ok             median    5.041s  mad  0.0275s  n=3  cold    4.813s  err 0/0
+[ 4/23] route_correction         L   4.1 ok             median    0.733s  mad  0.0043s  n=7  cold    0.775s  err 0/0
+[ 5/23] slack_generate           L   4.1 ok             median    0.398s  mad  0.0134s  n=7  cold    0.444s  err 0/400
+[ 6/23] slack_click              L   4.1 ok             median    0.155s  mad  0.0028s  n=7  cold    0.216s  err 0/4
+[ 7/23] snap_move_element        L   4.1 ok             median    0.010s  mad  0.0002s  n=7  cold    0.024s  err 0/0
+[ 8/23] snap_move_point          L   4.1 ok             median    0.004s  mad  0.0002s  n=7  cold    0.016s  err 0/0
+[ 9/23] snap_move_route          L   4.1 ok             median    0.036s  mad  0.0004s  n=7  cold    0.055s  err 0/0
+[10/23] snap_move_pipe           L   4.1 ok             median    0.010s  mad  0.0001s  n=7  cold    0.024s  err 0/0
+[11/23] snap_move_breakpoint     L   4.1 ok             median    0.004s  mad  0.0000s  n=7  cold    0.015s  err 0/0
+[12/23] snap_move_closure        L   4.1 ok             median    0.011s  mad  0.0005s  n=7  cold    0.026s  err 0/0
+[13/23] manhole_click            L   4.1 ok             median    0.100s  mad  0.0010s  n=7  cold    0.098s  err 0/2
+[14/23] record_add               L   4.1 ok             median    0.007s  mad  0.0005s  n=7  cold    0.008s  err 0/4
+[15/23] record_add_memory        L   4.1 ok             median    0.006s  mad  0.0001s  n=7  cold    0.008s  err 0/4
+[16/23] lay_cable                L   4.1 ok             median    0.471s  mad  0.0112s  n=7  cold    0.556s  err 0/2
+[17/23] route_path               L   4.1 ok             median    1.180s  mad  0.0113s  n=7  cold    1.210s  err 0/0
+[18/23] run_validation           L   ctl ok             median   19.428s  mad  0.0405s  n=3  cold   19.340s  err 0/1
+[19/23] plan_recalculation       L   ctl ok             median    0.866s  mad  0.0159s  n=7  cold    0.868s  err 0/0
+[20/23] save_gpkg                L   ctl ok             median    3.918s  mad  0.0420s  n=3  cold    3.884s  err 0/0
+[21/23] project_open             L   ctl ok             median    1.329s  mad  0.0170s  n=7  cold    1.417s  err 0/0
+[22/23] bom_open                 L   ctl ok             median    0.604s  mad  0.0035s  n=7  cold    0.614s  err 0/0
+[23/23] branch_offset            L   ctl ok             median    0.353s  mad  0.0048s  n=7  cold    0.352s  err 0/0
+
+23 rows: 23 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-pf5-qgis344-L  2026-11-07T21:58:48Z  load 1.14 1.17 1.17  governor performance
+run final-mid-pf5-qgis344-L: 7 rows (7 scenarios x 1 sizes) -> final-mid-pf5-qgis344-L
+         load 1.14 before the first row (limit 2.00)
+[ 1/ 7] snap_move_element        L   4.1 ok             median    3.327s  mad  0.0024s  n=3  cold    3.342s  err 0/0
+[ 2/ 7] snap_move_point          L   4.1 ok             median    0.755s  mad  0.0114s  n=7  cold    0.754s  err 0/0
+[ 3/ 7] snap_move_route          L   4.1 ok             median    4.736s  mad  0.0855s  n=3  cold    4.685s  err 0/0
+[ 4/ 7] snap_move_pipe           L   4.1 ok             median    3.262s  mad  0.0079s  n=3  cold    3.268s  err 0/0
+[ 5/ 7] snap_move_breakpoint     L   4.1 ok             median    0.660s  mad  0.0046s  n=7  cold    0.660s  err 0/0
+[ 6/ 7] snap_move_closure        L   4.1 ok             median    3.037s  mad  0.0126s  n=3  cold    3.094s  err 0/0
+[ 7/ 7] manhole_click            L   4.1 ok             median    0.174s  mad  0.0017s  n=7  cold    0.174s  err 0/2
+
+7 rows: 7 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-pf7-qgis344-L  2026-11-07T22:00:31Z  load 1.08 1.13 1.16  governor performance
+run final-mid-pf7-qgis344-L: 2 rows (2 scenarios x 1 sizes) -> final-mid-pf7-qgis344-L
+         load 1.08 before the first row (limit 2.00)
+[ 1/ 2] lay_cable                L   4.1 ok             median    0.651s  mad  0.0234s  n=7  cold    0.665s  err 0/2
+[ 2/ 2] route_path               L   4.1 ok             median    1.296s  mad  0.0094s  n=7  cold    1.383s  err 0/0
+
+2 rows: 2 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-gate-qgis344-L  2026-11-07T22:01:00Z  load 1.05 1.12 1.15  governor performance
+run final-mid-gate-qgis344-L: 1 rows (1 scenarios x 1 sizes) -> final-mid-gate-qgis344-L
+         load 1.05 before the first row (limit 2.00)
+[ 1/ 1] edit_after_schematic     L   4.1 ok             median   11.127s  mad  0.0250s  n=3  cold   11.367s  err 0/0
+
+1 rows: 1 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-pf3-qgis344-L  2026-11-07T22:03:02Z  load 1.30 1.24 1.19  governor performance
+run final-mid-pf3-qgis344-L: 1 rows (1 scenarios x 1 sizes) -> final-mid-pf3-qgis344-L
+         load 1.30 before the first row (limit 2.00)
+[ 1/ 1] route_correction         L   4.1 ok             median    1.356s  mad  0.0127s  n=7  cold    1.338s  err 0/0
+
+1 rows: 1 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-mid-q9b-qgis344-L  2026-11-07T22:03:17Z  load 1.23 1.23 1.19  governor performance
+run final-mid-q9b-qgis344-L: 1 rows (1 scenarios x 1 sizes) -> final-mid-q9b-qgis344-L
+         load 1.23 before the first row (limit 2.00)
+[ 1/ 1] snap_move_closure        L   4.1 ok             median    0.010s  mad  0.0000s  n=7  cold    0.025s  err 0/0
+
+1 rows: 1 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== final-v150-a2-qgis344-L  2026-11-07T22:03:20Z  load 1.21 1.22 1.19  governor performance
+run final-v150-a2-qgis344-L: 23 rows (23 scenarios x 1 sizes) -> final-v150-a2-qgis344-L
+         load 1.21 before the first row (limit 2.00)
+[ 1/23] schematic_open           L   4.1 ok             median  967.735s  mad  0.0000s  n=1  cold  798.810s  err 0/0
+[ 2/23] edit_after_schematic     L   4.1 ok             median  814.571s  mad  0.0000s  n=1  cold  817.004s  err 0/0
+[ 3/23] latent_open              L   4.1 dnf            over the 1800 s budget
+[ 4/23] route_correction         L   4.1 ok             median  202.246s  mad  0.0000s  n=1  cold  203.553s  err 0/0
+[ 5/23] slack_generate           L   4.1 ok             median   42.873s  mad  0.1497s  n=3  cold   42.649s  err 0/501
+[ 6/23] slack_click              L   4.1 ok             median    0.700s  mad  0.0147s  n=7  cold    0.767s  err 0/6
+[ 7/23] snap_move_element        L   4.1 ok             median    3.437s  mad  0.0088s  n=3  cold    3.435s  err 0/0
+[ 8/23] snap_move_point          L   4.1 ok             median    1.804s  mad  0.0107s  n=7  cold    1.831s  err 0/0
+[ 9/23] snap_move_route          L   4.1 ok             median    4.495s  mad  0.0096s  n=3  cold    4.500s  err 0/0
+[10/23] snap_move_pipe           L   4.1 ok             median    3.047s  mad  0.0056s  n=3  cold    3.115s  err 0/0
+[11/23] snap_move_breakpoint     L   4.1 ok             median    0.578s  mad  0.0020s  n=7  cold    0.613s  err 0/0
+[12/23] snap_move_closure        L   4.1 ok             median    0.013s  mad  0.0001s  n=7  cold    0.021s  err 0/0
+[13/23] manhole_click            L   4.1 ok             median    0.362s  mad  0.0012s  n=3  cold    0.360s  err 0/4
+[14/23] record_add               L   4.1 ok             median    0.056s  mad  0.0011s  n=7  cold    0.059s  err 0/4
+[15/23] record_add_memory        L   4.1 ok             median    0.020s  mad  0.0003s  n=7  cold    0.023s  err 0/4
+[16/23] lay_cable                L   4.1 ok             median    1.059s  mad  0.0037s  n=7  cold    1.124s  err 0/2
+[17/23] route_path               L   4.1 ok             median    1.231s  mad  0.0038s  n=7  cold    1.273s  err 0/0
+[18/23] run_validation           L   ctl ok             median   19.634s  mad  0.1007s  n=3  cold   19.627s  err 0/1
+[19/23] plan_recalculation       L   ctl ok             median    1.134s  mad  0.0074s  n=7  cold    1.140s  err 0/0
+[20/23] save_gpkg                L   ctl ok             median    3.871s  mad  0.0327s  n=3  cold    3.857s  err 0/0
+[21/23] project_open             L   ctl ok             median    1.780s  mad  0.0144s  n=7  cold    1.848s  err 0/17
+[22/23] bom_open                 L   ctl ok             median    0.652s  mad  0.0047s  n=7  cold    0.685s  err 0/0
+[23/23] branch_offset            L   ctl ok             median    0.363s  mad  0.0124s  n=7  cold    0.379s  err 0/0
+
+23 rows: 22 ok, 0 skipped, 1 not ok -> run.json
+  not ok: latent_open              L   dnf over the 1800 s budget
+    exit 1
+ABA_DONE 2026-11-08T00:59:06Z
+=== profile-v150-qgis344-S  2026-11-08T00:59:06Z  load 1.08 1.12 1.14  governor performance
+run profile-v150-qgis344-S: 12 rows (12 scenarios x 1 sizes) -> profile-v150-qgis344-S
+         load 1.07 before the first row (limit 2.00)
+[ 1/12] schematic_open           S   4.1 profiled       
+[ 2/12] edit_after_schematic     S   4.1 profiled       
+[ 3/12] latent_open              S   4.1 profiled       
+[ 4/12] route_correction         S   4.1 profiled       
+[ 5/12] slack_generate           S   4.1 profiled       
+[ 6/12] slack_click              S   4.1 profiled       
+[ 7/12] snap_move_element        S   4.1 profiled       
+[ 8/12] snap_move_route          S   4.1 profiled       
+[ 9/12] snap_move_closure        S   4.1 profiled       
+[10/12] record_add               S   4.1 profiled       
+[11/12] lay_cable                S   4.1 profiled       
+[12/12] route_path               S   4.1 profiled       
+
+12 rows: 0 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== profile-v160-qgis344-S  2026-11-08T01:04:50Z  load 1.04 1.06 1.09  governor performance
+run profile-v160-qgis344-S: 12 rows (12 scenarios x 1 sizes) -> profile-v160-qgis344-S
+         load 1.04 before the first row (limit 2.00)
+[ 1/12] schematic_open           S   4.1 profiled       
+[ 2/12] edit_after_schematic     S   4.1 profiled       
+[ 3/12] latent_open              S   4.1 profiled       
+[ 4/12] route_correction         S   4.1 profiled       
+[ 5/12] slack_generate           S   4.1 profiled       
+[ 6/12] slack_click              S   4.1 profiled       
+[ 7/12] snap_move_element        S   4.1 profiled       
+[ 8/12] snap_move_route          S   4.1 profiled       
+[ 9/12] snap_move_closure        S   4.1 profiled       
+[10/12] record_add               S   4.1 profiled       
+[11/12] lay_cable                S   4.1 profiled       
+[12/12] route_path               S   4.1 profiled       
+
+12 rows: 0 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== profile2-v150-qgis344-M  2026-11-08T01:05:24Z  load 1.10 1.07 1.09  governor performance
+run profile2-v150-qgis344-M: 5 rows (5 scenarios x 1 sizes) -> profile2-v150-qgis344-M
+         load 1.10 before the first row (limit 2.00)
+[ 1/ 5] snap_move_closure        M   4.1 profiled       
+[ 2/ 5] run_validation           M   ctl profiled       
+[ 3/ 5] plan_recalculation       M   ctl profiled       
+[ 4/ 5] save_gpkg                M   ctl profiled       
+[ 5/ 5] branch_offset            M   ctl profiled       
+
+5 rows: 0 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+=== profile2-v160-qgis344-M  2026-11-08T01:05:58Z  load 1.12 1.08 1.09  governor performance
+run profile2-v160-qgis344-M: 5 rows (5 scenarios x 1 sizes) -> profile2-v160-qgis344-M
+         load 1.12 before the first row (limit 2.00)
+[ 1/ 5] snap_move_closure        M   4.1 profiled       
+[ 2/ 5] run_validation           M   ctl profiled       
+[ 3/ 5] plan_recalculation       M   ctl profiled       
+[ 4/ 5] save_gpkg                M   ctl profiled       
+[ 5/ 5] branch_offset            M   ctl profiled       
+
+5 rows: 0 ok, 0 skipped, 0 not ok -> run.json
+    exit 0
+PROFILE_DONE 2026-11-08T01:06:31Z
+=== q12-340-v150-a1  2026-11-08T01:06:31Z  load 1.07 1.07 1.09  qgis/qgis@sha256:d664f1eca1ef4f615efd92b944c90896622bc75f0446357dc50c2e56b379ddd9
+    exit 0  (4 rows)
+=== q12-340-v160  2026-11-08T01:15:26Z  load 1.11 1.14 1.10  qgis/qgis@sha256:d664f1eca1ef4f615efd92b944c90896622bc75f0446357dc50c2e56b379ddd9
+    exit 0  (4 rows)
+=== q12-340-v150-a2  2026-11-08T01:15:44Z  load 1.08 1.13 1.10  qgis/qgis@sha256:d664f1eca1ef4f615efd92b944c90896622bc75f0446357dc50c2e56b379ddd9
+    exit 0  (4 rows)
+=== q12-42-v150-a1  2026-11-08T01:24:31Z  load 1.04 1.08 1.08  qgis/qgis@sha256:56c69c92e316aa679e5c30ebf7fcfd89fd1124ec728106ec0cced1c71a28d877
+    exit 0  (4 rows)
+=== q12-42-v160  2026-11-08T01:32:40Z  load 1.06 1.08 1.08  qgis/qgis@sha256:56c69c92e316aa679e5c30ebf7fcfd89fd1124ec728106ec0cced1c71a28d877
+    exit 0  (4 rows)
+=== q12-42-v150-a2  2026-11-08T01:32:59Z  load 1.04 1.07 1.08  qgis/qgis@sha256:56c69c92e316aa679e5c30ebf7fcfd89fd1124ec728106ec0cced1c71a28d877
+    exit 0  (4 rows)
+ALL_DONE 2026-11-08T01:41:07Z

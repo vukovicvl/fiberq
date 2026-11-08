@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   save_gpkg
+# size       M
+# code        1.6.0 (d01d1ea87e3eff23)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    34078 features, digest ff084aa367b5b010
+# result     {"_bytes":7020544,"layers":24}
+
+
+==== sorted by cumulative (top 25) ====
+         10127 function calls in 2.845 seconds
+
+   Ordered by: cumulative time
+   List reduced from 248 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    2.845    2.845 <harness>/bench_scenarios.py:610(run)
+        1    0.000    0.000    2.844    2.844 <code>/fiberq/main_plugin.py:1169(save_all_layers_to_gpkg)
+        1    0.000    0.000    2.844    2.844 <code>/fiberq/core/export_manager.py:1454(save_all_layers_to_gpkg)
+        1    0.001    0.001    2.844    2.844 <code>/fiberq/core/export_manager.py:674(save_all_layers_to_gpkg)
+       24    0.001    0.000    1.848    0.077 <code>/fiberq/core/export_manager.py:970(_write_layer)
+       24    0.002    0.000    1.847    0.077 <code>/fiberq/core/export_manager.py:1014(_run_writer)
+       24    1.845    0.077    1.845    0.077 {writeAsVectorFormatV3}
+       24    0.000    0.000    0.970    0.040 <code>/fiberq/core/export_manager.py:1030(_repoint)
+       24    0.000    0.000    0.694    0.029 <code>/fiberq/core/export_manager.py:1103(_save_style)
+       24    0.000    0.000    0.694    0.029 <code>/fiberq/utils/compat.py:412(save_style_to_database)
+       24    0.694    0.029    0.694    0.029 {built-in method saveStyleToDatabaseV2}
+       24    0.275    0.011    0.275    0.011 {built-in method setDataSource}
+       26    0.011    0.000    0.011    0.000 {method 'execute' of 'sqlite3.Connection' objects}
+        1    0.000    0.000    0.010    0.010 <code>/fiberq/core/export_manager.py:1131(_write_metadata)
+        1    0.000    0.000    0.010    0.010 <code>/fiberq/core/export_manager.py:1338(_write_metadata_table)
+        1    0.000    0.000    0.010    0.010 <code>/fiberq/core/export_manager.py:814(_plan)
+        1    0.000    0.000    0.007    0.007 <code>/fiberq/core/gpkg_target.py:763(used_tables)
+       24    0.000    0.000    0.007    0.000 <code>/fiberq/core/gpkg_target.py:721(tables_read)
+       24    0.000    0.000    0.007    0.000 <code>/fiberq/core/gpkg_target.py:653(_ogr_reads)
+       24    0.000    0.000    0.004    0.000 <code>/fiberq/core/gpkg_target.py:713(_other_file)
+        1    0.000    0.000    0.004    0.004 <code>/fiberq/core/gpkg_target.py:606(_reads_only_itself)
+        1    0.000    0.000    0.004    0.004 <code>/fiberq/core/gpkg_target.py:583(_sqlite_reads_only_itself)
+      150    0.001    0.000    0.004    0.000 <frozen posixpath>:388(realpath)
+        1    0.000    0.000    0.004    0.004 <code>/fiberq/core/gpkg_target.py:577(_virtual_modules)
+        1    0.000    0.000    0.003    0.003 <code>/fiberq/core/export_manager.py:1114(_clean_stored_aliases)
+
+
+
+==== sorted by tottime (top 25) ====
+         10127 function calls in 2.845 seconds
+
+   Ordered by: internal time
+   List reduced from 248 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       24    1.845    0.077    1.845    0.077 {writeAsVectorFormatV3}
+       24    0.694    0.029    0.694    0.029 {built-in method saveStyleToDatabaseV2}
+       24    0.275    0.011    0.275    0.011 {built-in method setDataSource}
+       26    0.011    0.000    0.011    0.000 {method 'execute' of 'sqlite3.Connection' objects}
+      750    0.002    0.000    0.002    0.000 {built-in method posix.lstat}
+       24    0.002    0.000    1.847    0.077 <code>/fiberq/core/export_manager.py:1014(_run_writer)
+      176    0.001    0.000    0.001    0.000 {built-in method posix.stat}
+        3    0.001    0.000    0.001    0.000 {method 'close' of 'sqlite3.Connection' objects}
+       24    0.001    0.000    1.848    0.077 <code>/fiberq/core/export_manager.py:970(_write_layer)
+      150    0.001    0.000    0.004    0.000 <frozen posixpath>:388(realpath)
+        3    0.001    0.000    0.001    0.000 /usr/lib/python3.13/json/decoder.py:351(raw_decode)
+        1    0.001    0.001    2.844    2.844 <code>/fiberq/core/export_manager.py:674(save_all_layers_to_gpkg)
+       24    0.001    0.000    0.001    0.000 <code>/fiberq/core/gpkg_target.py:412(sqlite_fold)
+       24    0.000    0.000    0.970    0.040 <code>/fiberq/core/export_manager.py:1030(_repoint)
+       24    0.000    0.000    0.002    0.000 <code>/fiberq/core/export_manager.py:929(_clear_styles)
+        4    0.000    0.000    0.000    0.000 {built-in method mapLayers}
+      136    0.000    0.000    0.001    0.000 {method 'join' of 'str' objects}
+        3    0.000    0.000    0.000    0.000 {built-in method _sqlite3.connect}
+       24    0.000    0.000    0.694    0.029 <code>/fiberq/core/export_manager.py:1103(_save_style)
+        1    0.000    0.000    0.000    0.000 {method 'fetchall' of 'sqlite3.Cursor' objects}
+        3    0.000    0.000    0.000    0.000 {built-in method readEntry}
+      336    0.000    0.000    0.000    0.000 {method 'match' of 're.Pattern' objects}
+        1    0.000    0.000    0.002    0.002 <code>/fiberq/core/gpkg_target.py:846(plan_tables)
+      116    0.000    0.000    0.000    0.000 {method 'add' of 'set' objects}
+        1    0.000    0.000    0.003    0.003 <code>/fiberq/core/export_manager.py:1251(_collect_metadata)
+
+

@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   record_add
+# size       S
+# code        1.6.0 (d01d1ea87e3eff23)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    13812 features, digest ae4011b9fe9cf3a5
+# result     {"_features":1579,"_fid_after_commit":-3,"_scanned_for_fid":true,"resolved_fid_is_real":true}
+
+
+==== sorted by cumulative (top 25) ====
+         117 function calls in 0.011 seconds
+
+   Ordered by: cumulative time
+   List reduced from 62 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.011    0.011 <harness>/bench_scenarios.py:458(run)
+        1    0.000    0.000    0.007    0.007 <code>/fiberq/core/undo_manager.py:189(record_add)
+        1    0.000    0.000    0.007    0.007 <code>/fiberq/core/undo_manager.py:676(_find_committed_fid)
+        1    0.000    0.000    0.007    0.007 <code>/fiberq/core/undo_manager.py:717(_newest_match_near)
+        2    0.006    0.003    0.006    0.003 {built-in method getFeatures}
+        1    0.003    0.003    0.003    0.003 {built-in method featureCount}
+        1    0.000    0.000    0.000    0.000 <code>/fiberq/core/undo_manager.py:764(_holds_a_feature_above)
+        1    0.000    0.000    0.000    0.000 {built-in method builtins.sorted}
+        1    0.000    0.000    0.000    0.000 {built-in method getFeature}
+        1    0.000    0.000    0.000    0.000 {built-in method builtins.any}
+        1    0.000    0.000    0.000    0.000 <code>/fiberq/core/undo_manager.py:108(_snapshot_feature)
+        1    0.000    0.000    0.000    0.000 <code>/fiberq/core/undo_manager.py:779(<genexpr>)
+        3    0.000    0.000    0.000    0.000 {built-in method dataProvider}
+        1    0.000    0.000    0.000    0.000 <code>/fiberq/core/undo_manager.py:130(_make_description)
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+       11    0.000    0.000    0.000    0.000 {built-in method attribute}
+        5    0.000    0.000    0.000    0.000 /usr/lib/python3.13/logging/__init__.py:1498(debug)
+        1    0.000    0.000    0.000    0.000 <code>/fiberq/utils/spatial.py:61(indexable_box)
+        1    0.000    0.000    0.000    0.000 {built-in method asWkt}
+        5    0.000    0.000    0.000    0.000 /usr/lib/python3.13/logging/__init__.py:1765(isEnabledFor)
+        1    0.000    0.000    0.000    0.000 {built-in method setFilterExpression}
+        1    0.000    0.000    0.000    0.000 {built-in method builtins.all}
+        2    0.000    0.000    0.000    0.000 {built-in method geometry}
+        3    0.000    0.000    0.000    0.000 /usr/lib/python3/dist-packages/qgis/core/additions/qgsgeometry.py:19(_geometryNonZero)
+        5    0.000    0.000    0.000    0.000 <code>/fiberq/utils/spatial.py:63(<genexpr>)
+
+
+
+==== sorted by tottime (top 25) ====
+         117 function calls in 0.011 seconds
+
+   Ordered by: internal time
+   List reduced from 62 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        2    0.006    0.003    0.006    0.003 {built-in method getFeatures}
+        1    0.003    0.003    0.003    0.003 {built-in method featureCount}
+        1    0.000    0.000    0.000    0.000 {built-in method builtins.sorted}
+        1    0.000    0.000    0.000    0.000 {built-in method getFeature}
+        1    0.000    0.000    0.000    0.000 <code>/fiberq/core/undo_manager.py:779(<genexpr>)
+        1    0.000    0.000    0.007    0.007 <code>/fiberq/core/undo_manager.py:717(_newest_match_near)
+        3    0.000    0.000    0.000    0.000 {built-in method dataProvider}
+        1    0.000    0.000    0.000    0.000 <code>/fiberq/core/undo_manager.py:764(_holds_a_feature_above)
+        1    0.000    0.000    0.011    0.011 <harness>/bench_scenarios.py:458(run)
+        1    0.000    0.000    0.007    0.007 <code>/fiberq/core/undo_manager.py:189(record_add)
+        1    0.000    0.000    0.000    0.000 <code>/fiberq/core/undo_manager.py:108(_snapshot_feature)
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+        1    0.000    0.000    0.007    0.007 <code>/fiberq/core/undo_manager.py:676(_find_committed_fid)
+        1    0.000    0.000    0.000    0.000 {built-in method builtins.any}
+        1    0.000    0.000    0.000    0.000 <code>/fiberq/core/undo_manager.py:130(_make_description)
+       11    0.000    0.000    0.000    0.000 {built-in method attribute}
+        1    0.000    0.000    0.000    0.000 {built-in method asWkt}
+        5    0.000    0.000    0.000    0.000 /usr/lib/python3.13/logging/__init__.py:1765(isEnabledFor)
+        1    0.000    0.000    0.000    0.000 {built-in method setFilterExpression}
+        2    0.000    0.000    0.000    0.000 {built-in method geometry}
+        1    0.000    0.000    0.000    0.000 <code>/fiberq/utils/spatial.py:61(indexable_box)
+        1    0.000    0.000    0.000    0.000 {fromWkt}
+        1    0.000    0.000    0.000    0.000 {quotedColumnRef}
+        5    0.000    0.000    0.000    0.000 <code>/fiberq/utils/spatial.py:63(<genexpr>)
+        5    0.000    0.000    0.000    0.000 /usr/lib/python3.13/logging/__init__.py:1498(debug)
+
+

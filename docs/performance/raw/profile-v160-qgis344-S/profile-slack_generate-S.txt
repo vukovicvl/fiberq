@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   slack_generate
+# size       S
+# code        1.6.0 (d01d1ea87e3eff23)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    13812 features, digest ae4011b9fe9cf3a5
+# result     {"k":50,"slacks_added":100}
+
+
+==== sorted by cumulative (top 25) ====
+         175655 function calls in 0.410 seconds
+
+   Ordered by: cumulative time
+   List reduced from 289 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.414    0.414 <harness>/bench_scenarios.py:297(run)
+        1    0.000    0.000    0.411    0.411 <code>/fiberq/main_plugin.py:1465(generate_terminal_slack_for_selected)
+        1    0.000    0.000    0.411    0.411 <code>/fiberq/core/slack_manager.py:446(generate_terminal_slack_for_selected)
+        1    0.000    0.000    0.411    0.411 <code>/fiberq/core/slack_manager.py:457(_generate_terminal_slacks)
+        1    0.000    0.000    0.409    0.409 <code>/fiberq/core/slack_manager.py:605(_generate_in_one_session)
+      100    0.002    0.000    0.224    0.002 <code>/fiberq/core/slack_manager.py:759(_terminal_slack)
+      100    0.001    0.000    0.217    0.002 <code>/fiberq/core/slack_manager.py:776(_location_at)
+      100    0.011    0.000    0.215    0.002 <code>/fiberq/tools/slack_tool.py:139(_nearest_node)
+      200    0.005    0.000    0.154    0.001 <code>/fiberq/tools/slack_tool.py:177(_nodes_to_measure)
+      226    0.065    0.000    0.119    0.001 <code>/fiberq/utils/spatial.py:205(features_near)
+        1    0.002    0.002    0.097    0.097 <code>/fiberq/core/slack_manager.py:703(_recompute_in_one_session)
+        2    0.061    0.031    0.062    0.031 {built-in method commitChanges}
+      328    0.053    0.000    0.053    0.000 {built-in method getFeatures}
+    14173    0.027    0.000    0.046    0.000 <code>/fiberq/tools/slack_tool.py:161(_node_point)
+        2    0.037    0.019    0.037    0.019 {built-in method startEditing}
+      300    0.004    0.000    0.025    0.000 <code>/fiberq/tools/slack_tool.py:127(_iter_node_layers)
+       50    0.013    0.000    0.023    0.000 <code>/fiberq/core/slack_manager.py:384(_slack_total)
+       50    0.016    0.000    0.016    0.000 {built-in method updateFeature}
+      104    0.015    0.000    0.015    0.000 {built-in method mapLayers}
+        1    0.000    0.000    0.014    0.014 <code>/fiberq/core/slack_manager.py:558(_batch_allowed)
+      226    0.001    0.000    0.011    0.000 <code>/fiberq/utils/spatial.py:94(_box_answers_exactly)
+       63    0.009    0.000    0.009    0.000 {method 'execute' of 'sqlite3.Connection' objects}
+       52    0.008    0.000    0.008    0.000 {built-in method builtins.next}
+        1    0.000    0.000    0.008    0.008 <code>/fiberq/main_plugin.py:933(<lambda>)
+        1    0.000    0.000    0.008    0.008 <code>/fiberq/main_plugin.py:3343(_stylize_cable_layer)
+
+
+
+==== sorted by tottime (top 25) ====
+         175655 function calls in 0.410 seconds
+
+   Ordered by: internal time
+   List reduced from 289 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+      226    0.065    0.000    0.119    0.001 <code>/fiberq/utils/spatial.py:205(features_near)
+        2    0.061    0.031    0.062    0.031 {built-in method commitChanges}
+      328    0.053    0.000    0.053    0.000 {built-in method getFeatures}
+        2    0.037    0.019    0.037    0.019 {built-in method startEditing}
+    14173    0.027    0.000    0.046    0.000 <code>/fiberq/tools/slack_tool.py:161(_node_point)
+       50    0.016    0.000    0.016    0.000 {built-in method updateFeature}
+      104    0.015    0.000    0.015    0.000 {built-in method mapLayers}
+       50    0.013    0.000    0.023    0.000 <code>/fiberq/core/slack_manager.py:384(_slack_total)
+      100    0.011    0.000    0.215    0.002 <code>/fiberq/tools/slack_tool.py:139(_nearest_node)
+       63    0.009    0.000    0.009    0.000 {method 'execute' of 'sqlite3.Connection' objects}
+       52    0.008    0.000    0.008    0.000 {built-in method builtins.next}
+      200    0.005    0.000    0.154    0.001 <code>/fiberq/tools/slack_tool.py:177(_nodes_to_measure)
+    14373    0.005    0.000    0.005    0.000 {built-in method geometry}
+    14173    0.005    0.000    0.005    0.000 {built-in method asPoint}
+     8552    0.005    0.000    0.005    0.000 {built-in method distance}
+      201    0.005    0.000    0.005    0.000 {built-in method featureCount}
+      300    0.004    0.000    0.025    0.000 <code>/fiberq/tools/slack_tool.py:127(_iter_node_layers)
+    29450    0.003    0.000    0.003    0.000 {built-in method math.isfinite}
+      456    0.003    0.000    0.003    0.000 {built-in method posix.stat}
+      226    0.003    0.000    0.005    0.000 {method 'sort' of 'list' objects}
+    14625    0.003    0.000    0.003    0.000 {built-in method x}
+    14991    0.002    0.000    0.002    0.000 {built-in method id}
+      100    0.002    0.000    0.224    0.002 <code>/fiberq/core/slack_manager.py:759(_terminal_slack)
+    14625    0.002    0.000    0.002    0.000 {built-in method y}
+     2452    0.002    0.000    0.004    0.000 {built-in method geometryType}
+
+

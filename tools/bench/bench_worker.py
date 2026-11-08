@@ -106,7 +106,7 @@ class Session:
         self.after = None
         #: Dataset copies the previous repetition finished with. Deleted once the
         #: next project read has replaced them: an L repetition copies ~20 MB, and
-        #: 22 scenarios x 9 repetitions of that would be several GB of scratch.
+        #: 23 scenarios x 9 repetitions of that would be several GB of scratch.
         self.stale = []
         common.before_exit(self.discard_copies)
 

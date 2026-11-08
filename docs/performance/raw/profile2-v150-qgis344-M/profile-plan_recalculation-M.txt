@@ -1,0 +1,78 @@
+# FiberQ WP4 benchmark profile
+# scenario   plan_recalculation
+# size       M
+# code        1.5.0 (c208d1a607bf7499)
+# qgis       3.44.15-Solothurn / Qt 5.15.15 / PyQt 5.15.11
+# dataset    34078 features, digest ff084aa367b5b010
+# result     {"changes":56,"failed_layers":[],"layers_seen":["Aerial cables","PE pipes","Route","Transition pipes","Underground cables"]}
+
+
+==== sorted by cumulative (top 25) ====
+         556011 function calls in 0.639 seconds
+
+   Ordered by: cumulative time
+   List reduced from 51 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.644    0.644 <harness>/bench_scenarios.py:591(run)
+        1    0.000    0.000    0.644    0.644 <code>/fiberq/core/length_manager.py:144(plan_recalculation)
+        5    0.216    0.043    0.643    0.129 <code>/fiberq/core/length_manager.py:168(_plan_layer)
+    14133    0.021    0.000    0.234    0.000 <code>/fiberq/utils/measure.py:107(ground_length)
+    14138    0.022    0.000    0.118    0.000 <code>/fiberq/utils/measure.py:64(distance_area)
+    28701    0.035    0.000    0.091    0.000 <code>/fiberq/core/length_manager.py:130(_as_float)
+    14133    0.083    0.000    0.083    0.000 {built-in method measureLength}
+    14138    0.018    0.000    0.071    0.000 <code>/fiberq/utils/measure.py:39(resolve_ellipsoid)
+    28701    0.057    0.000    0.057    0.000 {built-in method attribute}
+    14138    0.045    0.000    0.045    0.000 {built-in method ellipsoid}
+    28701    0.015    0.000    0.031    0.000 /usr/lib/python3/dist-packages/qgis/PyQt/QtCore.py:46(__eq__)
+    28702    0.016    0.000    0.025    0.000 <frozen importlib._bootstrap>:1390(_handle_fromlist)
+    19181    0.014    0.000    0.022    0.000 <code>/fiberq/core/length_manager.py:122(_disagrees)
+    57427    0.013    0.000    0.013    0.000 {built-in method builtins.isinstance}
+    14138    0.006    0.000    0.010    0.000 <code>/fiberq/utils/measure.py:33(_resolve_crs)
+    14138    0.010    0.000    0.010    0.000 {built-in method crs}
+    14133    0.009    0.000    0.009    0.000 {built-in method geometry}
+    28701    0.007    0.000    0.007    0.000 {built-in method isNull}
+    28266    0.007    0.000    0.007    0.000 {built-in method isEmpty}
+    14138    0.006    0.000    0.006    0.000 {built-in method authid}
+    14143    0.006    0.000    0.006    0.000 {method 'get' of 'dict' objects}
+    28702    0.005    0.000    0.005    0.000 {built-in method builtins.hasattr}
+    42834    0.005    0.000    0.005    0.000 {built-in method builtins.abs}
+     4472    0.005    0.000    0.005    0.000 {built-in method builtins.round}
+    14138    0.005    0.000    0.005    0.000 {built-in method isValid}
+
+
+
+==== sorted by tottime (top 25) ====
+         556011 function calls in 0.639 seconds
+
+   Ordered by: internal time
+   List reduced from 51 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        5    0.216    0.043    0.643    0.129 <code>/fiberq/core/length_manager.py:168(_plan_layer)
+    14133    0.083    0.000    0.083    0.000 {built-in method measureLength}
+    28701    0.057    0.000    0.057    0.000 {built-in method attribute}
+    14138    0.045    0.000    0.045    0.000 {built-in method ellipsoid}
+    28701    0.035    0.000    0.091    0.000 <code>/fiberq/core/length_manager.py:130(_as_float)
+    14138    0.022    0.000    0.118    0.000 <code>/fiberq/utils/measure.py:64(distance_area)
+    14133    0.021    0.000    0.234    0.000 <code>/fiberq/utils/measure.py:107(ground_length)
+    14138    0.018    0.000    0.071    0.000 <code>/fiberq/utils/measure.py:39(resolve_ellipsoid)
+    28702    0.016    0.000    0.025    0.000 <frozen importlib._bootstrap>:1390(_handle_fromlist)
+    28701    0.015    0.000    0.031    0.000 /usr/lib/python3/dist-packages/qgis/PyQt/QtCore.py:46(__eq__)
+    19181    0.014    0.000    0.022    0.000 <code>/fiberq/core/length_manager.py:122(_disagrees)
+    57427    0.013    0.000    0.013    0.000 {built-in method builtins.isinstance}
+    14138    0.010    0.000    0.010    0.000 {built-in method crs}
+    14133    0.009    0.000    0.009    0.000 {built-in method geometry}
+    28701    0.007    0.000    0.007    0.000 {built-in method isNull}
+    28266    0.007    0.000    0.007    0.000 {built-in method isEmpty}
+    14138    0.006    0.000    0.006    0.000 {built-in method authid}
+    14138    0.006    0.000    0.010    0.000 <code>/fiberq/utils/measure.py:33(_resolve_crs)
+    14143    0.006    0.000    0.006    0.000 {method 'get' of 'dict' objects}
+    28702    0.005    0.000    0.005    0.000 {built-in method builtins.hasattr}
+    42834    0.005    0.000    0.005    0.000 {built-in method builtins.abs}
+     4472    0.005    0.000    0.005    0.000 {built-in method builtins.round}
+    14138    0.005    0.000    0.005    0.000 {built-in method isValid}
+    19181    0.004    0.000    0.004    0.000 {built-in method builtins.max}
+    14138    0.004    0.000    0.004    0.000 {method 'strip' of 'str' objects}
+
+

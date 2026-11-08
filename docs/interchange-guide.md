@@ -1,6 +1,7 @@
-# FiberQ 1.5.0 — Moving a design between tools
+# FiberQ — Moving a design between tools
 
-A user guide to the interchange format introduced in **FiberQ 1.5.0**.
+A user guide to the interchange format introduced in **FiberQ 1.5.0**, as it
+works from **FiberQ 1.6.0**.
 For the format itself, see the [specification](interchange-format.md).
 For every field and value, see the [field mapping](interchange-mapping.md).
 
@@ -11,7 +12,7 @@ GeoPackage and all of that is gone — not because GeoPackage cannot hold it, bu
 because those relationships are recorded against identifiers that are local to
 one QGIS project file and mean nothing anywhere else.
 
-FiberQ 1.5.0 adds an **interchange bundle**: one file that carries the design
+FiberQ 1.5.0 added an **interchange bundle**: one file that carries the design
 *and* its relationships, keyed by an identity that survives the trip. It is a
 published, openly licensed format, so the tool at the other end does not have to
 be FiberQ.
