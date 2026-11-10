@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# The lint tools the pipeline pins, for Python 3.12 and later: the top-level input of ci/requirements-lint.txt.
+# Python 3.12 is the floor because flake8 reports E999 on tests/floor_seed/ below it. ci/lock.sh compiles this
+# file with ci/requirements-test.in as constraints, so a package that both sets use gets the same version.
+# After a change here, run: sh ci/lock.sh (network), then copy the new lock files into ci/ as it prints.
+flake8==7.3.0
+pycodestyle==2.14.0
+pyflakes==3.4.0
+mccabe==0.7.0
+bandit==1.9.4
+detect-secrets==1.5.0
+shellcheck-py==0.11.0.1
