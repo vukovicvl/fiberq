@@ -560,6 +560,26 @@ uninstall:
 	@rm -rf "$(PLUGIN_DEST)"
 	@echo "Removed $(PLUGIN_DEST)"
 
+# ---- pipeline (ci/) ---------------------------------------------------------
+# These targets call the pipeline in ci/; the older targets above keep their own
+# recipes until they become aliases. Each stage runs in a fresh container
+# (docker, or CI_ENGINE=podman):
+#   make ci          pure, lint, qt6, floor, package, and the test legs 322 344 42
+#   make ci-quick    pure, lint, qt6, floor, package
+#   make ci-release  all five legs and the release check; refuses a dirty tree
+# Flags pass through CI_ARGS, e.g.  make ci CI_ARGS='--jobs 2'
+# Images: sh ci/pull.sh (the only step that pulls). Results: ci-results/<run>/.
+CI_ARGS ?=
+.PHONY: ci ci-quick ci-release
+ci:
+	sh ci/run-all.sh $(CI_ARGS)
+
+ci-quick:
+	sh ci/run-all.sh --quick $(CI_ARGS)
+
+ci-release:
+	sh ci/run-all.sh --release $(CI_ARGS)
+
 # ---- release ----------------------------------------------------------------
 # Intentionally does NOT bump the version or upload anything. See RELEASE.md.
 release: lint test package tag
