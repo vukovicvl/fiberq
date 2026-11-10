@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Images the pipeline runs, pinned by digest, one line per role: python (pure, lint, package, the summary, lock and
+# compare), checker (qt6), floor, and the five test legs 322 340 344 40 42 (the file is named after them).
+#   <role> <registry>/<repository>@sha256:<64 hex> <tag that sh ci/pull.sh --bump resolves>
+# Bump on purpose, in its own commit, together with the tool pins, at each release.
+python   docker.io/library/python@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90     3.13-slim
+checker  ghcr.io/qgis/pyqgis4-checker@sha256:c96df111845eb0c86ad56364fb792d35fa6931e01d3d629d2b1bc6388ed43ece main-ubuntu
+floor    docker.io/qgis/qgis@sha256:6f1582ad40623f493994a140282278f02ec282d3c27fa0048a413c12f0cab442          3.22
+322      docker.io/qgis/qgis@sha256:10ebfb6a341f98637a771c85d28cca62f3e4477d5239517fecbf3ba249fe0ff2          release-3_22
+340      docker.io/qgis/qgis@sha256:d664f1eca1ef4f615efd92b944c90896622bc75f0446357dc50c2e56b379ddd9          3.40
+344      docker.io/qgis/qgis@sha256:6df39d4b09c7ccceb18b80644a377e27829f408f64b33ca55e6fd7d7eaa92006          3.44-trixie
+40       docker.io/qgis/qgis@sha256:23c12670e69909e8659a5c098aa307996735a5763b9ff9c3268bdeeee1a10916          4.0-trixie
+42       docker.io/qgis/qgis@sha256:56c69c92e316aa679e5c30ebf7fcfd89fd1124ec728106ec0cced1c71a28d877          4.2-trixie
