@@ -238,3 +238,8 @@ __marimo__/
 
 # QGIS writes this into the CWD when it runs headless in the test containers.
 symbology-style.db
+
+# Forge-agnostic pipeline (ci/): run records and the pinned-tool cache.
+# The scripts never delete anything; prune these by hand.
+/ci-results/
+/.ci-cache/
