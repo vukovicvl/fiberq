@@ -10,10 +10,10 @@
 # Each function names its arguments on its first line. Names used inside functions start with "_" and a
 # prefix of their own, so nested calls do not overwrite each other; callers must not rely on them.
 # The verdict functions work on the run folder in $run (a deps fetch points run at a folder of the same layout).
-# Callers also set s (the stage), commit, dkey (the deps key, or empty) and release (yes or no): ci_engine_run
-# passes s, commit and dkey into the container, and ci_verdict fails a skip when release=yes. ci_verdict calls
-# ci_status and ci_required by name; package.sh redefines ci_status and run-all.sh redefines ci_required around it
-# (in a subshell), so keep those calls.
+# Callers also set s (the stage), commit, dkey (the deps key, or empty) and release (yes or no), and run-all.sh sets
+# strict (yes or no): ci_engine_run passes s, commit and dkey into the container, and ci_verdict fails a skip when
+# release=yes or strict=yes. ci_verdict calls ci_status and ci_required by name; package.sh redefines ci_status and
+# run-all.sh redefines ci_required around it (in a subshell), so keep those calls.
 
 umask 022
 unset CDPATH   # a cd that finds its folder through CDPATH prints it, and $(cd ... && pwd -P) would capture that too
@@ -408,7 +408,8 @@ ci_required() {   # <stage>: print the result files <stage> needs besides exit-c
 
 ci_verdict() {   # <stage> <engine status> [<key=value>...]: judge stages/<stage>/ and write its status
     # the keys given (image=, started=, deps=, dist=) are written after engine_rc, code and seconds; reads release
-    # (yes: a skip fails), and calls ci_status and ci_required by name (package.sh and run-all.sh redefine them)
+    # and strict (either yes: a skip fails), and calls ci_status and ci_required by name (package.sh and run-all.sh
+    # redefine them)
     _vs=$1 _ve=$2; shift 2
     _vr=${run:?ci_verdict needs run, the run folder}
     _vd=$_vr/stages/$_vs _vc='' _vsec='' _vok=yes _vbox=no
@@ -482,7 +483,7 @@ ci_verdict() {   # <stage> <engine status> [<key=value>...]: judge stages/<stage
     if grep -q '^skipped=' "$_vd/out/result.txt"; then
         _vw=$(sed -n 's/^skipped=//p' "$_vd/out/result.txt" | head -n 1)
         _vres=skip
-        if [ "${release:-no}" = yes ]; then _vres=fail; fi
+        if [ "${release:-no}" = yes ] || [ "${strict:-no}" = yes ]; then _vres=fail; fi
         ci_status "$_vs" "$_vres" "skipped: $_vw" "engine_rc=$_ve" "code=$_vc" "seconds=$_vsec" "$@"
         return 0
     fi
