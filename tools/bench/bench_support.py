@@ -6,7 +6,7 @@ Everything in here exists to make one number trustworthy. The code digest pins
 tolerance from, the modal patches stop a dialog blocking a headless run, and the
 probes make sure a swallowed error can never be published as a speed-up.
 
-Dev tooling. Never shipped: ``make package`` archives ``HEAD:fiberq`` only.
+Dev tooling. Never shipped: the plugin zip holds committed ``fiberq/`` files only.
 """
 import logging
 import os

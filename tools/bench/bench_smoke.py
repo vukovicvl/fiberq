@@ -23,7 +23,7 @@ logging module, and interpreter teardown after the dialog scenarios is a
 deterministic SIGSEGV on QGIS 4.0 (see the README). A crash has to cost this
 run and not the whole test suite.
 
-Dev tooling. Never shipped: ``make package`` archives ``HEAD:fiberq`` only.
+Dev tooling. Never shipped: the plugin zip holds committed ``fiberq/`` files only.
 """
 import argparse
 import os

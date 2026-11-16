@@ -64,7 +64,8 @@ fiberq/               the plugin package (this is what ships)
   styles/ icons/ resources/
 tests/                pytest suite
 docs/                 schema.md, i18n.md, project-versioning-guide.md
-Makefile              all real automation lives here (CI just calls it)
+ci/                   the pipeline: run-all.sh, the stage scripts, ci/legs, ci/hooks/ (ci/README.md); CI runs it
+Makefile              short names for the pipeline (make lint, make test, ...) and other developer targets
 RELEASE.md            the release process
 ```
 
@@ -80,21 +81,25 @@ Documentation worth reading before a first code change:
 
 ## Development setup
 
-You need **Python 3**, **git**, and — for running the tests — the **QGIS Python
-bindings**. QGIS is not pip-installable, so the tests need either a real QGIS
-install or the official QGIS Docker image.
+You need **git**, **Python 3** with pip (3.12 or later for `make lint`, 3.10 or
+later for `make test`) and, for running the tests, either the **QGIS Python
+bindings** or **docker**. QGIS is not pip-installable, so the tests run on a
+local QGIS install (`make test`) or in the official QGIS images
+(`sh ci/run-all.sh`).
 
-### 1. Clone and install the tooling
+### 1. Clone
 
 ```bash
 git clone https://github.com/vukovicvl/fiberq.git
 cd fiberq
-make deps        # flake8, bandit, pytest, pytest-qgis
 ```
 
-On a virtualenv, set `PIP_FLAGS=` (empty) — the default
-`--break-system-packages` exists for PEP 668 systems such as recent Debian and
-the QGIS containers:
+`make lint` and `make test` install their pinned tools into `.ci-cache/` on
+first use (network), so they need no `make deps`. `make deps` installs the same
+hash-pinned tools (`ci/requirements-test.txt`, `ci/requirements-lint.txt`) into
+`python3`, for `make test-cov` or for running pytest or flake8 by hand. In a
+virtualenv, set `PIP_FLAGS=` (empty); the default `--break-system-packages`
+exists for PEP 668 systems such as recent Debian and the QGIS containers:
 
 ```bash
 make deps PIP_FLAGS=
@@ -135,31 +140,41 @@ from plugins.qgis.org and overwrite your build.
 
 ### 3. A note for Windows contributors
 
-The `Makefile` is POSIX shell. Run it from **Git Bash**, not PowerShell or
-`cmd`. Alternatively run everything inside the QGIS container (see below).
+The `Makefile` and the pipeline in `ci/` are POSIX shell. Run them from **Git
+Bash** or WSL2, not PowerShell or `cmd`. Windows has not been tested yet; see
+"What the host needs" in [`ci/README.md`](ci/README.md).
 
 ### 4. Useful targets
 
 ```bash
 make help        # list everything
-make lint        # flake8 + bandit — the publication gate
-make test        # pytest
-make qt6-check   # the Qt6 source check plugins.qgis.org runs (needs docker)
-make test-cov    # pytest with coverage
-make package     # build dist/fiberq-<version>.zip from committed state
+make lint        # the lint stage, here: the plugins.qgis.org scan's checks and more
+make test        # the whole test suite, here, on the QGIS that python3 imports
+make qt6-check   # the Qt6 source check plugins.qgis.org runs, in its container (docker)
+make test-cov    # pytest with coverage (after make deps)
+make package     # the plugin zip, from committed fiberq/ files only
 make i18n-stats  # translation progress per locale
 ```
+
+The checks and tests themselves are the pipeline in `ci/`, which also runs
+without `make`: [`ci/README.md`](ci/README.md) explains it.
 
 ## The gate: `make lint` and `make test`
 
 ### Lint must be 0/0
 
 plugins.qgis.org runs a Security & Quality scan on every uploaded version. A
-single finding blocks publication. `make lint` mirrors that scan **exactly**:
+single finding blocks publication. `make lint` runs the pipeline's lint stage
+here (`ci/lint.sh`), with no container: flake8 and Bandit with the scanner's
+flags, and detect-secrets as the scanner runs it, plus shellcheck on `ci/`,
+flake8 on the Python files of `ci/`, the `.ts` placeholder check and the check
+of the forge configs. Every check must report 0. It needs `python3` 3.12 or
+later, with pip, on `PATH`, and installs its pinned tools into `.ci-cache/` on
+first use (network). Its flake8 and Bandit commands, run with those tools:
 
 ```bash
-python -m flake8 --isolated --max-line-length=120 --ignore=E501 fiberq tests conftest.py
-python -m bandit -r fiberq -q -c pyproject.toml
+python3 -m flake8 --isolated --max-line-length=120 --ignore=E501 fiberq tests conftest.py tools/bench
+python3 -m bandit -r fiberq -q -c pyproject.toml
 ```
 
 Two things people get wrong here:
@@ -183,22 +198,38 @@ issue you are fixing is specifically about them.
 
 ### Tests
 
-```bash
-make test
-```
-
-The suite needs QGIS bindings. If you don't have QGIS available to Python, run
-the whole gate inside the official image — this is exactly what CI does:
+`make test` runs the whole suite here, with no container, on the QGIS that
+`python3` imports; like `make lint`, its first run installs its pinned tools
+(pytest, pytest-qgis) into `.ci-cache/`, which needs the network. The qgis.org
+packages for Debian and Ubuntu put the bindings in `/usr/share/qgis/python`:
 
 ```bash
-docker run --rm -v "$PWD:/src" -w /src \
-  -e QT_QPA_PLATFORM=offscreen -e PIP_FLAGS=--break-system-packages \
-  qgis/qgis:4.2-trixie \
-  bash -c "apt-get update -qq && apt-get install -y --no-install-recommends make >/dev/null && make deps && make lint && make test"
+PYTHONPATH=/usr/share/qgis/python make test
 ```
 
-CI runs this against **two** images — `qgis/qgis:3.44-trixie` (QGIS 3, Qt5) and
-`qgis/qgis:4.2-trixie` (QGIS 4, Qt6). Both must be green.
+Without QGIS on the machine, run the test legs in their containers instead, as
+GitHub does (docker; podman with `CI_ENGINE=podman` also needs an init binary
+such as catatonit, and has been tested for the pure and lint stages only: see
+"What the host needs" in [`ci/README.md`](ci/README.md)):
+
+```bash
+sh ci/pull.sh 344 42             # once: the QGIS 3.44 and 4.2 images, and the python image for the summary
+sh ci/run-all.sh --only 344,42   # the whole suite on QGIS 3 (Qt5) and QGIS 4 (Qt6)
+```
+
+The stage containers mount nothing from your checkout: they get their input on
+stdin and send their results back as a tar that `run-all.sh` unpacks as you. Do
+not run `make lint` or `make test` as root inside a container on a mounted
+checkout instead: that leaves root-owned folders in the checkout (`ci-results/`
+and `.ci-cache/` or folders in them, and `.qgis-settings/` from `make test`)
+that later runs as your own user cannot write into.
+
+On every push to this repository, and on a pull request from a fork (a
+maintainer may have to approve its run first), GitHub runs pure, lint, the Qt6
+and floor checks, the package, and the suite on QGIS 3.22, 3.44 and 4.2, one
+job per stage (`ci/README.md`, "On a forge, or with no forge"). A `release/`
+branch or a tag also runs the suite on QGIS 3.40 and 4.0, and the release
+check. All of them must be green.
 
 ### Qt6 source check
 
@@ -208,8 +239,9 @@ make qt6-check
 
 FiberQ targets QGIS 3.22 through QGIS 4 / Qt6, and plugins.qgis.org runs QGIS's
 own `pyqt5_to_pyqt6.py` over every upload — the result is the **Qt6 Check** tab on
-the plugin page. This target runs the same checker, in the same image, so a Qt5-only
-call is caught before the upload rather than after it. Passing tests on the QGIS 4
+the plugin page. This target runs the same checker in the same image, pinned by
+its digest in `ci/legs` (it pulls the image first), so a Qt5-only call is caught
+before the upload rather than after it. Passing tests on the QGIS 4
 image are not the same guarantee: `fiberq/utils/compat.py` maps old enum names at
 runtime, so the plugin can work on Qt6 while the source still carries spellings a
 future PyQt6 will reject.
@@ -240,6 +272,12 @@ fails before the fix.
    ```bash
    make lint && make test
    ```
+
+   Git can also run the hook set for you before each push (pure, lint and
+   package, in containers; not the QGIS test suite), on the commit at the tip
+   of each ref you push. Set it up once per clone: `git config core.hooksPath
+   ci/hooks`, then `sh ci/pull.sh --hook` for its image, about 0.2 GB
+   (`ci/README.md`, "No forge: the pre-push hook").
 
 4. **Write a clear commit message.** Conventional-commit style subject, then a
    body explaining *why*:
@@ -307,14 +345,16 @@ Other cross-version rules:
 - Use **`exec()`**, not `exec_()` (removed in PyQt6).
 - Where a genuine API difference exists, put the shim in
   `fiberq/utils/compat.py` rather than sprinkling version checks.
-- CI **does** cover the 3.22 floor, in two legs: `make floor-check` parses and
-  imports every module on `qgis/qgis:3.22` (Python 3.8), and the full suite runs
-  on `qgis/qgis:release-3_22` (Python 3.10, same QGIS 3.22.16). Two legs because
-  `pytest-qgis` needs Python ≥ 3.10 and so cannot run on the 3.8 image, while 3.8
-  is the only stack that catches syntax a newer Python accepts. See `RELEASE.md`.
+- CI **does** cover the 3.22 floor, in two stages: floor (`make floor-check`)
+  parses and imports every module on `qgis/qgis:3.22` (Python 3.8), and test-322
+  runs the full suite on `qgis/qgis:release-3_22` (Python 3.10, same QGIS
+  3.22.16). Two stages because `pytest-qgis` needs Python ≥ 3.10 and so cannot
+  run on the 3.8 image, while 3.8 is the only stack that catches syntax a newer
+  Python accepts. See `RELEASE.md`.
 - Two things that look like mistakes and are not: `tests/floor_seed/` is invalid
   before Python 3.12 **on purpose** (it is the gate's self-test — see its README),
-  and the floor test leg runs `make test` without `make lint` for that reason.
+  and for that reason the lint stage never runs on the floor's Python: CI runs it
+  on Python 3.13 in the python image, and `make lint` needs Python 3.12 or later.
 
 ---
 

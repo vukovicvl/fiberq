@@ -5,8 +5,8 @@ before/after benchmark"). It measures a fixed list of user actions on a seeded
 city-sized project, once against the released code and once against the new
 code, and writes one JSON file per measurement.
 
-Never shipped. `make package` archives `HEAD:fiberq` only, so nothing under
-`tools/` can reach the plugin zip.
+Never shipped. The plugin zip holds committed `fiberq/` files only, so nothing
+under `tools/` can reach it.
 
 | File | What it is |
 |---|---|
