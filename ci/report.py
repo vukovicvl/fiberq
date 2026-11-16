@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# ci/report.py - the run record (summary.md, record.txt), the JUnit compare of two runs, the detect-secrets count
-# and the pure stage's counts.
+# ci/report.py - the run record (summary.md, record.txt), the JUnit compare of two runs, the detect-secrets count,
+# the pure stage's counts and the coverage table.
 # Usage (stdlib only, Python 3.8 or later):
 #   python3 -I ci/report.py summary
 #       reads $CI_IN/run.txt and $CI_IN/stages/, writes summary.md, record.txt and result.txt into $CI_OUT
@@ -14,15 +14,18 @@
 #       prints the pure stage's counts as result.txt lines: files picked and left out, tests deselected, the
 #       stage's own skips and the pure items (the tests run, less those skips), and checks each test file's pure
 #       items against its line in ci/pure-count
+#   python3 -I ci/report.py coverage <coverage JSON> <out-dir>
+#       writes coverage-core.tsv and coverage-core.md (the core-logic modules) into <out-dir>, prints the totals
+#       as result.txt lines
 # ci/run-all.sh runs "summary" in the python image of ci/legs (in place: with this Python), ci/compare.sh runs
-# "compare" there, ci/lint.sh runs "secrets", ci/test.sh runs "pure-pin" and "pure" in its stage.
+# "compare" there, ci/lint.sh runs "secrets", ci/test.sh runs "pure-pin", "pure" and "coverage" in their stages.
 # A stage's verdict is its status file: exactly one result= line, pass, fail or skip; anything else is invalid and
 # counts as a failure, as in ci/common.sh. A skip counts as a failure in a release run, and in a run with --strict
 # (strict=yes in run.txt).
 # Exit: 0 done (summary: whatever the run's result is); 1 summary: run.txt has no stages=, or its run_result=
 #       differs from the stages' verdicts; compare: a test was lost, or a compared stage is missing from the new
-#       run; pure: a test file's pure items differ from ci/pure-count; 2 usage, an input that cannot be read or is
-#       not valid, or (compare) nothing to compare.
+#       run; pure: a test file's pure items differ from ci/pure-count; coverage: the JSON holds no core-logic
+#       module; 2 usage, an input that cannot be read or is not valid, or (compare) nothing to compare.
 
 import datetime
 import json
@@ -39,7 +42,15 @@ PURE_SKIP = ('pure stage:', '(hidden in the pure stage)')
 PURE_KINDS = ('picked', 'left_out', 'deselected')
 # a line of ci/pure-count: a test file's pure items, then the file
 PIN_LINE = re.compile(r'([1-9][0-9]*)[ \t]+(tests/[^ \t]+\.py)')
-
+# core logic: the modules of these packages of fiberq/, without their __init__.py; the excluded ones (dead code, and
+# the licence check of the Pro features) are listed with their note and left out of the in-scope total
+CORE_PACKAGES = ('core', 'utils', 'models')
+CORE_EXCLUDED = {
+    'fiberq/core/config_manager.py': 'dead code',
+    'fiberq/utils/layer_names.py': 'dead code',
+    'fiberq/models/color_catalogs.py': 'dead code',
+    'fiberq/core/license_manager.py': 'licence check of the Pro features',
+}
 SLOWEST = 25
 LISTED = 50
 LINT_CHECKS = (
@@ -59,6 +70,7 @@ usage: report.py summary
        report.py secrets <detect-secrets JSON>
        report.py pure-pin <ci/pure-count>
        report.py pure <junit.xml> <pure-files.tsv> <ci/pure-count>
+       report.py coverage <coverage JSON> <out-dir>
 summary  reads $CI_IN/run.txt and $CI_IN/stages/<stage>/{status,out/,deps-freeze.txt}; writes summary.md,
          record.txt and result.txt into $CI_OUT. It exits 1 when run.txt has no stages=, or when the stages'
          verdicts give another result than run.txt's run_result=.
@@ -77,6 +89,8 @@ pure     prints files=, files_left_out=, deselected=, pure_skips=, pure_items=, 
          reason holds "pure stage:" or "(hidden in the pure stage)"; pure_items is the junit tests less the pure
          skips, counted per test file. It exits 1, naming each file, when a file's pure items differ from its
          line in ci/pure-count, or a file has pure items and no line, or a line names a file without them.
+coverage writes coverage-core.tsv and coverage-core.md, one row per core-logic module (fiberq/core, utils and
+         models, without __init__.py), and prints the totals; it exits 1 when the JSON holds no such module.
 Exit: 0 done; 1 see above; 2 usage, or an input that cannot be read.
 """
 
@@ -239,6 +253,8 @@ def role_of(stage):
         return 'checker'
     if stage == 'floor':
         return 'floor'
+    if stage == 'test-coverage':
+        return '42'
     if stage.startswith('test-') and stage != 'test-local':
         return stage[len('test-'):]
     return ''
@@ -298,7 +314,7 @@ def stage_counts(stage):
     name = stage.name
     if JUNIT_STAGE.fullmatch(name):
         text, keys = junit_counts(stage)
-        if not stage.has_junit and info.get('skipped'):   # in place, a test leg off its own QGIS
+        if not stage.has_junit and info.get('skipped'):   # in place: a test leg off its own QGIS, or test-coverage
             text = 'skipped: %s' % info['skipped']
         extra = []
         if name == 'pure' and 'pure_items' in info:
@@ -311,6 +327,14 @@ def stage_counts(stage):
                 text_pure += '; files that differ: %s' % info['pure_differ']
             extra.append(text_pure)
             keys = keys + [(key, info[key]) for key in ('files', 'deselected', 'pure_items', 'pure_count')
+                           if key in info]
+        if name == 'test-coverage' and 'core_percent' in info:
+            extra.append('core logic %s%% of %s statements (%s modules; in scope %s%%); %s data files, %s '
+                         'measured processes' % (
+                             info['core_percent'], info.get('core_statements', '?'), info.get('core_modules', '?'),
+                             info.get('scope_percent', '?'), info.get('data_files', '?'),
+                             info.get('processes_measured', '?')))
+            keys = keys + [(key, info[key]) for key in ('core_percent', 'core_statements', 'scope_percent')
                            if key in info]
         for key, label in (('python', 'Python'), ('qgis', 'QGIS'), ('uid', 'uid')):
             if info.get(key):
@@ -968,6 +992,66 @@ def pure_counts(junit_path, files_path, pin_path):
     return 0
 
 
+def percent(covered, statements):
+    if not statements:
+        return 'n/a'
+    return '%.1f' % (100.0 * covered / statements)
+
+
+def coverage_table(json_path, outdir):
+    """coverage-core.tsv and coverage-core.md from coverage's JSON report; the totals as result.txt lines."""
+    try:
+        with open(json_path, 'rb') as fh:
+            files = json.loads(fh.read().decode('utf-8'))['files']
+        rows = []
+        for name in sorted(files):
+            parts = name.replace('\\', '/').split('/')
+            if len(parts) != 3 or parts[0] != 'fiberq' or parts[1] not in CORE_PACKAGES:
+                continue
+            if not parts[2].endswith('.py') or parts[2] == '__init__.py':
+                continue
+            summ = files[name]['summary']
+            module = '/'.join(parts)
+            rows.append((module, int(summ['num_statements']), int(summ['covered_lines']),
+                         CORE_EXCLUDED.get(module, '')))
+    except (OSError, UnicodeDecodeError, ValueError, KeyError, TypeError) as exc:
+        say('%s: %s' % (json_path, exc))
+        return 2
+    if not rows:
+        say('%s: no core-logic module (fiberq/core, utils or models)' % json_path)
+        return 1
+    scope = [row for row in rows if not row[3]]
+    totals = []
+    for label, chosen in (('in scope (%d modules)' % len(scope), scope), ('core logic (%d modules)' % len(rows), rows)):
+        totals.append((label, sum(row[1] for row in chosen), sum(row[2] for row in chosen)))
+    tsv = ['module\tstatements\tcovered\tmissed\tpercent\tnote']
+    md = ['| module | statements | covered | percent | note |', '|---|---:|---:|---:|---|']
+    for module, statements, covered, note in rows:
+        cover = percent(covered, statements)
+        tsv.append('%s\t%d\t%d\t%d\t%s\t%s' % (module, statements, covered, statements - covered, cover, note))
+        md.append('| `%s` | %d | %d | %s | %s |' % (module[len('fiberq/'):], statements, covered, cover, note or '-'))
+    for label, statements, covered in totals:
+        cover = percent(covered, statements)
+        tsv.append('TOTAL %s\t%d\t%d\t%d\t%s\t' % (label, statements, covered, statements - covered, cover))
+        md.append('| **%s** | %d | %d | **%s** | |' % (label, statements, covered, cover))
+    never = [row[0][len('fiberq/'):] for row in rows if row[2] == 0]
+    md.extend(['', 'Never run (no statement covered): %d modules%s' % (
+        len(never), ': ' + ', '.join('`%s`' % name for name in never) if never else '')])
+    try:
+        write_new(os.path.join(outdir, 'coverage-core.tsv'), tsv)
+        write_new(os.path.join(outdir, 'coverage-core.md'), md)
+    except OSError as exc:
+        say(str(exc))
+        return 2
+    (_label, scope_st, scope_cov), (_label, core_st, core_cov) = totals
+    for key, value in (('core_modules', len(rows)), ('core_statements', core_st), ('core_covered', core_cov),
+                       ('core_percent', percent(core_cov, core_st)), ('scope_modules', len(scope)),
+                       ('scope_statements', scope_st), ('scope_covered', scope_cov),
+                       ('scope_percent', percent(scope_cov, scope_st)), ('core_never_run', len(never))):
+        sys.stdout.write('%s=%s\n' % (key, value))
+    return 0
+
+
 def main(argv):
     if len(argv) == 2 and argv[1] in ('-h', '--help'):
         sys.stdout.write(USAGE)
@@ -985,6 +1069,8 @@ def main(argv):
         return pure_pin(argv[2])
     if len(argv) == 5 and argv[1] == 'pure':
         return pure_counts(argv[2], argv[3], argv[4])
+    if len(argv) == 4 and argv[1] == 'coverage':
+        return coverage_table(argv[2], argv[3])
     sys.stderr.write(USAGE)
     return 2
 

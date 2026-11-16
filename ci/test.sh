@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
-# ci/test.sh - the pytest stages: pure (no QGIS), the five QGIS legs, and local (in place only).
+# ci/test.sh - the pytest stages: pure (no QGIS), the five QGIS legs, test-coverage, and local (in place only).
 # Usage, started by ci/run-all.sh through ci/stage.sh:
 #   sh ci/test.sh pure                     the fast stage: the tested tree's conftest.py (FIBERQ_PURE=1) hides QGIS
 #                                          and picks every test file that imports without it; pytest-qgis and every
@@ -8,13 +8,18 @@
 #                                          equal its line in the tested tree's ci/pure-count
 #   sh ci/test.sh <322|340|344|40|42>      the whole suite in that leg's QGIS; the image must run that version (in
 #                                          place, on another QGIS or none, the leg is skipped)
+#   sh ci/test.sh coverage                 the test-coverage stage, in host mode only: test-42's suite under
+#                                          coverage, configured by ci/coverage.ini alone, Python child processes
+#                                          included; then the table of the core-logic modules (ci/report.py coverage)
 #   sh ci/test.sh local                    in place only: the whole suite on this environment's QGIS
-# The pinned tools (CI_DEPS) go in front of PYTHONPATH, and pytest (plus pytest_qgis, except for pure) must load
-# from there. junit.xml and result.txt go to CI_OUT (a skipped leg writes no junit.xml); basetemp and TMPDIR go
-# under CI_WORK.
-# Exit: pytest's own code; 1 pure: the pure items differ from ci/pure-count or cannot be counted; 0 for a skip (in
-#       place, not on the leg's QGIS); 2 usage or setup error (run by hand, pinned tools not in use, the image's QGIS
-#       not the leg's, pure: no valid ci/pure-count in the tested tree).
+# The pinned tools (CI_DEPS) go in front of PYTHONPATH, and pytest (plus pytest_qgis, except for pure, and coverage
+# for test-coverage) must load from there. junit.xml and result.txt go to CI_OUT (a skipped leg writes no junit.xml);
+# basetemp, TMPDIR and coverage's data files go under CI_WORK.
+# Exit: pytest's own code; 1 pure: the pure items differ from ci/pure-count or cannot be counted, test-coverage: the
+#       suite passed but the coverage report failed, or no child process was measured or the data files cannot be
+#       counted; 0 for a skip (in place: a leg not on its QGIS, and test-coverage); 2 usage or setup error (run by
+#       hand, pinned tools not in use, the image's QGIS not the leg's, pure: no valid ci/pure-count in the tested
+#       tree).
 set -u
 umask 022
 
@@ -22,13 +27,16 @@ leg=${1:-}
 case $leg in
     pure) stage=pure ;;
     322|340|344|40|42|local) stage=test-$leg ;;
-    *) echo "test.sh: usage: sh ci/test.sh <pure|322|340|344|40|42|local>" >&2; exit 2 ;;
+    coverage) stage=test-coverage ;;
+    *) echo "test.sh: usage: sh ci/test.sh <pure|322|340|344|40|42|coverage|local>" >&2; exit 2 ;;
 esac
-if [ $# -ne 1 ]; then echo "test.sh: usage: sh ci/test.sh <pure|322|340|344|40|42|local>" >&2; exit 2; fi
+if [ $# -ne 1 ]; then echo "test.sh: usage: sh ci/test.sh <pure|322|340|344|40|42|coverage|local>" >&2; exit 2; fi
 if [ -z "${CI_DIR:-}" ] || [ -z "${CI_OUT:-}" ] || [ -z "${CI_WORK:-}" ] || [ ! -d "$CI_OUT" ] ||
     [ ! -d "$CI_WORK" ]; then
     if [ "$leg" = local ]; then
         echo "test.sh: run stages through ci/run-all.sh: CI_IN_PLACE=1 sh ci/run-all.sh --only test-local" >&2
+    elif [ "$leg" = coverage ]; then
+        echo "test.sh: run stages through ci/run-all.sh: sh ci/run-all.sh --only $stage (host mode only)" >&2
     else
         echo "test.sh: run stages through ci/run-all.sh: sh ci/run-all.sh --only $stage" \
             "(in place: CI_IN_PLACE=1 sh ci/run-all.sh --only $stage)" >&2
@@ -64,20 +72,29 @@ pyt=$(python3 -m pytest --version 2>&1 | head -n 1)
     printf 'uid=%s\n' "$(id -u)"
 } >"$CI_OUT/result.txt" || exit 2
 
+# test-coverage counts statements with the Python of the 42 image, as every column of its table does: in place, where
+# the Python is this environment's, it is skipped
+if [ "$leg" = coverage ] && [ "${CI_IN_PLACE:-}" = 1 ]; then
+    echo "test.sh: $stage runs in host mode only (the 42 image, whose Python counts the statements); skipped"
+    printf 'skipped=host mode only (the 42 image)\n' >>"$CI_OUT/result.txt" || exit 2
+    exit 0
+fi
+
 # a leg runs in the QGIS it is named after: a mismatch means a wrong ci/legs line; in place, on any other QGIS (or
 # none), the leg is skipped (test-local runs the suite on whatever QGIS is here)
-want=''
+want='' role=$leg
 case $leg in 322) want=3.22 ;; 340) want=3.40 ;; 344) want=3.44 ;; 40) want=4.0 ;; 42) want=4.2 ;; esac
+if [ "$leg" = coverage ]; then want=4.2 role=42; fi
 if [ -n "$want" ]; then
     have=$(printf '%s\n' "$qgis" | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')
     if [ "$have" != "$want" ]; then
         if [ "${CI_IN_PLACE:-}" = 1 ]; then
             echo "test.sh: $stage needs QGIS $want, this environment has ${qgis:-no QGIS}; skipped"
-            printf 'skipped=needs QGIS %s (the %s image)\n' "$want" "$leg" >>"$CI_OUT/result.txt" || exit 2
+            printf 'skipped=needs QGIS %s (the %s image)\n' "$want" "$role" >>"$CI_OUT/result.txt" || exit 2
             exit 0
         else
             echo "test.sh: $stage expects QGIS $want, the image ${CI_IMAGE_REF:-} has ${qgis:-no QGIS};" \
-                "check the $leg line of ci/legs" >&2
+                "check the $role line of ci/legs" >&2
             exit 2
         fi
     fi
@@ -96,6 +113,7 @@ test_proof() {   # <module>: exit 2 unless <module> loads from $deps
 }
 test_proof pytest
 if [ "$leg" != pure ]; then test_proof pytest_qgis; fi
+if [ "$leg" = coverage ]; then test_proof coverage; fi
 printf 'pythonpath=prepend\ntools=pinned\n' >>"$CI_OUT/result.txt" || exit 2
 
 # pure: the pure items of each test file, as the tested tree pins them in its ci/pure-count, one "<number>
@@ -165,5 +183,87 @@ if [ "$leg" = pure ]; then
     esac
 fi
 
-echo "test.sh: $stage: python3 -m pytest $*"
-exec python3 -m pytest "$@"
+if [ "$leg" != coverage ]; then
+    echo "test.sh: $stage: python3 -m pytest $*"
+    exec python3 -m pytest "$@"
+fi
+
+# test-coverage: test-42's suite under coverage. ci/coverage.ini is the only configuration coverage reads (never the
+# tested tree's pyproject.toml), so every tree is measured alike, v1.6.0 through --ref too; the data files go to
+# CI_WORK. The pinned tools sit in a pip --target folder, and Python reads no .pth file from a folder on PYTHONPATH,
+# so a sitecustomize.py first on PYTHONPATH starts coverage in each Python child (ci/cov-sitecustomize.py)
+rcf=$CI_DIR/coverage.ini
+for f in "$rcf" "$CI_DIR/cov-sitecustomize.py"; do
+    if [ ! -f "$f" ]; then echo "test.sh: $f not found" >&2; exit 2; fi
+done
+mkdir "$CI_WORK/cov" "$CI_WORK/cov-all" "$CI_WORK/cov-hook" || exit 2
+cp "$CI_DIR/cov-sitecustomize.py" "$CI_WORK/cov-hook/sitecustomize.py" || exit 2
+# only ci/coverage.ini decides: no setting of the environment's (in place) reaches coverage
+unset COVERAGE_CORE COVERAGE_FORCE_CONFIG COVERAGE_PROCESS_CONFIG COVERAGE_PROCESS_START COVERAGE_RCFILE
+PYTHONPATH=$CI_WORK/cov-hook:$PYTHONPATH COVERAGE_FILE=$CI_WORK/cov/data
+export PYTHONPATH COVERAGE_FILE
+covv=$(python3 -m coverage --version | sed -n '1s/^Coverage\.py, version \([^ ]*\).*/\1/p')
+printf 'coverage=%s\nrcfile=ci/coverage.ini\n' "${covv:-unknown}" >>"$CI_OUT/result.txt" || exit 2
+echo "test.sh: $stage: python3 -m coverage run --rcfile=$rcf -m pytest $*"
+python3 -m coverage run --rcfile="$rcf" -m pytest "$@"
+rc=$?
+# the data files, one per process, and how many of them measured anything: the pytest process, and the children
+# only if the hook started coverage in them (a child that ran no fiberq/ code from this tree leaves an empty one)
+n=$(find "$CI_WORK/cov" -type f -name 'data.*' | wc -l | tr -d ' ')
+measured=$(python3 - "$CI_WORK/cov" <<'PY'
+import glob
+import os
+import sys
+
+from coverage import CoverageData
+
+count = 0
+for path in glob.glob(os.path.join(sys.argv[1], "data.*")):
+    data = CoverageData(basename=path)
+    try:
+        data.read()
+    except Exception:   # an empty or half-written file of a process that ended early
+        continue
+    if any(data.lines(name) for name in data.measured_files()):
+        count += 1
+print(count)
+PY
+) || measured=''
+printf 'data_files=%s\nprocesses_measured=%s\n' "$n" "${measured:-unknown}" >>"$CI_OUT/result.txt" || exit 2
+fail=''
+case $measured in
+    ''|*[!0-9]*)
+        echo "test.sh: $stage: the coverage data files could not be counted (the error is above)" >&2
+        fail='coverage_children (the data files could not be counted)' ;;
+    0|1)
+        if [ "$n" -gt 1 ]; then
+            why="coverage started in the children ($n data files), but none of them ran this tree's fiberq/"
+        else
+            why='the coverage hook, ci/cov-sitecustomize.py, did not start in the children'
+        fi
+        echo "test.sh: $stage: no child process was measured ($measured of $n data files hold lines): $why" >&2
+        fail='coverage_children (no child process was measured)' ;;
+esac
+ok=yes
+python3 -m coverage combine --rcfile="$rcf" --keep --data-file="$CI_WORK/cov-all/data" "$CI_WORK/cov" \
+    >"$CI_OUT/coverage-combine.txt" 2>&1 || ok=no
+cat "$CI_OUT/coverage-combine.txt"
+if [ "$ok" = yes ]; then
+    python3 -m coverage json --rcfile="$rcf" --data-file="$CI_WORK/cov-all/data" -o "$CI_OUT/coverage.json" || ok=no
+fi
+if [ "$ok" = yes ]; then
+    if keys=$(python3 -I "$CI_DIR/report.py" coverage "$CI_OUT/coverage.json" "$CI_OUT"); then
+        printf '%s\n' "$keys" >>"$CI_OUT/result.txt" || ok=no
+    else
+        ok=no
+    fi
+fi
+if [ "$ok" = no ]; then
+    echo "test.sh: $stage: the coverage report failed (see the lines above)" >&2
+    fail="coverage_report${fail:+, $fail}"
+fi
+if [ -n "$fail" ]; then
+    printf 'failed=%s\n' "$fail" >>"$CI_OUT/result.txt"
+    if [ "$rc" = 0 ]; then rc=1; fi
+fi
+exit "$rc"

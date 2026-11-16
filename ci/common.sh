@@ -27,7 +27,8 @@ CI_HOOK_STAGES='pure lint package'
 CI_QUICK_STAGES='pure lint qt6 floor package'
 CI_DEFAULT_STAGES='pure lint qt6 floor package test-322 test-344 test-42'
 CI_RELEASE_STAGES='pure lint qt6 floor package test-322 test-340 test-344 test-40 test-42 release-check'
-CI_ALL_STAGES='pure lint qt6 floor package test-322 test-340 test-344 test-40 test-42 test-local release-check'
+CI_ALL_STAGES='pure lint qt6 floor package test-322 test-340 test-344 test-40 test-42 test-local test-coverage'
+CI_ALL_STAGES="$CI_ALL_STAGES release-check"   # test-local and test-coverage are in no set: --only names them
 
 ci_set_stages() {   # <hook|quick|default|release>: print that set's stages, in canonical order
     case $1 in
@@ -66,6 +67,7 @@ ci_role_of() {   # <stage>: print the ci/legs role whose image runs <stage>; not
         qt6) echo checker ;;
         floor) echo floor ;;
         test-322|test-340|test-344|test-40|test-42) printf '%s\n' "${1#test-}" ;;
+        test-coverage) echo 42 ;;
         release-check|test-local) ;;
         *) echo "$CI_SELF: no role for stage '$1'" >&2; return 2 ;;
     esac
@@ -397,6 +399,7 @@ ci_result_of() {   # <stage>: print pass, fail or skip if its status holds exact
 ci_required() {   # <stage>: print the result files <stage> needs besides exit-code, seconds and result.txt
     case $1 in
         pure) echo junit.xml pure-files.tsv ;;
+        test-coverage) echo junit.xml coverage.json coverage-core.tsv coverage-core.md ;;
         test-*) echo junit.xml ;;
         package)
             _rqv=$(sed -n '1p' "${run:?ci_required needs run, the run folder}/input/pkg/version" 2>/dev/null |
