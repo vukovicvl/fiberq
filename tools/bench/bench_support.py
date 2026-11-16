@@ -500,7 +500,7 @@ class LogProbe:
 
     Fed from a ``logging`` record factory rather than from a handler, because
     ``fiberq.utils.logger.get_logger`` sets ``propagate = False`` on every module
-    logger (``logger.py:181``). A handler on the ``fiberq`` parent therefore sees
+    logger. A handler on the ``fiberq`` parent therefore sees
     nothing at all, and the sanity pass would report a confident 0 records for
     every scenario -- which is exactly the kind of silence it exists to catch.
     The factory also covers loggers created after the probe is installed.

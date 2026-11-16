@@ -45,12 +45,14 @@ try:
     QGIS_AVAILABLE = True
 except ImportError:
     QGIS_AVAILABLE = False
-    # Define fallback constants for testing outside QGIS
 
     class Qgis:
-        Info = 0
-        Warning = 1
-        Critical = 2
+        """Stand-in for qgis.core.Qgis outside QGIS: only the message levels this module reads."""
+
+        class MessageLevel:
+            Info = 0
+            Warning = 1
+            Critical = 2
 
 # =============================================================================
 # Configuration

@@ -186,8 +186,8 @@ comparison is between two different measurements, not two versions of the code.
 7. **The cold call is the sanity pass.** It runs with every `fiberq*` logger at
    DEBUG and counts ERROR-level records, WARNING records, and debug records whose
    text reads like a swallowed error. The count is fed from a `logging` record
-   factory, not from a handler: `get_logger` sets `propagate = False` on every
-   module logger (`fiberq/utils/logger.py:181`), so a handler on the `fiberq`
+   factory, not from a handler: `get_logger` in `fiberq/utils/logger.py` sets
+   `propagate = False` on every module logger, so a handler on the `fiberq`
    parent sees nothing and every row reports a confident 0 — which is how this
    harness first lied to its author. It also checks a post-condition (cable +1,
    slack +2K, path found, ...) and takes a digest of the result.
