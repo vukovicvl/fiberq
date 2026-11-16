@@ -10,7 +10,8 @@
 # ci/run-all.sh runs "summary" in the python image of ci/legs (in place: with this Python), ci/compare.sh runs
 # "compare" there, ci/lint.sh runs "secrets".
 # A stage's verdict is its status file: exactly one result= line, pass, fail or skip; anything else is invalid and
-# counts as a failure, as in ci/common.sh. A skip counts as a failure in a release run.
+# counts as a failure, as in ci/common.sh. A skip counts as a failure in a release run, and in a run with --strict
+# (strict=yes in run.txt).
 # Exit: 0 done (summary: whatever the run's result is); 1 summary: run.txt has no stages=, or its run_result=
 #       differs from the stages' verdicts; compare: a test was lost, or a compared stage is missing from the new
 #       run; 2 usage, an input that cannot be read, or (compare) nothing to compare.
@@ -34,6 +35,7 @@ LINT_CHECKS = (
     ('shellcheck', 'shellcheck', 'shellcheck_files'),
     ('flake8_ci', 'flake8 ci/', 'flake8_ci_files'),
     ('placeholders', 'placeholders', ''),
+    ('wrappers', 'forge configs', ''),
 )
 CASE_RANK = {'passed': 0, 'skipped': 1, 'failed': 2, 'error': 3}
 
@@ -418,7 +420,7 @@ def summary():
         if not STAGE_NAME.fullmatch(name):
             say('run.txt names a bad stage %r' % name)
             return 1
-    release = run.get('set') == 'release'
+    skip_fails = run.get('set') == 'release' or run.get('strict') == 'yes'
     stages = [Stage(cin, name) for name in names]
     by_name = dict((stage.name, stage) for stage in stages)
     result = 'pass'
@@ -429,7 +431,7 @@ def summary():
             skips.append(stage.name)
         if stage.verdict == 'pass':
             continue
-        if stage.verdict == 'skip' and not release:
+        if stage.verdict == 'skip' and not skip_fails:
             continue
         red.append(stage)
         result = 'fail'
@@ -460,6 +462,7 @@ def summary():
         ('result', shown),
         ('set', run.get('set', '')),
         ('only', run.get('only') or '(full set)'),
+        ('strict', run.get('strict', 'no')),
         ('commit', commit),
         ('root tree', run.get('root_tree', '')),
         ('fiberq/ tree', run.get('fiberq_tree', '')),

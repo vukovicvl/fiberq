@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# GitLab CI for FiberQ: a thin wrapper around the pipeline in ci/ (ci/README.md). Three jobs, each one stage run
+# in place (CI_IN_PLACE=1): in the job's own image, with no container inside it, as the image's user (root). The
+# record takes the commit from CI_COMMIT_SHA, which GitLab sets, so the jobs need no git (the python image has
+# none; the QGIS 4.2 image has it).
+#   pure and lint   in the python image of ci/legs
+#   test-42         the whole test suite in the QGIS 4.2 image of ci/legs
+# --strict makes a skipped stage fail its job: in place, a test leg is skipped when the QGIS that python3 imports
+# is not the leg's version, or when none imports, and without --strict that job would pass having run no test.
+# Pipelines run for main, release/* branches and tags only. The other stages (qt6, floor, package, the other
+# test legs, release-check) run on GitHub, and with sh ci/run-all.sh on any machine that ci/README.md's "What the
+# host needs" describes.
+# The lint stage reads this file line by line (ci/lint.sh, "wrappers"): every image: line names its ci/legs role
+# and must equal that role's digest there; every script: is one line, CI_IN_PLACE=1 sh ci/run-all.sh --strict
+# --only <stage>, and its job's image is the one ci/legs gives that stage; no include, services, trigger, run,
+# step, variables, parallel or allow_failure, and no when: but "when: always". It does not read conditions: a job
+# switched off by rules:, only: or except: is review's to catch.
+
+workflow:
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH =~ /^release\//
+
+pure:
+  image: docker.io/library/python@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90  # ci/legs: python
+  script: CI_IN_PLACE=1 sh ci/run-all.sh --strict --only pure
+  timeout: 60 minutes
+  artifacts:
+    when: always
+    expire_in: 90 days
+    paths:
+      - ci-results/
+    exclude:
+      - ci-results/**/work/**
+
+lint:
+  image: docker.io/library/python@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90  # ci/legs: python
+  script: CI_IN_PLACE=1 sh ci/run-all.sh --strict --only lint
+  timeout: 60 minutes
+  artifacts:
+    when: always
+    expire_in: 90 days
+    paths:
+      - ci-results/
+    exclude:
+      - ci-results/**/work/**
+
+test-42:
+  image: docker.io/qgis/qgis@sha256:56c69c92e316aa679e5c30ebf7fcfd89fd1124ec728106ec0cced1c71a28d877  # ci/legs: 42
+  script: CI_IN_PLACE=1 sh ci/run-all.sh --strict --only 42
+  timeout: 100 minutes
+  artifacts:
+    when: always
+    expire_in: 90 days
+    paths:
+      - ci-results/
+    exclude:
+      - ci-results/**/work/**

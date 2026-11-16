@@ -42,5 +42,5 @@ Rules for this directory:
 - The real plugin code lives in `fiberq/` and must report **zero** findings.
 
 If the floor is ever raised (`qgisMinimumVersion` in `fiberq/metadata.txt` and
-`FLOOR_IMAGE` in the `Makefile`), check that these seeds still fail on the new floor — a
+the `floor` line of `ci/legs`), check that these seeds still fail on the new floor — a
 seed that the new floor accepts is a seed that no longer proves anything.

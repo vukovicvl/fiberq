@@ -3,7 +3,8 @@
 # ci/run-all.sh - the one entry point of the pipeline: runs a set of stages, judges each, writes the run record.
 # Usage:
 #   sh ci/run-all.sh [--hook|--quick|--release] [--only <stage,...>] [--jobs N] [--ref <commit>] [--offline]
-#   CI_IN_PLACE=1 sh ci/run-all.sh [--hook|--quick] [--only <stage,...>] [--offline]   here, with no containers
+#                    [--strict]
+#   CI_IN_PLACE=1 sh ci/run-all.sh [--hook|--quick] [--only <stage,...>] [--offline] [--strict]   no containers
 # Sets, in canonical order (the order of the record; the test legs run after the other stages, longest first:
 # 42 340 344 40 322, in --jobs lanes; release-check runs last):
 #   --hook      pure lint package
@@ -17,6 +18,8 @@
 # --ref <commit>      test that commit's tree; the scripts always come from the working tree
 # --jobs N            run the test legs in N lanes (default 1; ignored in place)
 # --offline           never fetch pinned tools; a stage whose tools are not cached fails
+# --strict            a skipped stage fails the run, as under --release, with none of --release's refusals; in place
+#                     too (the GitLab jobs run with it); a test that pytest skips is not a skipped stage
 # Each stage runs in a fresh container of its ci/legs image (CI_ENGINE: docker or podman) with no network. This
 # script never pulls (sh ci/pull.sh does); pinned tools that are not cached yet are fetched first (sh ci/deps.sh).
 # The containers get ci/ from the snapshot taken at the start; deps.sh, package.sh and release-check.sh run on the
@@ -31,8 +34,8 @@
 # headless QGIS may write symbology-style.db; but each stage runs with its own empty HOME, stages/<stage>/work/home,
 # as each container runs with HOME=/tmp, so the floor stage's QGIS profile goes there and the caller's dotfiles and
 # user site-packages are not seen.
-# Exit: 0 every stage passed (a skip too, except under --release) and the summary passed; 1 a stage failed or has
-#       no verdict, or the summary failed; 2 usage, environment, input or a refusal; 130 interrupted.
+# Exit: 0 every stage passed (a skip too, except under --release or --strict) and the summary passed; 1 a stage
+#       failed or has no verdict, or the summary failed; 2 usage, environment, input or a refusal; 130 interrupted.
 set -u
 case $0 in */*) CI_DIR=${0%/*} ;; *) CI_DIR=. ;; esac
 # shellcheck source=common.sh
@@ -40,8 +43,10 @@ case $0 in */*) CI_DIR=${0%/*} ;; *) CI_DIR=. ;; esac
 
 ra_usage() {
     echo "usage: sh ci/run-all.sh [--hook|--quick|--release] [--only <stage,...>] [--jobs N] [--ref <commit>]"
-    echo "                        [--offline]"
-    echo "       CI_IN_PLACE=1 sh ci/run-all.sh [--hook|--quick] [--only <stage,...>] [--offline]   (no containers)"
+    echo "                        [--offline] [--strict]"
+    echo "       CI_IN_PLACE=1 sh ci/run-all.sh [--hook|--quick] [--only <stage,...>] [--offline] [--strict]"
+    echo "                        (no containers)"
+    echo "--strict: a skipped stage fails the run, as under --release"
     echo "sets: --hook: $CI_HOOK_STAGES"
     echo "      --quick: $CI_QUICK_STAGES"
     echo "      default: $CI_DEFAULT_STAGES"
@@ -59,7 +64,7 @@ ra_bad() {   # <message>: a usage error; exit 2
 }
 
 # ---- the command line
-set_flag='' only_arg='' jobs=1 jobs_given=no ref_given='' ref_on=no offline=no
+set_flag='' only_arg='' jobs=1 jobs_given=no ref_given='' ref_on=no offline=no strict=no
 while [ $# -gt 0 ]; do
     case $1 in
         -h|--help) ra_usage; exit 0 ;;
@@ -68,6 +73,7 @@ while [ $# -gt 0 ]; do
             set_flag=${1#--}
             shift ;;
         --offline) offline=yes; shift ;;
+        --strict) strict=yes; shift ;;
         --ref)
             if [ "$ref_on" = yes ]; then ra_bad "--ref is given twice"; fi
             if [ $# -lt 2 ]; then ra_bad "--ref needs a commit"; fi
@@ -327,8 +333,8 @@ if ! ( set -C
         printf 'fiberq_tree=%s\ntests_tree=%s\nci_tree=%s\nrunner_ci_tree=%s\n' \
             "$(ra_tree_of fiberq)" "$(ra_tree_of tests)" "$(ra_tree_of ci)" "$runner_ci_tree"
         printf 'dirty=%s\nrunner_dirty=%s\nshallow=%s\n' "$dirty" "$runner_dirty" "$shallow"
-        printf 'name_prefix=%s\nstarted=%s\nuser=%s\njobs=%s\noffline=%s\n' \
-            "$ci_name_prefix" "$started" "$user" "$jobs" "$offline"
+        printf 'name_prefix=%s\nstarted=%s\nuser=%s\njobs=%s\noffline=%s\nstrict=%s\n' \
+            "$ci_name_prefix" "$started" "$user" "$jobs" "$offline" "$strict"
         if [ "$mode" = in-place ]; then
             py=$(python3 -c 'import platform; print(platform.python_version())' 2>/dev/null) || py=none
             printf 'python=%s\n' "$py"
@@ -457,7 +463,7 @@ ra_box() {   # <stage>: (host) one container stage, input to verdict; runs as th
         _obw="missing image $_obref; run: sh ci/pull.sh $_obhint"
         if [ "$_obrole" = checker ]; then
             _obw="skipped: needs ghcr.io (missing image $_obref; run: sh ci/pull.sh qt6)" _obres=skip
-            if [ "$release" = yes ]; then _obres=fail; fi
+            if [ "$release" = yes ] || [ "$strict" = yes ]; then _obres=fail; fi
         fi
         printf 'run-all.sh: %s\n' "$_obw" >>"$run/$s.log"
         ci_status "$s" "$_obres" "$_obw" engine_rc= code= seconds= "image=$_obref" "started=$_obst"
@@ -715,7 +721,7 @@ for st in $stages; do
     r=$(ci_result_of "$st")
     case $r in
         pass) ;;
-        skip) if [ "$release" = yes ]; then run_result=fail; fi ;;
+        skip) if [ "$release" = yes ] || [ "$strict" = yes ]; then run_result=fail; fi ;;
         fail) run_result=fail ;;
         *)
             if [ "$mode" = host ]; then   # an orphan of a dead lane, if it still runs

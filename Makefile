@@ -1,17 +1,28 @@
-# FiberQ - forge-agnostic automation. ALL real logic lives here.
-# CI on any forge (GitHub, GitLab, Codeberg) is a thin wrapper that only
-# calls these targets, so everything below also runs on a bare laptop.
+# FiberQ - developer commands. The pipeline itself lives in ci/ (ci/README.md): POSIX sh
+# scripts that run with git and docker or podman, with no forge, on the hosts that
+# ci/README.md describes ("What the host needs"). The forge configs (.github/workflows/ci.yml,
+# .gitlab-ci.yml) and the pre-push hook (ci/hooks/pre-push) call ci/ directly, not these
+# targets.
 #
-# Assumed repo layout (set up in Phase 0):
-#   repo/
-#     fiberq/        <- the QGIS plugin package (metadata.txt, __init__.py, core/, ...)
-#     tests/         <- pytest suite
-#     Makefile  RELEASE.md  pyproject.toml  .flake8  .gitignore  conftest.py
+# make lint and make test run their stage here, with no container (CI_IN_PLACE=1), on the
+# python3 found on PATH (not $(PYTHON)). qt6-check, floor-check, package, ci, ci-quick,
+# ci-release, release and tag are short names for sh ci/run-all.sh and sh ci/tag.sh in host
+# mode, with CI_IN_PLACE cleared so that an exported CI_IN_PLACE=1 cannot skip their stages:
+# the stages run in fresh containers, except that package builds its zip with the host's git
+# and release-check runs on the host. qt6-check first runs sh ci/pull.sh qt6, so a checker
+# image that cannot be pulled fails it instead of passing as a skip. make exits 2 whenever
+# a command fails; sh ci/run-all.sh itself tells 1 (a stage failed) from 2 (a usage error,
+# a refusal or a broken environment).
 #
-# Requirements: python3 + git locally. For `make test`, QGIS Python bindings must
-# be importable - use the qgis/qgis Docker image, or a venv created with
-# --system-site-packages on a machine that has QGIS installed. QGIS itself is
-# NOT pip-installable.
+# Repo layout:
+#   fiberq/   the QGIS plugin package (metadata.txt, __init__.py, core/, ...)
+#   tests/    pytest suite
+#   ci/       the pipeline (run-all.sh, the stage scripts, ci/legs, ci/hooks/)
+#
+# make test needs QGIS's Python bindings importable by python3: a local QGIS, conda or
+# OSGeo4W. The qgis.org packages for Debian and Ubuntu put them in /usr/share/qgis/python:
+#   PYTHONPATH=/usr/share/qgis/python make test
+# Without them, run a test leg in its container instead: sh ci/run-all.sh --only 42
 
 PLUGIN_NAME := fiberq
 PKG := $(PLUGIN_NAME)
@@ -33,6 +44,9 @@ DOCS_PYTHON ?= $(shell [ -x .venv/bin/python ] && echo .venv/bin/python || echo 
 
 DIST_DIR := dist
 ZIP := $(DIST_DIR)/$(PLUGIN_NAME)-$(VERSION).zip
+
+# Flags for sh ci/run-all.sh in the targets below, e.g.  make ci CI_ARGS='--jobs 2'
+CI_ARGS ?=
 
 # ---- i18n -------------------------------------------------------------------
 # Locales we ship catalogs for. Add one here, run `make i18n-update`, and a new
@@ -58,23 +72,31 @@ I18N_SOURCES = $(shell find $(PKG) -name '*.py' \
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deps lint flake8 bandit test test-cov package install uninstall clean tag release version mapping-doc docs-pdf \
+.PHONY: help deps lint test test-cov package install uninstall clean tag release version mapping-doc docs-pdf \
         i18n-update i18n-compile i18n-stats i18n-check \
-        qt6-check qt6-check-local qt6-check-docker \
-        floor-check floor-check-local floor-check-docker \
+        qt6-check floor-check \
         bench bench-list bench-smoke
 
 help:
-	@echo "FiberQ - make targets (current version: $(VERSION))"
-	@echo "  deps      install lint/test tooling (flake8, bandit, pytest, pytest-qgis)"
-	@echo "  lint      flake8 + bandit  (mirrors the plugins.qgis.org scan gate)"
-	@echo "  test      run the pytest suite (needs QGIS bindings - see header)"
-	@echo "  qt6-check mirrors the plugins.qgis.org Qt6 Check tab (needs docker)"
-	@echo "  floor-check parse + import every module on the declared qgisMinimumVersion"
-	@echo "  package   build $(ZIP) for upload to the QGIS plugin repository"
-	@echo "  install   copy the plugin into your local QGIS profile (manual testing)"
-	@echo "  clean     remove dist/ and caches"
-	@echo "  release   lint + test + package + tag v$(VERSION)  (see RELEASE.md)"
+	@echo "FiberQ - make targets (current version: $(VERSION)); the pipeline is in ci/ (ci/README.md)"
+	@echo "  lint         the lint stage, here, no container (python3 3.12 or later): flake8 and Bandit"
+	@echo "               with the plugins.qgis.org scan's flags, detect-secrets as that scan runs it,"
+	@echo "               shellcheck, the .ts placeholders, the forge configs"
+	@echo "  test         the whole test suite, here, no container, on the QGIS that python3 imports"
+	@echo "  deps         install the hash-pinned test and lint tools into $(PYTHON)"
+	@echo "  test-cov     pytest with coverage in $(PYTHON) (after make deps)"
+	@echo "  qt6-check    pull the checker image, then the Qt6 check plugins.qgis.org runs, in it"
+	@echo "  floor-check  parse + import every module on QGIS 3.22, in its container"
+	@echo "  package      build and check the zip in ci-results/<run>/package/; into dist/ only when"
+	@echo "               dist/ holds none of its files (nothing there is overwritten)"
+	@echo "  ci           the default set: pure lint qt6 floor package, test legs 3.22 3.44 4.2"
+	@echo "  ci-quick     pure lint qt6 floor package"
+	@echo "  release      the release set: the default set, legs 3.40 4.0, the release check (= ci-release)"
+	@echo "  tag          tag v$(VERSION) when the newest full release run of this tree passed"
+	@echo "               (RELEASE.md, step 5)"
+	@echo "  install      copy the plugin into your local QGIS profile (manual testing)"
+	@echo "  clean        remove pytest and coverage caches (never dist/, ci-results/, .ci-cache/)"
+	@echo "  images: sh ci/pull.sh [--quick|--release|<stage>...]   flags: make ci CI_ARGS='--jobs 2'"
 	@echo ""
 	@echo "  documentation"
 	@echo "    mapping-doc    regenerate docs/interchange-mapping.md from the code"
@@ -94,161 +116,54 @@ version:
 	@echo $(VERSION)
 
 # ---- tooling ----------------------------------------------------------------
+# The hash-pinned test and lint tools of the pipeline (ci/requirements-test.txt and
+# ci/requirements-lint.txt), installed into $(PYTHON): for running pytest or flake8 by hand, and
+# for test-cov. make lint and make test do not need it: they install the same pins into
+# .ci-cache/ on first use. The lint lock is made for Python 3.12 and later.
+# PIP_FLAGS (above) is --break-system-packages unless you set PIP_FLAGS= (a virtualenv).
+# --ignore-installed: the QGIS images ship some tools (pytest) from apt, without the RECORD file
+# pip needs to uninstall them.
 deps:
-	$(PYTHON) -m pip install $(PIP_FLAGS) --ignore-installed pytest pytest-cov "pytest-qgis>=3.0,<5" flake8 "bandit[toml]"
+	$(PYTHON) -m pip install $(PIP_FLAGS) --ignore-installed --disable-pip-version-check \
+		--only-binary=:all: --require-hashes -r ci/requirements-test.txt
+	$(PYTHON) -m pip install $(PIP_FLAGS) --ignore-installed --disable-pip-version-check \
+		--only-binary=:all: --require-hashes -r ci/requirements-lint.txt
 
-# ---- lint (mirror of the repository Security & Quality scan) ----------------
-lint: flake8 bandit
+# ---- lint and tests, here, with no container ---------------------------------
+# lint: the lint stage (ci/lint.sh) in this environment: flake8 and Bandit with the flags of
+# plugins.qgis.org's scan (every Bandit severity), detect-secrets as that scan runs it,
+# shellcheck and flake8 on ci/, the .ts placeholder check and the checks of the forge configs.
+# test: the whole test suite on the QGIS that python3 imports (the test-local stage).
+# Both use python3 from PATH, not $(PYTHON): to use another interpreter, put its folder first,
+# e.g.  PATH=/path/to/venv/bin:$PATH make lint  (the lint tools need Python 3.12 or later).
+# Both install their pinned tools into .ci-cache/ on first use (network) and write their record
+# to a new ci-results/<run>/.
+lint:
+	CI_IN_PLACE=1 sh ci/run-all.sh --only lint $(CI_ARGS)
 
-flake8:
-	$(PYTHON) -m flake8 --isolated --max-line-length=120 --ignore=E501 $(PKG) tests conftest.py tools/bench
-
-bandit:
-	# ALL severities — the plugins.qgis.org scanner flags LOW too (e.g. B110/B112
-	# try/except/pass|continue), so -ll (medium/high only) is NOT enough. Config in pyproject.toml.
-	$(PYTHON) -m bandit -r $(PKG) -q -c pyproject.toml
-
-# ---- tests ------------------------------------------------------------------
-# QT_QPA_PLATFORM=offscreen runs Qt without a display. The qgis/qgis image also
-# ships xvfb if a real X server is ever needed: `xvfb-run make test`.
 test:
-	QT_QPA_PLATFORM=offscreen $(PYTHON) -m pytest
+	CI_IN_PLACE=1 sh ci/run-all.sh --only test-local $(CI_ARGS)
 
+# pytest with coverage in $(PYTHON) itself, outside the pipeline: run make deps first.
 test-cov:
 	QT_QPA_PLATFORM=offscreen $(PYTHON) -m pytest --cov=$(PKG) --cov-report=term-missing --cov-report=xml
 
-# ---- declared-floor gate ----------------------------------------------------
-# metadata.txt promises qgisMinimumVersion, and nothing was checking it. Both CI
-# legs run a Python new enough to accept syntax the floor rejects (3.44 ships
-# 3.13, 3.40 ships 3.12, the 3.22 floor ships 3.8), and neither imports a module
-# the floor cannot load. A release shipped with fiberq/core/validation_report.py
-# a hard SyntaxError on 3.22 and the whole fiberq/addons package unimportable
-# there, through a green CI, a clean flake8, a clean Bandit and a clean Qt6 check.
-#
-# pytest cannot do this job: pytest-qgis will not even load on the 3.22 image
-# (Python 3.8 against its `list[...]` annotations), which is why the floor had no
-# coverage in the first place. So this is a plain script, run in the floor image.
-#
-# FLOOR_IMAGE must track qgisMinimumVersion in fiberq/metadata.txt. If you raise
-# one, raise the other.
-FLOOR_IMAGE ?= qgis/qgis:3.22
-FLOOR_PY ?= python3
+# ---- Qt6 and floor gates, each in its container ------------------------------
+# qt6-check: QGIS's pyqt5_to_pyqt6.py in the checker image that plugins.qgis.org runs for its
+#   "Qt6 Check" tab (ci/qt6-check.sh): 0 findings in fiberq/, and at least 4 in tests/qt6_seed/,
+#   old-style code kept on purpose, so a checker that stops reporting fails the gate.
+# floor-check: tests/floor_check.py on QGIS 3.22, the qgisMinimumVersion of metadata.txt
+#   (ci/floor-check.sh): every fiberq/ module parses and imports there. The floor line of
+#   ci/legs and qgisMinimumVersion change together.
+# qt6-check pulls the checker image first (sh ci/pull.sh qt6, which pulls nothing when the
+# pinned digest is here): without it the stage would be skipped, and a skip passes. floor-check
+# fails on a missing image with the pull command in its reason. In place (a local checker, or a
+# local QGIS 3.22):  CI_IN_PLACE=1 sh ci/run-all.sh --only qt6     (or --only floor)
+qt6-check:
+	CI_IN_PLACE= sh ci/pull.sh qt6 && CI_IN_PLACE= sh ci/run-all.sh --only qt6 $(CI_ARGS)
 
 floor-check:
-	@if [ -n "$$FLOOR_LOCAL" ]; then \
-		$(MAKE) --no-print-directory floor-check-local; \
-	elif command -v docker >/dev/null 2>&1; then \
-		$(MAKE) --no-print-directory floor-check-docker; \
-	else \
-		echo "docker not found. Install it, or run inside QGIS $(FLOOR_IMAGE):"; \
-		echo "  make floor-check-local"; \
-		exit 3; \
-	fi
-
-# Inside an already-correct interpreter (CI runs this one, in the floor image).
-floor-check-local:
-	@$(FLOOR_PY) tests/floor_check.py
-
-# PYTHONDONTWRITEBYTECODE because the mount is read-only and the script does not
-# need bytecode; HOME=/tmp because the image's default HOME is not writable as a
-# non-root user.
-floor-check-docker:
-	@docker run --rm --network none -v "$(CURDIR)":/src:ro -w /src \
-		-e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 -e QT_QPA_PLATFORM=offscreen \
-		"$(FLOOR_IMAGE)" $(FLOOR_PY) tests/floor_check.py
-
-# ---- Qt6 compatibility gate -------------------------------------------------
-# plugins.qgis.org runs QGIS's own pyqt5_to_pyqt6.py over every upload and shows
-# the result on the plugin page's "Qt6 Check" tab. It judges by the LOG: the
-# script writes its findings to the logfile and exits 0 whether it found
-# anything or not, so a gate reading the exit code would always pass. CI's QGIS
-# 4 leg cannot replace it either -- FiberQ routes old enum names through
-# utils/compat.py, so the plugin runs on Qt6 while the source still carries
-# spellings the checker (and a future PyQt6) rejects.
-#
-# Two runs, every time:
-#   fiberq/          must report ZERO findings
-#   tests/qt6_seed/  must report at least $(QT6_MIN_SEED) -- the self-test that
-#                    proves the checker still works and is still being read
-# A checker that silently stops reporting is the failure mode this guards.
-QT6_IMAGE ?= ghcr.io/qgis/pyqgis4-checker:main-ubuntu
-QT6_CHECKER ?= pyqt5_to_pyqt6.py
-QT6_MIN_SEED ?= 4
-
-# One script, run either against a local checker or inside the image above, so
-# the laptop and CI cannot drift apart. Findings look like:
-#   /path/file.py:12:17 - This member should be renamed to 'exec'
-define QT6_CHECK_SH
-set -eu
-root="$${QT6_ROOT:-.}"
-checker="$${QT6_CHECKER:-pyqt5_to_pyqt6.py}"
-min_seed="$${QT6_MIN_SEED:-4}"
-bin="$$(command -v "$$checker" 2>/dev/null || echo "$$checker")"
-[ -f "$$bin" ] || { echo "ERROR: Qt6 checker not found: $$checker"; exit 3; }
-work="$$(mktemp -d)"
-trap 'rm -rf "$$work"' EXIT INT TERM
-cp -r "$$root/fiberq" "$$work/fiberq"
-cp -r "$$root/tests/qt6_seed" "$$work/qt6_seed"
-scan() {
-	python3 "$$bin" --dry_run --logfile "$$work/$$1.log" "$$work/$$1" >"$$work/$$1.out" 2>&1 \
-		|| echo "checker exited $$?" >>"$$work/$$1.out"
-	grep -E ':[0-9]+:[0-9]+ - ' "$$work/$$1.log" 2>/dev/null \
-		| sed -e "s#^$$work/fiberq/#fiberq/#" -e "s#^$$work/qt6_seed/#tests/qt6_seed/#" \
-		| sort || true
-}
-pkg="$$(scan fiberq)"
-seed="$$(scan qt6_seed)"
-count() { printf '%s' "$$1" | grep -c . || true; }
-seed_n="$$(count "$$seed")"
-pkg_n="$$(count "$$pkg")"
-if [ "$$seed_n" -lt "$$min_seed" ]; then
-	echo "ERROR: self-test failed - the checker found $$seed_n findings in tests/qt6_seed/, expected >= $$min_seed."
-	echo "       Either the checker could not run, or its output changed, or the seeds were"
-	echo "       'cleaned up' (see tests/qt6_seed/README.md). Do NOT trust a green run."
-	if [ -s "$$work/qt6_seed.out" ]; then
-		echo "       The checker said:"
-		sed -e 's/^/       | /' "$$work/qt6_seed.out" | tail -n 15
-	fi
-	exit 2
-fi
-if [ "$$pkg_n" -gt 0 ]; then
-	echo "$$pkg"
-	echo ""
-	echo "Qt6 check FAILED: $$pkg_n finding(s) in fiberq/."
-	echo "plugins.qgis.org shows these on the plugin page's Qt6 Check tab."
-	exit 1
-fi
-echo "Qt6 check: 0 findings in fiberq/ (self-test saw $$seed_n findings in the seeds)."
-endef
-export QT6_CHECK_SH
-
-# Prefer a local checker (instant); fall back to the image the website uses.
-# Note: make itself exits 2 when any recipe fails, so read the message, not the
-# code, to tell "findings in fiberq/" (1) from "self-test failed" (2). Run
-# qt6-check-local / qt6-check-docker directly if you need the exact code.
-qt6-check:
-	@if command -v $(QT6_CHECKER) >/dev/null 2>&1; then \
-		$(MAKE) --no-print-directory qt6-check-local; \
-	elif command -v docker >/dev/null 2>&1; then \
-		$(MAKE) --no-print-directory qt6-check-docker; \
-	else \
-		echo "Neither $(QT6_CHECKER) nor docker found."; \
-		echo "Install docker (then: make qt6-check-docker), or put QGIS's"; \
-		echo "scripts/pyqt5_to_pyqt6.py on PATH (then: make qt6-check-local)."; \
-		exit 1; \
-	fi
-
-qt6-check-local:
-	@QT6_ROOT=. QT6_CHECKER=$(QT6_CHECKER) QT6_MIN_SEED=$(QT6_MIN_SEED) sh -c "$$QT6_CHECK_SH"
-
-# --network none: the checker only reads files. The repo is mounted read-only
-# and the script works on a copy, so a non-dry-run flag could never rewrite the
-# working tree from in here.
-qt6-check-docker:
-	@docker run --rm --network none -v "$(CURDIR)":/src:ro \
-		-e QT6_ROOT=/src -e QT6_CHECKER=/usr/local/bin/$(QT6_CHECKER) \
-		-e QT6_MIN_SEED=$(QT6_MIN_SEED) \
-		--entrypoint sh $(QT6_IMAGE) -c "$$QT6_CHECK_SH"
+	CI_IN_PLACE= sh ci/run-all.sh --only floor $(CI_ARGS)
 
 # ---- generated docs ---------------------------------------------------------
 # docs/interchange-mapping.md is generated from models/schema.py and
@@ -268,7 +183,7 @@ docs-pdf:
 # ---- benchmark (WP4 Task 4.1) -----------------------------------------------
 # Measures a fixed list of user actions on a seeded city-sized project and writes
 # one JSON file per row. Dev-only and never shipped: `package` archives
-# HEAD:$(PKG), so nothing under tools/ reaches the zip. Deliberately NOT wired
+# fiberq/ only, so nothing under tools/ reaches the zip. Deliberately NOT wired
 # into lint, test or release -- it needs a generated dataset and takes minutes.
 #
 # Uses plain $(PYTHON), not $(DOCS_PYTHON): the benchmark has to run inside the
@@ -306,8 +221,8 @@ bench-smoke:
 # ---- i18n -------------------------------------------------------------------
 # Workflow:  make i18n-update  ->  translate the .ts in Qt Linguist  ->
 #            make i18n-compile ->  git add fiberq/i18n/*.ts fiberq/i18n/*.qm
-# Both .ts and .qm MUST be committed: `package` below archives HEAD:fiberq, so
-# an uncommitted .qm never reaches users.
+# Both .ts and .qm MUST be committed: `package` below archives committed fiberq/
+# files only, so an uncommitted .qm never reaches users.
 
 # Regenerate the catalogs. pylupdate6 MERGES into an existing .ts, so finished
 # translations survive and only new strings show up as type="unfinished".
@@ -435,7 +350,8 @@ export I18N_STATS_PY
 i18n-stats:
 	@$(PYTHON) -c "$$I18N_STATS_PY" $(I18N_DIR)
 
-# Advisory only - NEVER fails. See the note on `package` below.
+# Advisory only - NEVER fails. The package stage gives the same .qm warnings, from commit
+# times (ci/package.sh); this target compares file times.
 i18n-check: i18n-check-placeholders
 	@for ts in $(wildcard $(I18N_DIR)/*.ts); do \
 		qm="$${ts%.ts}.qm"; \
@@ -508,21 +424,15 @@ i18n-check-placeholders:
 	@$(PYTHON) -c "$$I18N_PLACEHOLDER_PY"
 
 # ---- package (reproducible plugin zip) --------------------------------------
-# Archives ONLY the fiberq/ subtree, prefixed so the zip contains fiberq/...
-# Dev/CI files live at the repo root and are therefore never shipped.
-# Uses git (local; no GitHub needed) and packages committed state.
-#
-# i18n-check, NOT i18n-compile, is the prerequisite - deliberately. Because this
-# target archives HEAD, running lrelease here could not change the zip anyway:
-# only committed .qm files ship. A hard `package: i18n-compile` would therefore
-# buy nothing while breaking `make package` (and so `make release`) on every
-# machine without qt6-l10n-tools, including the qgis/qgis CI images. i18n-check
-# gives the same warning at the same moment and always exits 0.
-package: i18n-check
-	@rm -rf $(DIST_DIR)
-	@mkdir -p $(DIST_DIR)
-	git archive --format=zip --prefix=$(PLUGIN_NAME)/ -o $(ZIP) HEAD:$(PKG)
-	@echo "Built $(ZIP)"
+# The package stage (ci/package.sh): "TZ=UTC git archive --format=zip" of fiberq/ at the last
+# commit that changed it, so the zip holds committed files only, under one fiberq/ folder, and
+# the same commit gives the same bytes on any machine with the same git and zlib. It warns for
+# each .qm catalog that is not committed or was last committed before its .ts (commit times),
+# checks the zip in the python image and writes a .sha256 and a .contents.tsv beside it. The
+# build goes to ci-results/<run>/package/, and into dist/ only when dist/ holds none of its three
+# files and fiberq/ has no uncommitted change: nothing in dist/ is overwritten or deleted.
+package:
+	CI_IN_PLACE= sh ci/run-all.sh --only package $(CI_ARGS)
 
 # ---- local install for manual QGIS testing ---------------------------------
 # QGIS 4 moved its configuration root from .../QGIS/QGIS3 to .../QGIS/QGIS4.
@@ -560,41 +470,39 @@ uninstall:
 	@rm -rf "$(PLUGIN_DEST)"
 	@echo "Removed $(PLUGIN_DEST)"
 
-# ---- pipeline (ci/) ---------------------------------------------------------
-# These targets call the pipeline in ci/; the older targets above keep their own
-# recipes until they become aliases. Each stage runs in a fresh container
-# (docker, or CI_ENGINE=podman):
-#   make ci          pure, lint, qt6, floor, package, and the test legs 322 344 42
-#   make ci-quick    pure, lint, qt6, floor, package
-#   make ci-release  all five legs and the release check; refuses a dirty tree
-# Flags pass through CI_ARGS, e.g.  make ci CI_ARGS='--jobs 2'
-# Images: sh ci/pull.sh (the only step that pulls). Results: ci-results/<run>/.
-CI_ARGS ?=
+# ---- pipeline sets, release and tag (ci/run-all.sh, ci/tag.sh) ----------------
+# The stages run in fresh containers (docker, or CI_ENGINE=podman), except that package builds
+# its zip with the host's git and release-check runs on the host; CI_IN_PLACE is cleared, so they
+# run in host mode. sh ci/pull.sh is the only step that pulls images, e.g. sh ci/pull.sh --quick
+# (make qt6-check runs it for the checker). Results: ci-results/<run>/.
+#   make ci          the default set: pure lint qt6 floor package, then the test legs 322 344 42
+#   make ci-quick    pure lint qt6 floor package
+#   make ci-release  the release set: the default set plus the legs 340 and 40 and the release
+#                    check; it refuses a dirty working tree or a shallow clone
+#   make release     the same as make ci-release (RELEASE.md, step 3)
+#   make tag         the annotated tag v<version> on HEAD, made only when the newest full release
+#                    run of HEAD's tree passed and its zip is the one in dist/; it never pushes
+#                    (RELEASE.md, step 5)
 .PHONY: ci ci-quick ci-release
 ci:
-	sh ci/run-all.sh $(CI_ARGS)
+	CI_IN_PLACE= sh ci/run-all.sh $(CI_ARGS)
 
 ci-quick:
-	sh ci/run-all.sh --quick $(CI_ARGS)
+	CI_IN_PLACE= sh ci/run-all.sh --quick $(CI_ARGS)
 
 ci-release:
-	sh ci/run-all.sh --release $(CI_ARGS)
+	CI_IN_PLACE= sh ci/run-all.sh --release $(CI_ARGS)
 
-# ---- release ----------------------------------------------------------------
-# Intentionally does NOT bump the version or upload anything. See RELEASE.md.
-release: lint test package tag
-	@echo ""
-	@echo "Artifact: $(ZIP)"
-	@echo "Next (manual, see RELEASE.md): git push && git push --tags, then upload the zip."
+release:
+	CI_IN_PLACE= sh ci/run-all.sh --release $(CI_ARGS)
 
 tag:
-	@if [ -z "$(VERSION)" ]; then echo "No version found in $(PKG)/metadata.txt"; exit 1; fi
-	@if git rev-parse "v$(VERSION)" >/dev/null 2>&1; then \
-		echo "Tag v$(VERSION) already exists - bump 'version=' in $(PKG)/metadata.txt first."; exit 1; \
-	fi
-	git tag -a "v$(VERSION)" -m "FiberQ $(VERSION)"
-	@echo "Created tag v$(VERSION) (not pushed)."
+	CI_IN_PLACE= sh ci/tag.sh
 
+# The caches of pytest and coverage runs. dist/, ci-results/ and .ci-cache/ are never deleted by
+# a command of this repository: prune them by hand (ci/README.md, "Results, and pruning by hand").
 clean:
-	@rm -rf $(DIST_DIR) .pytest_cache .coverage coverage.xml
-	@find . -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+	@rm -rf .pytest_cache .coverage coverage.xml
+	@find . \( -path ./.git -o -path ./dist -o -path ./ci-results -o -path ./.ci-cache \) -prune \
+		-o -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+	@echo "Removed the pytest and coverage caches; dist/, ci-results/ and .ci-cache/ are pruned by hand."
