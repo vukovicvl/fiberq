@@ -37,6 +37,15 @@ https://www.fiberq.net/documentation/
 
 For the full feature list and install instructions, see [fiberq/README.md](fiberq/README.md).
 
+## Tests and releases
+
+Every push to GitHub runs FiberQ's checks and tests, on three QGIS versions (all five for release
+branches and tags), and GitLab runs part of them for `main`, release branches and tags. Anyone can run
+the same pipeline without a forge, with git and docker or podman on an x86-64 machine:
+[ci/README.md](ci/README.md) explains how, and lists
+[where to see the runs](ci/README.md#where-to-see-the-runs). The release process is in
+[RELEASE.md](RELEASE.md).
+
 ## Community & Feedback
 
 - 💡 **Feature requests & voting (Discussions → Ideas):** https://github.com/vukovicvl/fiberq/discussions/categories/ideas
