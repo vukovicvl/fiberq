@@ -35,6 +35,7 @@ LINT_CHECKS = (
     ('shellcheck', 'shellcheck', 'shellcheck_files'),
     ('flake8_ci', 'flake8 ci/', 'flake8_ci_files'),
     ('placeholders', 'placeholders', ''),
+    ('wrappers', 'forge configs', ''),
 )
 CASE_RANK = {'passed': 0, 'skipped': 1, 'failed': 2, 'error': 3}
 
