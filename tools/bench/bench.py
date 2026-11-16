@@ -17,7 +17,7 @@ script only collects them, writes ``run.json`` and prints the table.
     --expect-code-sha256   refuse a fiberq tree whose digest differs
     --dry-run              print the worker command lines and stop
 
-Dev tooling. Never shipped: ``make package`` archives ``HEAD:fiberq`` only.
+Dev tooling. Never shipped: the plugin zip holds committed ``fiberq/`` files only.
 """
 import argparse
 import os

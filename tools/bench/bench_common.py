@@ -6,7 +6,7 @@ the worker (``bench_worker.py``, which does). Everything here is deliberately
 boring: digests, the timing policy, the environment probe and the redactor that
 keeps user paths and hostnames out of the published JSON.
 
-Dev tooling. Never shipped: ``make package`` archives ``HEAD:fiberq`` only.
+Dev tooling. Never shipped: the plugin zip holds committed ``fiberq/`` files only.
 """
 import getpass
 import hashlib

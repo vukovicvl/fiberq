@@ -365,7 +365,8 @@ and says so (§1).
 
 ## 8. Quality assurance and compatibility
 
-The round trip is asserted in CI on every commit, against a bundle deliberately
+The round trip is asserted by the test suite, which CI runs on every push to
+GitHub, against a bundle deliberately
 richer than this plugin: it carries an element type FiberQ has no layer for, an
 attribute it has no column for, fibre-splice tables it does not model, a
 passthrough row from a third tool and a metadata key it did not write. The test

@@ -350,8 +350,9 @@ export I18N_STATS_PY
 i18n-stats:
 	@$(PYTHON) -c "$$I18N_STATS_PY" $(I18N_DIR)
 
-# Advisory only - NEVER fails. The package stage gives the same .qm warnings, from commit
-# times (ci/package.sh); this target compares file times.
+# Its .qm warnings are advisory and never fail it, but its prerequisite, the .ts placeholder
+# check, does fail on a broken placeholder. The package stage gives the same .qm warnings,
+# from commit times (ci/package.sh); this target compares file times.
 i18n-check: i18n-check-placeholders
 	@for ts in $(wildcard $(I18N_DIR)/*.ts); do \
 		qm="$${ts%.ts}.qm"; \

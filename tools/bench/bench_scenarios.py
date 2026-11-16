@@ -10,7 +10,7 @@ Keys starting with ``_`` in the returned facts are reported but left out of the
 digest: they describe *how* the work happened, which an optimisation is allowed
 to change.
 
-Dev tooling. Never shipped: ``make package`` archives ``HEAD:fiberq`` only.
+Dev tooling. Never shipped: the plugin zip holds committed ``fiberq/`` files only.
 """
 import os
 import random

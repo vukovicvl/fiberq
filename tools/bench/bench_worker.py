@@ -12,7 +12,7 @@ Exit code 0 means the JSON was written and the scenario ran or was skipped; 1
 means the JSON was written and says why it failed. A missing file means the
 process died -- which is a result too, and ``bench.py`` records it as a crash.
 
-Dev tooling. Never shipped: ``make package`` archives ``HEAD:fiberq`` only.
+Dev tooling. Never shipped: the plugin zip holds committed ``fiberq/`` files only.
 """
 import argparse
 import io
