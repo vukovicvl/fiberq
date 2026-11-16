@@ -1,130 +1,99 @@
-# Thin CI wrapper. It does NOT contain build/test logic - it only runs the
-# Makefile targets inside an official QGIS container. The same `make` commands
-# run locally and on any other forge; porting to GitLab/Codeberg means rewriting
-# this YAML wrapper only, not the logic.
-#
-# Pattern: checkout runs on the host runner (which has git), then we mount the
-# workspace into the qgis/qgis image and run `make` there, so QGIS Python
-# bindings are available. We install `make` in the container first because the
-# image ships QGIS + Python but not necessarily make.
-
+# SPDX-License-Identifier: GPL-3.0-or-later
+# GitHub Actions for FiberQ: a thin wrapper around the pipeline in ci/ (ci/README.md). Each job checks out the
+# commit, pulls the images of one stage (sh ci/pull.sh), runs that stage (sh ci/run-all.sh --only <stage>) and
+# uploads its run record from ci-results/. All the logic is in ci/, and the same commands run on any machine
+# that ci/README.md's "What the host needs" describes.
+#   push to a branch (not release/*)  the default set: pure lint qt6 floor package test-322 test-344 test-42
+#   push to release/*, push of a tag  the release set (--release): the default set, test-340, test-40 and
+#                                     release-check
+#   Run workflow (workflow_dispatch)  the release set, on the branch or tag picked
+#   pull request                      the default set, only from a fork: a branch of this repository already
+#                                     runs on its push
+# A push that deletes a branch or a tag runs nothing.
+# Each run: line starts its script with exec, so the script is the step's own process: when a job is cancelled
+# or times out, the runner's SIGINT reaches ci/run-all.sh, which kills the run's containers and records the run
+# as interrupted before the upload step. Without exec the step's process is the bash that runs the line, and
+# bash does not pass the signal on.
+# The lint stage reads this file line by line (ci/lint.sh, check "wrappers"): every run: is one line, exec sh
+# ci/<script>.sh, then optionally --release and --only, and last ${{ matrix.stage }}; every uses: is
+# actions/checkout or actions/upload-artifact pinned to a commit; no container, services, shell, env, defaults,
+# working-directory, continue-on-error, matrix include or exclude, and no checkout input that fetches other code;
+# and the two stage: lists are the default and release sets of ci/common.sh. It does not read the triggers (on:)
+# or the conditions: a job or a step switched off by its if: is review's to catch.
 name: CI
 
 on:
   push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  lint-and-test:
-    name: QGIS ${{ matrix.qgis }}
-    runs-on: ubuntu-latest
+  default:
+    if: >-
+      (github.event_name == 'push' && !github.event.deleted &&
+      !startsWith(github.ref, 'refs/heads/release/') && !startsWith(github.ref, 'refs/tags/')) ||
+      (github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name != github.repository)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        # Pin to tags that exist on https://hub.docker.com/r/qgis/qgis/tags .
-        # Two images cover both binding stacks the plugin supports:
-        #   3.44-trixie -> QGIS 3 line (Qt5)
-        #   4.2-trixie  -> QGIS 4 (Qt6)
-        # Re-pin these as the LTR/stable lines advance.
-        qgis:
-          - "3.44-trixie"
-          - "4.2-trixie"
+        stage: [pure, lint, qt6, floor, package, test-322, test-344, test-42]
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Lint and test inside the QGIS container
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/src" -w /src \
-            -e QT_QPA_PLATFORM=offscreen \
-            -e PIP_FLAGS=--break-system-packages \
-            "qgis/qgis:${{ matrix.qgis }}" \
-            bash -c "apt-get update -qq && apt-get install -y --no-install-recommends make >/dev/null && make deps && make lint && make test"
-
-  # The floor that fiberq/metadata.txt promises. Nothing was checking it: both
-  # legs above run a Python new enough to accept syntax the floor rejects (3.44
-  # ships 3.13, the 3.22 floor ships 3.8), and neither imports a module the floor
-  # cannot load. A release shipped with fiberq/core/validation_report.py a hard
-  # SyntaxError on 3.22 and the whole fiberq/addons package unimportable there,
-  # through a green CI, a clean flake8, a clean Bandit and a clean Qt6 check.
-  #
-  # Not part of the matrix above, because that matrix runs `make test` and
-  # pytest-qgis will not load on the 3.22 image at all (Python 3.8 against its
-  # `list[...]` annotations) -- which is why the floor had no coverage. This leg
-  # runs the one thing that CAN run there: parse and import every module.
-  floor-check:
-    name: Declared floor (QGIS 3.22)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Parse and import every module on the declared floor
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/src:ro" -w /src \
-            -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 \
-            -e QT_QPA_PLATFORM=offscreen \
-            "qgis/qgis:3.22" \
-            python3 tests/floor_check.py
-
-  # The real suite on the declared floor. Separate from the matrix above, and
-  # from floor-check, for three reasons that are all specific to this image:
-  #
-  #   * It is a DIFFERENT 3.22 image. qgis/qgis:3.22 ships Python 3.8, where
-  #     pytest-qgis cannot be imported at all (it declares
-  #     Requires-Python >= 3.10). qgis/qgis:release-3_22 ships Python 3.10.6
-  #     with the same QGIS 3.22.16, and the whole suite runs: 775 passed,
-  #     12 skipped, about 80 seconds. So the floor needs both legs -- 3.8 for
-  #     syntax a newer Python would accept, 3.10 for behaviour.
-  #   * No apt. `apt-get update` fails on this image (a stale nodesource repo
-  #     in its sources list), and it does not need to run: make is already
-  #     installed, unlike on the trixie images.
-  #   * PIP_FLAGS= . Its pip is 22.0.2, which predates
-  #     --break-system-packages; the Makefile's default would fail outright.
-  #
-  # `make test` only, NOT `make lint`: tests/floor_seed/ is deliberately invalid
-  # before Python 3.12, so flake8 reports E999 on it under 3.10. Lint belongs on
-  # a developer-grade Python, and the matrix above runs it.
-  floor-tests:
-    name: Declared floor (test suite)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run the suite on the oldest supported QGIS
-        run: |
-          docker run --rm \
-            -v "${{ github.workspace }}:/src" -w /src \
-            -e QT_QPA_PLATFORM=offscreen \
-            "qgis/qgis:release-3_22" \
-            bash -c "make deps PIP_FLAGS= && make test"
-
-  # The same check plugins.qgis.org runs on every upload (its "Qt6 Check" tab).
-  # The QGIS 4 leg above cannot replace it: FiberQ routes old enum names through
-  # utils/compat.py, so the plugin runs on Qt6 while the source may still carry
-  # spellings the checker rejects. `make qt6-check` does its own docker run, so
-  # this job stays on the host runner, like `package` below.
-  qt6-check:
-    name: Qt6 check (pyqt5_to_pyqt6)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check the package for Qt5-only API
-        run: make qt6-check
-
-  # Build the plugin zip on every push so packaging breakage is caught early.
-  # Does not publish - publishing is a manual, tag-driven step (see RELEASE.md).
-  package:
-    name: Package (build zip)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      - name: Check out the commit, with full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          fetch-depth: 0  # full history so `git archive HEAD` works
-      - name: Build plugin zip
-        run: make package
-      - name: Upload zip artifact
-        uses: actions/upload-artifact@v4
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Pull the stage's images
+        run: exec sh ci/pull.sh ${{ matrix.stage }}
+      - name: Run the stage
+        run: exec sh ci/run-all.sh --only ${{ matrix.stage }}
+      - name: Upload the run record
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
-          name: fiberq-plugin
-          path: dist/*.zip
-          if-no-files-found: error
+          name: ci-results-default-${{ matrix.stage }}-${{ github.run_attempt }}
+          path: |
+            ci-results/
+            !ci-results/*/input/**
+            !ci-results/*/raw/**
+            !ci-results/*/deps/raw/**
+            !ci-results/**/deps.tar
+
+  release:
+    if: >-
+      (github.event_name == 'push' && !github.event.deleted &&
+      (startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/tags/'))) ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        stage: [pure, lint, qt6, floor, package, test-322, test-340, test-344, test-40, test-42, release-check]
+    steps:
+      - name: Check out the commit, with full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Pull the stage's images
+        run: exec sh ci/pull.sh ${{ matrix.stage }}
+      - name: Run the stage under the release rules
+        run: exec sh ci/run-all.sh --release --only ${{ matrix.stage }}
+      - name: Upload the run record
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: ci-results-release-${{ matrix.stage }}-${{ github.run_attempt }}
+          path: |
+            ci-results/
+            !ci-results/*/input/**
+            !ci-results/*/raw/**
+            !ci-results/*/deps/raw/**
+            !ci-results/**/deps.tar
