@@ -2,7 +2,7 @@
 # Images the pipeline runs, pinned by digest, one line per role: python (pure, lint, package, the summary, lock and
 # compare), checker (qt6), floor, and the five test legs 322 340 344 40 42 (the file is named after them).
 #   <role> <registry>/<repository>@sha256:<64 hex> <tag that sh ci/pull.sh --bump resolves>
-# Bump on purpose, in its own commit, together with the tool pins, at each release.
+# Bump on purpose, in a commit of its own, as RELEASE.md says (step 1 and "Moving a pin").
 python   docker.io/library/python@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90     3.13-slim
 checker  ghcr.io/qgis/pyqgis4-checker@sha256:c96df111845eb0c86ad56364fb792d35fa6931e01d3d629d2b1bc6388ed43ece main-ubuntu
 floor    docker.io/qgis/qgis@sha256:6f1582ad40623f493994a140282278f02ec282d3c27fa0048a413c12f0cab442          3.22
