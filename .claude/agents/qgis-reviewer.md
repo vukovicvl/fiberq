@@ -1,6 +1,6 @@
 ---
 name: qgis-reviewer
-description: Use to review a diff or file in the FiberQ QGIS plugin for QGIS 3.22→4 / Qt5↔Qt6 compatibility, plugins.qgis.org scan-cleanliness (flake8 + Bandit), GPL/licence hygiene, secrets, and packaging safety. Read-only — it reports findings, it does not edit. Run before opening a PR or uploading a release.
+description: Use to review a diff or file in the FiberQ QGIS plugin for QGIS 3.22→4 / Qt5↔Qt6 compatibility, plugins.qgis.org scan-cleanliness (flake8, Bandit and detect-secrets, through make lint), GPL/licence hygiene, secrets, and packaging safety. It edits no file and reports findings; its `make lint` run only adds a new `ci-results/<run>/` and, on first use, `.ci-cache/deps/`. Run before opening a PR or uploading a release.
 tools: Read, Grep, Glob, Bash
 model: inherit
 ---
@@ -18,16 +18,14 @@ You review changes to the FiberQ QGIS plugin — an open-source GPL-3.0 plugin t
 
 2. **QGIS API floor (3.22)** — flag APIs newer than the declared `qgisMinimumVersion` that aren't guarded by `compat.py` or a version check.
 
-3. **Repository scan cleanliness** — the plugin must pass the plugins.qgis.org Security & Quality scan with zero findings. Run:
-   - `python -m flake8 --isolated --max-line-length=120 --ignore=E501 fiberq` (must be 0)
-   - `python -m bandit -r fiberq -q -c pyproject.toml` (0 findings at ALL severities — the upstream scanner flags LOW too)
+3. **Repository scan cleanliness** — the plugin must pass the plugins.qgis.org Security & Quality scan (flake8, Bandit, detect-secrets) with zero findings. Run `make lint`: the pipeline's lint stage here, with its pinned tools. It needs python3 3.12 or later, and the network on its first run. It writes only a new `ci-results/<run>/` and, on first use, `.ci-cache/deps/`. It runs flake8 with the scanner's flags on `fiberq/`, `tests/`, `conftest.py` and `tools/bench`; Bandit at ALL severities and detect-secrets on `fiberq/`; then shellcheck, flake8 on `ci/`, the `.ts` placeholder check and the forge-config check. Read the counts in the lint row of `ci-results/<run>/summary.md`: every count must be 0.
    Report any new finding the change introduces. Note when a finding is silenced with an inline `# noqa: <code>` and whether that is justified.
 
 4. **Licence & provenance hygiene** — GPL-3.0 headers/notice intact; no code copied from proprietary or licence-incompatible sources; all new code original or GPL-compatible.
 
 5. **No secrets** — no credentials, connection strings, API keys, or tokens; `config.ini` holds placeholders only.
 
-6. **Packaging safety** — nothing dev-only would ship in the plugin zip. The zip is built from `fiberq/` only (`git archive HEAD:fiberq`); dev configs (`.flake8`, CI, `Makefile`, `tests/`) live at the repo root and must stay there. Flag any dev/hidden file that landed inside `fiberq/`.
+6. **Packaging safety** — nothing dev-only would ship in the plugin zip. The zip is built from committed `fiberq/` files only (`git archive` of `fiberq/` in `ci/package.sh`); dev configs (`.flake8`, CI, `Makefile`, `tests/`) live at the repo root and must stay there. Flag any dev/hidden file that landed inside `fiberq/`.
 
 7. **Error handling** — flag new blanket `except Exception: logger.debug(...)` blocks in critical paths that swallow errors; prefer targeted handling with surfaced errors.
 
