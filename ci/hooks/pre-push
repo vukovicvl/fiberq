@@ -1,0 +1,72 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# ci/hooks/pre-push - run the pipeline's hook set (pure, lint, package) before a push, on the commit at the tip of
+# each ref the push updates (commits below a tip are sent but not tested on their own).
+# Opt in once per clone:  git config core.hooksPath ci/hooks
+# The hook and the scripts it starts come from the checked-out tree: after checking out a branch you have not
+# reviewed, push with git push --no-verify, or review its ci/ first.
+# git runs it before a push, with the remote's name (or the URL, for a push to a URL) and its URL as arguments,
+# and one line per ref on stdin:
+#   <local ref> <local object> <remote ref> <remote object>
+# The local ref is the full ref name when the source names a ref (refs/heads/main), (delete) for a deletion, HEAD
+# for @, else the source as given to git push (HEAD, an object name, main@{1 hour ago}), which can hold spaces;
+# so the line is read from its end, where the other three fields hold none.
+# For each such commit (a deleted ref has none), from the top of the working tree:
+#   sh ci/run-all.sh --hook --ref <commit>
+# so the commit that goes out is what is tested, not the working tree; the scripts are the working tree's ci/. A
+# --ref run never copies into dist/. It needs docker or podman (CI_ENGINE) and the python image:
+# sh ci/pull.sh --hook.
+# A commit that the remote's tracking refs (refs/remotes/<remote>/) already reach is not tested again: it passed
+# when it went out, or was public already. git runs the hook once for each push URL of a remote, and after each
+# URL's push it moves the tracking branch of each ref that URL accepted, if remote.<name>.fetch maps it (by
+# default every branch). So the next URL's run skips a commit that a branch the first URL accepted reaches, and
+# tests the rest; a commit that only a tag or another unmapped ref carries is tested once for each push URL.
+# Skip it for one push with: git push --no-verify
+# Exit: 0 every tested commit passed, or there was nothing to test; else the exit status of the first run that
+#       failed (1 a stage failed; 2 the run refused or could not start, such as an engine that is down; 130
+#       interrupted), and git refuses the push; 2 also when it is started by hand from a terminal.
+set -u
+
+if [ -t 0 ]; then
+    echo "pre-push: git runs this hook (git config core.hooksPath ci/hooks); by hand: sh ci/run-all.sh --hook" >&2
+    exit 2
+fi
+top=$(git rev-parse --show-toplevel) || exit 2
+cd "$top" || exit 2
+
+remote=no   # $1 names a configured remote, so its tracking refs show what it already has
+if [ -n "${1:-}" ] && git config --get "remote.$1.url" >/dev/null 2>&1; then remote=yes; fi
+todo=''
+while IFS= read -r line || [ -n "${line:-}" ]; do
+    rest=${line% * *}                                # drops " <remote ref> <remote object>"
+    lobj=${rest##* } lref=${rest% *} rref=${line#"$rest" }
+    rref=${rref% *}
+    case ${lobj:-} in
+        ''|*[!0]*) ;;
+        *) continue ;;                               # all zeros: the push deletes <rref>
+    esac
+    if ! c=$(git rev-parse --verify --quiet "$lobj^{commit}" 2>/dev/null); then
+        echo "pre-push: $lref is not a commit; nothing to test for $rref" >&2
+        continue
+    fi
+    if [ "$remote" = yes ] && new=$(git rev-list -n 1 "$c" --not --remotes="$1" 2>/dev/null) && [ -z "$new" ]; then
+        echo "pre-push: $c is already on $1; not tested again" >&2
+        continue
+    fi
+    case " $todo " in *" $c "*) ;; *) todo="$todo $c" ;; esac
+done
+if [ -z "$todo" ]; then
+    echo "pre-push: nothing to test (no new commit is pushed)" >&2
+    exit 0
+fi
+for c in $todo; do
+    echo "pre-push: testing $c before the push to ${2:-${1:-?}} (sh ci/run-all.sh --hook --ref $c)" >&2
+    CI_IN_PLACE='' sh ci/run-all.sh --hook --ref "$c" </dev/null
+    rc=$?
+    if [ "$rc" != 0 ]; then
+        echo "pre-push: the hook set failed on $c (exit $rc); the push is refused." >&2
+        echo "pre-push: fix it and push again, or push once without the check: git push --no-verify" >&2
+        exit "$rc"
+    fi
+done
+exit 0
