@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# ci/report.py - the run record (summary.md, record.txt), the JUnit compare of two runs, the detect-secrets count.
+# ci/report.py - the run record (summary.md, record.txt), the JUnit compare of two runs, the detect-secrets count
+# and the pure stage's counts.
 # Usage (stdlib only, Python 3.8 or later):
 #   python3 -I ci/report.py summary
 #       reads $CI_IN/run.txt and $CI_IN/stages/, writes summary.md, record.txt and result.txt into $CI_OUT
@@ -7,14 +8,21 @@
 #       compares the junit.xml files of two run folders, writes compare.md and result.txt into <out-dir>
 #   python3 -I ci/report.py secrets <detect-secrets JSON>
 #       prints the number of findings, counted as the plugins.qgis.org scanner counts them
+#   python3 -I ci/report.py pure-pin <ci/pure-count>
+#       checks a ci/pure-count file and prints its total and its number of test files as result.txt lines
+#   python3 -I ci/report.py pure <junit.xml> <pure-files.tsv> <ci/pure-count>
+#       prints the pure stage's counts as result.txt lines: files picked and left out, tests deselected, the
+#       stage's own skips and the pure items (the tests run, less those skips), and checks each test file's pure
+#       items against its line in ci/pure-count
 # ci/run-all.sh runs "summary" in the python image of ci/legs (in place: with this Python), ci/compare.sh runs
-# "compare" there, ci/lint.sh runs "secrets".
+# "compare" there, ci/lint.sh runs "secrets", ci/test.sh runs "pure-pin" and "pure" in its stage.
 # A stage's verdict is its status file: exactly one result= line, pass, fail or skip; anything else is invalid and
 # counts as a failure, as in ci/common.sh. A skip counts as a failure in a release run, and in a run with --strict
 # (strict=yes in run.txt).
 # Exit: 0 done (summary: whatever the run's result is); 1 summary: run.txt has no stages=, or its run_result=
 #       differs from the stages' verdicts; compare: a test was lost, or a compared stage is missing from the new
-#       run; 2 usage, an input that cannot be read, or (compare) nothing to compare.
+#       run; pure: a test file's pure items differ from ci/pure-count; 2 usage, an input that cannot be read or is
+#       not valid, or (compare) nothing to compare.
 
 import datetime
 import json
@@ -26,6 +34,12 @@ import xml.etree.ElementTree as ET
 SECRET_SKIP = ('.pyc', '.pyo', '.so', '.dll', '.exe')
 STAGE_NAME = re.compile(r'[a-z0-9][a-z0-9-]*')
 JUNIT_STAGE = re.compile(r'pure|test-[a-z0-9]+')
+# a skip of the pure stage's own: a test that met a hidden module (conftest.py, FIBERQ_PURE=1)
+PURE_SKIP = ('pure stage:', '(hidden in the pure stage)')
+PURE_KINDS = ('picked', 'left_out', 'deselected')
+# a line of ci/pure-count: a test file's pure items, then the file
+PIN_LINE = re.compile(r'([1-9][0-9]*)[ \t]+(tests/[^ \t]+\.py)')
+
 SLOWEST = 25
 LISTED = 50
 LINT_CHECKS = (
@@ -43,6 +57,8 @@ USAGE = """\
 usage: report.py summary
        report.py compare <old run> <new run> <out-dir> [<stage,...>]
        report.py secrets <detect-secrets JSON>
+       report.py pure-pin <ci/pure-count>
+       report.py pure <junit.xml> <pure-files.tsv> <ci/pure-count>
 summary  reads $CI_IN/run.txt and $CI_IN/stages/<stage>/{status,out/,deps-freeze.txt}; writes summary.md,
          record.txt and result.txt into $CI_OUT. It exits 1 when run.txt has no stages=, or when the stages'
          verdicts give another result than run.txt's run_result=.
@@ -53,6 +69,14 @@ compare  a test is lost when it passed in the old run and is absent, failed, err
          It exits 1 if anything was lost or missing, 2 if a run has no stages=, a named stage has no junit.xml in
          the old run, or no stage of the old run has one (nothing to compare).
 secrets  prints the number of findings under "results", skipping files that end .pyc .pyo .so .dll .exe.
+pure-pin prints pure_count= (the total) and pure_count_files= of a ci/pure-count file: "#" lines, blank lines,
+         and one "<number> tests/<file>.py" line per test file, the number 1 or more. It exits 2 on any other
+         line, a file listed twice, or no file.
+pure     prints files=, files_left_out=, deselected=, pure_skips=, pure_items=, pure_files= and pure_differ=
+         from the pure stage's junit.xml and pure-files.tsv (conftest.py writes it). A pure skip is one whose
+         reason holds "pure stage:" or "(hidden in the pure stage)"; pure_items is the junit tests less the pure
+         skips, counted per test file. It exits 1, naming each file, when a file's pure items differ from its
+         line in ci/pure-count, or a file has pure items and no line, or a line names a file without them.
 Exit: 0 done; 1 see above; 2 usage, or an input that cannot be read.
 """
 
@@ -277,9 +301,23 @@ def stage_counts(stage):
         if not stage.has_junit and info.get('skipped'):   # in place, a test leg off its own QGIS
             text = 'skipped: %s' % info['skipped']
         extra = []
+        if name == 'pure' and 'pure_items' in info:
+            text_pure = '%s files picked (%s left out), %s tests deselected; pure items %s in %s files' % (
+                info.get('files', '?'), info.get('files_left_out', '?'), info.get('deselected', '?'),
+                info['pure_items'], info.get('pure_files', '?'))
+            text_pure += ' (ci/pure-count %s in %s files)' % (
+                info.get('pure_count', '?'), info.get('pure_count_files', '?'))
+            if to_int(info.get('pure_differ')):
+                text_pure += '; files that differ: %s' % info['pure_differ']
+            extra.append(text_pure)
+            keys = keys + [(key, info[key]) for key in ('files', 'deselected', 'pure_items', 'pure_count')
+                           if key in info]
         for key, label in (('python', 'Python'), ('qgis', 'QGIS'), ('uid', 'uid')):
             if info.get(key):
-                extra.append('%s %s' % (label, info[key]))
+                shown = '%s %s' % (label, info[key])
+                if key == 'qgis' and name == 'pure' and info[key] != 'none':
+                    shown += ' (hidden by the stage)'
+                extra.append(shown)
         return '; '.join([text] + extra), keys
     if not info:
         return 'no result.txt', []
@@ -823,6 +861,113 @@ def secrets(path):
     return 0
 
 
+def read_pin(path):
+    """{test file: pure items} of a ci/pure-count file, or a str that says what is wrong with it."""
+    try:
+        text = read_text(path)
+    except OSError as exc:
+        return str(exc)
+    pins = {}
+    for number, line in enumerate(text.split('\n'), 1):
+        line = line.rstrip()
+        if not line or line.startswith('#'):
+            continue
+        found = PIN_LINE.fullmatch(line)
+        if not found:
+            return '%s:%d: not "<number> tests/<file>.py" (the number 1 or more): %s' % (path, number, line)
+        if found.group(2) in pins:
+            return '%s:%d: %s is listed twice' % (path, number, found.group(2))
+        pins[found.group(2)] = int(found.group(1))
+    if not pins:
+        return '%s: no "<number> tests/<file>.py" line' % path
+    return pins
+
+
+def pure_pin(path):
+    """The total and the number of test files of a ci/pure-count file, as result.txt lines on stdout."""
+    pins = read_pin(path)
+    if isinstance(pins, str):
+        say(pins)
+        return 2
+    sys.stdout.write('pure_count=%d\npure_count_files=%d\n' % (sum(pins.values()), len(pins)))
+    return 0
+
+
+def pure_counts(junit_path, files_path, pin_path):
+    """The pure stage's counts, as result.txt lines on stdout; each test file's pure items checked against its line
+    in ci/pure-count, every difference on stderr."""
+    pins = read_pin(pin_path)
+    if isinstance(pins, str):
+        say(pins)
+        return 2
+    try:
+        root = ET.parse(junit_path).getroot()
+        rows = [line.split('\t') for line in read_text(files_path).split('\n') if line]
+    except (OSError, ET.ParseError, ValueError) as exc:
+        say(str(exc))
+        return 2
+    if any(len(row) != 3 or row[0] not in PURE_KINDS for row in rows):
+        say('%s: every line holds picked, left_out or deselected, a name and a reason, tab-separated' % files_path)
+        return 2
+    kinds = [row[0] for row in rows]
+    # each test file of the record, by its junit name: tests/test_x.py is tests.test_x
+    reason = dict((row[1], row[2]) for row in rows if row[0] != 'deselected')
+    dotted = dict((name[:-len('.py')].replace('/', '.'), name) for name in reason if name.endswith('.py'))
+    # one per test: a test's subtests add to its suite's tests= but not to its test cases
+    tests = sum(1 for _case in root.iter('testcase'))
+    own = 0
+    found = {}
+    for case in root.iter('testcase'):
+        # the reason is in the message of a test's skip, in the text of a whole file's ("collection skipped")
+        said = ' '.join('%s %s' % (child.get('message', ''), child.text or '') for child in case
+                        if child.tag == 'skipped')
+        if any(mark in said for mark in PURE_SKIP):
+            own += 1
+            continue
+        where = case.get('classname') or case.get('name', '')   # a whole file's skip has no classname
+        owners = [module for module in dotted if where == module or where.startswith(module + '.')]
+        if not owners:
+            say('%s: %s is in no test file of %s' % (junit_path, where, files_path))
+            return 2
+        owner = dotted[max(owners, key=len)]
+        found[owner] = found.get(owner, 0) + 1
+    if own + sum(found.values()) != tests:
+        say('%s: %d test cases, but %d tests' % (junit_path, own + sum(found.values()), tests))
+        return 2
+    differ = []
+    for name in sorted(set(found) | set(pins)):
+        have, want = found.get(name, 0), pins.get(name, 0)
+        if have == want:
+            continue
+        plural = '' if have == 1 else 's'
+        if name not in pins:
+            text = '%s: %d pure item%s, and no line in ci/pure-count' % (name, have, plural)
+        else:
+            text = '%s: %d pure item%s, ci/pure-count says %d' % (name, have, plural, want)
+        if name not in reason:
+            text += ' (no such test file)'
+        elif reason[name]:
+            text += ' (left out: %s)' % reason[name]
+        differ.append((have < want, text))
+    for key, value in (('files', kinds.count('picked')), ('files_left_out', kinds.count('left_out')),
+                       ('deselected', kinds.count('deselected')), ('pure_skips', own),
+                       ('pure_items', tests - own), ('pure_files', len(found)), ('pure_differ', len(differ))):
+        sys.stdout.write('%s=%d\n' % (key, value))
+    for _fewer, text in differ:
+        say('pure: %s' % text)
+    if any(fewer for fewer, _text in differ):
+        say('pure: fewer pure items in a file: a test there stopped importing without QGIS, was removed or renamed, '
+            'or now needs QGIS, or a skip that depends on the machine comes before its QGIS import '
+            '(pure-files.tsv lists every file picked or left out, with the reason). The total in ci/pure-count '
+            'may only rise: a change that lowers it needs the maintainer\'s approval in its pull request')
+    if any(not fewer for fewer, _text in differ):
+        say('pure: more pure items in a file, or a new file: set its line in ci/pure-count to its count in the '
+            'same change')
+    if differ:
+        return 1
+    return 0
+
+
 def main(argv):
     if len(argv) == 2 and argv[1] in ('-h', '--help'):
         sys.stdout.write(USAGE)
@@ -836,6 +981,10 @@ def main(argv):
         return compare(argv[2], argv[3], argv[4], wanted)
     if len(argv) == 3 and argv[1] == 'secrets':
         return secrets(argv[2])
+    if len(argv) == 3 and argv[1] == 'pure-pin':
+        return pure_pin(argv[2])
+    if len(argv) == 5 and argv[1] == 'pure':
+        return pure_counts(argv[2], argv[3], argv[4])
     sys.stderr.write(USAGE)
     return 2
 

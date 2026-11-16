@@ -396,7 +396,8 @@ ci_result_of() {   # <stage>: print pass, fail or skip if its status holds exact
 
 ci_required() {   # <stage>: print the result files <stage> needs besides exit-code, seconds and result.txt
     case $1 in
-        pure|test-*) echo junit.xml ;;
+        pure) echo junit.xml pure-files.tsv ;;
+        test-*) echo junit.xml ;;
         package)
             _rqv=$(sed -n '1p' "${run:?ci_required needs run, the run folder}/input/pkg/version" 2>/dev/null |
                 tr -d '[:space:]')

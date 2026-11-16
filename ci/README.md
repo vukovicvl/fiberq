@@ -37,7 +37,7 @@ catatonit 0.2.1.
 
 | Stage | Runs in | What it checks |
 |---|---|---|
-| `pure` | the python image | the test files listed in `ci/pure-tests.txt`, which run with no QGIS installed (in the python image, those that need GDAL or lrelease skip) |
+| `pure` | the python image | the fast stage: every test file that imports with no QGIS, picked by the tested tree's `conftest.py`, which hides QGIS, PyQt, sip and GDAL's `osgeo` even where they are installed; a test that needs a pytest-qgis fixture is deselected, and the stage turns a failure into a skip only when a hidden module caused it (the exception the test ends with, or the uncaught one a child process dies of); every other failure fails. Each test file's pure items (the tests run, less the skips a hidden module caused, a test's own `pytest.importorskip` of one included) must equal its line in the tested tree's `ci/pure-count` |
 | `lint` | the python image | flake8 (on `fiberq/`, `tests/`, `conftest.py` and `tools/bench`) and Bandit (on `fiberq/`, every severity) with the flags of plugins.qgis.org's scan, detect-secrets on `fiberq/` as that scan runs it, shellcheck on `ci/*.sh` and `ci/hooks/`, flake8 on the Python files of `ci/`, the `.ts` placeholder check, and the forge configs ([below](#what-the-lint-stage-checks-in-the-forge-configs)) |
 | `qt6` | the Qt6 checker image | QGIS's `pyqt5_to_pyqt6.py`, as plugins.qgis.org runs it for its Qt6 Check tab: 0 findings in `fiberq/`, where the checker must also succeed, and at least 4 in `tests/qt6_seed/`, so a checker that stops reporting fails |
 | `floor` | the QGIS 3.22 image | every `fiberq/` module parses and imports on QGIS 3.22, which must be `qgisMinimumVersion` |
@@ -48,7 +48,7 @@ catatonit 0.2.1.
 
 | Set | Stages | Images to pull | Time here |
 |---|---|---|---|
-| `--hook` | pure, lint, package | the python image, about 0.2 GB | about a minute |
+| `--hook` | pure, lint, package | the python image, about 0.2 GB | about a minute and a quarter |
 | `--quick` | the hook set, qt6, floor | about 7.4 GB | under two minutes |
 | default | the quick set, test-322, test-344, test-42 | about 28 GB | 43 minutes, one leg at a time |
 | `--release` | the default set, test-340, test-40, release-check | about 36 GB | 52 minutes with `--jobs 2` |
@@ -76,7 +76,8 @@ sh ci/run-all.sh [--hook|--quick|--release] [--only <stage,...>] [--jobs N] [--r
   name means its test stage: `--only 42` is `--only test-42`.
 - `--ref <commit>`: test that commit's tree instead of the working tree. The scripts still come from the
   working tree, so an older commit, even v1.6.0, which has no `ci/`, can be tested. A `--ref` run never
-  copies into `dist/`.
+  copies into `dist/`. The pure stage reads the tested tree's `conftest.py` and `ci/pure-count`, so on a
+  tree from before them, such as v1.6.0, it fails and says so.
 - `--jobs N`: run the test legs in N lanes (default 1).
 - `--offline`: never fetch pinned tools; a stage whose tools are not cached fails.
 - `--strict`: a skipped stage fails the run, as under `--release`, without `--release`'s refusals; it
@@ -135,7 +136,8 @@ Each run writes a new folder, `ci-results/<UTC time>-<commit12>/` (`-2`, `-3` on
 - `run.txt`: the facts of the run (the commit, the trees, the images, the engine, the mode), written
   before the first stage;
 - `<stage>.log`, `stages/<stage>/status` (the verdict) and `stages/<stage>/out/` (what the stage wrote:
-  `result.txt`, and `junit.xml` from pure and the test legs);
+  `result.txt`; `junit.xml` from pure and the test legs; `pure-files.tsv` from pure, each test file
+  picked or left out, with the reason, and each test deselected);
 - `summary.md` (for people) and `record.txt` (for `tag.sh`), only when the summary stage passed; an
   interrupted run has neither;
 - `input/`: the snapshot of the working tree, when git is there, and what the stages read (in host mode,
@@ -313,7 +315,10 @@ sh ci/pull.sh --hook
 
 A push that only deletes refs tests nothing, several refs on one commit test it once, and a commit that
 the remote's tracking refs (`refs/remotes/<remote>/`) already reach is not tested again. When the hook
-set fails, git refuses the push; `git push --no-verify` skips the hook once. git runs the hook once for
+set fails, git refuses the push; `git push --no-verify` skips the hook once. A commit from before
+`ci/pure-count` (v1.6.0, or `main` before the fast stage) fails the hook set's pure stage when you push
+it from a later checkout (see `--ref` above): push it once with `git push --no-verify`, or from a
+checkout of that commit, whose own `ci/` then runs the hook (v1.6.0 has none). git runs the hook once for
 each push URL of a remote, and after each URL's push it moves the tracking branch of each ref that URL
 accepted, if the remote's fetch refspec maps it (by default every branch). So the next URL's run skips
 a commit that a branch the first URL accepted reaches, and tests the rest; a commit that only a tag
