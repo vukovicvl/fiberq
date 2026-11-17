@@ -4,7 +4,8 @@ FiberQ's test suite is in `tests/`: 114 test files and 2,315 tests, run by pytes
 of the root [`conftest.py`](../conftest.py). The pipeline in [`ci/`](../ci/README.md) runs it in the
 official QGIS images, from QGIS 3.22 to 4.2, and runs the part that needs no QGIS on its own, in a plain
 Python image. This page says what each tier of tests runs and how to run it, what "core logic" means here,
-how coverage is measured, and the rules for flaky tests, temporary folders, platforms and test data.
+how coverage is measured, the code the tests share, and the rules for flaky tests, temporary folders,
+platforms and test data.
 
 WP5, named below, is the work package "Automated tests and CI" of FiberQ's NLnet NGI0 Commons Fund
 grant.
@@ -329,6 +330,32 @@ Each column's percentage is over the statements of the commit it measures.
 | `utils/uuid_utils.py` | 171 | 76.0% | | | | |
 | **In scope (46 modules)** | **11,640** | **72.7%** | | | | |
 | **Core logic (50 modules)** | **12,093** | **71.7%** | | | | |
+
+## Code the tests share
+
+`tests/support/` holds code for tests to share, and no tests of its own:
+
+- `child.py`: `run_driver()` runs a driver script in a child Python with `sys.executable` and
+  `dict(os.environ, ...)`, as the fast stage asks, offscreen, in the folder it is given (also its `TMPDIR`)
+  and with a time limit. It returns the child's exit code, the JSON of its last `RESULT` line (None if there
+  is none, or if it is not JSON) and its output. It imports only the standard library.
+- `fake_iface.py`: `FakeIface`, a stand-in for QGIS's `iface` with what the plugin's `initGui` and `unload`
+  use: a real main window and map canvas, toolbars that belong to that window, and the actions added to
+  Plugins > FiberQ, in order (nothing takes them out). Anything else asked of it is a `MagicMock`. It
+  imports QGIS.
+- `toolbar_driver.py`: a driver that builds the plugin's toolbars with `FakeIface` and prints each toolbar,
+  drop-down and Plugins > FiberQ entry with what its icon draws, for `tests/test_toolbar_icons.py`.
+
+`pyproject.toml` puts `tests/` on pytest's `sys.path`, so a test file imports the runner with
+`from support.child import run_driver`, in any import mode. A driver that uses `FakeIface` puts the repository
+root and `tests/` on its own `sys.path`, and imports `support.fake_iface` once it has started a
+`QgsApplication`. What a test file imports at its top must import without QGIS, or the fast stage leaves the
+file out: `child.py` does, `fake_iface.py` does not. A test asserts the child's exit code and result before it
+reads the result, with the child's output in that assertion's message
+(`assert code == 0 and result is not None, output`), as both test files do: the fast stage turns a child that
+died of a hidden module into a skip only when that output is in the failure. Python puts a script's folder
+first on `sys.path`, and `toolbar_driver.py` runs from `tests/support/`, so no module there may be named like
+a standard-library, QGIS or installed module.
 
 ## Flaky tests
 

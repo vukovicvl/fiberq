@@ -10,8 +10,9 @@ AttributeError it logs.
 
 Why a subprocess: ``initGui()`` leaves toolbars, translators and project hooks
 behind, which in-process would reach every later test (the same reason as
-tests/test_toolbar_icons.py, whose fake iface this borrows), and the log level
-is read once, when ``fiberq.utils.logger`` is imported.
+tests/test_toolbar_icons.py), and the log level is read once, when
+``fiberq.utils.logger`` is imported. The Iface in DRIVER below is a near copy
+of FakeIface in tests/support/fake_iface.py, without addPluginToMenu.
 """
 import json
 import os

@@ -4,8 +4,9 @@
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-# Make the repo root importable so `import fiberq` works (plugin package is fiberq/).
-pythonpath = ["."]
+# The repo root, so that `import fiberq` works (the plugin package is fiberq/), and tests/, so that test
+# files import tests/support/ as `support` in any import mode.
+pythonpath = [".", "tests"]
 addopts = "-ra"
 markers = [
     "qgis: test needs a running QgsApplication (provided by pytest-qgis)",

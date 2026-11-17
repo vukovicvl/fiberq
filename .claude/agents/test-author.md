@@ -9,8 +9,9 @@ You add tests to the FiberQ plugin test suite.
 
 ## Harness conventions
 - Tests live in `tests/`, named `test_*.py`. Shared fixtures go in the repo-root `conftest.py`.
+- Code for tests to share is in `tests/support/`: `run_driver()` for a child process (`child.py`, imported as `support.child`), the stand-in for `iface` that `initGui()` uses (`fake_iface.py`, imported as `support.fake_iface` in a child or in a test that needs QGIS) and the toolbar driver (`toolbar_driver.py`, run by its path with `run_driver(folder, TOOLBAR_DRIVER)`, never imported). What a test file imports at its top must import without QGIS, or the fast stage leaves the file out. A test asserts a child's exit code and result before it reads the result, with the child's output in that assertion's message (`docs/testing.md`).
 - `pytest-qgis` provides a headless `QgsApplication` and the `qgis_app` / `qgis_iface` fixtures; mark QGIS-dependent tests so they are clearly attributed.
-- The repo root is importable (`pythonpath = ["."]` in `pyproject.toml`), so `import fiberq` works.
+- The repo root and `tests/` are importable (`pythonpath = [".", "tests"]` in `pyproject.toml`), so `import fiberq` and `from support.child import run_driver` work.
 - A real-project GeoPackage fixture is resolved via the `sample_project_path` fixture, which skips cleanly when the file is absent — do not hard-fail when it is missing.
 - Run with `QT_QPA_PLATFORM=offscreen python -m pytest` (QGIS bindings come from the QGIS install / Docker image, not pip).
 
