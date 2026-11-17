@@ -147,8 +147,8 @@ Inside a leg, the tests are of a few kinds, told apart by what they build rather
 - tests that open the canvas, a dialog or a stand-in for QGIS's `iface`;
 - tests on real GeoPackages, projects and exported files, written to temporary folders;
 - tests that start QGIS, or the plugin's `initGui` and `unload`, in a child Python process, so that a
-  crash fails one test and not the whole run; the initGui golden file is of this kind
-  ([The plugin's entry points](#the-plugins-entry-points));
+  crash fails one test and not the whole run; the initGui golden file and the lifecycle ratchet are
+  of this kind ([The plugin's entry points](#the-plugins-entry-points));
 - the fast tests above, which run on every leg as well.
 
 A test that cannot run on a leg skips, with its reason in the leg's record: for example, the benchmark
@@ -204,8 +204,8 @@ the in-scope total.
 ## The plugin's entry points
 
 WP5 tests the plugin's entry points, `initGui`, `unload` and the toolbar actions. The initGui golden file
-builds the plugin in a child process with a stand-in for QGIS's `iface` (`FakeIface`,
-[Code the tests share](#code-the-tests-share)), on every leg.
+and the lifecycle ratchet build the plugin in a child process with a stand-in for QGIS's `iface`
+(`FakeIface`, [Code the tests share](#code-the-tests-share)), on every leg.
 
 ### The initGui golden file
 
@@ -290,6 +290,68 @@ is kept only when the suite runs in place, as `make test` does, under
 plugin's keys. A translation catalogue that gets its first translations changes the file too: its language
 then joins the plugin's language drop-down, so that change writes the file anew as well.
 
+### The lifecycle ratchet
+
+QGIS reloads a plugin by calling `unload()` on it, dropping it, and building a new one with
+`classFactory()` and `initGui()`. Whatever `unload()` does not take back stays in QGIS for the rest of the
+session, one more copy at each reload. `tests/test_lifecycle_ratchet.py` counts it. Its child process,
+`tests/support/lifecycle_driver.py`, runs two such cycles with `LifecycleIface`, a `FakeIface` that takes
+back what the plugin registers, as QGIS's own `iface` does (a toolbar that Python owns, a
+`removePluginMenu` that removes, docking on the real window, a ledger of toolbar icons). Unlike QGIS's
+reload, the cycles do not import the plugin's modules again: what a module makes when it is imported is
+made once here, and again at every reload in QGIS. It counts the main window and the canvas before the
+first cycle ("plain") and after each step:
+
+- the actions under the main window, and those parented to it; the menus, shortcuts, toolbars and docks;
+- the timers under the window, the active timers that have a Python wrapper, and the pending one-shot timers;
+- the receivers of every signal of the project and of the map canvas, each overload by its signature;
+- the canvas's children, and the plugin's event filters on the canvas viewport, the canvas and the main
+  window, from any class of the plugin's, a mixin or a class made inside a function included;
+- the plugin objects alive, the entries in Plugins > FiberQ, the toolbar icons and the translators;
+- the canvas's map tool, and every object under the window, by class.
+
+The pins, `PINS` in the test file, are deltas from the plain window of the same child, after one cycle
+and after two: the absolute counts differ between QGIS versions, the deltas do not, so one set of pins
+serves QGIS 3.22 to 4.2. They hold what v1.6.0 leaves behind, per cycle: 101 actions (88 parented to the
+main window and 13 in the plugin's 12 menus), those 12 menus, the picture watcher (a canvas child and a
+viewport filter), the pending one-shot of the 2 s schema migration that `initGui` arms, a
+`DoubleTapSpaceFilter` object, and the unloaded plugin object itself, which those actions keep alive. In
+the real QGIS, one cycle leaves 109 actions: the other 8 are left under QGIS's Plugins menu by QGIS's own
+`removePluginMenu`, which the plugin's `unload()` calls for actions that are not in that menu.
+`LifecycleIface` only removes, so the child counts 101.
+
+The rule is equality, with a message for each direction. A count above its pin fails with "unload() now
+leaves more behind than PINS allows (v1.6.0's values until a fix lowers them)", naming the count, and a
+signal by its signature. A count below its pin fails too, with "good: set PINS['<count>'] to (a, b) in this
+PR, so that it cannot creep back": the change that fixes a leftover lowers its pin in the same pull
+request. A count of several parts, such as the receivers per signal, is compared part by part, so one more
+receiver on one signal cannot hide behind one fewer on another.
+
+The counts are taken without running any delayed timer: before each snapshot the driver delivers the
+posted events and the deferred deletions and collects Python's garbage, until two rounds count the same. A
+pending one-shot is counted, never fired, so a slow machine counts what a fast one does; a 0 ms one-shot
+is a posted call, so it runs in the first round after it, as it runs at once in QGIS. Three positive
+controls run first, in the same child: a one-shot timer must add one pending timer, and an event filter on
+the canvas viewport and a slot on the project's `readProject` must each add one and take it back when
+removed. If a Qt version changed how one of these is held, its count would fall and read as a fix; the
+controls fail first, with "fix lifecycle_driver.py; do not change PINS".
+
+The child runs the plugin in Serbian, while the initGui golden file's child runs it in English. Serbian
+has a catalogue with translations, so the plugin installs a translator, and the ratchet sees one
+translator after construction and none after `unload()`; in English the plugin installs none, and the
+translator count would see nothing. The golden file holds the English labels, so its child pins English.
+The test checks that the language held (`effective_language` is `sr`) and that the translator came, before
+it compares. As in the golden file's child, a message box, any other window that waits for a click, or an
+`iface` call that `FakeIface` answers with a `MagicMock` fails the test.
+
+One more test pins a known unload defect: a map tool of the plugin's that is active at `unload()` stays
+set on the canvas, and alive. The test activates the fiber break tool, unloads the plugin, and fails when
+the tool is still set. It is marked `xfail(strict=True)`, with the defect's follow-up number in its
+reason: strict, so that the fix, which makes the test pass, also removes the marker; and `raises=` keeps
+every other failure real (a child that dies, a window that blocks, a tool that was never set, an `iface`
+call that `FakeIface` answers with a `MagicMock`). The file's three other tests need no QGIS: they are pure
+items, which check the ratchet's messages for a count that rose, one that fell and none that moved.
+
 ## WP5's test files
 
 | File | Item | Kind | Tests | Pure items |
@@ -297,6 +359,7 @@ then joins the plugin's language drop-down, so that change writes the file anew 
 | `tests/test_floor_seed.py`, with `tests/floor_check.py` and `tests/floor_seed/` | the seeds of the floor gate, in v1.6.0 already | checks the seed files as text | 7 | 7 |
 | `tests/test_qt6_seed.py`, with `tests/qt6_seed/` | the seeds of the Qt6 check, in v1.6.0 already | checks the seed files as text | 3 | 3 |
 | `tests/test_initgui_snapshot.py`, with `tests/support/initgui_snapshot.py` and `tests/initgui_golden.json` | the initGui golden file | a child process on every leg, read by two tests, one of them an expected failure; checks of the snapshot comparison and of the file format | 18 | 16 |
+| `tests/test_lifecycle_ratchet.py`, with `tests/support/lifecycle_driver.py` | the lifecycle ratchet | two child processes on every leg, one of them an expected failure; checks of the ratchet's messages | 5 | 3 |
 
 ## The fast-stage count
 
@@ -343,8 +406,8 @@ sh ci/run-all.sh --only test-coverage                 # v1.7.0
 git switch -c coverage-without-wp5                    # a throwaway branch
 git rm -rq tests/test_floor_seed.py tests/floor_check.py tests/floor_seed \
     tests/test_qt6_seed.py tests/qt6_seed \
-    tests/test_initgui_snapshot.py tests/support/initgui_snapshot.py \
-    tests/initgui_golden.json                         # and every other path under WP5's test files
+    tests/test_initgui_snapshot.py tests/support/initgui_snapshot.py tests/initgui_golden.json \
+    tests/test_lifecycle_ratchet.py tests/support/lifecycle_driver.py   # and every other path under WP5's test files
 git commit -qm 'coverage: without WP5 test files'
 sh ci/run-all.sh --only test-coverage                 # v1.7.0 without WP5's test files
 ```
@@ -442,6 +505,8 @@ column's percentage is over the statements of the commit it measures.
   file, the golden file's writer, and the child driver of `tests/test_initgui_snapshot.py`. It imports
   only the standard library at its top, and QGIS inside the functions that need it, so a test file can
   import it at its top.
+- `lifecycle_driver.py`: the child driver of `tests/test_lifecycle_ratchet.py`, with `LifecycleIface` and
+  every count the ratchet pins.
 
 WP5's modules here may import `child.py` and `fake_iface.py`, but no other test file or module imports one
 of WP5's, so the coverage procedure can remove WP5's test files and leave every other test as it is

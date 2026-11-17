@@ -20,6 +20,7 @@
 15 tests/test_interchange_fields.py
 15 tests/test_interchange_format_doc.py
 15 tests/test_interchange_mapping.py
+3 tests/test_lifecycle_ratchet.py
 1 tests/test_logger_fallback.py
 7 tests/test_project_compat.py
 8 tests/test_qgis4_deprecations.py
