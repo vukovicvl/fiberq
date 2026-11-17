@@ -28,19 +28,17 @@ whole run with it. The obvious half-fix -- ``deleteLater()`` on the view while
 the lambdas stay connected -- does exactly that: the next ``layersAdded`` calls
 into a deleted ``QTimer`` and then a deleted ``QGraphicsScene``. The child also
 gets its own ``initGui()``/``unload()``, which in-process would leave toolbars,
-translators and project hooks behind for every later test.
+translators and project hooks behind for every later test. It builds the plugin
+with the stand-in for QGIS's iface in tests/support/fake_iface.py, as
+tests/test_toolbar_icons.py's child does.
 """
-import json
 import os
-import subprocess
-import sys
 
 import pytest
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from support.child import run_driver
 
-#: Wall-clock ceiling for the child. The suite has no timeout plugin.
-TIMEOUT_S = 120
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 DRIVER = '''
 import inspect
@@ -48,9 +46,8 @@ import json
 import os
 import sys
 import time
-from unittest import mock
 
-sys.path.insert(0, {repo!r})
+sys.path[:0] = [{repo!r}, os.path.join({repo!r}, "tests")]
 
 from qgis.core import (QgsApplication, QgsFeature, QgsGeometry, QgsPointXY,
                        QgsProject, QgsVectorLayer)
@@ -59,9 +56,10 @@ QgsApplication.setPrefixPath("/usr", True)
 APP = QgsApplication([], True)
 APP.initQgis()
 
-from qgis.gui import QgsMapCanvas
 from qgis.PyQt.QtCore import QEvent
-from qgis.PyQt.QtWidgets import QMainWindow, QMessageBox, QToolBar, QWidget
+from qgis.PyQt.QtWidgets import QMessageBox, QWidget
+
+from support.fake_iface import FakeIface
 
 # open_optical_schematic() reports a failure with QMessageBox.critical, which
 # would block a headless child until the timeout instead of failing it.
@@ -70,30 +68,6 @@ QMessageBox.critical = staticmethod(lambda *a, **k: print("CRITICAL", a[1:3], fl
 #: Anything escaping a slot lands here instead of killing the interpreter.
 ERRORS = []
 sys.excepthook = lambda kind, value, tb: ERRORS.append("%s: %s" % (kind.__name__, value))
-
-
-class Iface:
-    """What initGui() and unload() really use; the rest answers with a MagicMock."""
-
-    def __init__(self):
-        self._window = QMainWindow()
-        self._canvas = QgsMapCanvas(self._window)
-        self._window.setCentralWidget(self._canvas)
-        self._mocks = {{}}
-
-    def mainWindow(self):
-        return self._window
-
-    def mapCanvas(self):
-        return self._canvas
-
-    def addToolBar(self, name):
-        return QToolBar(name, self._window)
-
-    def __getattr__(self, name):
-        if name.startswith("__"):
-            raise AttributeError(name)
-        return self.__dict__["_mocks"].setdefault(name, mock.MagicMock(name=name))
 
 
 def pump(seconds):
@@ -160,7 +134,7 @@ def calls_of(view):
 # It is not what this test is about, and it must not land in the middle of it.
 FiberQPlugin._run_schema_migrations = lambda self: None
 
-plugin = FiberQPlugin(Iface())
+plugin = FiberQPlugin(FakeIface())
 plugin.initGui()
 out = {{}}
 
@@ -237,15 +211,7 @@ def child(tmp_path_factory):
     folder = tmp_path_factory.mktemp("schematic_lifecycle")
     script = folder / "schematic_lifecycle.py"
     script.write_text(DRIVER.format(repo=REPO_ROOT), encoding="utf-8")
-    environment = dict(os.environ, QT_QPA_PLATFORM="offscreen",
-                       TMPDIR=str(folder), FIBERQ_LOG_FILE="false")
-    done = subprocess.run([sys.executable, str(script)], cwd=str(folder),
-                          env=environment, timeout=TIMEOUT_S,
-                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    output = done.stdout.decode("utf-8", "replace")
-    lines = [ln for ln in output.splitlines() if ln.startswith("RESULT ")]
-    result = json.loads(lines[-1][len("RESULT "):]) if lines else None
-    return done.returncode, result, output
+    return run_driver(folder, script)
 
 
 def _ok(child):
@@ -393,15 +359,7 @@ def follow_child(tmp_path_factory):
     folder = tmp_path_factory.mktemp("schematic_follow")
     script = folder / "schematic_follow.py"
     script.write_text(FOLLOW_DRIVER.format(repo=REPO_ROOT), encoding="utf-8")
-    environment = dict(os.environ, QT_QPA_PLATFORM="offscreen",
-                       TMPDIR=str(folder), FIBERQ_LOG_FILE="false")
-    done = subprocess.run([sys.executable, str(script)], cwd=str(folder),
-                          env=environment, timeout=TIMEOUT_S,
-                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    output = done.stdout.decode("utf-8", "replace")
-    lines = [ln for ln in output.splitlines() if ln.startswith("RESULT ")]
-    result = json.loads(lines[-1][len("RESULT "):]) if lines else None
-    return done.returncode, result, output
+    return run_driver(folder, script)
 
 
 def test_a_layer_added_to_the_project_shows_up_in_an_open_view(follow_child):
@@ -545,15 +503,7 @@ def late_child(tmp_path_factory):
     folder = tmp_path_factory.mktemp("schematic_late_layers")
     script = folder / "schematic_late_layers.py"
     script.write_text(LATE_DRIVER.format(repo=REPO_ROOT), encoding="utf-8")
-    environment = dict(os.environ, QT_QPA_PLATFORM="offscreen",
-                       TMPDIR=str(folder), FIBERQ_LOG_FILE="false")
-    done = subprocess.run([sys.executable, str(script)], cwd=str(folder),
-                          env=environment, timeout=TIMEOUT_S,
-                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    output = done.stdout.decode("utf-8", "replace")
-    lines = [ln for ln in output.splitlines() if ln.startswith("RESULT ")]
-    result = json.loads(lines[-1][len("RESULT "):]) if lines else None
-    return done.returncode, result, output
+    return run_driver(folder, script)
 
 
 def test_a_layer_added_after_the_view_opened_is_followed(late_child):

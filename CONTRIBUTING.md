@@ -63,6 +63,7 @@ fiberq/               the plugin package (this is what ships)
   i18n/               translation catalogues (.ts sources, .qm compiled)
   styles/ icons/ resources/
 tests/                pytest suite
+  support/            code the tests share: a stand-in for iface, the toolbar driver, a child runner
 docs/                 schema.md, i18n.md, project-versioning-guide.md
 ci/                   the pipeline: run-all.sh, the stage scripts, ci/legs, ci/hooks/ (ci/README.md); CI runs it
 Makefile              short names for the pipeline (make lint, make test, ...) and other developer targets

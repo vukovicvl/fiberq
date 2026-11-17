@@ -27,25 +27,22 @@ interface language.
 
 Why a subprocess: initGui() leaves toolbars, translators and project hooks
 behind, which in-process would reach every later test (the same reason as
-tests/test_schematic_lifecycle.py, whose fake iface this borrows).
+tests/test_schematic_lifecycle.py). The child is tests/support/toolbar_driver.py,
+with the stand-in for QGIS's iface that both files use (tests/support/fake_iface.py).
 """
 import ast
-import json
 import os
 import pathlib
 import re
-import subprocess
-import sys
 from itertools import combinations
 
 import pytest
 
+from support.child import TOOLBAR_DRIVER, run_driver
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PACKAGE = pathlib.Path(REPO_ROOT) / "fiberq"
 ICONS = PACKAGE / "icons"
-
-#: Wall-clock ceiling for the child. The suite has no timeout plugin.
-TIMEOUT_S = 120
 
 #: The share of inked pixels (alpha above 64 in either icon) that must differ
 #: (any RGBA channel by more than 64) between two icons side by side, at 16 px.
@@ -81,157 +78,12 @@ MENUS = {"menu:ic_laying_cable.svg", "menu:ic_cable_underground.svg", "menu:ic_a
          "menu:ic_selection.svg", "menu:ic_slack_midspan.svg", "menu:ic_drawing.svg",
          "menu:ic_drawing_object.svg", "menu:ic_export_features.svg"}
 
-DRIVER = '''
-import hashlib
-import json
-import os
-import sys
-from unittest import mock
-
-sys.path.insert(0, {repo!r})
-
-from qgis.core import QgsApplication
-
-QgsApplication.setPrefixPath("/usr", True)
-APP = QgsApplication([], True)
-APP.initQgis()
-
-from qgis.gui import QgsMapCanvas
-from qgis.PyQt.QtCore import QBuffer, QByteArray, QIODevice, QSize
-from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QMainWindow, QMessageBox, QToolBar, QToolButton
-
-PLUGIN_MENU = []
-MODALS = []
-
-
-def modal(kind):
-    def show(*args, **kwargs):
-        MODALS.append([kind] + [str(a) for a in args[1:3]])
-        return QMessageBox.StandardButton.No
-    return show
-
-
-# A dialog raised while the toolbar is built would wait for a click until the
-# timeout; record it instead, and the test below fails on it.
-for kind in ("critical", "warning", "information", "question"):
-    setattr(QMessageBox, kind, staticmethod(modal(kind)))
-
-
-class Iface:
-    """What initGui() really uses; the rest answers with a MagicMock."""
-
-    def __init__(self):
-        self._window = QMainWindow()
-        self._canvas = QgsMapCanvas(self._window)
-        self._window.setCentralWidget(self._canvas)
-        self._mocks = {{}}
-
-    def mainWindow(self):
-        return self._window
-
-    def mapCanvas(self):
-        return self._canvas
-
-    def addToolBar(self, name):
-        return QToolBar(name, self._window)
-
-    def addPluginToMenu(self, _menu, action):
-        PLUGIN_MENU.append(action)
-
-    def __getattr__(self, name):
-        if name.startswith("__"):
-            raise AttributeError(name)
-        return self.__dict__["_mocks"].setdefault(name, mock.MagicMock(name=name))
-
-
-def drawn(icon):
-    """What the icon draws: a digest at toolbar size and its 16 px RGBA, or None."""
-    if icon.isNull():
-        return None
-    data = QByteArray()
-    buffer = QBuffer(data)
-    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
-    icon.pixmap(QSize(32, 32)).toImage().save(buffer, "PNG")
-    buffer.close()
-    small = icon.pixmap(QSize(16, 16)).toImage()
-    pixels = []
-    for y in range(16):
-        for x in range(16):
-            if x < small.width() and y < small.height():
-                c = small.pixelColor(x, y)
-                pixels.append("%02x%02x%02x%02x" % (c.red(), c.green(), c.blue(), c.alpha()))
-            else:
-                pixels.append("00000000")
-    return [hashlib.sha1(bytes(data)).hexdigest(), "".join(pixels)]
-
-
-icons = os.path.join({repo!r}, "fiberq", "icons")
-files = {{name: drawn(QIcon(os.path.join(icons, name)))
-         for name in sorted(os.listdir(icons)) if name.endswith(".svg")}}
-
-from fiberq.main_plugin import FiberQPlugin
-
-# initGui() arms a 2 s one-shot schema migration; nothing here waits for it.
-FiberQPlugin._run_schema_migrations = lambda self: None
-plugin = FiberQPlugin(Iface())
-plugin.initGui()
-
-containers = []
-
-
-def menu(title, qmenu, group):
-    rows = []
-    containers.append({{"title": title, "group": group, "rows": rows}})
-    for action in qmenu.actions():
-        if action.isSeparator() or not action.isVisible():
-            continue
-        rows.append([action.text(), drawn(action.icon())])
-        if action.menu() is not None:
-            menu(title + " > " + action.text(), action.menu(), drawn(action.icon()))
-
-
-def toolbar(title, key, bar):
-    rows = []
-    containers.append({{"title": title, "key": key, "rows": rows}})
-    for action in bar.actions():
-        button = bar.widgetForAction(action)
-        if action.isSeparator() or not action.isVisible() or not isinstance(button, QToolButton):
-            continue
-        label = action.text() or button.toolTip() or button.text()
-        rows.append([label, drawn(button.icon())])
-        if button.menu() is not None:
-            menu(title + " > " + label, button.menu(), drawn(button.icon()))
-
-
-toolbar("FiberQ toolbar", "toolbar", plugin.toolbar)
-quick = getattr(plugin, "quick_toolbar", None)
-if quick is not None:
-    toolbar("FiberQ Quick toolbar", "quick", quick.toolbar)
-containers.append({{"title": "Plugins > FiberQ", "key": "plugins",
-                   "rows": [[a.text(), drawn(a.icon())] for a in PLUGIN_MENU]}})
-
-print("RESULT " + json.dumps({{"files": files, "containers": containers, "modals": MODALS}}), flush=True)
-sys.stdout.flush()
-os._exit(0)
-'''
-
 
 @pytest.fixture(scope="module")
 def built(tmp_path_factory):
     """Build both toolbars once in a child process and name every container."""
-    folder = tmp_path_factory.mktemp("toolbar_icons")
-    script = folder / "toolbar_icons.py"
-    script.write_text(DRIVER.format(repo=REPO_ROOT), encoding="utf-8")
-    environment = dict(os.environ, QT_QPA_PLATFORM="offscreen",
-                       TMPDIR=str(folder), FIBERQ_LOG_FILE="false")
-    done = subprocess.run([sys.executable, str(script)], cwd=str(folder),
-                          env=environment, timeout=TIMEOUT_S,
-                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    output = done.stdout.decode("utf-8", "replace")
-    lines = [ln for ln in output.splitlines() if ln.startswith("RESULT ")]
-    assert done.returncode == 0 and lines, f"returncode {done.returncode}\n{output}"
-    result = json.loads(lines[-1][len("RESULT "):])
+    code, result, output = run_driver(tmp_path_factory.mktemp("toolbar_icons"), TOOLBAR_DRIVER)
+    assert code == 0 and result is not None, f"returncode {code}\n{output}"
     names = {}
     for name, drawing in result["files"].items():
         if drawing:
