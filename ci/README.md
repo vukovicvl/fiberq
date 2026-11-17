@@ -48,6 +48,8 @@ catatonit 0.2.1.
 | `test-local` | in place only | the whole test suite on the QGIS that `python3` imports here |
 | `test-coverage` | the QGIS 4.2 image, in host mode only | the suite of test-42 under coverage.py, set by `ci/coverage.ini` alone, Python child processes included; it writes the statement coverage of each core-logic module (`coverage-core.md`). It is measured, not gated: it fails only when a test fails, the report cannot be written, or no child process was measured or its data files cannot be counted. In no set: `sh ci/run-all.sh --only test-coverage` |
 
+[docs/testing.md](../docs/testing.md) says what the tests in these stages cover and how to run each tier.
+
 | Set | Stages | Images to pull | Time here |
 |---|---|---|---|
 | `--hook` | pure, lint, package | the python image, about 0.2 GB | about a minute and a quarter |
