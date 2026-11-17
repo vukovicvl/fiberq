@@ -91,7 +91,8 @@ help:
 	@echo "               dist/ holds none of its files (nothing there is overwritten)"
 	@echo "  ci           the default set: pure lint qt6 floor package, test legs 3.22 3.44 4.2"
 	@echo "  ci-quick     pure lint qt6 floor package"
-	@echo "  release      the release set: the default set, legs 3.40 4.0, the release check (= ci-release)"
+	@echo "  release      the release set: the default set, legs 3.40 4.0, the app smoke on 3.40 and 4.2,"
+	@echo "               the release check (= ci-release)"
 	@echo "  tag          tag v$(VERSION) when the newest full release run of this tree passed"
 	@echo "               (RELEASE.md, step 5)"
 	@echo "  install      copy the plugin into your local QGIS profile (manual testing)"
@@ -478,8 +479,9 @@ uninstall:
 # (make qt6-check runs it for the checker). Results: ci-results/<run>/.
 #   make ci          the default set: pure lint qt6 floor package, then the test legs 322 344 42
 #   make ci-quick    pure lint qt6 floor package
-#   make ci-release  the release set: the default set plus the legs 340 and 40 and the release
-#                    check; it refuses a dirty working tree or a shallow clone
+#   make ci-release  the release set: the default set plus the legs 340 and 40, the app smoke on
+#                    QGIS 3.40 and 4.2 and the release check; it refuses a dirty working tree or a
+#                    shallow clone
 #   make release     the same as make ci-release (RELEASE.md, step 3)
 #   make tag         the annotated tag v<version> on HEAD, made only when the newest full release
 #                    run of HEAD's tree passed and its zip is the one in dist/; it never pushes

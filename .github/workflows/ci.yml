@@ -4,8 +4,8 @@
 # uploads its run record from ci-results/. All the logic is in ci/, and the same commands run on any machine
 # that ci/README.md's "What the host needs" describes.
 #   push to a branch (not release/*)  the default set: pure lint qt6 floor package test-322 test-344 test-42
-#   push to release/*, push of a tag  the release set (--release): the default set, test-340, test-40 and
-#                                     release-check
+#   push to release/*, push of a tag  the release set (--release): the default set, test-340, test-40, the app
+#                                     smoke on QGIS 3.40 and 4.2 (app-340, app-42) and release-check
 #   Run workflow (workflow_dispatch)  the release set, on the branch or tag picked
 #   pull request                      the default set, only from a fork: a branch of this repository already
 #                                     runs on its push
@@ -75,7 +75,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stage: [pure, lint, qt6, floor, package, test-322, test-340, test-344, test-40, test-42, release-check]
+        stage: [pure, lint, qt6, floor, package, test-322, test-340, test-344, test-40, test-42, app-340, app-42, release-check]
     steps:
       - name: Check out the commit, with full history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1

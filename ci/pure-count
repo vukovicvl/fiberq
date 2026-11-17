@@ -6,6 +6,7 @@
 # A change that adds pure tests adds or raises their file's line. The total may only rise: a change that lowers it
 # needs the maintainer's approval in its pull request. The stage compares each file with its line in the tree it
 # tests, never with an earlier commit, so that rule is kept in review.
+34 tests/test_app_junit.py
 6 tests/test_bench_harness.py
 13 tests/test_bench_report.py
 7 tests/test_city_fixture.py

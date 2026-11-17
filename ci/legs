@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Images the pipeline runs, pinned by digest, one line per role: python (pure, lint, package, the summary, lock and
-# compare), checker (qt6), floor, and the five test legs 322 340 344 40 42 (the file is named after them).
+# compare), checker (qt6), floor, and the five test legs 322 340 344 40 42 (the file is named after them; 340 and
+# 42 also run the app stages).
 #   <role> <registry>/<repository>@sha256:<64 hex> <tag that sh ci/pull.sh --bump resolves>
 # Bump on purpose, in a commit of its own, as RELEASE.md says (step 1 and "Moving a pin").
 python   docker.io/library/python@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90     3.13-slim

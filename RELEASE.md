@@ -34,6 +34,9 @@ again; the others are yours.
       flags LOW findings too), detect-secrets finds 0 in `fiberq/`, and shellcheck, the `.ts` placeholder
       check and the forge-config check pass (`make lint`; *release run*).
 - [ ] The test suite passes on all five QGIS versions of the release set (*release run*).
+- [ ] The app smoke passes on QGIS 3.40 and 4.2: the zip that the app stages build from the release tree
+      installs with QGIS's own Install from ZIP code, its toolbars and keys match the initGui golden file,
+      and a short workflow and a reload of the plugin pass in the real QGIS desktop (*release run*).
 - [ ] The checker pin in `ci/legs` is the current build of the checker's `main-ubuntu` tag (step 1).
 - [ ] The Qt6 check is clean: the same `pyqt5_to_pyqt6.py --dry_run` check plugins.qgis.org runs, so the
       plugin page's **Qt6 Check** tab is green on upload rather than after it (`make qt6-check`;
@@ -74,15 +77,18 @@ again; the others are yours.
    sh ci/pull.sh --release                  # once: the images, about 36 GB; the only step that pulls
    sh ci/run-all.sh --release --jobs 2      # or: make release CI_ARGS='--jobs 2'
    ```
-   It runs pure, lint, qt6, floor, package, the five test legs and the release check, and fails on any
-   failure or skip. It refuses a dirty working tree or a shallow clone, and then runs nothing. It ends
-   with `run-all.sh: PASS`; its record is `ci-results/<run>/summary.md` and `record.txt` (about an hour
-   on one Linux machine with two legs at a time). The package stage copies the zip, its `.sha256` and its
-   `.contents.tsv` into `dist/`. If `dist/` already holds another build of this version, the run fails:
-   move those files aside by hand (nothing in the pipeline overwrites or deletes them) and run it again.
+   It runs pure, lint, qt6, floor, package, the five test legs, the app smoke on QGIS 3.40 and 4.2 and
+   the release check, and fails on any failure or skip. It refuses a dirty working tree or a shallow clone,
+   and then runs nothing. It ends with `run-all.sh: PASS`; its record is `ci-results/<run>/summary.md` and
+   `record.txt` (about 56 minutes on one Linux machine with two legs at a time). The package stage copies
+   the zip, its `.sha256` and its `.contents.tsv` into `dist/`. If `dist/` already holds another build of
+   this version, the run fails: move those files aside by hand (nothing in the pipeline overwrites or
+   deletes them) and run it again.
 
 4. **Hand checks.** Install `dist/fiberq-<version>.zip` in a clean QGIS profile, and on Windows too when
-   a Windows machine is at hand. Open an older project and a new one. The maintainer reviews the code.
+   a Windows machine is at hand. Open an older project and a new one. The maintainer reviews the code. The
+   app stages of step 3 installed a zip that they built themselves from the same tree, on Linux under
+   Xvfb; this step installs the zip in `dist/`, by hand.
 
 5. **Merge, then tag.** Merge the release branch with a merge commit. Fast-forward the local `main` to
    that merge commit, and run `make tag` (`sh ci/tag.sh`) there, in the checkout that made the release
@@ -129,6 +135,8 @@ tests that range in the official QGIS images, each pinned by its digest in `ci/l
 | `test-344` | `qgis/qgis:3.44-trixie` (344) | 3.44, Python 3.13 | the whole test suite on QGIS 3 (Qt5) | default, release |
 | `test-40` | `qgis/qgis:4.0-trixie` (40) | 4.0, Python 3.13 | the whole test suite | release |
 | `test-42` | `qgis/qgis:4.2-trixie` (42) | 4.2, Python 3.13 | the whole test suite on QGIS 4 (Qt6) | default, release |
+| `app-340` | `qgis/qgis:3.40` (340) | 3.40, Python 3.12 | the app smoke on QGIS 3 (Qt5): the zip installed and used in the real QGIS desktop, under xvfb-run | release |
+| `app-42` | `qgis/qgis:4.2-trixie` (42) | 4.2, Python 3.13 | the app smoke on QGIS 4 (Qt6) | release |
 | `qt6` | `ghcr.io/qgis/pyqgis4-checker` (checker) | | no Qt5-only spelling in `fiberq/`, as the Qt6 Check tab | quick, default, release |
 
 The floor takes two stages because pytest-qgis needs Python 3.10 and the `qgis/qgis:3.22` image has
@@ -170,3 +178,6 @@ previous one test by test compares runs on the same digests: after moving a QGIS
 previous release's tag again on it, `sh ci/run-all.sh --release --ref v<previous>`, and compare with
 that run. A tag from before the automatic fast stage, such as v1.6.0, has no `ci/pure-count`: that run's
 pure stage fails and says so, and the comparison leaves pure out, since that run has no junit.xml for it.
+A tag from before the app stages, such as v1.6.0 again, fails them the same way, and the comparison leaves
+them out too. An app stage that passed no check in the old run shows 0 old passes and so 0 lost, which
+proves nothing: lost tests are counted from the old run's passes.

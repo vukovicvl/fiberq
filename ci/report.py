@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # ci/report.py - the run record (summary.md, record.txt), the JUnit compare of two runs, the detect-secrets count,
-# the pure stage's counts and the coverage table.
+# the pure stage's counts, the coverage table and the app stages' JUnit record.
 # Usage (stdlib only, Python 3.8 or later):
 #   python3 -I ci/report.py summary
 #       reads $CI_IN/run.txt and $CI_IN/stages/, writes summary.md, record.txt and result.txt into $CI_OUT
@@ -17,15 +17,20 @@
 #   python3 -I ci/report.py coverage <coverage JSON> <out-dir>
 #       writes coverage-core.tsv and coverage-core.md (the core-logic modules) into <out-dir>, prints the totals
 #       as result.txt lines
+#   python3 -I ci/report.py app-junit <suite> <junit.xml> (<start> <dir> <exit|none> <seconds> <limit>)...
+#       writes the app stage's junit.xml from each QGIS start's records (tests/app/runner.py's report.json, the
+#       startup guard's guard.json, steps.jsonl), prints each start's code, then the counts, as result.txt lines
 # ci/run-all.sh runs "summary" in the python image of ci/legs (in place: with this Python), ci/compare.sh runs
-# "compare" there, ci/lint.sh runs "secrets", ci/test.sh runs "pure-pin", "pure" and "coverage" in their stages.
+# "compare" there, ci/lint.sh runs "secrets", ci/test.sh runs "pure-pin", "pure" and "coverage" in their stages,
+# ci/app-smoke.sh runs "app-junit" in the app stages.
 # A stage's verdict is its status file: exactly one result= line, pass, fail or skip; anything else is invalid and
 # counts as a failure, as in ci/common.sh. A skip counts as a failure in a release run, and in a run with --strict
 # (strict=yes in run.txt).
-# Exit: 0 done (summary: whatever the run's result is); 1 summary: run.txt has no stages=, or its run_result=
-#       differs from the stages' verdicts; compare: a test was lost, or a compared stage is missing from the new
-#       run; pure: a test file's pure items differ from ci/pure-count; coverage: the JSON holds no core-logic
-#       module; 2 usage, an input that cannot be read or is not valid, or (compare) nothing to compare.
+# Exit: 0 done (summary: whatever the run's result is; app-junit: junit.xml written, whatever the starts did);
+#       1 summary: run.txt has no stages=, or its run_result= differs from the stages' verdicts; compare: a test was
+#       lost, or a compared stage is missing from the new run; pure: a test file's pure items differ from
+#       ci/pure-count; coverage: the JSON holds no core-logic module; 2 usage, an input that cannot be read or is
+#       not valid, (compare) nothing to compare, or (app-junit) junit.xml exists already or cannot be written.
 
 import datetime
 import json
@@ -36,7 +41,7 @@ import xml.etree.ElementTree as ET
 
 SECRET_SKIP = ('.pyc', '.pyo', '.so', '.dll', '.exe')
 STAGE_NAME = re.compile(r'[a-z0-9][a-z0-9-]*')
-JUNIT_STAGE = re.compile(r'pure|test-[a-z0-9]+')
+JUNIT_STAGE = re.compile(r'pure|test-[a-z0-9]+|app-[a-z0-9]+')
 # a skip of the pure stage's own: a test that met a hidden module (conftest.py, FIBERQ_PURE=1)
 PURE_SKIP = ('pure stage:', '(hidden in the pure stage)')
 PURE_KINDS = ('picked', 'left_out', 'deselected')
@@ -63,6 +68,19 @@ LINT_CHECKS = (
     ('wrappers', 'forge configs', ''),
 )
 CASE_RANK = {'passed': 0, 'skipped': 1, 'failed': 2, 'error': 3}
+# app-junit: the formats of report.json it reads (its "runner" key). A new format of tests/app/runner.py is added
+# here, never put in place of an earlier one, so that a --ref run of an older tree is still read
+APP_FORMATS = (1,)
+# app-junit: the checks of a start that show it installed and enabled the plugin; ci/app-smoke.sh runs the next
+# start only when they passed (<start>_gate=yes). They count among the start's expected checks, declared or not, so
+# a start whose records lack one never passes (the tested tree's check ids may drift from these under --ref)
+APP_GATE = {'install': ('install.installed', 'install.enabled')}
+APP_START = re.compile(r'[a-z0-9_]+')
+APP_MESSAGE = 2000   # characters of a failure's message
+APP_TEXT = 20000     # characters of a failure's text
+APP_LOG_TAIL = 10    # message-log lines in a failed run.ended
+# a character that XML 1.0 cannot hold (Char: tab, LF, CR, U+0020-U+D7FF, U+E000-U+FFFD, U+10000-U+10FFFF)
+XML_BAD = re.compile('[^\t\n\r\u0020-\ud7ff\ue000-\ufffd\U00010000-\U0010ffff]')
 
 USAGE = """\
 usage: report.py summary
@@ -71,6 +89,7 @@ usage: report.py summary
        report.py pure-pin <ci/pure-count>
        report.py pure <junit.xml> <pure-files.tsv> <ci/pure-count>
        report.py coverage <coverage JSON> <out-dir>
+       report.py app-junit <suite> <junit.xml> (<start> <dir> <exit|none> <seconds> <limit>)...
 summary  reads $CI_IN/run.txt and $CI_IN/stages/<stage>/{status,out/,deps-freeze.txt}; writes summary.md,
          record.txt and result.txt into $CI_OUT. It exits 1 when run.txt has no stages=, or when the stages'
          verdicts give another result than run.txt's run_result=.
@@ -91,7 +110,19 @@ pure     prints files=, files_left_out=, deselected=, pure_skips=, pure_items=, 
          line in ci/pure-count, or a file has pure items and no line, or a line names a file without them.
 coverage writes coverage-core.tsv and coverage-core.md, one row per core-logic module (fiberq/core, utils and
          models, without __init__.py), and prints the totals; it exits 1 when the JSON holds no such module.
-Exit: 0 done; 1 see above; 2 usage, or an input that cannot be read.
+app-junit one group per QGIS start of an app stage, in order: its name, its records folder, its exit status (none
+         when it did not run), how long it ran and its time limit, in seconds. It reads each start's report.json
+         (every format in APP_FORMATS), guard.json and steps.jsonl, and writes the new <junit.xml>: one test case
+         app.<start>::<check id> per check, a failure when it failed, then app.<start>::run.ended, which fails when
+         the start ended other than with exit 0 or 1, when its exit status is not the report's, or when a check the
+         report declared ("expected"), or one of the start's APP_GATE checks, did not run, and is skipped for a
+         start that did not run. It prints <start>_code= for each start (and <start>_gate= for those in APP_GATE)
+         before it writes the file, then checks=, checks_failed=, checks_skipped= and, per start, _checks, _failed,
+         _failed_ids, _report, _report_exit, _verdict and _reason. A start's code comes from its evidence: 0 a raw 0
+         whose report passed; the raw 1, 3, 4 or 5 when the report ended with it; 3 a raw 3 with guard.json; 4 a
+         raw 124 or 137 at or past the time limit; else 6; 0 for a start that did not run. It exits 0 once the file
+         is written.
+Exit: 0 done; 1 see above; 2 usage, or an input that cannot be read (app-junit: or junit.xml cannot be written).
 """
 
 
@@ -257,6 +288,8 @@ def role_of(stage):
         return '42'
     if stage.startswith('test-') and stage != 'test-local':
         return stage[len('test-'):]
+    if stage.startswith('app-'):
+        return stage[len('app-'):]
     return ''
 
 
@@ -314,7 +347,8 @@ def stage_counts(stage):
     name = stage.name
     if JUNIT_STAGE.fullmatch(name):
         text, keys = junit_counts(stage)
-        if not stage.has_junit and info.get('skipped'):   # in place: a test leg off its own QGIS, or test-coverage
+        # in place, no junit.xml and skipped=: a test leg off its own QGIS, test-coverage, or an app stage
+        if not stage.has_junit and info.get('skipped'):
             text = 'skipped: %s' % info['skipped']
         extra = []
         if name == 'pure' and 'pure_items' in info:
@@ -327,6 +361,20 @@ def stage_counts(stage):
                 text_pure += '; files that differ: %s' % info['pure_differ']
             extra.append(text_pure)
             keys = keys + [(key, info[key]) for key in ('files', 'deselected', 'pure_items', 'pure_count')
+                           if key in info]
+        if name.startswith('app-') and 'zip_entries' in info:
+            parts = ['zip %s entries' % info['zip_entries']]
+            for start in ('install', 'workflow'):
+                exit_code = info.get(start + '_exit', '')
+                if exit_code in ('', 'none'):
+                    parts.append('%s not run' % start)
+                elif info.get(start + '_verdict') == 'pass' and exit_code == '0':
+                    parts.append('%s pass (%s s)' % (start, info.get(start + '_seconds', '?')))
+                else:
+                    parts.append('%s exit %s (%s s)' % (start, exit_code, info.get(start + '_seconds', '?')))
+            parts.append('%s screenshots' % info.get('screenshots', '?'))
+            extra.append('; '.join(parts))
+            keys = keys + [(key, info[key]) for key in ('zip_entries', 'install_exit', 'workflow_exit', 'screenshots')
                            if key in info]
         if name == 'test-coverage' and 'core_percent' in info:
             extra.append('core logic %s%% of %s statements (%s modules; in scope %s%%); %s data files, %s '
@@ -1052,6 +1100,283 @@ def coverage_table(json_path, outdir):
     return 0
 
 
+def xml_safe(value, limit):
+    """<value> as text that XML 1.0 can hold, at most <limit> characters: each character it cannot hold becomes a
+    visible #xNN (as pytest's junit.xml writes it), before the text is cut."""
+    text = XML_BAD.sub(lambda found: '#x%02X' % ord(found.group()), str(value))
+    if len(text) > limit:
+        return text[:limit - 3] + '...'
+    return text
+
+
+def app_json(value):
+    """A recorded value as JSON text."""
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+
+
+def app_is_int(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def app_shape(report):
+    """What is wrong with a report.json of format 1, or ''."""
+    if not app_is_int(report.get('exit')):
+        return 'its exit is not a whole number'
+    checks = report.get('checks')
+    if not isinstance(checks, list):
+        return 'its checks are not a list'
+    for check in checks:
+        if not isinstance(check, dict):
+            return 'a check is not an object'
+        if not isinstance(check.get('id'), str) or not isinstance(check.get('ok'), bool):
+            return 'a check has no id or no ok'
+    expected = report.get('expected', [])
+    if not isinstance(expected, list) or not all(isinstance(cid, str) for cid in expected):
+        return 'its expected checks are not a list of ids'
+    if not isinstance(report.get('windows', []), list):
+        return 'its windows are not a list'
+    if not isinstance(report.get('log', []), list):
+        return 'its log is not a list'
+    return ''
+
+
+def app_report(folder):
+    """(report, problem) of a start's report.json: (the report, '') when it is in a format of APP_FORMATS, else
+    (None, what is wrong)."""
+    path = os.path.join(folder, 'report.json')
+    if not os.path.isfile(path):
+        return None, 'no report.json'
+    try:
+        report = json.loads(read_text(path))
+    except (OSError, ValueError) as exc:
+        return None, 'report.json does not parse: %s' % one_line(exc)
+    if not isinstance(report, dict):
+        return None, 'report.json is not a JSON object'
+    fmt = report.get('runner')
+    if not app_is_int(fmt) or fmt not in APP_FORMATS:
+        return None, 'report.json is runner format %s; this ci/ reads %d..%d' % (
+            app_json(fmt), min(APP_FORMATS), max(APP_FORMATS))
+    problem = app_shape(report)
+    if problem:
+        return None, 'report.json is not runner format %d: %s' % (fmt, problem)
+    return report, ''
+
+
+def app_guard(folder):
+    """guard.json of a start, as a dict; None when there is none, or it does not parse."""
+    try:
+        guard = json.loads(read_text(os.path.join(folder, 'guard.json')))
+    except (OSError, ValueError):
+        return None
+    if isinstance(guard, dict):
+        return guard
+    return None
+
+
+def app_last_step(folder):
+    """The step of the last line of steps.jsonl that parses; '' when there is none (a line cut short by a crash,
+    or a missing file, is passed over)."""
+    try:
+        text = read_text(os.path.join(folder, 'steps.jsonl'))
+    except OSError:
+        return ''
+    last = ''
+    for line in text.split('\n'):
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict) and isinstance(event.get('step'), str):
+            last = event['step']
+    return last
+
+
+def app_log_tail(lines):
+    """The last APP_LOG_TAIL message-log lines, one per line of text; none when <lines> is not a list (guard.json
+    has no shape check)."""
+    if not isinstance(lines, list):
+        return []
+    shown = []
+    for entry in lines[-APP_LOG_TAIL:]:
+        if isinstance(entry, dict):
+            shown.append('[%s] %s: %s' % (entry.get('t', '?'), entry.get('tag', '?'), entry.get('message', '')))
+    return shown
+
+
+def app_start(name, folder, raw, seconds, limit, previous):
+    """One start's test cases, code and keys, as a dict. <raw> is its exit status, None when it did not run;
+    <previous> is the dict of the start before it, or None."""
+    classname = 'app.' + name
+    found = {'name': name, 'raw': raw, 'gate': None, 'report': 'none', 'report_exit': '', 'cases': []}
+    if raw is None:
+        why = 'not run'
+        if previous is not None and previous['raw'] is None:
+            why = 'not run: %s did not run' % previous['name']
+        elif previous is not None and previous['gate'] == 'no':
+            why = 'not run: FiberQ was not installed (%s ended with exit %s)' % (previous['name'], previous['raw'])
+        elif previous is not None:
+            why = 'not run: %s ended with exit %s' % (previous['name'], previous['raw'])
+        found.update(code=0, verdict='none', reason=why, failed_ids=[])
+        found['cases'].append((classname, 'run.ended', 0.0, 'skipped', why, ''))
+        return found
+    report, problem = app_report(folder)
+    guard = app_guard(folder)
+    if report is None:
+        found['report'] = 'no' if problem == 'no report.json' else 'bad'
+        if problem == 'no report.json':
+            message = 'QGIS ended with exit %d and wrote no report.json' % raw
+        else:
+            message = 'QGIS ended with exit %d; %s' % (raw, problem)
+        message += ' (last step: %s)' % (app_last_step(folder) or 'none recorded')
+        extra = []
+        if guard is not None:
+            message += '; the startup guard ended QGIS (%s): %s' % (guard.get('kind', '?'), guard.get('title', ''))
+            extra = ['', str(guard.get('text', ''))] + app_log_tail(guard.get('log_tail'))
+        if raw in (124, 137):
+            if seconds >= limit:
+                message += '; stopped by its time limit (%d s)' % limit
+            else:
+                message += '; killed after %d s, before its time limit (%d s)' % (seconds, limit)
+        found['cases'].append((classname, 'run.ended', 0.0, 'failure', message, '\n'.join([message] + extra)))
+        passing = False
+        reason = message
+    else:
+        found['report'] = 'yes'
+        found['report_exit'] = report['exit']
+        ran = set()
+        failed = 0
+        for check in report['checks']:
+            ran.add(check['id'])
+            took = to_float(check.get('seconds'))
+            if check['ok']:
+                found['cases'].append((classname, check['id'], took, 'passed', '', ''))
+                continue
+            failed += 1
+            message = '%s: expected %s, seen %s' % (check.get('what') or check['id'], app_json(check.get('expected')),
+                                                    app_json(check.get('seen')))
+            found['cases'].append((classname, check['id'], took, 'failure', message, message))
+        wanted = list(report.get('expected', []))
+        wanted += [cid for cid in APP_GATE.get(name, ()) if cid not in wanted]
+        missing = [cid for cid in wanted if cid not in ran]
+        reason = one_line(report.get('exit_reason') or 'exit %d' % report['exit'])
+        message = reason
+        text = [reason]
+        if report['exit'] == 3:
+            windows = [w for w in report.get('windows') or [] if isinstance(w, dict) and w.get('kind') != 'expected']
+            if windows:
+                text += ['', '%s: %s' % (windows[-1].get('class', '?'), windows[-1].get('title', '')),
+                         str(windows[-1].get('text', ''))]
+                message += ': %s' % one_line(windows[-1].get('text', ''))[:300]
+        if report.get('error'):
+            lines = [line for line in str(report['error']).split('\n') if line.strip()]
+            text += [''] + lines
+            message += ' (%s)' % ' / '.join(line.strip() for line in lines[-3:])
+        if raw != report['exit']:
+            note = 'QGIS ended with exit %d, but the report says %d' % (raw, report['exit'])
+            message += '; ' + note
+            reason += '; ' + note
+            text += ['', note]
+        if missing:
+            note = '%d expected check%s did not run' % (len(missing), '' if len(missing) == 1 else 's')
+            message += '; %s: %s' % (note, ', '.join(missing))
+            reason += '; ' + note
+            text += ['', note + ':'] + missing
+        text += [''] + app_log_tail(report.get('log'))
+        ended = report['exit'] in (0, 1) and raw == report['exit'] and not missing
+        if ended:
+            found['cases'].append((classname, 'run.ended', 0.0, 'passed', '', ''))
+        else:
+            found['cases'].append((classname, 'run.ended', 0.0, 'failure', message, '\n'.join(text)))
+        passing = report['exit'] == 0 and failed == 0 and not missing
+        if name in APP_GATE:
+            oks = dict((check['id'], check['ok']) for check in report['checks'])
+            installed = report['exit'] in (0, 1) and all(oks.get(cid) is True for cid in APP_GATE[name])
+            found['gate'] = 'yes' if installed else 'no'
+    if name in APP_GATE and found['gate'] is None:
+        found['gate'] = 'no'
+    if raw == 0 and passing:
+        code = 0
+    elif report is not None and report['exit'] == raw and raw in (1, 3, 4, 5):
+        code = raw
+    elif raw == 3 and guard is not None:
+        code = 3
+    elif raw in (124, 137) and seconds >= limit:
+        code = 4
+    else:
+        code = 6
+    found.update(code=code, verdict='pass' if raw == 0 and passing else 'fail', reason=one_line(reason),
+                 failed_ids=[case[1] for case in found['cases'] if case[3] == 'failure'])
+    return found
+
+
+def app_junit(suite, junit_path, groups):
+    """The app stage's junit.xml from its starts' records, and its result.txt lines (see USAGE)."""
+    # a record from elsewhere can hold a lone surrogate, which no encoding writes: a backslash escape instead
+    sys.stdout.reconfigure(errors='backslashreplace')
+    if not STAGE_NAME.fullmatch(suite):
+        say('app-junit: bad suite name %r' % suite)
+        return 2
+    starts = []
+    for at in range(0, len(groups), 5):
+        name, folder, raw, seconds, limit = groups[at:at + 5]
+        if not APP_START.fullmatch(name) or name in [start[0] for start in starts]:
+            say('app-junit: a start is named [a-z0-9_]+, once: %r' % name)
+            return 2
+        if raw != 'none' and not raw.isdigit():
+            say('app-junit: the exit status of %s is a whole number or none, not %r' % (name, raw))
+            return 2
+        if not seconds.isdigit() or not limit.isdigit():
+            say('app-junit: the seconds and the time limit of %s are whole numbers: %r %r' % (name, seconds, limit))
+            return 2
+        starts.append((name, folder, None if raw == 'none' else int(raw), int(seconds), int(limit)))
+    if os.path.lexists(junit_path):
+        say('app-junit: %s exists; it writes a new file only' % junit_path)
+        return 2
+    results = []
+    previous = None
+    for name, folder, raw, seconds, limit in starts:
+        previous = app_start(name, folder, raw, seconds, limit, previous)
+        results.append(previous)
+    for found in results:   # the codes first: ci/app-smoke.sh still has them if the file cannot be written
+        sys.stdout.write('%s_code=%d\n' % (found['name'], found['code']))
+        if found['gate'] is not None:
+            sys.stdout.write('%s_gate=%s\n' % (found['name'], found['gate']))
+    sys.stdout.flush()
+    cases = [case for found in results for case in found['cases']]
+    failures = sum(1 for case in cases if case[3] == 'failure')
+    skipped = sum(1 for case in cases if case[3] == 'skipped')
+    root = ET.Element('testsuites')
+    tree = ET.SubElement(root, 'testsuite', {
+        'name': suite, 'tests': str(len(cases)), 'failures': str(failures), 'errors': '0', 'skipped': str(skipped),
+        'time': '%.3f' % sum(case[2] for case in cases)})
+    for classname, name, took, kind, message, text in cases:
+        case = ET.SubElement(tree, 'testcase', {'classname': xml_safe(classname, APP_MESSAGE),
+                                                'name': xml_safe(name, APP_MESSAGE), 'time': '%.3f' % took})
+        if kind == 'failure':
+            child = ET.SubElement(case, 'failure', {'message': xml_safe(message, APP_MESSAGE)})
+            child.text = xml_safe(text or message, APP_TEXT)
+        elif kind == 'skipped':
+            ET.SubElement(case, 'skipped', {'message': xml_safe(message, APP_MESSAGE)})
+    try:
+        with open(junit_path, 'xb') as fh:
+            fh.write(ET.tostring(root, encoding='utf-8'))
+    except OSError as exc:
+        say('app-junit: %s' % exc)
+        return 2
+    lines = ['checks=%d' % len(cases), 'checks_failed=%d' % failures, 'checks_skipped=%d' % skipped]
+    for found in results:
+        name = found['name']
+        lines += ['%s_checks=%d' % (name, len(found['cases'])),
+                  '%s_failed=%d' % (name, len(found['failed_ids'])),
+                  '%s_failed_ids=%s' % (name, ','.join(found['failed_ids'])),
+                  '%s_report=%s' % (name, found['report']),
+                  '%s_report_exit=%s' % (name, found['report_exit']),
+                  '%s_verdict=%s' % (name, found['verdict']),
+                  '%s_reason=%s' % (name, one_line(found['reason']))]
+    sys.stdout.write('\n'.join(lines) + '\n')
+    return 0
+
+
 def main(argv):
     if len(argv) == 2 and argv[1] in ('-h', '--help'):
         sys.stdout.write(USAGE)
@@ -1071,6 +1396,8 @@ def main(argv):
         return pure_counts(argv[2], argv[3], argv[4])
     if len(argv) == 4 and argv[1] == 'coverage':
         return coverage_table(argv[2], argv[3])
+    if len(argv) >= 9 and (len(argv) - 4) % 5 == 0 and argv[1] == 'app-junit':
+        return app_junit(argv[2], argv[3], argv[4:])
     sys.stderr.write(USAGE)
     return 2
 

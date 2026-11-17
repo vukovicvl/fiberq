@@ -1,11 +1,12 @@
 # FiberQ's tests
 
-FiberQ's test suite is in `tests/`: 114 test files and 2,315 tests, run by pytest with the shared fixtures
-of the root [`conftest.py`](../conftest.py). The pipeline in [`ci/`](../ci/README.md) runs it in the
+FiberQ's test suite is in `tests/`: 118 test files and 2,383 tests, run by pytest with the shared
+fixtures of the root [`conftest.py`](../conftest.py). The pipeline in [`ci/`](../ci/README.md) runs it in the
 official QGIS images, from QGIS 3.22 to 4.2, and runs the part that needs no QGIS on its own, in a plain
-Python image. This page says what each tier of tests runs and how to run it, what "core logic" means here,
-how the plugin's entry points are tested, how coverage is measured, the code the tests share, and the rules
-for flaky tests, temporary folders, platforms and test data.
+Python image. In two of those images it also installs the plugin in the real QGIS desktop and uses it.
+This page says what each tier of tests runs and how to run it, what "core logic" means here, how the
+plugin's entry points are tested, how coverage is measured, the code the tests share, and the rules for
+flaky tests, temporary folders, platforms and test data.
 
 WP5, named below, is the work package "Automated tests and CI" of FiberQ's NLnet NGI0 Commons Fund
 grant.
@@ -18,8 +19,9 @@ coverage 7.16.2), and every test stage runs them from the pipeline's tool cache
 
 | Tier | Stage | Runs in | What it runs | Time here |
 |---|---|---|---|---|
-| Fast | `pure` | the python image, with no QGIS | the 36 test files that import with no QGIS, GDAL or Qt: 512 of their tests run, and the 361 that do not stop on QGIS or GDAL are its pure items (360 of them pass in the python image, which has no `lrelease`) | under a minute |
-| QGIS legs | `test-322`, `test-340`, `test-344`, `test-40`, `test-42` | the QGIS 3.22, 3.40, 3.44, 4.0 and 4.2 images | the whole suite, the fast tests included: 2,315 tests on each leg | 7 to 24 minutes per leg, two legs at a time |
+| Fast | `pure` | the python image, with no QGIS | the 40 test files that import with no QGIS, GDAL or Qt: 580 of their tests run, and the 414 that do not stop on QGIS or GDAL are its pure items (413 of them pass in the python image, which has no `lrelease`) | under a minute |
+| QGIS legs | `test-322`, `test-340`, `test-344`, `test-40`, `test-42` | the QGIS 3.22, 3.40, 3.44, 4.0 and 4.2 images | the whole suite, the fast tests included: 2,383 tests on each leg | 8 to 23 minutes per leg, two legs at a time |
+| App | `app-340`, `app-42` | the QGIS 3.40 and 4.2 images, in host mode only | the real QGIS desktop under xvfb-run: the stage's own zip installed with QGIS's own Install from ZIP code in a fresh profile, its toolbars and keys against the initGui golden file, a short workflow and a reload of the plugin | about half a minute per leg |
 | Coverage | `test-coverage` | the QGIS 4.2 image, in host mode only | the whole suite under coverage.py, child processes included | about 17 minutes, on its own |
 | Gates | `lint`, `qt6`, `floor` | the python image, the Qt6 checker, the QGIS 3.22 image | static checks, the Qt6 source check and the declared minimum QGIS ([ci/README.md](../ci/README.md)) | seconds each |
 
@@ -154,6 +156,21 @@ Inside a leg, the tests are of a few kinds, told apart by what they build rather
 A test that cannot run on a leg skips, with its reason in the leg's record: for example, the benchmark
 city's fixture needs QGIS 3.36 or later, and the Excel export needs `xlsxwriter`, which no image has.
 
+### The app stage
+
+The app stages, `app-340` and `app-42`, install the plugin in the real QGIS desktop and use it, in the
+QGIS 3.40 and 4.2 images, under xvfb-run. They are in the release set only: GitHub runs them on `release/`
+branches, on tags and with "Run workflow", and a full run of the release set runs them one at a time,
+before the test legs. They run in host mode only; in place they are skipped, as test-coverage is, since
+they need the image's QGIS and xvfb-run.
+
+```sh
+sh ci/pull.sh app-340 app-42                     # once: the QGIS 3.40 and 4.2 images
+sh ci/run-all.sh --only app-340,app-42           # both, one after the other: about a minute
+```
+
+What their two QGIS starts do and check, their record and their exit codes: [The app smoke](#the-app-smoke).
+
 ### Coverage
 
 The `test-coverage` stage runs test-42's suite under coverage.py in the QGIS 4.2 image, and writes the
@@ -203,10 +220,11 @@ the in-scope total.
 
 ## The plugin's entry points
 
-WP5 tests the plugin's entry points, `initGui`, `unload` and the toolbar actions. The initGui golden file
-and the lifecycle ratchet build the plugin in a child process with a stand-in for QGIS's `iface`
-(`FakeIface`, [Code the tests share](#code-the-tests-share)), on every leg. The runner drives the real
-QGIS desktop as a person does; its own test runs headless, on every leg.
+WP5 tests the plugin's entry points, `initGui`, `unload` and the toolbar actions, three ways. The initGui
+golden file and the lifecycle ratchet build the plugin in a child process with a stand-in for QGIS's
+`iface` (`FakeIface`, [Code the tests share](#code-the-tests-share)), on every leg. The app smoke installs
+the plugin in the real QGIS desktop and uses it, in the release set, through the runner, which drives the
+desktop as a person does.
 
 ### The initGui golden file
 
@@ -260,6 +278,9 @@ one entry per line, so that an edit by hand fails and a change reads as whole li
 check that the comparison names each kind of change, cuts a long list short with a line that counts the
 rest, and finds nothing in an equal record, so that a comparison that finds nothing cannot let the child's
 test pass unnoticed.
+
+The app smoke compares the same record, taken in the real QGIS desktop, with the same file
+([The app smoke](#the-app-smoke)).
 
 **Changing the golden file on purpose.** The test never writes into the tree. When a change to the plugin
 is meant to change what `initGui` builds, write the file anew and commit it with that change, saying why in
@@ -353,11 +374,138 @@ every other failure real (a child that dies, a window that blocks, a tool that w
 call that `FakeIface` answers with a `MagicMock`). The file's three other tests need no QGIS: they are pure
 items, which check the ratchet's messages for a count that rose, one that fell and none that moved.
 
+### The app smoke
+
+The app stages, `app-340` and `app-42` (`ci/app-smoke.sh`), test the plugin as a person gets it. In the
+QGIS 3.40 or 4.2 image, under xvfb-run with no window manager, as uid 1000 and with no network, the real
+QGIS desktop starts twice, in one fresh profile and with a fresh `HOME`. Each start runs
+`tests/app/start.py` (`qgis --code`), which runs one start of `tests/app/smoke.py` through the runner
+([The runner](#the-runner)):
+
+- **install**: QGIS starts without FiberQ. The start installs the zip that the stage built from the
+  tested tree's `fiberq/`, with QGIS's own Install from ZIP code (`installFromZipFile`, without the tab's
+  file chooser and its question). It then checks that the plugin loaded from the profile, not from the
+  tested tree, that QGIS enabled it and logged its success, that its language is English (QGIS runs with
+  `--lang en_US`), that no line came on QGIS's Python error and Python warning tags, and that its
+  toolbars, drop-downs, Plugins menu entries and keys equal the initGui golden file, every field.
+- **workflow**: the plugin is enabled now, so QGIS loads it at startup. The start checks that load the
+  same way, less the tooltips and the keys outside the menus: QGIS rewrites the tooltips of the actions it
+  registers at startup, differently on 3.40 and 4.2, and it loads the plugin before the start can record
+  what was there without it. After Project > New, with the project in WGS 84 / UTM zone 34N, the start
+  does what a person does, through the plugin's own buttons, drop-downs, map tools and dialogs: a route
+  drawn by hand (Routing > Create a route manually, type Underground); an ODF and a TB placed on its two
+  ends; both selected (Selection > Smart selection (Multiple Layers)); an underground backbone cable of 12
+  fibres laid between them (Cable laying > Underground > Backbone); Validate project; and Export
+  interchange bundle… in Plugins > FiberQ. Last it reloads the plugin (`qgis.utils.reloadPlugin`) and
+  checks it again, every field, the keys outside the menus included.
+
+The workflow start runs only when the install start's report shows the plugin installed and enabled: its
+checks `install.installed` and `install.enabled` passed, and it ended with exit 0 or 1. So a difference
+from the golden file at install still lets the workflow run.
+
+| Start | Step | Checks |
+|---|---|---|
+| install | `install` | `not_loaded_before`, `installed`, `logged_success`, `enabled`, `from_zip`, `deferred_migration_ran`, `language`, `golden_entries`, `golden_containers`, `golden_outside`, `no_python_lines` |
+| | `end` | `windows` |
+| workflow | `load` | `loaded`, `logged`, `from_zip`, `deferred_migration_ran`, `language`, `golden_entries` (without tooltips), `golden_containers`, `no_python_lines` |
+| | `project` | `canvas_shown`, `output_size`, `crs`, `extent` |
+| | `route` | `features`, `type`, `vertices`, `drawn_length`, `stored_length` |
+| | `place_odf`, `place_tb` | `features`, `snapped`, `name` |
+| | `select` | `selected` |
+| | `cable` | `features`, `ends`, `length`, `attributes` |
+| | `validate` | `ran`, `counts`, `layers`, `panel_shown` |
+| | `export` | `message`, `file`, `tables` |
+| | `reload` | `started`, `loaded`, `from_zip`, `deferred_migration_ran`, `golden_entries`, `golden_containers`, `golden_outside`, `no_python_lines` |
+| | `end` | `no_python_lines`, `windows` |
+
+A check's id is its step and its name, such as `cable.ends`, and each check is a JUnit test case,
+`app.<start>::<id>`; each start adds `app.<start>::run.ended`, which says how it ended. That is 13 test
+cases for the install start and 46 for the workflow start: 59 per leg. `ci/report.py app-junit` writes
+`junit.xml` from each start's records after QGIS has ended, so a crash still fails a test case. Each start
+declares its check ids first (`EXPECTED` in `tests/app/smoke.py`), and `run.ended` fails for any declared
+check that did not run; the two checks that decide whether the workflow start runs, `install.installed`
+and `install.enabled`, count as declared even when the report does not list them. A check that the rest of
+its start depends on, such as `install.installed` or `route.features`, ends the start at once when it
+fails.
+
+The stage's record, in `stages/app-<leg>/out/` of the run folder:
+
+- `result.txt`: the leg, QGIS and Python; the zip's entries and the sha256 of their list
+  (`zip_list_sha256`, the same on every run of one tree); the time limits; each start's exit status,
+  seconds and code; the counts of the test cases; each start's failed checks, report, verdict and reason;
+  the number of screenshots; and `failed=`;
+- `junit.xml`, and `zip-list.txt`, each entry of the zip with its size and CRC-32;
+- `install/` and `workflow/`, one folder per QGIS start: `qgis.out` (QGIS's output), `xvfb.err` (what Xvfb
+  and xauth said), `report.json` (the runner's report), `steps.jsonl` (each event as it happened, which a
+  crash keeps), `log.jsonl` (QGIS's message log from its start), `actions-<when>.json` (what each
+  golden-file check recorded, in the golden file's form, ready to diff with it), the screenshots
+  `NNN_<step>_<label>.png`, in `workflow/` the exported `bundle.gpkg`, and, when the startup guard ended
+  QGIS, `guard.json` and `guard-window.png`.
+
+The screenshots, 20 per leg, show each window as it came and the end of each step. They are evidence for
+a person and are never compared. They stay in the run folders and in the forge artifacts, and never go
+into `docs/ci/`.
+
+The stage's exit code is the larger of its two starts' codes. `ci/report.py app-junit` takes each start's
+code from its records, never from its exit status alone, since xvfb-run has exit codes of its own and a
+crash leaves no report: 0 for an exit status 0 whose report passed; the exit status 1, 3, 4 or 5 when
+`report.json` ended with it; 3 for an exit status 3 with `guard.json`; 4 for 124 or 137 at or past the
+start's time limit; 6 for anything else.
+
+| Code | Meaning |
+|---|---|
+| 0 | both starts passed every check; in place, the skip |
+| 1 | a check failed, `junit.xml` could not be written, or the workflow start did not run although nothing failed |
+| 2 | usage or setup: the script started by hand, the image's QGIS not the leg's, no `qgis`, `xvfb-run`, `xauth`, `Xvfb` or `timeout`, a `CI_TIMEOUT` under 210 s, a zip that could not be built, or a tested tree from before the app stages; there is no `junit.xml` then |
+| 3 | a window that QGIS opened for a Python error, or any other window that waits for an answer and that the start did not expect: seen by the runner, or before it took over by the startup guard (`tests/app/guard.py`) |
+| 4 | a start passed its deadline, or its time limit stopped QGIS |
+| 5 | the scenario raised, or the answer it gave to a window did |
+| 6 | QGIS ended without a verdict its records confirm: a crash (QGIS died on a signal: exit 134), no `report.json`, or an exit status that neither `report.json` nor `guard.json` gives, such as one of xvfb-run's own: 1 (Xvfb did not start, or a step of xvfb-run's own setup or cleanup failed), 2 (no command), 3 (no `xauth`), 5 (its temporary folder could not be removed), 6 (its options) |
+
+A TERM, HUP or INT stops the stage with the largest code so far, or 143 when that is 0. From
+`ci/stage.sh`, 124 or 137 mean that the whole stage passed its time limit. The starts' time limits come from
+`CI_TIMEOUT` (by default 900 s for an app stage) less 60 s: the install start gets a third of that, the
+workflow start the rest less 20 s (280 s and 540 s by default). The runner ends each start 30 s before its
+limit (exit 4), counted from when the runner starts (3 to 6 s after QGIS starts here), and `timeout` stops
+QGIS at the limit and kills it 10 s later. Here the install start takes about 10 s and the workflow start
+13 to 20 s.
+
+What keeps the starts the same from run to run:
+
+- a fresh profile and `HOME`; `--lang en_US` and `LC_ALL=C.UTF-8`, with `LANG`, `LANGUAGE` and
+  `LC_MESSAGES` unset; no window manager; the main window moved and resized first;
+- after each load (the install, the startup load and the reload), a wait for the plugin's deferred
+  migration to end, before the plugin's toolbars and keys are recorded (the golden checks) or anything is
+  clicked. Each load arms that migration on a 2 s timer
+  (`_run_schema_migrations` in `fiberq/main_plugin.py`), and it ends with a message-log line on the tag
+  "FiberQ UUID" that starts "UUID migration summary", which `migrate_project_uuids()` in
+  `fiberq/utils/uuid_utils.py` logs on every run. The wait is a check, `deferred_migration_ran`, with a
+  limit of 15 s, not a fixed sleep: if the plugin stops logging that line, the check fails and names the
+  line it waited for. A change to the deferred migration, such as the one planned for v1.8.0, updates
+  `settled()` in `tests/app/smoke.py` in the same pull request;
+- every other wait is for a condition, with a time limit; the 150 ms between two clicks is pacing, never
+  synchronisation. After Project > New the start waits until the map's output size is the canvas's: QGIS
+  3.40 shows its welcome page until a project exists, and gives the map its new size a moment later;
+- pixel tolerances derive from the map's units per pixel after the zoom; counts and snapped points are
+  exact;
+- `no_python_lines` allows no line on QGIS's Python error and Python warning tags. `PYTHON_LINES_ALLOWED`
+  in `tests/app/smoke.py` is empty; an entry there names the image digest it was seen with and why the
+  line is not the plugin's;
+- screenshots are never compared;
+- in a full run of the release set the app stages run alone, one at a time, before the test legs.
+
+**Adding a check.** Add it to its start in `tests/app/smoke.py`, and its id to `EXPECTED`, under a new id.
+Never rename or reuse an id: `ci/compare.sh` compares the app stages test case by test case, and a renamed
+check counts as lost under its old id. What `ci/app-smoke.sh` and the starts share only grows:
+`ci/report.py app-junit` reads every earlier format of the runner's `report.json`, and an `APP_*` variable
+is only ever added, never renamed or dropped, so an older tree that has the app stages, tested with
+`--ref`, still runs and is still read.
+
 ### The runner
 
 `tests/app/runner.py` drives the real QGIS desktop from a `qgis --code` script, as a person would, and
-records what it sees. It imports QGIS and the standard library, never FiberQ, so any scenario can use it,
-such as those of the user documentation. A scenario is a plain function, `scenario(r)`, which acts and
+records what it sees. It imports QGIS and the standard library, never FiberQ, so other scenarios can use
+it, such as those of the user documentation. A scenario is a plain function, `scenario(r)`, which acts and
 checks through `r`, a `Runner`:
 
 | Name | What it does |
@@ -391,21 +539,22 @@ Its records, in the folder `out`:
   each check, as `{"id", "step", "name", "what", "expected", "seen", "ok", "t", "seconds"}`; each window
   the watch saw, with its screenshot; each screenshot, with its size in logical pixels and its device pixel
   ratio; the notes; the expected windows that never came; the error, a traceback; QGIS's memory; and the
-  message log. Its key `runner` is its format, 1 today; a change to its layout raises the format
-  (`FORMAT` in `runner.py`);
+  message log. Its key `runner` is its format, 1 today. A change to its layout raises the format, and
+  `ci/report.py app-junit` keeps reading every earlier one;
 - `steps.jsonl`, one line per event, written as it happens, so that a crash keeps them;
 - `log.jsonl`, QGIS's message log, line by line;
 - the screenshots, `NNN_<step>_<label>.png`, numbered in the order they were taken.
 
-A script that QGIS runs through `PYQGIS_STARTUP`, before it loads any plugin, can leave the module
-`fiberq_app_guard` in `sys.modules`, with the message log since QGIS started (`LOG`), QGIS's start time
-(`T0`), the current step (`STEP`) and a window watch of its own (`TIMER`). When it is there, the runner
-takes over its log and its clock and stops its watch.
+The startup guard, `tests/app/guard.py`, which QGIS runs through `PYQGIS_STARTUP` before it loads any
+plugin, keeps the message log from QGIS's start and ends QGIS, with exit 3, on a window that would block it
+before the runner starts: under Xvfb with no window manager, QGIS shows a plugin's load error in a blocking
+window, and without the guard it would wait there until its time limit. When the guard is there, the
+runner takes over its log and stops its watch.
 
 A scenario of your own runs from any `--code` script that appends `tests/` to `sys.path` and calls
-`app.runner.begin(scenario, start="<slug>")`; start QGIS with `--code <that script>` and `APP_OUT` set to a
-new folder for the records (and `APP_DEADLINE_S`, else the deadline is 300 s). A headless run, with no
-QGIS desktop, makes the runner itself with a stand-in for `iface`, `Runner(start, out, deadline_s,
+`app.runner.begin(scenario, start="<slug>")`, as `tests/app/start.py` does for the app smoke; start QGIS
+with the environment and the command line in the header of `ci/app-smoke.sh`. A headless run, with no QGIS
+desktop, makes the runner itself with a stand-in for `iface`, `Runner(start, out, deadline_s,
 iface=...).run(scenario)`, as `tests/app/selftest.py` does. `FakeIface` is enough for the runner itself; a
 FiberQ scenario run headless needs a fuller stand-in, since `FakeIface` answers `messageBar()` and most
 other calls with a `MagicMock`.
@@ -426,30 +575,35 @@ processes need QGIS.
 | `tests/test_qt6_seed.py`, with `tests/qt6_seed/` | the seeds of the Qt6 check, in v1.6.0 already | checks the seed files as text | 3 | 3 |
 | `tests/test_initgui_snapshot.py`, with `tests/support/initgui_snapshot.py` and `tests/initgui_golden.json` | the initGui golden file | a child process on every leg, read by two tests, one of them an expected failure; checks of the snapshot comparison and of the file format | 18 | 16 |
 | `tests/test_lifecycle_ratchet.py`, with `tests/support/lifecycle_driver.py` | the lifecycle ratchet | two child processes on every leg, one of them an expected failure; checks of the ratchet's messages | 5 | 3 |
-| `tests/test_app_runner.py`, with `tests/app/` | the app runner | the runner's eleven cases, each in a child process on every leg | 11 | 0 |
+| `tests/test_app_runner.py`, with `tests/app/` | the app runner, and the app smoke's two starts and startup guard | the runner's eleven cases, each in a child process on every leg | 11 | 0 |
+| `tests/test_app_junit.py` | the app stages' JUnit writer, `ci/report.py app-junit` | checks of the writer on records made up in the test | 34 | 34 |
+
+The app stages run `tests/app/` with `ci/app-smoke.sh` ([The app smoke](#the-app-smoke)).
 
 ## The fast-stage count
 
-Measured with the tests of the commit that added this page:
+Measured with the tests of the commit that added the app stages:
 
 | | Python image, uid 1000 (host mode) | Python image, root (GitLab, in place) | A machine with QGIS, GDAL and lrelease (in place) |
 |---|--:|--:|--:|
-| test files picked | 36 | 36 | 36 |
+| test files picked | 40 | 40 | 40 |
 | test files left out | 78 | 78 | 78 |
-| tests collected | 539 | 539 | 539 |
+| tests collected | 607 | 607 | 607 |
 | tests deselected (a pytest-qgis fixture) | 27 | 27 | 27 |
-| tests run | 512 | 512 | 512 |
-| skipped by the stage (a hidden module stopped them) | 151 | 151 | 151 |
-| **pure items** (in 27 test files) | **361** | **361** | **361** |
-| of which passed | 360 | 359 | 361 |
+| tests run | 580 | 580 | 580 |
+| skipped by the stage (a hidden module stopped them) | 166 | 166 | 166 |
+| **pure items** (in 30 test files) | **414** | **414** | **414** |
+| of which passed | 413 | 412 | 414 |
 | of which skipped for another reason | 1 (no lrelease) | 2 (no lrelease; root ignores the write bit) | 0 |
 
-`ci/pure-count` holds the 361 pure items, file by file. Of them, **10** come from WP5's test files:
-`tests/test_floor_seed.py` (7) and `tests/test_qt6_seed.py` (3), which v1.6.0 already has; none yet from
-test files added since. The other **351** come from earlier work. In the python image 360 of the 361
-pass, and one skips because the image has no `lrelease` (as root, one more skips). The 151 tests the
-stage skips run on the five QGIS legs: 88 of them need GDAL's Python bindings (`osgeo`), and 63 import
-QGIS while they run, 32 of them in a child process.
+`ci/pure-count` holds the 414 pure items, file by file. Of them, **63** come from WP5's test files: 10 from
+the seed tests, `tests/test_floor_seed.py` (7) and `tests/test_qt6_seed.py` (3), which v1.6.0 already
+has, and 53 from the test files added since: the checks, which need no QGIS, of the initGui snapshot's
+comparison and file format (16), of the lifecycle ratchet's messages (3) and of the app stages' JUnit
+writer (34). The other **351** come from earlier work. In the python image 413 of the 414 pass, and one
+skips because the image has no `lrelease` (as root, one more skips). The 166 tests the stage skips run on
+the five QGIS legs: 88 of them need GDAL's Python bindings (`osgeo`), and 78 import QGIS while they run, 47
+of them in a child process.
 
 ## Coverage of core logic
 
@@ -475,7 +629,7 @@ git rm -rq tests/test_floor_seed.py tests/floor_check.py tests/floor_seed \
     tests/test_qt6_seed.py tests/qt6_seed \
     tests/test_initgui_snapshot.py tests/support/initgui_snapshot.py tests/initgui_golden.json \
     tests/test_lifecycle_ratchet.py tests/support/lifecycle_driver.py \
-    tests/test_app_runner.py tests/app                # and every other path under WP5's test files
+    tests/test_app_runner.py tests/app tests/test_app_junit.py   # and every other path under WP5's test files
 git commit -qm 'coverage: without WP5 test files'
 sh ci/run-all.sh --only test-coverage                 # v1.7.0 without WP5's test files
 ```
@@ -495,7 +649,8 @@ What the figures include, and what they do not:
   in `utils/compat.py`) counts as not run; the fast stage on its own, so code that runs only when QGIS is
   missing counts only where a test runs it in a child process on the 4.2 leg; code that a child process runs
   from a copy of the plugin (the mapping generator's test copies three core modules into a temporary folder,
-  and one language test copies `fiberq/`); a child process that is killed or crashes, which leaves no data.
+  and one language test copies `fiberq/`); a child process that is killed or crashes, which leaves no data;
+  the app stages, which drive the real QGIS desktop, not pytest.
 
 The tests of the plugin's entry points mainly run `main_plugin.py`, which this table does not list. Each
 column's percentage is over the statements of the commit it measures.
@@ -572,14 +727,15 @@ column's percentage is over the statements of the commit it measures.
 - `initgui_snapshot.py`: the record of what the plugin's `initGui` builds, its comparison with the golden
   file, the golden file's writer, and the child driver of `tests/test_initgui_snapshot.py`. It imports
   only the standard library at its top, and QGIS inside the functions that need it, so a test file can
-  import it at its top.
+  import it at its top; the app smoke takes the same record in the real QGIS.
 - `lifecycle_driver.py`: the child driver of `tests/test_lifecycle_ratchet.py`, with `LifecycleIface` and
   every count the ratchet pins.
 
 `tests/app/` holds the code that drives the real QGIS desktop, and no tests of its own: the runner
-(`runner.py`) and the driver of the runner's own test (`selftest.py`). Its modules import each other as
-`app.<module>`, with `tests/` on `sys.path`, never by their bare names, and no file there is named
-`test_*.py`, so pytest never collects one.
+(`runner.py`), the driver of the runner's own test (`selftest.py`), the startup guard (`guard.py`), the app
+smoke's two starts (`smoke.py`) and the `--code` script that runs them (`start.py`). Its modules import
+each other as `app.<module>`, with `tests/` on `sys.path`, never by their bare names, and no file there is
+named `test_*.py`, so pytest never collects one.
 
 WP5's modules in both folders may import `child.py` and `fake_iface.py`, but no other test file or module
 imports one of WP5's, so the coverage procedure can remove WP5's test files and leave every other test as
@@ -601,9 +757,11 @@ standard-library, QGIS or installed module.
 ## Flaky tests
 
 A test that fails at random is marked `xfail(strict=False)`, with a reason that names the flaky behaviour
-and the follow-up that tracks it, or moved into a child process of its own. Failed tests are never re-run
-automatically. A failed run on a push is re-run once by hand; a re-run on the release commit is noted in
-that release's run record (`docs/ci/<version>.md`; [RELEASE.md](../RELEASE.md), step 9).
+and the follow-up that tracks it, or moved into a child process of its own. A check of the app stages that
+fails at random is fixed in its scenario, most often with a wait for the condition it raced; it is never
+made advisory. Failed tests are never re-run automatically. A failed run on a push is re-run once by hand;
+a re-run on the release commit is noted in that release's run record (`docs/ci/<version>.md`;
+[RELEASE.md](../RELEASE.md), step 9).
 
 ## Temporary folders
 
@@ -618,19 +776,22 @@ The pipeline's runs on the forges and in the release record are on Linux only. T
 `linux/amd64` containers pinned by digest in `ci/legs` (the official qgis/qgis images, QGIS's Qt6 checker
 image and python 3.13-slim); the package stage also runs steps on the Linux host, and release-check runs
 there. In place (`make test`, `CI_IN_PLACE=1`) the suite runs on whatever system runs it; no Windows or
-macOS run is part of the pipeline or its records. Before a release, the zip is installed by hand in QGIS,
-on Windows too when a Windows machine is at hand ([RELEASE.md](../RELEASE.md), step 4).
+macOS run is part of the pipeline or its records. The app stages install a zip they build from the tested
+tree, in the real QGIS desktop on Linux under Xvfb. Before a release, the zip in `dist/` is still installed
+by hand in QGIS, on Windows too when a Windows machine is at hand ([RELEASE.md](../RELEASE.md), step 4).
 
 ## Test data
 
 Every dataset the tests use is synthetic and comes from this repository: the generators in
-`tests/fixtures/` build them during the run, tests build small layers and tables in their own code, and the
-demo project and bundles in `docs/samples/` are written by `docs/samples/generate.py`. No test downloads
-anything, and in host mode the stage containers have no network. The suite uses no third-party data. The
-other files the tests read are the repository's own: the plugin's styles, icons, translation catalogues and
-`metadata.txt`, its source code, and the documents that some tests check against the code.
+`tests/fixtures/` build them during the run, tests build small layers and tables in their own code, the app
+stages draw their project by clicks in QGIS, and the demo project and bundles in `docs/samples/` are written
+by `docs/samples/generate.py`. No test downloads anything, and in host mode the stage containers have no
+network. The suite uses no third-party data. The other files the tests read are the repository's own: the
+plugin's styles, icons, translation catalogues and `metadata.txt`, its source code, and the documents that
+some tests check against the code.
 
 ---
 
-*The fast stage, the coverage measurement and this page were developed with support from the
-[NLnet](https://nlnet.nl) NGI0 Commons Fund, as part of WP5.*
+*The fast stage, the coverage measurement, the initGui golden file, the lifecycle ratchet, the app stages
+and this page were developed with support from the [NLnet](https://nlnet.nl) NGI0 Commons Fund, as part of
+WP5.*
