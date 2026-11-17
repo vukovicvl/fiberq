@@ -4,8 +4,8 @@ FiberQ's test suite is in `tests/`: 114 test files and 2,315 tests, run by pytes
 of the root [`conftest.py`](../conftest.py). The pipeline in [`ci/`](../ci/README.md) runs it in the
 official QGIS images, from QGIS 3.22 to 4.2, and runs the part that needs no QGIS on its own, in a plain
 Python image. This page says what each tier of tests runs and how to run it, what "core logic" means here,
-how coverage is measured, the code the tests share, and the rules for flaky tests, temporary folders,
-platforms and test data.
+how the plugin's entry points are tested, how coverage is measured, the code the tests share, and the rules
+for flaky tests, temporary folders, platforms and test data.
 
 WP5, named below, is the work package "Automated tests and CI" of FiberQ's NLnet NGI0 Commons Fund
 grant.
@@ -147,7 +147,8 @@ Inside a leg, the tests are of a few kinds, told apart by what they build rather
 - tests that open the canvas, a dialog or a stand-in for QGIS's `iface`;
 - tests on real GeoPackages, projects and exported files, written to temporary folders;
 - tests that start QGIS, or the plugin's `initGui` and `unload`, in a child Python process, so that a
-  crash fails one test and not the whole run;
+  crash fails one test and not the whole run; the initGui golden file is of this kind
+  ([The plugin's entry points](#the-plugins-entry-points));
 - the fast tests above, which run on every leg as well.
 
 A test that cannot run on a leg skips, with its reason in the leg's record: for example, the benchmark
@@ -200,13 +201,102 @@ Importing the three packages still runs the import-time statements of the dead m
 `core/license_manager`, so their coverage is not zero. The table lists them, marked, and leaves them out of
 the in-scope total.
 
+## The plugin's entry points
+
+WP5 tests the plugin's entry points, `initGui`, `unload` and the toolbar actions. The initGui golden file
+builds the plugin in a child process with a stand-in for QGIS's `iface` (`FakeIface`,
+[Code the tests share](#code-the-tests-share)), on every leg.
+
+### The initGui golden file
+
+`tests/test_initgui_snapshot.py` builds the plugin in a child process with `FakeIface`, runs `initGui()`,
+and compares what it built with one golden file, `tests/initgui_golden.json`:
+
+- the containers: the FiberQ toolbar, the Quick toolbar, every drop-down of the two, nested ones depth
+  first, and the Plugins > FiberQ menu, each with its identity (its path; for a toolbar or a drop-down also
+  its title and object name, and for a toolbar whether it is hidden);
+- the entries of each container, in order, separators and invisible entries included, each with its kind,
+  text, tooltip, keys, object name and icon, and whether it is visible, enabled and checkable;
+- the keys the plugin binds outside its toolbars and menus: the actions it adds to the main window and the
+  `QShortcut` objects it creates under the main window and the map canvas, that is, those objects that
+  were not there before the plugin loaded.
+
+That is 15 containers and 108 entries, one action outside them (the hidden Terminal slack action, key R)
+and 8 shortcuts (Ctrl+B, Ctrl+F, Ctrl+G and Ctrl+P, each on the main window and on the canvas). A
+renamed, moved, re-keyed or re-iconed entry fails the test, and so does an entry that is added or lost, a
+renamed toolbar, or a key that changes outside the menus. The failure lists each difference on a line of
+its own, such as `FiberQ Toolbar[5]: tooltip: golden "…", now "…"`.
+
+An icon is recorded as the names of the files in `fiberq/icons/` that draw the same at 32 px, matched in
+the child that draws them: the pixels differ between Qt 5 and Qt 6, the file names do not. Two files,
+`ic_aerial_backbone.svg` and `ic_cable_aerial.svg`, draw alike, so the three entries that use them name
+both. The record is the same on QGIS 3.22, 3.40, 3.44, 4.0 and 4.2, so one golden file serves every leg.
+
+The child pins the plugin's language to English, three ways: it makes a fresh profile in the test's
+temporary folder, so that no one's settings are read or written; it stores the plugin's own language
+choice there (`FiberQ/lang=en`, with `FiberQ/lang_picked`); and it sets Qt's default locale to English.
+Neither the environment's language (Qt reads `LANGUAGE` even before `LC_ALL`) nor a locale stored in
+QGIS's settings can then change the record, and the test checks that the pin held (`effective_language` is
+`en`) before it compares. The test also fails when `initGui` raises a message box or opens any other window
+that waits for a click (offscreen, nothing would answer it), and when it calls an `iface` method that
+`FakeIface` answers with a `MagicMock`: what such a call adds would be missing from the record.
+
+The golden file lists every entry `initGui` builds, the two Pro features' entries included (Publish to
+PostGIS and Preview Map). No WP5 test triggers them, so neither Pro module runs, nor the licence check.
+
+A second test reads the same record and pins a known defect: the key R, which `initGui` binds to terminal
+slack through the hidden action, never fires, because Qt disables a hidden action together with its
+shortcut (the record shows the action with `enabled: false`). The test fails while nothing enabled holds the
+key R: no action or `QShortcut` outside the toolbars and menus, and no entry of a toolbar, drop-down or
+menu, that is enabled and has R among its keys. It is marked `xfail(strict=True)`, with the defect's
+follow-up number in its reason: strict, so that the fix, which makes the test pass, also removes the
+marker, and changes the golden file on purpose. When nothing binds R any more, the test fails for real,
+not as the expected failure: a change that drops the key on purpose deletes the test.
+
+The file's 16 other tests need no QGIS, and they are pure items: they check the snapshot comparison and the
+file format. One checks that the golden file is in its canonical form, exactly what the writer gives it,
+one entry per line, so that an edit by hand fails and a change reads as whole lines in a diff; fifteen
+check that the comparison names each kind of change, cuts a long list short with a line that counts the
+rest, and finds nothing in an equal record, so that a comparison that finds nothing cannot let the child's
+test pass unnoticed.
+
+**Changing the golden file on purpose.** The test never writes into the tree. When a change to the plugin
+is meant to change what `initGui` builds, write the file anew and commit it with that change, saying why in
+the pull request. From the repository root, with QGIS (for the qgis.org packages for Debian and Ubuntu,
+with `PYTHONPATH=/usr/share/qgis/python`):
+
+```sh
+python3 tests/support/initgui_snapshot.py --write /tmp/initgui_golden-1.json   # a new file
+cp /tmp/initgui_golden-1.json tests/initgui_golden.json
+```
+
+`--write` writes a new file only; it refuses one that exists. Without QGIS here, the same runs in the QGIS
+4.2 image of `ci/legs` (after `sh ci/pull.sh 42`), with no network, as your own user, with the checkout
+mounted read-only:
+
+```sh
+mkdir /tmp/fiberq-golden-1                       # a new folder
+docker run --rm --network none --pull=never --user "$(id -u):$(id -g)" \
+    -e HOME=/tmp -e QT_QPA_PLATFORM=offscreen -v "$PWD:/src:ro" -v /tmp/fiberq-golden-1:/out -w /tmp \
+    --entrypoint python3 "$(awk '$1 == "42" {print $2}' ci/legs)" \
+    /src/tests/support/initgui_snapshot.py --write /out/initgui_golden.json
+cp /tmp/fiberq-golden-1/initgui_golden.json tests/initgui_golden.json
+```
+
+Both give the same bytes on any QGIS from 3.22 to 4.2. A failed comparison also writes this run's record,
+in the same form, into the test's temporary folder and names it on the failure's last line; that folder
+is kept only when the suite runs in place, as `make test` does, under
+`ci-results/<run>/stages/<stage>/work/`. The first change planned for the file is v1.8.0's change to the
+plugin's keys. A translation catalogue that gets its first translations changes the file too: its language
+then joins the plugin's language drop-down, so that change writes the file anew as well.
+
 ## WP5's test files
 
 | File | Item | Kind | Tests | Pure items |
 |---|---|---|---|---|
 | `tests/test_floor_seed.py`, with `tests/floor_check.py` and `tests/floor_seed/` | the seeds of the floor gate, in v1.6.0 already | checks the seed files as text | 7 | 7 |
 | `tests/test_qt6_seed.py`, with `tests/qt6_seed/` | the seeds of the Qt6 check, in v1.6.0 already | checks the seed files as text | 3 | 3 |
-| added since v1.6.0 | none yet | | | |
+| `tests/test_initgui_snapshot.py`, with `tests/support/initgui_snapshot.py` and `tests/initgui_golden.json` | the initGui golden file | a child process on every leg, read by two tests, one of them an expected failure; checks of the snapshot comparison and of the file format | 18 | 16 |
 
 ## The fast-stage count
 
@@ -252,7 +342,9 @@ sh ci/run-all.sh --only test-coverage --ref v1.6.0    # v1.6.0
 sh ci/run-all.sh --only test-coverage                 # v1.7.0
 git switch -c coverage-without-wp5                    # a throwaway branch
 git rm -rq tests/test_floor_seed.py tests/floor_check.py tests/floor_seed \
-    tests/test_qt6_seed.py tests/qt6_seed             # and every other path under WP5's test files
+    tests/test_qt6_seed.py tests/qt6_seed \
+    tests/test_initgui_snapshot.py tests/support/initgui_snapshot.py \
+    tests/initgui_golden.json                         # and every other path under WP5's test files
 git commit -qm 'coverage: without WP5 test files'
 sh ci/run-all.sh --only test-coverage                 # v1.7.0 without WP5's test files
 ```
@@ -274,7 +366,8 @@ What the figures include, and what they do not:
   from a copy of the plugin (the mapping generator's test copies three core modules into a temporary folder,
   and one language test copies `fiberq/`); a child process that is killed or crashes, which leaves no data.
 
-Each column's percentage is over the statements of the commit it measures.
+The tests of the plugin's entry points mainly run `main_plugin.py`, which this table does not list. Each
+column's percentage is over the statements of the commit it measures.
 
 | Module | Statements at v1.6.0 | v1.6.0 | Statements at v1.7.0 | v1.7.0 without WP5's test files | v1.7.0 | WP5's share |
 |---|--:|--:|--:|--:|--:|--:|
@@ -345,17 +438,26 @@ Each column's percentage is over the statements of the commit it measures.
   imports QGIS.
 - `toolbar_driver.py`: a driver that builds the plugin's toolbars with `FakeIface` and prints each toolbar,
   drop-down and Plugins > FiberQ entry with what its icon draws, for `tests/test_toolbar_icons.py`.
+- `initgui_snapshot.py`: the record of what the plugin's `initGui` builds, its comparison with the golden
+  file, the golden file's writer, and the child driver of `tests/test_initgui_snapshot.py`. It imports
+  only the standard library at its top, and QGIS inside the functions that need it, so a test file can
+  import it at its top.
 
-`pyproject.toml` puts `tests/` on pytest's `sys.path`, so a test file imports the runner with
-`from support.child import run_driver`, in any import mode. A driver that uses `FakeIface` puts the repository
-root and `tests/` on its own `sys.path`, and imports `support.fake_iface` once it has started a
-`QgsApplication`. What a test file imports at its top must import without QGIS, or the fast stage leaves the
-file out: `child.py` does, `fake_iface.py` does not. A test asserts the child's exit code and result before it
-reads the result, with the child's output in that assertion's message
-(`assert code == 0 and result is not None, output`), as both test files do: the fast stage turns a child that
-died of a hidden module into a skip only when that output is in the failure. Python puts a script's folder
-first on `sys.path`, and `toolbar_driver.py` runs from `tests/support/`, so no module there may be named like
-a standard-library, QGIS or installed module.
+WP5's modules here may import `child.py` and `fake_iface.py`, but no other test file or module imports one
+of WP5's, so the coverage procedure can remove WP5's test files and leave every other test as it is
+([Coverage of core logic](#coverage-of-core-logic)).
+
+`pyproject.toml` puts `tests/` on pytest's `sys.path`, so a test file imports `run_driver` with
+`from support.child import run_driver`, in any import mode. A driver that uses `FakeIface` puts the
+repository root and `tests/` on its own `sys.path`, and imports `support.fake_iface` once it has started a
+`QgsApplication`. What a test file imports at its top must import without QGIS, or the fast stage leaves
+the file out: `child.py` and `initgui_snapshot.py` do, `fake_iface.py` does not. A test asserts the child's
+exit code and result before it reads the result, with the child's output in that assertion's message
+(`assert code == 0 and result is not None, output`), as every test file that uses `run_driver` does: the
+fast stage turns a child that died of a hidden module into a skip only when that output is in the failure.
+For the same reason a driver catches no exception broadly: in the fast stage its child must die of the
+hidden `qgis`, uncaught. Python puts a script's folder first on `sys.path`, and the drivers run from
+`tests/support/`, so no module there may be named like a standard-library, QGIS or installed module.
 
 ## Flaky tests
 

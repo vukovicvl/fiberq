@@ -15,6 +15,7 @@
 140 tests/test_gpkg_target.py
 4 tests/test_health_check_removed.py
 2 tests/test_i18n_placeholders.py
+16 tests/test_initgui_snapshot.py
 19 tests/test_interchange.py
 15 tests/test_interchange_fields.py
 15 tests/test_interchange_format_doc.py
