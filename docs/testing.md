@@ -147,8 +147,8 @@ Inside a leg, the tests are of a few kinds, told apart by what they build rather
 - tests that open the canvas, a dialog or a stand-in for QGIS's `iface`;
 - tests on real GeoPackages, projects and exported files, written to temporary folders;
 - tests that start QGIS, or the plugin's `initGui` and `unload`, in a child Python process, so that a
-  crash fails one test and not the whole run; the initGui golden file and the lifecycle ratchet are
-  of this kind ([The plugin's entry points](#the-plugins-entry-points));
+  crash fails one test and not the whole run; the initGui golden file, the lifecycle ratchet and the app
+  runner's own test are of this kind ([The plugin's entry points](#the-plugins-entry-points));
 - the fast tests above, which run on every leg as well.
 
 A test that cannot run on a leg skips, with its reason in the leg's record: for example, the benchmark
@@ -205,7 +205,8 @@ the in-scope total.
 
 WP5 tests the plugin's entry points, `initGui`, `unload` and the toolbar actions. The initGui golden file
 and the lifecycle ratchet build the plugin in a child process with a stand-in for QGIS's `iface`
-(`FakeIface`, [Code the tests share](#code-the-tests-share)), on every leg.
+(`FakeIface`, [Code the tests share](#code-the-tests-share)), on every leg. The runner drives the real
+QGIS desktop as a person does; its own test runs headless, on every leg.
 
 ### The initGui golden file
 
@@ -352,6 +353,71 @@ every other failure real (a child that dies, a window that blocks, a tool that w
 call that `FakeIface` answers with a `MagicMock`). The file's three other tests need no QGIS: they are pure
 items, which check the ratchet's messages for a count that rose, one that fell and none that moved.
 
+### The runner
+
+`tests/app/runner.py` drives the real QGIS desktop from a `qgis --code` script, as a person would, and
+records what it sees. It imports QGIS and the standard library, never FiberQ, so any scenario can use it,
+such as those of the user documentation. A scenario is a plain function, `scenario(r)`, which acts and
+checks through `r`, a `Runner`:
+
+| Name | What it does |
+|---|---|
+| `begin(scenario, start, delay_ms=500, out=None, deadline_s=None)` | called from a `qgis --code` script: runs `scenario` as the start `start` once QGIS's event loop runs; QGIS then ends with the run's exit code |
+| `Runner(start, out=None, deadline_s=None, iface=None)` | one start; `start` is a slug (`[a-z0-9_]+`); `out` defaults to `$APP_OUT`, `deadline_s` to `$APP_DEADLINE_S`, else 300 s, and `iface` to `qgis.utils.iface`. It starts the window watch and the deadline |
+| `r.run(scenario)` | runs `scenario(r)`, then ends the process with the run's exit code; whatever the scenario raises is recorded with its traceback (exit 5) |
+| `r.expect_checks(ids)` | declares the ids of the checks the start records, first: `report.json` lists them as `expected`, and a check whose id they do not list raises (exit 5) |
+| `r.step(name, text="")` | starts a step; `name` is `[a-z0-9_]+` and unique in the start, and `text` says what a person does in it |
+| `r.check(name, expected, seen, ok=None, what="")` | records the check `<step>.<name>`, which holds when `expected == seen` unless `ok` is given, and returns whether it holds |
+| `r.require(name, expected, seen, ok=None, what="")` | a check that the rest of the start depends on: when it fails, the run ends at once, with exit 1 |
+| `r.note(text, **data)` | evidence without a verdict |
+| `r.screenshot(label, widget=None)` | a PNG of the main window with every open dialog painted where it is, rendered by Qt and not read from the screen, as `NNN_<step>_<label>.png`; it returns the file's name |
+| `r.expect(match, answer, label)`, `r.expected_left()` | answers the next window for which `match(window)` holds with `answer(window)`, once, 150 ms after the watch first sees it and after a screenshot; the labels of the expected windows that did not come |
+| `r.wait(ms)`, `r.wait_until(condition, timeout_ms=5000, poll_ms=50, what="")`, `r.wait_for_log(tag, starts, since=0, timeout_ms=15000)` | waits that run the event loop; the last two return whether the condition came true, never raise, and add a note that names the wait when they time out (`wait_until` names it by `what`, else by the condition's name) |
+| `r.log()`, `r.log_mark()`, `r.log_since(mark, tag=None)`, `r.python_problems(since=0)` | QGIS's message-log lines, each `{"t", "step", "tag", "level", "message"}`; `python_problems` gives those on the "Python error" and "Python warning" tags |
+| `r.trigger(action)`, `r.entry(toolbar, *labels)`, `r.menu_entry(menu, *texts)`, `r.click_map(point)`, `r.map_to_pixel(point)`, `r.press_ok(w)`, `r.press_button(w, text)`, `r.field(w, label)`, `r.type_into(edit, text)`, `r.choose(combo, text)`, `r.save_file_as(w, path)` | a person's actions: a toolbar button or a menu entry (a button that opens a drop-down raises: name its entry instead); an entry reached by its labels, through the drop-downs of the toolbar whose object name is `toolbar`, or through a menu; a click on the map at a point in map units; the buttons and fields of a dialog; and Qt's own file window |
+| `r.finish(code=None)` | ends the run now: writes `report.json`, syncs QGIS's settings, prints a `RESULT` line, then ends the process with `code`, by default 1 if a check failed, else 0 |
+| `layer_named(name)`, `title_starts(prefix)`, `message_box(title=None, text_starts=None)` | helpers for scenarios: the project's layer of that name; a `match` for `expect` by window title, or for a message box by its title and text |
+
+The run's exit code is 0 when every check held, 1 when a check failed, 3 for a window that QGIS opened for
+a Python error (a `QgsMessageViewer`) or any other window that waits for an answer and that no `expect`
+matched, 4 when the deadline passed, and 5 when the scenario raised, or the answer to a window, or the
+window watch. The watch looks every 120 ms, also while a dialog's own event loop runs, so a scenario can
+click a button that opens a blocking dialog and let the watch answer it.
+
+Its records, in the folder `out`:
+
+- `report.json`, written at the end: the start; the QGIS, Qt and Python versions, the Qt platform and the
+  start time; the seconds; the exit code and its reason; the steps; the declared check ids (`expected`);
+  each check, as `{"id", "step", "name", "what", "expected", "seen", "ok", "t", "seconds"}`; each window
+  the watch saw, with its screenshot; each screenshot, with its size in logical pixels and its device pixel
+  ratio; the notes; the expected windows that never came; the error, a traceback; QGIS's memory; and the
+  message log. Its key `runner` is its format, 1 today; a change to its layout raises the format
+  (`FORMAT` in `runner.py`);
+- `steps.jsonl`, one line per event, written as it happens, so that a crash keeps them;
+- `log.jsonl`, QGIS's message log, line by line;
+- the screenshots, `NNN_<step>_<label>.png`, numbered in the order they were taken.
+
+A script that QGIS runs through `PYQGIS_STARTUP`, before it loads any plugin, can leave the module
+`fiberq_app_guard` in `sys.modules`, with the message log since QGIS started (`LOG`), QGIS's start time
+(`T0`), the current step (`STEP`) and a window watch of its own (`TIMER`). When it is there, the runner
+takes over its log and its clock and stops its watch.
+
+A scenario of your own runs from any `--code` script that appends `tests/` to `sys.path` and calls
+`app.runner.begin(scenario, start="<slug>")`; start QGIS with `--code <that script>` and `APP_OUT` set to a
+new folder for the records (and `APP_DEADLINE_S`, else the deadline is 300 s). A headless run, with no
+QGIS desktop, makes the runner itself with a stand-in for `iface`, `Runner(start, out, deadline_s,
+iface=...).run(scenario)`, as `tests/app/selftest.py` does. `FakeIface` is enough for the runner itself; a
+FiberQ scenario run headless needs a fuller stand-in, since `FakeIface` answers `messageBar()` and most
+other calls with a `MagicMock`.
+
+`tests/test_app_runner.py` is the runner's own test: eleven cases, each run headless and offscreen in a
+child process with `FakeIface`'s main window, on every leg: a pass, a failed check, an unexpected window,
+a Python error window, the deadline, a scenario that raises, a line on QGIS's Python error tag with a
+required check, an answer that raises, a `match` that raises (an error of the window watch), a check whose
+id was not declared, and a click on a button that opens a drop-down. Each asserts the child's exit code
+and its `RESULT` line first, then what `report.json` says. The fast stage skips all eleven: their child
+processes need QGIS.
+
 ## WP5's test files
 
 | File | Item | Kind | Tests | Pure items |
@@ -360,6 +426,7 @@ items, which check the ratchet's messages for a count that rose, one that fell a
 | `tests/test_qt6_seed.py`, with `tests/qt6_seed/` | the seeds of the Qt6 check, in v1.6.0 already | checks the seed files as text | 3 | 3 |
 | `tests/test_initgui_snapshot.py`, with `tests/support/initgui_snapshot.py` and `tests/initgui_golden.json` | the initGui golden file | a child process on every leg, read by two tests, one of them an expected failure; checks of the snapshot comparison and of the file format | 18 | 16 |
 | `tests/test_lifecycle_ratchet.py`, with `tests/support/lifecycle_driver.py` | the lifecycle ratchet | two child processes on every leg, one of them an expected failure; checks of the ratchet's messages | 5 | 3 |
+| `tests/test_app_runner.py`, with `tests/app/` | the app runner | the runner's eleven cases, each in a child process on every leg | 11 | 0 |
 
 ## The fast-stage count
 
@@ -407,7 +474,8 @@ git switch -c coverage-without-wp5                    # a throwaway branch
 git rm -rq tests/test_floor_seed.py tests/floor_check.py tests/floor_seed \
     tests/test_qt6_seed.py tests/qt6_seed \
     tests/test_initgui_snapshot.py tests/support/initgui_snapshot.py tests/initgui_golden.json \
-    tests/test_lifecycle_ratchet.py tests/support/lifecycle_driver.py   # and every other path under WP5's test files
+    tests/test_lifecycle_ratchet.py tests/support/lifecycle_driver.py \
+    tests/test_app_runner.py tests/app                # and every other path under WP5's test files
 git commit -qm 'coverage: without WP5 test files'
 sh ci/run-all.sh --only test-coverage                 # v1.7.0 without WP5's test files
 ```
@@ -508,21 +576,27 @@ column's percentage is over the statements of the commit it measures.
 - `lifecycle_driver.py`: the child driver of `tests/test_lifecycle_ratchet.py`, with `LifecycleIface` and
   every count the ratchet pins.
 
-WP5's modules here may import `child.py` and `fake_iface.py`, but no other test file or module imports one
-of WP5's, so the coverage procedure can remove WP5's test files and leave every other test as it is
-([Coverage of core logic](#coverage-of-core-logic)).
+`tests/app/` holds the code that drives the real QGIS desktop, and no tests of its own: the runner
+(`runner.py`) and the driver of the runner's own test (`selftest.py`). Its modules import each other as
+`app.<module>`, with `tests/` on `sys.path`, never by their bare names, and no file there is named
+`test_*.py`, so pytest never collects one.
+
+WP5's modules in both folders may import `child.py` and `fake_iface.py`, but no other test file or module
+imports one of WP5's, so the coverage procedure can remove WP5's test files and leave every other test as
+it is ([Coverage of core logic](#coverage-of-core-logic)).
 
 `pyproject.toml` puts `tests/` on pytest's `sys.path`, so a test file imports `run_driver` with
-`from support.child import run_driver`, in any import mode. A driver that uses `FakeIface` puts the
-repository root and `tests/` on its own `sys.path`, and imports `support.fake_iface` once it has started a
-`QgsApplication`. What a test file imports at its top must import without QGIS, or the fast stage leaves
-the file out: `child.py` and `initgui_snapshot.py` do, `fake_iface.py` does not. A test asserts the child's
-exit code and result before it reads the result, with the child's output in that assertion's message
-(`assert code == 0 and result is not None, output`), as every test file that uses `run_driver` does: the
-fast stage turns a child that died of a hidden module into a skip only when that output is in the failure.
-For the same reason a driver catches no exception broadly: in the fast stage its child must die of the
-hidden `qgis`, uncaught. Python puts a script's folder first on `sys.path`, and the drivers run from
-`tests/support/`, so no module there may be named like a standard-library, QGIS or installed module.
+`from support.child import run_driver`, in any import mode. A driver that uses `FakeIface` puts `tests/` on
+its own `sys.path`, and the repository root too when it imports the plugin, and imports `support.fake_iface`
+once it has started a `QgsApplication`. What a test file imports at its top must import without QGIS, or the
+fast stage leaves the file out: `child.py` and `initgui_snapshot.py` do, `fake_iface.py` does not. A test
+asserts the child's exit code and result before it reads the result, with the child's output in that
+assertion's message (`assert code == 0 and result is not None, output`), as every test file that uses
+`run_driver` does: the fast stage turns a child that died of a hidden module into a skip only when that
+output is in the failure. For the same reason a driver catches no exception broadly: in the fast stage its
+child must die of the hidden `qgis`, uncaught. Python puts a script's folder first on `sys.path`, and the
+drivers run from `tests/support/` and `tests/app/`, so no module in either folder may be named like a
+standard-library, QGIS or installed module.
 
 ## Flaky tests
 
