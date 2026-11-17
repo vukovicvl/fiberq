@@ -44,7 +44,8 @@ branches and tags), and GitLab runs part of them for `main`, release branches an
 the same pipeline without a forge, with git and docker or podman on an x86-64 machine:
 [ci/README.md](ci/README.md) explains how, and lists
 [where to see the runs](ci/README.md#where-to-see-the-runs). The release process is in
-[RELEASE.md](RELEASE.md).
+[RELEASE.md](RELEASE.md). [docs/testing.md](docs/testing.md) says what the tests cover and how to run
+each tier.
 
 ## Community & Feedback
 

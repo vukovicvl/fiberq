@@ -111,6 +111,8 @@ again; the others are yours.
 9. **The run record.** Copy `summary.md` of the release run that `make tag` named ("Release run:
    <folder>") to `docs/ci/<version>.md`, with the local path of the run folder in it shortened to
    `ci-results/<run>/`, and copy `dist/fiberq-<version>.contents.tsv` to `docs/ci/<version>-contents.tsv`.
+   If a run on the release commit failed and was run again (the release run of step 3, or a forge run of
+   step 6), add a line under the copied summary that names the failed run and the tests that failed in it.
    Commit both in a pull request of their own. After it merges, fast-forward the local `main` and push
    it to every remote (`git push <remote> main`), so that every forge has the record.
 
@@ -166,4 +168,5 @@ python or 4.2 digest goes into `.gitlab-ci.yml` too; the lint stage fails until 
 role and `qgisMinimumVersion` change together, or the floor stage fails. A release compared with the
 previous one test by test compares runs on the same digests: after moving a QGIS digest, run the
 previous release's tag again on it, `sh ci/run-all.sh --release --ref v<previous>`, and compare with
-that run.
+that run. A tag from before the automatic fast stage, such as v1.6.0, has no `ci/pure-count`: that run's
+pure stage fails and says so, and the comparison leaves pure out, since that run has no junit.xml for it.

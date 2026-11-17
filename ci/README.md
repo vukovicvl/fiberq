@@ -1,7 +1,8 @@
 # The FiberQ pipeline
 
-`ci/` holds FiberQ's whole test and release pipeline: POSIX `sh` scripts and two Python helpers,
-`report.py` and `zipcheck.py`. It needs no forge and no account: anyone with git, tar and docker or
+`ci/` holds FiberQ's whole test and release pipeline: POSIX `sh` scripts, two Python helpers
+(`report.py` and `zipcheck.py`) and the start-up hook of the test-coverage stage
+(`cov-sitecustomize.py`). It needs no forge and no account: anyone with git, tar and docker or
 podman runs it with one command. GitHub Actions and GitLab CI only call these scripts
 ([On a forge, or with no forge](#on-a-forge-or-with-no-forge)).
 
@@ -37,7 +38,7 @@ catatonit 0.2.1.
 
 | Stage | Runs in | What it checks |
 |---|---|---|
-| `pure` | the python image | the test files listed in `ci/pure-tests.txt`, which run with no QGIS installed (in the python image, those that need GDAL or lrelease skip) |
+| `pure` | the python image | the fast stage: every test file that imports with no QGIS, picked by the tested tree's `conftest.py`, which hides QGIS, PyQt, sip and GDAL's `osgeo` even where they are installed; a test that needs a pytest-qgis fixture is deselected, and the stage turns a failure into a skip only when a hidden module caused it (the exception the test ends with, or the uncaught one a child process dies of); every other failure fails. Each test file's pure items (the tests run, less the skips a hidden module caused, a test's own `pytest.importorskip` of one included) must equal its line in the tested tree's `ci/pure-count` |
 | `lint` | the python image | flake8 (on `fiberq/`, `tests/`, `conftest.py` and `tools/bench`) and Bandit (on `fiberq/`, every severity) with the flags of plugins.qgis.org's scan, detect-secrets on `fiberq/` as that scan runs it, shellcheck on `ci/*.sh` and `ci/hooks/`, flake8 on the Python files of `ci/`, the `.ts` placeholder check, and the forge configs ([below](#what-the-lint-stage-checks-in-the-forge-configs)) |
 | `qt6` | the Qt6 checker image | QGIS's `pyqt5_to_pyqt6.py`, as plugins.qgis.org runs it for its Qt6 Check tab: 0 findings in `fiberq/`, where the checker must also succeed, and at least 4 in `tests/qt6_seed/`, so a checker that stops reporting fails |
 | `floor` | the QGIS 3.22 image | every `fiberq/` module parses and imports on QGIS 3.22, which must be `qgisMinimumVersion` |
@@ -45,10 +46,13 @@ catatonit 0.2.1.
 | `test-322`, `test-340`, `test-344`, `test-40`, `test-42` | the image of that QGIS version | the whole test suite |
 | `release-check` | the host | `fiberq/config.ini` holds no user or password, and both READMEs have their "Use of Generative AI" heading; it also lists, for review, the commits since the last tag without an `Assisted-by:` trailer |
 | `test-local` | in place only | the whole test suite on the QGIS that `python3` imports here |
+| `test-coverage` | the QGIS 4.2 image, in host mode only | the suite of test-42 under coverage.py, set by `ci/coverage.ini` alone, Python child processes included; it writes the statement coverage of each core-logic module (`coverage-core.md`). It is measured, not gated: it fails only when a test fails, the report cannot be written, or no child process was measured or its data files cannot be counted. In no set: `sh ci/run-all.sh --only test-coverage` |
+
+[docs/testing.md](../docs/testing.md) says what the tests in these stages cover and how to run each tier.
 
 | Set | Stages | Images to pull | Time here |
 |---|---|---|---|
-| `--hook` | pure, lint, package | the python image, about 0.2 GB | about a minute |
+| `--hook` | pure, lint, package | the python image, about 0.2 GB | about a minute and a quarter |
 | `--quick` | the hook set, qt6, floor | about 7.4 GB | under two minutes |
 | default | the quick set, test-322, test-344, test-42 | about 28 GB | 43 minutes, one leg at a time |
 | `--release` | the default set, test-340, test-40, release-check | about 36 GB | 52 minutes with `--jobs 2` |
@@ -76,7 +80,8 @@ sh ci/run-all.sh [--hook|--quick|--release] [--only <stage,...>] [--jobs N] [--r
   name means its test stage: `--only 42` is `--only test-42`.
 - `--ref <commit>`: test that commit's tree instead of the working tree. The scripts still come from the
   working tree, so an older commit, even v1.6.0, which has no `ci/`, can be tested. A `--ref` run never
-  copies into `dist/`.
+  copies into `dist/`. The pure stage reads the tested tree's `conftest.py` and `ci/pure-count`, so on a
+  tree from before them, such as v1.6.0, it fails and says so.
 - `--jobs N`: run the test legs in N lanes (default 1).
 - `--offline`: never fetch pinned tools; a stage whose tools are not cached fails.
 - `--strict`: a skipped stage fails the run, as under `--release`, without `--release`'s refusals; it
@@ -135,7 +140,9 @@ Each run writes a new folder, `ci-results/<UTC time>-<commit12>/` (`-2`, `-3` on
 - `run.txt`: the facts of the run (the commit, the trees, the images, the engine, the mode), written
   before the first stage;
 - `<stage>.log`, `stages/<stage>/status` (the verdict) and `stages/<stage>/out/` (what the stage wrote:
-  `result.txt`, and `junit.xml` from pure and the test legs);
+  `result.txt`; `junit.xml` from pure and the test stages; `pure-files.tsv` from pure, each test file
+  picked or left out, with the reason, and each test deselected; `coverage.json`, `coverage-core.tsv`
+  and `coverage-core.md` from test-coverage);
 - `summary.md` (for people) and `record.txt` (for `tag.sh`), only when the summary stage passed; an
   interrupted run has neither;
 - `input/`: the snapshot of the working tree, when git is there, and what the stages read (in host mode,
@@ -166,7 +173,7 @@ the right image (GitLab, below), or a machine with QGIS installed (`make lint`, 
 
 | | Host mode | In place |
 |---|---|---|
-| where the stages run | pure, lint, qt6, floor, the test legs and the summary each in a fresh container (`--network none`, uid 1000, `--pull=never`); package builds the zip on the host and checks it in a container; release-check runs on the host | here, with no container; each stage gets its own empty `HOME` in its run folder |
+| where the stages run | pure, lint, qt6, floor, the test legs, test-coverage and the summary each in a fresh container (`--network none`, uid 1000, `--pull=never`); package builds the zip on the host and checks it in a container; release-check runs on the host | here, with no container; each stage gets its own empty `HOME` in its run folder |
 | the tested tree | the working tree, or `--ref <commit>` | the checkout as it is |
 | the commit in the record | from git | `CI_COMMIT_SHA`, else from git, else `unknown` |
 | network during the tests | none | whatever the environment has |
@@ -176,6 +183,7 @@ the right image (GitLab, below), or a machine with QGIS installed (`make lint`, 
 | package | runs | skipped |
 | qt6 | the checker image; without it, skipped | `pyqt5_to_pyqt6.py` on `PATH`, in `/usr/local/bin` or in `QT6_CHECKER`, else skipped |
 | floor and the test legs | each in its image | skipped unless this QGIS is the version the stage needs |
+| test-coverage | the 42 image | skipped: every column of the coverage table is counted with the 42 image's Python |
 | test-local | refused | the whole suite on this QGIS |
 | `--release`, `--ref` | allowed | refused (exit 2) |
 | `--strict` | allowed | allowed (the GitLab jobs use it) |
@@ -189,7 +197,7 @@ the right image (GitLab, below), or a machine with QGIS installed (`make lint`, 
 | `make lint` | `CI_IN_PLACE=1 sh ci/run-all.sh --only lint` |
 | `make test` | `CI_IN_PLACE=1 sh ci/run-all.sh --only test-local`: the whole suite on the QGIS that `python3` imports. The qgis.org packages for Debian and Ubuntu put the bindings in `/usr/share/qgis/python`: `PYTHONPATH=/usr/share/qgis/python make test` |
 | `make deps` | pip installs `ci/requirements-test.txt` and `ci/requirements-lint.txt`, hash-locked, into `$(PYTHON)`, with `PIP_FLAGS` (`--break-system-packages` unless you set it empty, as in a virtualenv) |
-| `make test-cov` | pytest with `--cov=fiberq` in `$(PYTHON)` itself, outside the pipeline (after `make deps`) |
+| `make test-cov` | pytest with `--cov=fiberq` in `$(PYTHON)` itself, outside the pipeline (after `make deps`): a quick look, with the tree's own settings and no child processes; the `test-coverage` stage is the reference |
 | `make qt6-check` | `sh ci/pull.sh qt6`, then `sh ci/run-all.sh --only qt6`: when the checker image cannot be pulled it fails, rather than pass with qt6 skipped |
 | `make floor-check`, `make package` | `sh ci/run-all.sh --only floor`, `sh ci/run-all.sh --only package` |
 | `make ci`, `make ci-quick` | `sh ci/run-all.sh`, `sh ci/run-all.sh --quick` |
@@ -313,7 +321,10 @@ sh ci/pull.sh --hook
 
 A push that only deletes refs tests nothing, several refs on one commit test it once, and a commit that
 the remote's tracking refs (`refs/remotes/<remote>/`) already reach is not tested again. When the hook
-set fails, git refuses the push; `git push --no-verify` skips the hook once. git runs the hook once for
+set fails, git refuses the push; `git push --no-verify` skips the hook once. A commit from before
+`ci/pure-count` (v1.6.0, or `main` before the fast stage) fails the hook set's pure stage when you push
+it from a later checkout (see `--ref` above): push it once with `git push --no-verify`, or from a
+checkout of that commit, whose own `ci/` then runs the hook (v1.6.0 has none). git runs the hook once for
 each push URL of a remote, and after each URL's push it moves the tracking branch of each ref that URL
 accepted, if the remote's fetch refspec maps it (by default every branch). So the next URL's run skips
 a commit that a branch the first URL accepted reaches, and tests the rest; a commit that only a tag

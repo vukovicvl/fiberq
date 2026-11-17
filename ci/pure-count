@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# The pure count of each test file: how many pure items the pure stage (ci/test.sh) counts in it. Pure items are
+# the tests the stage runs, less those it skips because a module it hides (qgis, PyQt5, PyQt6, sip, osgeo) stops
+# them. One line per test file with at least one pure item: the number, a space, the file. The stage fails when a
+# file's count differs from its line, or a file is in only one of the two; it reads this file from the tested tree.
+# A change that adds pure tests adds or raises their file's line. The total may only rise: a change that lowers it
+# needs the maintainer's approval in its pull request. The stage compares each file with its line in the tree it
+# tests, never with an earlier commit, so that rule is kept in review.
+6 tests/test_bench_harness.py
+13 tests/test_bench_report.py
+7 tests/test_city_fixture.py
+7 tests/test_error_handling_ratchet.py
+16 tests/test_file_filters.py
+7 tests/test_floor_seed.py
+140 tests/test_gpkg_target.py
+4 tests/test_health_check_removed.py
+2 tests/test_i18n_placeholders.py
+19 tests/test_interchange.py
+15 tests/test_interchange_fields.py
+15 tests/test_interchange_format_doc.py
+15 tests/test_interchange_mapping.py
+1 tests/test_logger_fallback.py
+7 tests/test_project_compat.py
+8 tests/test_qgis4_deprecations.py
+3 tests/test_qt6_seed.py
+1 tests/test_reserve_hook_retired.py
+6 tests/test_sample_bundle.py
+4 tests/test_sample_report.py
+14 tests/test_schema.py
+2 tests/test_smoke.py
+3 tests/test_style_files_exist.py
+2 tests/test_style_fonts.py
+2 tests/test_toolbar_icons.py
+6 tests/test_translating_doc.py
+36 tests/test_validation_report.py
