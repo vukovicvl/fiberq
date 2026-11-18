@@ -63,7 +63,9 @@ fiberq/               the plugin package (this is what ships)
   i18n/               translation catalogues (.ts sources, .qm compiled)
   styles/ icons/ resources/
 tests/                pytest suite
-  support/            code the tests share: a stand-in for iface, the toolbar driver, a child runner
+  support/            code the tests share: a stand-in for iface, the toolbar driver, a child runner,
+                      the initGui snapshot and the lifecycle driver
+  app/                the app smoke: the runner that drives the real QGIS desktop, and FiberQ's two starts
 docs/                 schema.md, i18n.md, project-versioning-guide.md
 ci/                   the pipeline: run-all.sh, the stage scripts, ci/legs, ci/hooks/ (ci/README.md); CI runs it
 Makefile              short names for the pipeline (make lint, make test, ...) and other developer targets
@@ -229,8 +231,18 @@ On every push to this repository, and on a pull request from a fork (a
 maintainer may have to approve its run first), GitHub runs pure, lint, the Qt6
 and floor checks, the package, and the suite on QGIS 3.22, 3.44 and 4.2, one
 job per stage (`ci/README.md`, "On a forge, or with no forge"). A `release/`
-branch or a tag also runs the suite on QGIS 3.40 and 4.0, and the release
-check. All of them must be green.
+branch or a tag also runs the suite on QGIS 3.40 and 4.0, the app smoke on
+QGIS 3.40 and 4.2 (FiberQ installed from its zip and used in the real QGIS
+desktop: `docs/testing.md`, "The app smoke") and the release check; so does
+"Run workflow", on the branch or tag picked. All of them must be green.
+
+A change that alters the plugin's toolbars, menus or keys on purpose writes
+`tests/initgui_golden.json` anew in the same pull request, or
+`tests/test_initgui_snapshot.py` fails on every leg; the failure says how. A
+change that makes `unload()` leave less behind lowers the pin of each count
+that fell, in `PINS`, or `tests/test_lifecycle_ratchet.py` fails. A count above
+its pin is a leftover to fix, not a pin to raise. See
+"The plugin's entry points" in `docs/testing.md`.
 
 ### Qt6 source check
 
