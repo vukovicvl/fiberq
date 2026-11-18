@@ -8,8 +8,8 @@
 # --strict makes a skipped stage fail its job: in place, a test leg is skipped when the QGIS that python3 imports
 # is not the leg's version, or when none imports, and without --strict that job would pass having run no test.
 # Pipelines run for main, release/* branches and tags only. The other stages (qt6, floor, package, the other
-# test legs, release-check) run on GitHub, and with sh ci/run-all.sh on any machine that ci/README.md's "What the
-# host needs" describes.
+# test legs, the app stages, release-check) run on GitHub, and with sh ci/run-all.sh on any machine that
+# ci/README.md's "What the host needs" describes.
 # The lint stage reads this file line by line (ci/lint.sh, "wrappers"): every image: line names its ci/legs role
 # and must equal that role's digest there; every script: is one line, CI_IN_PLACE=1 sh ci/run-all.sh --strict
 # --only <stage>, and its job's image is the one ci/legs gives that stage; no include, services, trigger, run,

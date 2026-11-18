@@ -5,16 +5,19 @@
 #   sh ci/run-all.sh [--hook|--quick|--release] [--only <stage,...>] [--jobs N] [--ref <commit>] [--offline]
 #                    [--strict]
 #   CI_IN_PLACE=1 sh ci/run-all.sh [--hook|--quick] [--only <stage,...>] [--offline] [--strict]   no containers
-# Sets, in canonical order (the order of the record; the test legs run after the other stages, longest first:
-# test-coverage 42 340 344 40 322, in --jobs lanes; release-check runs last):
+# Sets, in canonical order (the order of the record; the app stages run one at a time with the other stages,
+# before the test legs, which run longest first: test-coverage 42 340 344 40 322, in --jobs lanes; release-check
+# runs last):
 #   --hook      pure lint package
 #   --quick     pure lint qt6 floor package
 #   (none)      pure lint qt6 floor package test-322 test-344 test-42
-#   --release   pure lint qt6 floor package test-322 test-340 test-344 test-40 test-42 release-check; host mode
-#               only; it refuses a dirty working tree (also with --ref) and a shallow clone; a skip is a failure
+#   --release   pure lint qt6 floor package test-322 test-340 test-344 test-40 test-42 app-340 app-42
+#               release-check; host mode only; it refuses a dirty working tree (also with --ref) and a shallow
+#               clone; a skip is a failure
 # --only <stage,...>  exactly these stages, recorded in the order above, under the rules of the set flag given
-#                     with it; a bare leg such as 42 means test-42; test-local (the suite on a local QGIS) runs in
-#                     place only; test-coverage (test-42's suite under coverage) is in no set
+#                     with it; a bare leg such as 42 means test-42, and the app stages are named in full (app-340,
+#                     app-42); test-local (the suite on a local QGIS) runs in place only; test-coverage (test-42's
+#                     suite under coverage) is in no set
 # --ref <commit>      test that commit's tree; the scripts always come from the working tree
 # --jobs N            run the test legs in N lanes (default 1; ignored in place)
 # --offline           never fetch pinned tools; a stage whose tools are not cached fails
@@ -26,7 +29,8 @@
 # host from the working tree, so a step whose ci/ files changed since the snapshot fails instead of starting.
 # In place (CI_IN_PLACE=1) package is skipped, and qt6 needs pyqt5_to_pyqt6.py, floor the floor's QGIS and each
 # test leg its own QGIS (test-322 3.22, test-340 3.40, test-344 3.44, test-40 4.0, test-42 4.2), else each of them
-# is skipped; test-coverage, in host mode only, is always skipped; test-local runs the suite on whatever QGIS is here.
+# is skipped; test-coverage and the app stages, in host mode only, are always skipped; test-local runs the suite on
+# whatever QGIS is here.
 # The record goes to a new ci-results/<UTC time>-<commit12>[-N]/ (CI_RESULTS): run.txt, <stage>.log,
 # stages/<stage>/{status,out/}, and summary.md and record.txt when the summary stage passed. The scripts delete
 # nothing and never overwrite a file outside the run folder (dist/ and .ci-cache/ only get new files). In place
@@ -54,8 +58,8 @@ ra_usage() {
     echo "stages: $CI_ALL_STAGES"
     echo "        (a bare leg such as 42 means test-42; test-local runs in place only)"
     echo "in place: each stage runs with its own HOME (stages/<stage>/work/home); package is skipped, and so are"
-    echo "          qt6 without pyqt5_to_pyqt6.py, floor off the floor's QGIS, a test leg off its own QGIS and"
-    echo "          test-coverage (host mode only)"
+    echo "          qt6 without pyqt5_to_pyqt6.py, floor off the floor's QGIS, a test leg off its own QGIS,"
+    echo "          test-coverage and the app stages (host mode only)"
 }
 
 ra_bad() {   # <message>: a usage error; exit 2
@@ -297,7 +301,7 @@ if [ "$mode" = host ]; then
     fi
     need_src=no
     for st in $stages; do
-        case $st in pure|lint|qt6|floor|test-*) need_src=yes ;; esac
+        case $st in pure|lint|qt6|floor|test-*|app-*) need_src=yes ;; esac
     done
     if [ "$need_src" = yes ]; then
         if ! ci_git archive --format=tar --prefix=src/ -o "$run/input/src.tar" "$tree"; then
@@ -452,6 +456,7 @@ ra_box() {   # <stage>: (host) one container stage, input to verdict; runs as th
         qt6) _obsc=qt6-check.sh ;;
         floor) _obsc=floor-check.sh ;;
         test-*) _obsc=test.sh _obarg=${s#test-} ;;
+        app-340|app-42) _obsc=app-smoke.sh _obarg=${s#app-} ;;
         summary) _obsc=report.py _obarg=summary _obsrc='' ;;
         *) ci_status "$s" fail "run-all.sh cannot run stage $s in a container"; return 0 ;;
     esac
@@ -503,6 +508,7 @@ ra_local() {   # <stage>: (in place) prepare, run ci/stage.sh as a job of this s
         qt6) _ipsc=qt6-check.sh ;;
         floor) _ipsc=floor-check.sh ;;
         test-*) _ipsc=test.sh _iparg=${s#test-} ;;
+        app-340|app-42) _ipsc=app-smoke.sh _iparg=${s#app-} ;;
         release-check) _ipsc='release-check.sh' ;;
         summary) _ipsc=report.py _iparg=summary ;;
         *) ci_status "$s" fail "run-all.sh cannot run stage $s in place"; ra_done "$s" "$_ip0"; return 0 ;;
@@ -545,8 +551,9 @@ ra_local() {   # <stage>: (in place) prepare, run ci/stage.sh as a job of this s
     if [ "$s" = release-check ]; then
         ra_rc_verdict "$_ipe" "image=in place" "started=$_ipst"
     else
-        ( case $s in   # ci/test.sh's in-place skips (a test leg off its own QGIS, test-coverage) leave no junit.xml
-              test-322|test-340|test-344|test-40|test-42|test-coverage)
+        ( case $s in   # the in-place skips of ci/test.sh (a test leg off its own QGIS, test-coverage) and of
+              # ci/app-smoke.sh (the app stages) leave no junit.xml
+              test-322|test-340|test-344|test-40|test-42|test-coverage|app-340|app-42)
                   if grep -q '^skipped=' "$run/stages/$s/out/result.txt" 2>/dev/null; then ci_required() { :; }; fi ;;
           esac
           ci_verdict "$s" "$_ipe" "image=in place" "started=$_ipst" ${dkey:+"deps=$dkey"} )

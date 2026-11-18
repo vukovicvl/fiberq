@@ -44,6 +44,7 @@ catatonit 0.2.1.
 | `floor` | the QGIS 3.22 image | every `fiberq/` module parses and imports on QGIS 3.22, which must be `qgisMinimumVersion` |
 | `package` | the host's git, then the python image | the reproducible zip, with its `.sha256` and `.contents.tsv` ([Results](#results-and-pruning-by-hand)) |
 | `test-322`, `test-340`, `test-344`, `test-40`, `test-42` | the image of that QGIS version | the whole test suite |
+| `app-340`, `app-42` | the QGIS 3.40 or 4.2 image, in host mode only | the app smoke: the real QGIS desktop starts twice under xvfb-run, in a fresh profile. The zip that the stage builds from the tested tree's `fiberq/` must install with QGIS's own Install from ZIP code and load with no Python error, its toolbars, drop-downs, Plugins menu entries and keys must equal `tests/initgui_golden.json`, and a short workflow through the plugin's own buttons, map tools and dialogs and a reload of the plugin must pass. One JUnit test case per check, written by `ci/report.py app-junit` from each QGIS start's records, so a crash still fails a test case; the screenshots are in the stage's record. A `CI_TIMEOUT` under 210 s is refused |
 | `release-check` | the host | `fiberq/config.ini` holds no user or password, and both READMEs have their "Use of Generative AI" heading; it also lists, for review, the commits since the last tag without an `Assisted-by:` trailer |
 | `test-local` | in place only | the whole test suite on the QGIS that `python3` imports here |
 | `test-coverage` | the QGIS 4.2 image, in host mode only | the suite of test-42 under coverage.py, set by `ci/coverage.ini` alone, Python child processes included; it writes the statement coverage of each core-logic module (`coverage-core.md`). It is measured, not gated: it fails only when a test fails, the report cannot be written, or no child process was measured or its data files cannot be counted. In no set: `sh ci/run-all.sh --only test-coverage` |
@@ -55,7 +56,7 @@ catatonit 0.2.1.
 | `--hook` | pure, lint, package | the python image, about 0.2 GB | about a minute and a quarter |
 | `--quick` | the hook set, qt6, floor | about 7.4 GB | under two minutes |
 | default | the quick set, test-322, test-344, test-42 | about 28 GB | 43 minutes, one leg at a time |
-| `--release` | the default set, test-340, test-40, release-check | about 36 GB | 52 minutes with `--jobs 2` |
+| `--release` | the default set, test-340, test-40, app-340, app-42, release-check | about 36 GB | 56 minutes with `--jobs 2` |
 
 The times were measured on one Linux machine with Docker, with the images already pulled. The sizes are
 what the images take on disk, counted one by one; they share some layers. A stage can be skipped: qt6
@@ -77,11 +78,14 @@ sh ci/run-all.sh [--hook|--quick|--release] [--only <stage,...>] [--jobs N] [--r
 ```
 
 - `--only <stage,...>`: exactly these stages, under the rules of the set flag given with it. A bare leg
-  name means its test stage: `--only 42` is `--only test-42`.
+  name means its test stage: `--only 42` is `--only test-42`. The app stages are named in full:
+  `--only app-42`.
 - `--ref <commit>`: test that commit's tree instead of the working tree. The scripts still come from the
   working tree, so an older commit, even v1.6.0, which has no `ci/`, can be tested. A `--ref` run never
   copies into `dist/`. The pure stage reads the tested tree's `conftest.py` and `ci/pure-count`, so on a
-  tree from before them, such as v1.6.0, it fails and says so.
+  tree from before them, such as v1.6.0, it fails and says so. The app stages likewise run the tested
+  tree's `tests/app/` against its `tests/initgui_golden.json`, so on a tree from before them they fail with
+  exit 2, say that the tree predates the app stage, and leave no `junit.xml`.
 - `--jobs N`: run the test legs in N lanes (default 1).
 - `--offline`: never fetch pinned tools; a stage whose tools are not cached fails.
 - `--strict`: a skipped stage fails the run, as under `--release`, without `--release`'s refusals; it
@@ -96,7 +100,7 @@ does not ignore, marked dirty in the record when that differs from `HEAD`.
 | `CI_ENGINE` | `docker` (the default) or `podman` |
 | `CI_IN_PLACE=1` | run the stages here, with no container ([Host mode and in-place mode](#host-mode-and-in-place-mode)) |
 | `CI_RESULTS`, `CI_CACHE` | where the run folders and the pinned tools go (default `ci-results/` and `.ci-cache/`) |
-| `CI_TIMEOUT` | a time limit in seconds for every stage of the run (each stage has its own by default) |
+| `CI_TIMEOUT` | a time limit in seconds for every stage of the run (each stage has its own by default); the app stages need at least 210 s |
 | `CI_IMAGE_<ROLE>` | another image for one role, for one run, as `<registry>/<repository>@sha256:<digest>`; the record marks it, and `ci/tag.sh` never accepts such a run |
 
 The other scripts:
@@ -140,9 +144,10 @@ Each run writes a new folder, `ci-results/<UTC time>-<commit12>/` (`-2`, `-3` on
 - `run.txt`: the facts of the run (the commit, the trees, the images, the engine, the mode), written
   before the first stage;
 - `<stage>.log`, `stages/<stage>/status` (the verdict) and `stages/<stage>/out/` (what the stage wrote:
-  `result.txt`; `junit.xml` from pure and the test stages; `pure-files.tsv` from pure, each test file
-  picked or left out, with the reason, and each test deselected; `coverage.json`, `coverage-core.tsv`
-  and `coverage-core.md` from test-coverage);
+  `result.txt`; `junit.xml` from pure, the test stages and the app stages; `pure-files.tsv` from pure, each
+  test file picked or left out, with the reason, and each test deselected; `coverage.json`,
+  `coverage-core.tsv` and `coverage-core.md` from test-coverage; `zip-list.txt` and the folders `install/`
+  and `workflow/` from each app stage, with each QGIS start's report, logs and screenshots);
 - `summary.md` (for people) and `record.txt` (for `tag.sh`), only when the summary stage passed; an
   interrupted run has neither;
 - `input/`: the snapshot of the working tree, when git is there, and what the stages read (in host mode,
@@ -163,7 +168,9 @@ folders when you no longer need them (keep a release run until its record is in 
 `dist/`. A host-mode run folder takes about 30 MB, mostly the tested tree as a tar. A run that fetched
 pinned tools also keeps two copies of each tool tar in `deps/`, about 16 MB per test set and 60 MB for
 the lint set: with nothing cached, about 75 MB more for the hook or quick set, 125 MB for the default
-set and 157 MB for the release set. A cache folder takes 8 to 31 MB.
+set and 157 MB for the release set. A cache folder takes 8 to 31 MB. An app stage's record, mostly
+screenshots, takes 3.5 to 4 MB, and a host-mode run folder keeps it three times (the raw tar,
+`stages/<stage>/out/` and `input/summary.tar`): about 11 MB per app stage. A forge artifact keeps one copy.
 
 ## Host mode and in-place mode
 
@@ -173,7 +180,7 @@ the right image (GitLab, below), or a machine with QGIS installed (`make lint`, 
 
 | | Host mode | In place |
 |---|---|---|
-| where the stages run | pure, lint, qt6, floor, the test legs, test-coverage and the summary each in a fresh container (`--network none`, uid 1000, `--pull=never`); package builds the zip on the host and checks it in a container; release-check runs on the host | here, with no container; each stage gets its own empty `HOME` in its run folder |
+| where the stages run | pure, lint, qt6, floor, the test legs, test-coverage, the app stages and the summary each in a fresh container (`--network none`, uid 1000, `--pull=never`); package builds the zip on the host and checks it in a container; release-check runs on the host | here, with no container; each stage gets its own empty `HOME` in its run folder |
 | the tested tree | the working tree, or `--ref <commit>` | the checkout as it is |
 | the commit in the record | from git | `CI_COMMIT_SHA`, else from git, else `unknown` |
 | network during the tests | none | whatever the environment has |
@@ -184,6 +191,7 @@ the right image (GitLab, below), or a machine with QGIS installed (`make lint`, 
 | qt6 | the checker image; without it, skipped | `pyqt5_to_pyqt6.py` on `PATH`, in `/usr/local/bin` or in `QT6_CHECKER`, else skipped |
 | floor and the test legs | each in its image | skipped unless this QGIS is the version the stage needs |
 | test-coverage | the 42 image | skipped: every column of the coverage table is counted with the 42 image's Python |
+| the app stages | the 340 and 42 images, under xvfb-run | skipped: they need the image's QGIS and xvfb-run |
 | test-local | refused | the whole suite on this QGIS |
 | `--release`, `--ref` | allowed | refused (exit 2) |
 | `--strict` | allowed | allowed (the GitLab jobs use it) |
@@ -258,7 +266,7 @@ only. `--strict` makes a skipped stage fail its job: in place, a test leg is ski
 `python3` imports is not its version, and without `--strict` the job would pass having run no test. The
 jobs run as root. They need no git: the record takes the commit from `CI_COMMIT_SHA` (the python image
 has no git; the QGIS 4.2 image has it). Each run folder, without the stages' `work/` folders, is a job
-artifact kept for 90 days.
+artifact kept for 90 days. The app stages run in host mode only, so no GitLab job runs them.
 
 ### What the lint stage checks in the forge configs
 
@@ -306,6 +314,7 @@ whoever can change the forge configs can change `ci/` too. A tree with neither `
 | `Qt6 check (pyqt5_to_pyqt6)` | `make qt6-check` | qt6 | `default (qt6)` |
 | `Package (build zip)` | `make package`, and the zip as the artifact `fiberq-plugin` | package | `default (package)`; the zip, its `.sha256` and its `.contents.tsv` are in the artifact `ci-results-default-package-<attempt>`, under `<run>/package/` |
 | | | pure (new) | `default (pure)` |
+| | | app-340, app-42 (new) | `release (app-340)`, `release (app-42)` |
 
 ### No forge: the pre-push hook
 
@@ -372,7 +381,9 @@ jobs:
 ## Where to see the runs
 
 - GitHub Actions: <https://github.com/vukovicvl/fiberq/actions/workflows/ci.yml>, each run with its
-  stages' records as artifacts, kept for the repository's retention period (90 days by default).
+  stages' records as artifacts, the app stages' screenshots included, kept for the repository's retention
+  period (90 days by default). The screenshots stay in the run folders and these artifacts; they never go
+  into `docs/ci/`.
 - GitLab: <https://gitlab.com/vukovicvl/fiberq/-/pipelines>, for `main`, release branches and tags.
 - `docs/ci/` in this repository: the run record of each release, starting with v1.7.0, committed after
   the release in a pull request of its own ([RELEASE.md](../RELEASE.md), step 9): `docs/ci/<version>.md`,

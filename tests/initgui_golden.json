@@ -1,0 +1,160 @@
+{
+ "format": 1,
+ "note": "FiberQ's initGui snapshot. Change it on purpose only: docs/testing.md, 'The initGui golden file'.",
+ "language": "en",
+ "containers": [
+  {"path": "FiberQ Toolbar", "kind": "toolbar", "title": "FiberQ Toolbar", "objectName": "FiberQToolbar", "hidden": false, "entries": [
+   {"kind": "submenu", "text": "English", "tooltip": "Interface language", "keys": [], "objectName": "", "icon": null, "visible": true, "enabled": true, "checkable": false},
+   {"kind": "widget", "text": "FiberQ", "tooltip": "", "keys": [], "objectName": "", "icon": null, "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Undo (FiberQ)", "tooltip": "Undo last FiberQ action (Ctrl+Shift+Z)", "keys": ["Ctrl+Shift+Z"], "objectName": "", "icon": ["ic_undo.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Redo (FiberQ)", "tooltip": "Redo last undone FiberQ action (Ctrl+Shift+Y)", "keys": ["Ctrl+Shift+Y"], "objectName": "", "icon": ["ic_redo.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "separator"},
+   {"kind": "action", "text": "Help / About", "tooltip": "Help and information about FiberQ", "keys": [], "objectName": "", "icon": ["ic_help.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Publish to PostGIS", "tooltip": "Publish the active (or selected) layer to PostGIS", "keys": [], "objectName": "", "icon": ["ic_publish_pg.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "submenu", "text": "Cable laying", "tooltip": "Cable laying", "keys": [], "objectName": "", "icon": ["ic_laying_cable.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "submenu", "text": "Routing", "tooltip": "Routing", "keys": [], "objectName": "", "icon": ["ic_routing.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "submenu", "text": "Placing elements", "tooltip": "Placing elements", "keys": [], "objectName": "", "icon": ["ic_place_elements.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "submenu", "text": "Ducting", "tooltip": "Ducting", "keys": [], "objectName": "", "icon": ["ic_ducting.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "submenu", "text": "Selection", "tooltip": "Selection", "keys": [], "objectName": "", "icon": ["ic_selection.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "submenu", "text": "", "tooltip": "Optical slacks", "keys": [], "objectName": "", "icon": ["ic_slack_midspan.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "submenu", "text": "Drawings", "tooltip": "Drawings", "keys": [], "objectName": "", "icon": ["ic_drawing.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "submenu", "text": "", "tooltip": "Drawing object", "keys": [], "objectName": "", "icon": ["ic_drawing_object.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Optical schematic view", "tooltip": "Optical schematic view", "keys": [], "objectName": "", "icon": ["ic_optical_schematic_view.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Import points", "tooltip": "Import points", "keys": [], "objectName": "", "icon": ["ic_import_points.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "submenu", "text": "Export selected", "tooltip": "Export active layer", "keys": [], "objectName": "", "icon": ["ic_export_features.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Locator", "tooltip": "Locator", "keys": [], "objectName": "", "icon": ["ic_locator.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Hide locator", "tooltip": "Hide locator", "keys": [], "objectName": "", "icon": ["ic_hide_locator.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Relations", "tooltip": "Relations", "keys": [], "objectName": "", "icon": ["ic_relations.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "List of latent elements", "tooltip": "List of latent elements", "keys": [], "objectName": "", "icon": ["ic_list_of_latent_elements.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Cut infrastructure", "tooltip": "Cut infrastructure", "keys": ["Ctrl+Shift+X"], "objectName": "action_infrastructure_cut", "icon": ["ic_infrastructure_cut.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Fiber break", "tooltip": "Fiber break", "keys": ["Ctrl+F"], "objectName": "", "icon": ["ic_fiber_break.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Color catalog", "tooltip": "Color catalog", "keys": [], "objectName": "", "icon": ["ic_color_catalog.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Save all layers to GeoPackage", "tooltip": "Export all vector layers (including Temporary scratch) to a single .gpkg and redirect the project to it", "keys": [], "objectName": "", "icon": ["ic_save_gpkg.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Auto save to GeoPackage", "tooltip": "When enabled: every new or memory layer is automatically written to the selected .gpkg and redirected to it", "keys": [], "objectName": "", "icon": ["ic_auto_gpkg.svg"], "visible": true, "enabled": true, "checkable": true},
+   {"kind": "action", "text": "Preview Map", "tooltip": "Open the FiberQ Preview Map (PostGIS connection from config.ini)", "keys": [], "objectName": "", "icon": ["ic_fiberq_web.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Create Service Area", "tooltip": "Create Service Area from selection (buffer around selected cables/elements)", "keys": [], "objectName": "", "icon": ["ic_service_area.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Draw Service Area Manually", "tooltip": "Manual Service Area drawing (like Google Earth) and entry into Service Area layer", "keys": [], "objectName": "", "icon": ["ic_draw_service_area.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Branch info", "tooltip": "Click on cable to show number of cables/types/capacities at that point", "keys": ["Ctrl+G"], "objectName": "", "icon": ["ic_branch.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Show shortcuts", "tooltip": "Show shortcuts", "keys": ["F1"], "objectName": "", "icon": ["ic_hotkeys.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "BOM report (XLSX/CSV)", "tooltip": "BOM report", "keys": ["Ctrl+B"], "objectName": "", "icon": ["ic_bom.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Validate project", "tooltip": "Validate project", "keys": [], "objectName": "", "icon": ["ic_validate.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Settings", "tooltip": "Settings", "keys": [], "objectName": "", "icon": ["ic_settings.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Change element type", "tooltip": "Smart selection + change element type (visual style)", "keys": [], "objectName": "", "icon": ["ic_change_element_type.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Move elements", "tooltip": "Move elements on the map (click-move-click)", "keys": [], "objectName": "", "icon": ["ic_move_elements.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Import picture to element", "tooltip": "Link a .jpg/.png picture to selected element(s)", "keys": [], "objectName": "", "icon": ["ic_import_picture.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Clear picture from element", "tooltip": "Unlink picture from selected element(s)", "keys": [], "objectName": "", "icon": ["ic_clear_picture.svg"], "visible": true, "enabled": true, "checkable": false}
+  ]},
+  {"path": "FiberQ Toolbar > English", "kind": "menu", "title": "Interface language", "objectName": "", "entries": [
+   {"kind": "action", "text": "English", "tooltip": "English", "keys": [], "objectName": "", "icon": null, "visible": true, "enabled": true, "checkable": true},
+   {"kind": "action", "text": "Srpski", "tooltip": "Srpski", "keys": [], "objectName": "", "icon": null, "visible": true, "enabled": true, "checkable": true}
+  ]},
+  {"path": "FiberQ Toolbar > Cable laying", "kind": "menu", "title": "Cable laying", "objectName": "", "entries": [
+   {"kind": "submenu", "text": "Underground", "tooltip": "Underground", "keys": [], "objectName": "", "icon": ["ic_cable_underground.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "submenu", "text": "Aerial", "tooltip": "Aerial", "keys": [], "objectName": "", "icon": ["ic_aerial_backbone.svg", "ic_cable_aerial.svg"], "visible": true, "enabled": true, "checkable": false}
+  ]},
+  {"path": "FiberQ Toolbar > Cable laying > Underground", "kind": "menu", "title": "Underground", "objectName": "", "entries": [
+   {"kind": "action", "text": "Backbone", "tooltip": "Backbone", "keys": [], "objectName": "", "icon": ["ic_underground_backbone.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Distribution", "tooltip": "Distribution", "keys": [], "objectName": "", "icon": ["ic_underground_distributive.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Drop", "tooltip": "Drop", "keys": [], "objectName": "", "icon": ["ic_underground_drop.svg"], "visible": true, "enabled": true, "checkable": false}
+  ]},
+  {"path": "FiberQ Toolbar > Cable laying > Aerial", "kind": "menu", "title": "Aerial", "objectName": "", "entries": [
+   {"kind": "action", "text": "Backbone", "tooltip": "Backbone", "keys": [], "objectName": "", "icon": ["ic_aerial_backbone.svg", "ic_cable_aerial.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Distribution", "tooltip": "Distribution", "keys": [], "objectName": "", "icon": ["ic_aerial_distributive.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Drop", "tooltip": "Drop", "keys": [], "objectName": "", "icon": ["ic_aerial_drop.svg"], "visible": true, "enabled": true, "checkable": false}
+  ]},
+  {"path": "FiberQ Toolbar > Routing", "kind": "menu", "title": "", "objectName": "", "entries": [
+   {"kind": "action", "text": "Add pole", "tooltip": "Add pole", "keys": [], "objectName": "", "icon": ["ic_add_pole.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Create route", "tooltip": "Create route", "keys": [], "objectName": "", "icon": ["ic_create_route.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Merge selected routes", "tooltip": "Merge selected routes", "keys": [], "objectName": "", "icon": ["ic_merge_selected_routes.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Import route from file", "tooltip": "Import route from file", "keys": [], "objectName": "", "icon": ["ic_import_route_from_file.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Add breakpoint", "tooltip": "Add breakpoint", "keys": [], "objectName": "", "icon": ["ic_add_breakpoint.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Create a route manually", "tooltip": "Create a route manually", "keys": [], "objectName": "", "icon": ["ic_create_route_manually.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Change route type", "tooltip": "Change route type", "keys": [], "objectName": "", "icon": ["ic_change_route_type.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Route correction", "tooltip": "Route correction", "keys": [], "objectName": "", "icon": ["ic_route_correction.svg"], "visible": true, "enabled": true, "checkable": false}
+  ]},
+  {"path": "FiberQ Toolbar > Placing elements", "kind": "menu", "title": "", "objectName": "", "entries": [
+   {"kind": "action", "text": "Place Joint Closure", "tooltip": "Place Joint Closure", "keys": [], "objectName": "", "icon": ["ic_place_jc.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "separator"},
+   {"kind": "action", "text": "Place ODF", "tooltip": "Place ODF", "keys": [], "objectName": "", "icon": ["ic_place_odf.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place TB", "tooltip": "Place TB", "keys": [], "objectName": "", "icon": ["ic_place_tb.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place Patch panel", "tooltip": "Place Patch panel", "keys": [], "objectName": "", "icon": ["ic_place_patch_panel.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place OTB", "tooltip": "Place OTB", "keys": [], "objectName": "", "icon": ["ic_place_otb.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place Indoor OTB", "tooltip": "Place Indoor OTB", "keys": [], "objectName": "", "icon": ["ic_place_indoor_otb.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place Outdoor OTB", "tooltip": "Place Outdoor OTB", "keys": [], "objectName": "", "icon": ["ic_place_outdoor_otb.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place Pole OTB", "tooltip": "Place Pole OTB", "keys": [], "objectName": "", "icon": ["ic_place_pole_otb.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place TO", "tooltip": "Place TO", "keys": [], "objectName": "", "icon": ["ic_place_to.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place Indoor TO", "tooltip": "Place Indoor TO", "keys": [], "objectName": "", "icon": ["ic_place_indoor_to.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place Outdoor TO", "tooltip": "Place Outdoor TO", "keys": [], "objectName": "", "icon": ["ic_place_outdoor_to.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place Pole TO", "tooltip": "Place Pole TO", "keys": [], "objectName": "", "icon": ["ic_place_pole_to.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place Joint Closure TO", "tooltip": "Place Joint Closure TO", "keys": [], "objectName": "", "icon": ["ic_place_joint_closure_to.svg"], "visible": true, "enabled": true, "checkable": false}
+  ]},
+  {"path": "FiberQ Toolbar > Ducting", "kind": "menu", "title": "", "objectName": "", "entries": [
+   {"kind": "action", "text": "Placing manholes", "tooltip": "Placing manholes", "keys": [], "objectName": "", "icon": ["ic_place_manholes.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place PE pipe", "tooltip": "Place PE pipe", "keys": [], "objectName": "", "icon": ["ic_place_pe_pipe.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place transition pipe", "tooltip": "Place transition pipe", "keys": [], "objectName": "", "icon": ["ic_place_transition_pipe.svg"], "visible": true, "enabled": true, "checkable": false}
+  ]},
+  {"path": "FiberQ Toolbar > Selection", "kind": "menu", "title": "", "objectName": "", "entries": [
+   {"kind": "action", "text": "Smart selection (Multiple Layers)", "tooltip": "Smart selection (Multiple Layers)", "keys": [], "objectName": "", "icon": ["ic_selection.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Clear selection", "tooltip": "Clear selection", "keys": [], "objectName": "", "icon": ["ic_selection.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Delete selected", "tooltip": "Delete selected", "keys": [], "objectName": "", "icon": ["ic_delete_selected.svg"], "visible": true, "enabled": true, "checkable": false}
+  ]},
+  {"path": "FiberQ Toolbar > Optical slacks", "kind": "menu", "title": "", "objectName": "", "entries": [
+   {"kind": "action", "text": "Place terminal slack (interactive)", "tooltip": "Place terminal slack (interactive)", "keys": [], "objectName": "", "icon": ["ic_slack_midspan.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place mid span slack (interactive)", "tooltip": "Place mid span slack (interactive)", "keys": [], "objectName": "", "icon": ["ic_slack_midspan.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Generate terminal slacks at the ends of selected cables", "tooltip": "Generate terminal slacks at the ends of selected cables", "keys": [], "objectName": "", "icon": ["ic_slack_batch.svg"], "visible": true, "enabled": true, "checkable": false}
+  ]},
+  {"path": "FiberQ Toolbar > Drawings", "kind": "menu", "title": "Drawings", "objectName": "", "entries": [
+   {"kind": "action", "text": "Add drawing…", "tooltip": "Link a DWG/DXF drawing to selected element(s)", "keys": [], "objectName": "", "icon": ["ic_add_drawing.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Open drawing (by click)", "tooltip": "Click on an element to open its linked drawing", "keys": [], "objectName": "", "icon": ["ic_otvori_crtez.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Clear drawing from element", "tooltip": "Unlink drawing from selected element(s)", "keys": [], "objectName": "", "icon": ["ic_drawing.svg"], "visible": true, "enabled": true, "checkable": false}
+  ]},
+  {"path": "FiberQ Toolbar > Drawing object", "kind": "menu", "title": "", "objectName": "", "entries": [
+   {"kind": "action", "text": "Object in 3 points", "tooltip": "Object in 3 points", "keys": [], "objectName": "", "icon": ["ic_object_3p.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Object in N points", "tooltip": "Object in N points", "keys": [], "objectName": "", "icon": ["ic_object_n.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Object in N points (90°)", "tooltip": "Object in N points (90°)", "keys": [], "objectName": "", "icon": ["ic_object_ortho.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Digitized object (from selection)", "tooltip": "Digitized object (from selection)", "keys": [], "objectName": "", "icon": ["ic_object_dig.svg"], "visible": true, "enabled": true, "checkable": false}
+  ]},
+  {"path": "FiberQ Toolbar > Export selected", "kind": "menu", "title": "Export", "objectName": "", "entries": [
+   {"kind": "action", "text": "Export selected...", "tooltip": "Export selected features of the active layer to GPX / KML / KMZ / GeoPackage", "keys": [], "objectName": "", "icon": ["ic_export_features.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Export all...", "tooltip": "Export all features of the active layer to GPX / KML / KMZ / GeoPackage", "keys": [], "objectName": "", "icon": ["ic_export_features.svg"], "visible": true, "enabled": true, "checkable": false}
+  ]},
+  {"path": "FiberQ Quick", "kind": "toolbar", "title": "FiberQ Quick", "objectName": "FiberQQuickToolbar", "hidden": false, "entries": [
+   {"kind": "action", "text": "Place Pole", "tooltip": "Place Pole (P)", "keys": [], "objectName": "", "icon": ["ic_add_pole.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place Manhole", "tooltip": "Place Manhole (M)", "keys": [], "objectName": "", "icon": ["ic_place_manholes.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Create Route", "tooltip": "Create Route (R)", "keys": [], "objectName": "", "icon": ["ic_create_route.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Aerial Cable", "tooltip": "Aerial Cable (A)", "keys": [], "objectName": "", "icon": ["ic_aerial_backbone.svg", "ic_cable_aerial.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Underground Cable", "tooltip": "Underground Cable (U)", "keys": [], "objectName": "", "icon": ["ic_cable_underground.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place ODF", "tooltip": "Place ODF (O)", "keys": [], "objectName": "", "icon": ["ic_place_odf.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place OTB", "tooltip": "Place OTB (T)", "keys": [], "objectName": "", "icon": ["ic_place_otb.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Place TO", "tooltip": "Place TO", "keys": [], "objectName": "", "icon": ["ic_place_to.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Optical Slack", "tooltip": "Optical Slack (S)", "keys": [], "objectName": "", "icon": ["ic_slack_midspan.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "separator"},
+   {"kind": "action", "text": "Undo (FiberQ)", "tooltip": "Undo (FiberQ) (Ctrl+Shift+Z)", "keys": [], "objectName": "", "icon": ["ic_undo.svg"], "visible": true, "enabled": true, "checkable": false}
+  ]},
+  {"path": "Plugins > FiberQ", "kind": "plugins", "entries": [
+   {"kind": "action", "text": "Help / About", "tooltip": "Help and information about FiberQ", "keys": [], "objectName": "", "icon": ["ic_help.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Publish to PostGIS", "tooltip": "Publish the active (or selected) layer to PostGIS", "keys": [], "objectName": "", "icon": ["ic_publish_pg.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Cut infrastructure", "tooltip": "Cut infrastructure", "keys": ["Ctrl+Shift+X"], "objectName": "action_infrastructure_cut", "icon": ["ic_infrastructure_cut.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Validate project", "tooltip": "Validate project", "keys": [], "objectName": "", "icon": ["ic_validate.svg"], "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Recalculate lengths…", "tooltip": "Rewrite stored lengths that disagree with the drawn geometry", "keys": [], "objectName": "", "icon": null, "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Export interchange bundle…", "tooltip": "Write the design as an open FiberQ interchange bundle (.gpkg)", "keys": [], "objectName": "", "icon": null, "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Import interchange bundle…", "tooltip": "Read an open FiberQ interchange bundle into this project", "keys": [], "objectName": "", "icon": null, "visible": true, "enabled": true, "checkable": false},
+   {"kind": "action", "text": "Settings", "tooltip": "Settings", "keys": [], "objectName": "", "icon": ["ic_settings.svg"], "visible": true, "enabled": true, "checkable": false}
+  ]}
+ ],
+ "outside": {
+  "main_window_actions": [
+   {"text": "Terminal slack (shortcut)", "keys": ["R"], "objectName": "", "visible": false, "enabled": false}
+  ],
+  "shortcuts": [
+   {"parent": "canvas", "keys": ["Ctrl+B"], "context": "ApplicationShortcut", "enabled": true},
+   {"parent": "canvas", "keys": ["Ctrl+F"], "context": "ApplicationShortcut", "enabled": true},
+   {"parent": "canvas", "keys": ["Ctrl+G"], "context": "ApplicationShortcut", "enabled": true},
+   {"parent": "canvas", "keys": ["Ctrl+P"], "context": "ApplicationShortcut", "enabled": true},
+   {"parent": "main window", "keys": ["Ctrl+B"], "context": "ApplicationShortcut", "enabled": true},
+   {"parent": "main window", "keys": ["Ctrl+F"], "context": "ApplicationShortcut", "enabled": true},
+   {"parent": "main window", "keys": ["Ctrl+G"], "context": "ApplicationShortcut", "enabled": true},
+   {"parent": "main window", "keys": ["Ctrl+P"], "context": "ApplicationShortcut", "enabled": true}
+  ]
+ }
+}

@@ -21,14 +21,14 @@ CI_SELF=${0##*/}
 ENGINE=${CI_ENGINE:-docker}
 
 # ---- stage sets, in canonical order (the order of run.txt, summary.md and record.txt; run-all.sh runs the test
-# legs after the other stages, longest first, and release-check last); tag.sh requires every stage of
-# CI_RELEASE_STAGES
+# legs after the other stages, longest first, the app stages among the other stages, and release-check last);
+# tag.sh requires every stage of CI_RELEASE_STAGES
 CI_HOOK_STAGES='pure lint package'
 CI_QUICK_STAGES='pure lint qt6 floor package'
 CI_DEFAULT_STAGES='pure lint qt6 floor package test-322 test-344 test-42'
-CI_RELEASE_STAGES='pure lint qt6 floor package test-322 test-340 test-344 test-40 test-42 release-check'
+CI_RELEASE_STAGES='pure lint qt6 floor package test-322 test-340 test-344 test-40 test-42 app-340 app-42 release-check'
 CI_ALL_STAGES='pure lint qt6 floor package test-322 test-340 test-344 test-40 test-42 test-local test-coverage'
-CI_ALL_STAGES="$CI_ALL_STAGES release-check"   # test-local and test-coverage are in no set: --only names them
+CI_ALL_STAGES="$CI_ALL_STAGES app-340 app-42 release-check"   # test-local, test-coverage: in no set (--only)
 
 ci_set_stages() {   # <hook|quick|default|release>: print that set's stages, in canonical order
     case $1 in
@@ -68,6 +68,7 @@ ci_role_of() {   # <stage>: print the ci/legs role whose image runs <stage>; not
         floor) echo floor ;;
         test-322|test-340|test-344|test-40|test-42) printf '%s\n' "${1#test-}" ;;
         test-coverage) echo 42 ;;
+        app-340|app-42) printf '%s\n' "${1#app-}" ;;
         release-check|test-local) ;;
         *) echo "$CI_SELF: no role for stage '$1'" >&2; return 2 ;;
     esac
@@ -81,6 +82,7 @@ ci_timeout_of() {   # <stage>: print the stage's timeout in seconds: CI_TIMEOUT 
         package|summary|compare*) echo 300 ;;
         test-*) echo 3600 ;;
         deps*|lock*) echo 1800 ;;
+        app-*) echo 900 ;;
         *) echo 600 ;;
     esac
 }
@@ -401,6 +403,7 @@ ci_required() {   # <stage>: print the result files <stage> needs besides exit-c
         pure) echo junit.xml pure-files.tsv ;;
         test-coverage) echo junit.xml coverage.json coverage-core.tsv coverage-core.md ;;
         test-*) echo junit.xml ;;
+        app-*) echo junit.xml install/report.json workflow/report.json ;;
         package)
             _rqv=$(sed -n '1p' "${run:?ci_required needs run, the run folder}/input/pkg/version" 2>/dev/null |
                 tr -d '[:space:]')

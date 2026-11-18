@@ -263,6 +263,7 @@ else
             floor) echo floor ;;
             322|340|344|40|42) echo "$1" ;;
             test-322|test-340|test-344|test-40|test-42) echo "${1#test-}" ;;
+            app-340|app-42) echo "${1#app-}" ;;
         esac
     }
     re_img='^[[:space:]]*image:[[:space:]]*\([^[:space:]#][^[:space:]#]*\)[[:space:]][[:space:]]*'
