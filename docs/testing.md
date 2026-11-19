@@ -579,6 +579,7 @@ processes need QGIS.
 | `tests/test_app_junit.py` | the app stages' JUnit writer, `ci/report.py app-junit` | checks of the writer on records made up in the test | 34 | 34 |
 | `tests/support/core_env.py` | the set-up the core-logic tests share | imported by the core-logic test files below that need QGIS; no tests of its own | 0 | 0 |
 | `tests/test_cable_path_across_routes.py` | the cable path across several routes | memory layers on every leg: each path's order and length, worked out by hand, and the length Lay cable stores; five expected failures | 22 | 0 |
+| `tests/test_layer_ensure.py` | layer creation and legacy layer names | memory layers on every leg: layers under legacy names reused, nothing changed by a second call, groups and moves; twelve expected failures, seventeen on QGIS 4.0 | 53 | 0 |
 
 The app stages run `tests/app/` with `ci/app-smoke.sh` ([The app smoke](#the-app-smoke)).
 
@@ -632,7 +633,8 @@ git rm -rq tests/test_floor_seed.py tests/floor_check.py tests/floor_seed \
     tests/test_initgui_snapshot.py tests/support/initgui_snapshot.py tests/initgui_golden.json \
     tests/test_lifecycle_ratchet.py tests/support/lifecycle_driver.py \
     tests/test_app_runner.py tests/app tests/test_app_junit.py \
-    tests/support/core_env.py tests/test_cable_path_across_routes.py   # and every other path under WP5's test files
+    tests/support/core_env.py tests/test_cable_path_across_routes.py \
+    tests/test_layer_ensure.py                        # and every other path under WP5's test files
 git commit -qm 'coverage: without WP5 test files'
 sh ci/run-all.sh --only test-coverage                 # v1.7.0 without WP5's test files
 ```
