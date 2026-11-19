@@ -28,9 +28,10 @@ from one QGIS start to the next, so neither the cable's direction nor its ``od``
 the cable on the WGS 84 ellipsoid, the one EPSG:3857 names, since the project has none (``utils/measure.py``):
 near the origin a map metre east-west is a metre on the ground, and a map metre north-south is (1 - e**2) of one.
 
-Five tests are expected failures, each raising an exception of its own for its defect: the search counts segments,
-not metres; routes join by grid cell, not by distance; two elements nearest one vertex get a path of one point, and
-lay cable a cable of one vertex; one non-finite vertex anywhere stops the whole search.
+Three tests are expected failures, each raising an exception of its own for its defect: the search counts segments,
+not metres; routes join by grid cell, not by distance; one non-finite vertex anywhere stops the whole search. Until
+v1.7.0, two elements nearest one vertex got a path of that one point, and lay cable a cable of one vertex
+(WP5-FU-33); two tests check that there is no path now, and that lay cable lays nothing and warns.
 """
 import math
 
@@ -86,16 +87,8 @@ class PathCountsSegments(AssertionError):
     """WP5-FU-31: the search across several routes takes the path of fewest segments, not the shortest one."""
 
 
-class OnePointPath(AssertionError):
-    """WP5-FU-33: two elements nearest one route vertex get a path of that one point."""
-
-
 class NonFiniteVertexStopsSearch(AssertionError):
     """WP5-FU-34: one non-finite vertex anywhere in the Route layer stops the network search for every pair."""
-
-
-class OneVertexCable(AssertionError):
-    """WP5-FU-33: lay cable writes a cable of one vertex and length 0 when both elements are nearest one vertex."""
 
 
 @pytest.fixture
@@ -319,20 +312,13 @@ def test_a_loop_is_walked_along_the_shorter_street(project):
 
 # --- two elements at one vertex, and a broken route -------------------------------------------------------------------
 
-@pytest.mark.xfail(strict=True, raises=OnePointPath,
-                   reason="WP5-FU-33: two elements nearest one route vertex get a one-point path; "
-                          "the v1.7.0 fix removes this marker")
 def test_two_elements_nearest_one_vertex_get_no_one_point_path(project):
-    """(98, 0) and (102, 0) are both nearest the vertex (100, 0), 2 away. No path, or one of at least two points, is
-    right. Measured: [(100, 0)], which lay cable writes as a cable of one vertex. The control, from (98, 0) to
-    (198, 0), gets the stretch between the two nearest vertices."""
+    """(98, 0) and (102, 0) are both nearest the vertex (100, 0), 2 away: no path. Until v1.7.0 the answer was
+    [(100, 0)], which lay cable wrote as a cable of one vertex (WP5-FU-33). The control, from (98, 0) to (198, 0),
+    gets the stretch between the two nearest vertices."""
     routes = _routes(project, [(0, 0), (100, 0), (200, 0)], [(200, 0), (200, 50)])
     assert _network(routes, (98, 0), (198, 0)) == [(100.0, 0.0), (200.0, 0.0)]
-    path = _network(routes, (98, 0), (102, 0))
-    # WP5-FU-33's effect and nothing else: the one vertex both elements are nearest.
-    if path == [(100.0, 0.0)]:
-        raise OnePointPath("answered %r, a path of one point" % path)
-    assert path is None or len(path) >= 2, "answered %r" % (path,)
+    assert _network(routes, (98, 0), (102, 0)) is None
 
 
 @pytest.mark.xfail(strict=True, raises=NonFiniteVertexStopsSearch,
@@ -424,20 +410,12 @@ def test_lay_cable_lays_nothing_across_a_gap_just_over_the_tolerance(project, mo
     assert bar == []
 
 
-@pytest.mark.xfail(strict=True, raises=OneVertexCable,
-                   reason="WP5-FU-33: lay cable writes a one-vertex, zero-length cable when both elements are "
-                          "nearest one route vertex; the v1.7.0 fix removes this marker")
 def test_lay_cable_writes_no_cable_of_fewer_than_two_vertices(project, monkeypatch):
-    """Poles at (98, 0) and (102, 0), both nearest the route vertex (100, 0): no cable of fewer than two vertices is
-    right. Measured: a cable LineString (100 0), 0.0 m long, and "Cable has been laid along the route!"."""
+    """Poles at (98, 0) and (102, 0), both nearest the route vertex (100, 0): no cable, the warning, and nothing on
+    the message bar, as across the 3.1 gap. Until v1.7.0 lay cable wrote a cable LineString (100 0), 0.0 m long,
+    and said "Cable has been laid along the route!" (WP5-FU-33)."""
     cables, said, bar = _lay_cable(project, monkeypatch, [[(0, 0), (100, 0), (200, 0)], [(200, 0), (200, 50)]],
                                    [(98, 0), (102, 0)])
-    assert said, "lay cable said nothing"
-    short = [_vertices(feature) for feature in cables.getFeatures() if len(_vertices(feature)) < 2]
-    if short:
-        # WP5-FU-33's effect and nothing else: one cable of that one vertex, 0.0 m long, said to be laid, and nothing
-        # pushed to the message bar.
-        lengths = [feature["duzina_m"] for feature in cables.getFeatures()]
-        assert (short, lengths, said, bar) == ([[(100.0, 0.0)]], [0.0], [LAID], []), (
-            "laid %r, %r m long, said %r and pushed %r" % (short, lengths, said, bar))
-        raise OneVertexCable("laid %r and said %r" % (short, said))
+    assert [_vertices(feature) for feature in cables.getFeatures()] == []
+    assert said == [NOT_CONNECTED]
+    assert bar == []

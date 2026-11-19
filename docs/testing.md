@@ -614,7 +614,7 @@ processes need QGIS.
 | `tests/test_app_runner.py`, with `tests/app/` | the app runner, and the app smoke's two starts and startup guard | the runner's eleven cases, each in a child process on every leg | 11 | 0 |
 | `tests/test_app_junit.py` | the app stages' JUnit writer, `ci/report.py app-junit` | checks of the writer on records made up in the test | 34 | 34 |
 | `tests/support/core_env.py` | the set-up the core-logic tests share | imported by the core-logic test files below that need QGIS; no tests of its own | 0 | 0 |
-| `tests/test_cable_path_across_routes.py` | the cable path across several routes | memory layers on every leg: each path's order and length, worked out by hand, and the length Lay cable stores; five expected failures | 22 | 0 |
+| `tests/test_cable_path_across_routes.py` | the cable path across several routes | memory layers on every leg: each path's order and length, worked out by hand, and the length Lay cable stores; three expected failures | 22 | 0 |
 | `tests/test_layer_ensure.py` | layer creation and legacy layer names | memory layers on every leg: layers under legacy names reused, nothing changed by a second call, groups and moves; twelve expected failures, seventeen on QGIS 4.0 | 53 | 0 |
 | `tests/test_style_smoke.py` | the styling of every layer type | memory layers on every leg: renderers, categories, colours, shapes and labels, never a size or a unit; three expected failures, six on QGIS 3.38 and later | 22 | 0 |
 | `tests/test_relations_candidates.py` | the elements along a cable, and the relations | memory layers and one GeoPackage on every leg, against answers worked out by hand; the plugin's search compared with its second copy; five expected failures, six on QGIS 3 | 16 | 0 |
