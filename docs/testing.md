@@ -582,6 +582,7 @@ processes need QGIS.
 | `tests/test_layer_ensure.py` | layer creation and legacy layer names | memory layers on every leg: layers under legacy names reused, nothing changed by a second call, groups and moves; twelve expected failures, seventeen on QGIS 4.0 | 53 | 0 |
 | `tests/test_style_smoke.py` | the styling of every layer type | memory layers on every leg: renderers, categories, colours, shapes and labels, never a size or a unit; three expected failures, six on QGIS 3.38 and later | 22 | 0 |
 | `tests/test_relations_candidates.py` | the elements along a cable, and the relations | memory layers and one GeoPackage on every leg, against answers worked out by hand; the plugin's search compared with its second copy; five expected failures, six on QGIS 3 | 16 | 0 |
+| `tests/test_route_ends.py` | the functions behind Route correction | memory layers and one GeoJSON file on every leg; ground distances worked out by hand | 27 | 0 |
 
 The app stages run `tests/app/` with `ci/app-smoke.sh` ([The app smoke](#the-app-smoke)).
 
@@ -638,7 +639,8 @@ git rm -rq tests/test_floor_seed.py tests/floor_check.py tests/floor_seed \
     tests/support/core_env.py tests/test_cable_path_across_routes.py \
     tests/test_layer_ensure.py \
     tests/test_style_smoke.py \
-    tests/test_relations_candidates.py                # and every other path under WP5's test files
+    tests/test_relations_candidates.py \
+    tests/test_route_ends.py                          # and every other path under WP5's test files
 git commit -qm 'coverage: without WP5 test files'
 sh ci/run-all.sh --only test-coverage                 # v1.7.0 without WP5's test files
 ```
