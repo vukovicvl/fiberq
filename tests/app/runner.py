@@ -9,8 +9,8 @@ the runner runs the scenario, and QGIS then ends with the run's exit code:
 - 1 (``EXIT_CHECK``): a check failed;
 - 3 (``EXIT_WINDOW``): a window QGIS opens for a Python error (a ``QgsMessageViewer``), or a window that nothing
   expected and that waits for an answer (the active modal one);
-- 4 (``EXIT_DEADLINE``): the deadline passed, counted from when the runner starts (in the app stages, 3 to 6 s
-  after QGIS starts);
+- 4 (``EXIT_DEADLINE``): the deadline passed, counted from when the runner starts (in the app stages, 2 to 3 s
+  after the guard's ``T0`` and 4 to 9 s after the QGIS process starts, in the runs docs/testing.md reports);
 - 5 (``EXIT_SCRIPT``): the scenario raised, or the answer to a window did, or the window watch did.
 
 A headless run, outside the QGIS app, makes the runner itself with a stand-in for QGIS's ``iface`` and calls
