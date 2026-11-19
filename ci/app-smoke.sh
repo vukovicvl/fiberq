@@ -127,8 +127,8 @@ zls=$(sha256sum "$zl" | cut -d ' ' -f 1)
 printf 'zip_entries=%s\nzip_list_sha256=%s\n' "$n" "$zls" >>"$res" || exit 2
 
 # the time limits: the install start gets a third of the budget, the workflow start the rest less 20 s; each
-# start's runner ends it 30 s before its limit, counted from when the runner starts (3 to 6 s after QGIS
-# starts here), and timeout(1) kills QGIS 10 s after the limit
+# start's runner ends it 30 s before its limit, counted from when the runner starts (4 to 9 s after the QGIS
+# process starts here, 2 to 3 s after the startup guard runs), and timeout(1) kills QGIS 10 s after the limit
 t1=$((budget / 3))
 t2=$((budget - t1 - 20))
 printf 'budget=%s\ninstall_timeout=%s\nworkflow_timeout=%s\n' "$budget" "$t1" "$t2" >>"$res" || exit 2
