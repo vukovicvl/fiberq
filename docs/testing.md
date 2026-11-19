@@ -585,6 +585,9 @@ processes need QGIS.
 | `tests/test_route_ends.py` | the functions behind Route correction | memory layers and one GeoJSON file on every leg; ground distances worked out by hand | 27 | 0 |
 | `tests/test_legacy_names.py` | legacy names and the element catalogue | the phrase book's answers and round trip, the cable-layer test on legacy names, the icon each new element layer draws, the catalogue's icons in the two copies that draw and the names in the others | 10 | 0 |
 | `tests/test_element_catalogue.py` | the element catalogue | checks of `fiberq/models/element_defs.py`, which needs no QGIS | 3 | 3 |
+| `tests/test_color_manager.py` | the colour catalogues | the catalogues a new project starts with and the colour codes the cable picker offers | 2 | 0 |
+| `tests/test_pipe_manager.py` | the pipe layers and the pipe list | the pipe tool's two layers, and the description of each pipe | 2 | 0 |
+| `tests/test_drawing_manager.py` | drawings attached to elements | the category offered, Add drawing with its dialogs replaced, clearing a link; one expected failure | 6 | 0 |
 
 The app stages run `tests/app/` with `ci/app-smoke.sh` ([The app smoke](#the-app-smoke)).
 
@@ -643,7 +646,8 @@ git rm -rq tests/test_floor_seed.py tests/floor_check.py tests/floor_seed \
     tests/test_style_smoke.py \
     tests/test_relations_candidates.py \
     tests/test_route_ends.py \
-    tests/test_legacy_names.py tests/test_element_catalogue.py   # and every other path under WP5's test files
+    tests/test_legacy_names.py tests/test_element_catalogue.py \
+    tests/test_color_manager.py tests/test_pipe_manager.py tests/test_drawing_manager.py   # and every other path under WP5's test files
 git commit -qm 'coverage: without WP5 test files'
 sh ci/run-all.sh --only test-coverage                 # v1.7.0 without WP5's test files
 ```
