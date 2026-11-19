@@ -261,7 +261,8 @@ def build_path_across_network(
         tolerance: Tolerance for vertex matching (map units)
 
     Returns:
-        List of QgsPointXY representing the path, or None if no path exists
+        List of at least two QgsPointXY representing the path, or None if no
+        path exists
     """
     try:
         # Build network graph
@@ -282,6 +283,17 @@ def build_path_across_network(
         path_keys = find_path_bfs(adj, start_key, end_key)
 
         if path_keys is None:
+            return None
+
+        # WP5-FU-33: a path needs two points. When both points are nearest one
+        # vertex, find_path_bfs answers that key alone, and Lay cable and the
+        # Pipe tool wrote the path as a line of one vertex and length 0. GEOS
+        # cannot measure such a line, so with the cable layer in an open edit
+        # session FiberQ Undo took the newest saved cable for the new one, and
+        # undoing the lay deleted that saved cable. Answered None, the pair goes
+        # on to the callers' search across joined routes and, when that finds
+        # none either, to Lay cable's warning or the Pipe tool's straight line.
+        if len(path_keys) < 2:
             return None
 
         # Convert keys back to points
@@ -320,7 +332,8 @@ def build_path_across_joined_routes(
         tolerance: Tolerance for vertex matching (map units)
 
     Returns:
-        List of QgsPointXY representing the path, or None if no path exists
+        List of at least two QgsPointXY representing the path, or None if no
+        path exists
     """
     try:
         # Build feature-level graph
@@ -410,6 +423,13 @@ def build_path_across_joined_routes(
                     path_pts.extend(seq[1:])
                 else:
                     path_pts.extend(seq)
+
+        # WP5-FU-33, as in build_path_across_network: fewer than two points is
+        # no path. Both points in the cell of one route end leave no route to
+        # walk and path_pts empty; path_pts[-1] below then raised IndexError,
+        # which the handler logged as a failure of the search.
+        if len(path_pts) < 2:
+            return None
 
         # Verify we reached the end
         if round_key(path_pts[-1], tolerance) != end_key:
