@@ -577,6 +577,8 @@ processes need QGIS.
 | `tests/test_lifecycle_ratchet.py`, with `tests/support/lifecycle_driver.py` | the lifecycle ratchet | two child processes on every leg, one of them an expected failure; checks of the ratchet's messages | 5 | 3 |
 | `tests/test_app_runner.py`, with `tests/app/` | the app runner, and the app smoke's two starts and startup guard | the runner's eleven cases, each in a child process on every leg | 11 | 0 |
 | `tests/test_app_junit.py` | the app stages' JUnit writer, `ci/report.py app-junit` | checks of the writer on records made up in the test | 34 | 34 |
+| `tests/support/core_env.py` | the set-up the core-logic tests share | imported by the core-logic test files below that need QGIS; no tests of its own | 0 | 0 |
+| `tests/test_cable_path_across_routes.py` | the cable path across several routes | memory layers on every leg: each path's order and length, worked out by hand, and the length Lay cable stores; five expected failures | 22 | 0 |
 
 The app stages run `tests/app/` with `ci/app-smoke.sh` ([The app smoke](#the-app-smoke)).
 
@@ -629,7 +631,8 @@ git rm -rq tests/test_floor_seed.py tests/floor_check.py tests/floor_seed \
     tests/test_qt6_seed.py tests/qt6_seed \
     tests/test_initgui_snapshot.py tests/support/initgui_snapshot.py tests/initgui_golden.json \
     tests/test_lifecycle_ratchet.py tests/support/lifecycle_driver.py \
-    tests/test_app_runner.py tests/app tests/test_app_junit.py   # and every other path under WP5's test files
+    tests/test_app_runner.py tests/app tests/test_app_junit.py \
+    tests/support/core_env.py tests/test_cable_path_across_routes.py   # and every other path under WP5's test files
 git commit -qm 'coverage: without WP5 test files'
 sh ci/run-all.sh --only test-coverage                 # v1.7.0 without WP5's test files
 ```
@@ -730,6 +733,15 @@ column's percentage is over the statements of the commit it measures.
   import it at its top; the app smoke takes the same record in the real QGIS.
 - `lifecycle_driver.py`: the child driver of `tests/test_lifecycle_ratchet.py`, with `LifecycleIface` and
   every count the ratchet pins.
+- `core_env.py`: the set-up the core-logic tests share. `clean_project()` empties QGIS's project before and
+  after a test without `QgsProject.clear()`, which costs about 0.15 s a call on QGIS 3.44 and 0.35 s on 4.2.
+  It starts the test with no project CRS or ellipsoid and puts back what was there after it, and it undoes
+  and reports any FiberQ setting the test changed. `CoreIface` stands in for `iface` with a map canvas in a
+  given CRS and scale and a message bar that keeps what it is told. `memory_layer()` refuses a layer whose
+  name could make the project's layer order random. `wired_plugin()` gives a plugin object with only its
+  managers, wired as the plugin wires them. The rest replace the cable picker and the message boxes, stop
+  the canvas rendering, test a value for NULL on Qt5 and Qt6 alike, and read SQLite with the connection
+  closed. It imports QGIS.
 
 `tests/app/` holds the code that drives the real QGIS desktop, and no tests of its own: the runner
 (`runner.py`), the driver of the runner's own test (`selftest.py`), the startup guard (`guard.py`), the app
@@ -745,10 +757,10 @@ it is ([Coverage of core logic](#coverage-of-core-logic)).
 `from support.child import run_driver`, in any import mode. A driver that uses `FakeIface` puts `tests/` on
 its own `sys.path`, and the repository root too when it imports the plugin, and imports `support.fake_iface`
 once it has started a `QgsApplication`. What a test file imports at its top must import without QGIS, or the
-fast stage leaves the file out: `child.py` and `initgui_snapshot.py` do, `fake_iface.py` does not. A test
-asserts the child's exit code and result before it reads the result, with the child's output in that
-assertion's message (`assert code == 0 and result is not None, output`), as every test file that uses
-`run_driver` does: the fast stage turns a child that died of a hidden module into a skip only when that
+fast stage leaves the file out: `child.py` and `initgui_snapshot.py` do, `fake_iface.py` and `core_env.py`
+do not. A test asserts the child's exit code and result before it reads the result, with the child's output
+in that assertion's message (`assert code == 0 and result is not None, output`), as every test file that
+uses `run_driver` does: the fast stage turns a child that died of a hidden module into a skip only when that
 output is in the failure. For the same reason a driver catches no exception broadly: in the fast stage its
 child must die of the hidden `qgis`, uncaught. Python puts a script's folder first on `sys.path`, and the
 drivers run from `tests/support/` and `tests/app/`, so no module in either folder may be named like a
