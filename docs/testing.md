@@ -234,12 +234,15 @@ Inside the modules it tests, WP5 also leaves out code the plugin does not run:
   `delete_catalog`, `rename_catalog`, `get_colors_for_catalog`, `get_color_by_index`) and
   `color_catalogs_key`. In `core/drawing_manager.py`: `is_drawing_loaded`, `open_drawing_for_feature`,
   `get_drawing_info` and the two key methods. In `models/element_defs.py`: `get_element_def_by_name`,
-  `get_element_icon_filename`, `get_joint_closure_def`, `apply_element_aliases`, `_toolbar_icon_path`, the
-  two `to_dict`. In `utils/legacy_bridge.py`: `_img_key`, `_img_set`. In `utils/helpers.py`: every function
-  but `_get_lang`, `_set_lang`, `_load_icon` (with the `_icon_path` and `get_plugin_dir` it calls) and
-  `is_cable_layer`, including its own copy of the phrase book. Nothing the plugin runs calls them: at most
-  the packages' `__init__.py` files re-export them, or they are called only by functions that are unused too
-  (another of these, or a method of `main_plugin.py`).
+  `get_element_icon_filename`, `get_joint_closure_def`, `apply_element_aliases`,
+  `get_default_fields_for_layer`, `_toolbar_icon_path`, the two `to_dict`. In `utils/legacy_bridge.py`:
+  `_img_key`, `_img_set`. In `utils/helpers.py`: every function but `_get_lang`, `_set_lang`, `_load_icon`
+  (with the `_icon_path` and `get_plugin_dir` it calls) and `is_cable_layer`, including its own copy of the
+  phrase book. In `core/interchange_bundle.py`: `write_bundle`, `write_geojson_bundle`. In
+  `core/migrations.py`: `MigrationReport.__bool__`. In `core/cable_manager.py`:
+  `CableManager.get_cable_fiber_label`. Nothing the plugin runs calls them: at most the packages'
+  `__init__.py` files re-export them, or they are called only by functions that are unused too (another of
+  these, or a method of `main_plugin.py`).
 - **A manager's own copy of another manager's work**, kept for when the plugin could not build that manager.
   Every manager's constructor only stores what it is given, so in the plugin these copies run only if the
   delegate raises, which no measured input does. The tests drive the managers as the plugin wires them, and
@@ -791,12 +794,18 @@ the statements of the commit it measures.
 - `core_env.py`: the set-up the core-logic tests share. `clean_project()` empties QGIS's project before and
   after a test without `QgsProject.clear()`, which costs about 0.15 s a call on QGIS 3.44 and 0.35 s on 4.2.
   It starts the test with no project CRS or ellipsoid and puts back what was there after it, and it undoes
-  and reports any FiberQ setting the test changed. `CoreIface` stands in for `iface` with a map canvas in a
-  given CRS and scale and a message bar that keeps what it is told. `memory_layer()` refuses a layer whose
-  name could make the project's layer order random. `wired_plugin()` gives a plugin object with only its
-  managers, wired as the plugin wires them. The rest replace the cable picker and the message boxes, stop
-  the canvas rendering, test a value for NULL on Qt5 and Qt6 alike, and read SQLite with the connection
-  closed. It imports QGIS.
+  and reports any FiberQ setting the test changed. It is built on three helpers that a test may also call on
+  its own: `empty_project()`, which removes the layers, every layer-tree node, the custom layer order and
+  the entries the core managers write into the project (`ENTRIES`), and `fiberq_settings()` and
+  `undo_settings()`, which record FiberQ's settings and put them back. `CoreIface` stands in for `iface`
+  with a map canvas in a given CRS and scale and a message bar (`MessageBar`) that keeps what it is told,
+  and `Core` is what the module-level layer functions take for the plugin: an object with `iface`.
+  `memory_layer()` refuses a layer whose name could make the project's layer order random, and `tree_rows()`
+  gives the layer tree as rows. `wired_plugin()` gives a plugin object with every manager the plugin builds
+  but its undo and command managers, wired as the plugin wires them. `patch_cable_picker()` and
+  `record_message_boxes()` replace the cable picker and the message boxes, `canvas_not_rendering()` stops
+  the canvas rendering, `is_null()` tests a value for NULL on Qt5 and Qt6 alike, and `sqlite_rows()` reads
+  SQLite with the connection closed. It imports QGIS.
 
 `tests/app/` holds the code that drives the real QGIS desktop, and no tests of its own: the runner
 (`runner.py`), the driver of the runner's own test (`selftest.py`), the startup guard (`guard.py`), the app
