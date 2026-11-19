@@ -588,6 +588,7 @@ processes need QGIS.
 | `tests/test_color_manager.py` | the colour catalogues | the catalogues a new project starts with and the colour codes the cable picker offers | 2 | 0 |
 | `tests/test_pipe_manager.py` | the pipe layers and the pipe list | the pipe tool's two layers, and the description of each pipe | 2 | 0 |
 | `tests/test_drawing_manager.py` | drawings attached to elements | the category offered, Add drawing with its dialogs replaced, clearing a link; one expected failure | 6 | 0 |
+| `tests/test_scenario_migrate_to_bundle.py` | one project from before 1.0 to a re-imported bundle | a GeoPackage from `tests/fixtures/make_sample_project.py`, migrated, a cable laid, validated, exported and re-imported, on every leg; one expected failure | 8 | 0 |
 
 The app stages run `tests/app/` with `ci/app-smoke.sh` ([The app smoke](#the-app-smoke)).
 
@@ -647,7 +648,8 @@ git rm -rq tests/test_floor_seed.py tests/floor_check.py tests/floor_seed \
     tests/test_relations_candidates.py \
     tests/test_route_ends.py \
     tests/test_legacy_names.py tests/test_element_catalogue.py \
-    tests/test_color_manager.py tests/test_pipe_manager.py tests/test_drawing_manager.py   # and every other path under WP5's test files
+    tests/test_color_manager.py tests/test_pipe_manager.py tests/test_drawing_manager.py \
+    tests/test_scenario_migrate_to_bundle.py          # and every other path under WP5's test files
 git commit -qm 'coverage: without WP5 test files'
 sh ci/run-all.sh --only test-coverage                 # v1.7.0 without WP5's test files
 ```
