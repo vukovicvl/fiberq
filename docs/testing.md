@@ -22,7 +22,7 @@ coverage 7.16.2), and every test stage runs them from the pipeline's tool cache
 | Fast | `pure` | the python image, with no QGIS | the 41 test files that import with no QGIS, GDAL or Qt: 583 of their tests run, and the 417 that do not stop on QGIS or GDAL are its pure items (416 of them pass in the python image, which has no `lrelease`) | under a minute |
 | QGIS legs | `test-322`, `test-340`, `test-344`, `test-40`, `test-42` | the QGIS 3.22, 3.40, 3.44, 4.0 and 4.2 images | the whole suite, the fast tests included: 2,554 tests on each leg | 8 to 23 minutes per leg, two legs at a time |
 | App | `app-340`, `app-42` | the QGIS 3.40 and 4.2 images, in host mode only | the real QGIS desktop under xvfb-run: the stage's own zip installed with QGIS's own Install from ZIP code in a fresh profile, its toolbars and keys against the initGui golden file, a short workflow and a reload of the plugin | about half a minute per leg |
-| Coverage | `test-coverage` | the QGIS 4.2 image, in host mode only | the whole suite under coverage.py, child processes included | about 19 minutes, on its own |
+| Coverage | `test-coverage` | the QGIS 4.2 image, in host mode only | the whole suite under coverage.py, child processes included | about 18 minutes, on its own |
 | Gates | `lint`, `qt6`, `floor` | the python image, the Qt6 checker, the QGIS 3.22 image | static checks, the Qt6 source check and the declared minimum QGIS ([ci/README.md](../ci/README.md)) | seconds each |
 
 The times were measured on one Linux machine with Docker. Every stage starts through `ci/run-all.sh`;
@@ -505,9 +505,9 @@ A TERM, HUP or INT stops the stage with the largest code so far, or 143 when tha
 `ci/stage.sh`, 124 or 137 mean that the whole stage passed its time limit. The starts' time limits come from
 `CI_TIMEOUT` (by default 900 s for an app stage) less 60 s: the install start gets a third of that, the
 workflow start the rest less 20 s (280 s and 540 s by default). The runner ends each start 30 s before its
-limit (exit 4), counted from when the runner starts (3 to 6 s after QGIS starts here), and `timeout` stops
-QGIS at the limit and kills it 10 s later. Here the install start takes about 10 s and the workflow start
-13 to 20 s.
+limit (exit 4), counted from when the runner starts (here 4 to 9 s after the QGIS process starts, 2 to 3 s
+after the startup guard runs), and `timeout` stops QGIS at the limit and kills it 10 s later. Here the
+install start takes about 10 s and the workflow start 13 to 20 s.
 
 What keeps the starts the same from run to run:
 
@@ -659,16 +659,16 @@ they run, 47 of them in a child process.
 ## Coverage of core logic
 
 Statement coverage per core-logic module, as coverage.py 7.16.2 counts statements (12,093 in core logic at
-v1.6.0), measured by the `test-coverage` stage on the QGIS 4.2 leg (Python 3.13), in host mode. The three
-columns are measured in one go, with one checkout of `ci/`, one image digest and one set of tool pins; each
-column's run record names the `ci/` tree it ran.
+v1.6.0 and 12,098 at v1.7.0), measured by the `test-coverage` stage on the QGIS 4.2 leg (Python 3.13), in
+host mode. The three columns are measured in one go, with one `ci/` tree, one image digest and one set of
+tool pins; each column's run record names the `ci/` tree it ran.
 
 - **v1.6.0**: before the test files WP5 adds. Its only WP5 test files, the two seed tests above, read text
   files and run no `fiberq/` code, so they add nothing to this table;
 - **v1.7.0 without WP5's test files**: the measured commit with every path listed under
   [WP5's test files](#wp5s-test-files) removed, the two seed tests and their seed folders too;
 - **v1.7.0**: the whole suite of the measured commit. WP5's share is the difference between the last two
-  columns, in percentage points.
+  columns as printed, in percentage points.
 
 On the commit measured for v1.7.0, in a clean clone:
 
@@ -695,9 +695,9 @@ sh ci/run-all.sh --only test-coverage                 # v1.7.0 without WP5's tes
 
 The files are removed, not deselected: pytest still imports a deselected file, and the statements that run
 when it is imported would count. That run's record names its trees: its `fiberq/` tree is the measured
-commit's, and its `tests/` tree is the one these commands give on any clone. The v1.6.0 column below was
-measured when this page was added, and it is measured again with the two v1.7.0 columns, which are measured
-when WP5's test files are complete, before the v1.7.0 release.
+commit's, and its `tests/` tree is the one these commands give on any clone. All three columns below were
+measured on 19 November 2026, on `main` at `aae5310`, once WP5's test files were complete. The v1.6.0
+column, first measured when this page was added, came out the same.
 
 What the figures include, and what they do not:
 
@@ -718,58 +718,58 @@ the statements of the commit it measures.
 
 | Module | Statements at v1.6.0 | v1.6.0 | Statements at v1.7.0 | v1.7.0 without WP5's test files | v1.7.0 | WP5's share |
 |---|--:|--:|--:|--:|--:|--:|
-| `core/cable_manager.py` | 614 | 71.0% | | | | |
-| `core/color_manager.py` | 102 | 30.4% | | | | |
-| `core/config_manager.py` (dead code) | 169 | 43.8% | | | | |
-| `core/data_manager.py` | 278 | 69.8% | | | | |
-| `core/drawing_manager.py` | 171 | 23.4% | | | | |
-| `core/export_manager.py` | 628 | 83.0% | | | | |
-| `core/feature_links.py` | 88 | 98.9% | | | | |
-| `core/gpkg_target.py` | 355 | 94.9% | | | | |
-| `core/interchange.py` | 195 | 91.3% | | | | |
-| `core/interchange_bundle.py` | 1,061 | 89.5% | | | | |
-| `core/interchange_fields.py` | 78 | 100.0% | | | | |
-| `core/interchange_import.py` | 751 | 91.7% | | | | |
-| `core/layer_manager.py` | 909 | 27.2% | | | | |
-| `core/length_manager.py` | 222 | 82.0% | | | | |
-| `core/length_sync.py` | 187 | 81.8% | | | | |
-| `core/license_manager.py` (licence check of the Pro features) | 57 | 31.6% | | | | |
-| `core/migrations.py` | 102 | 86.3% | | | | |
-| `core/pipe_manager.py` | 247 | 37.7% | | | | |
-| `core/project_compat.py` | 8 | 100.0% | | | | |
-| `core/project_store.py` | 69 | 89.9% | | | | |
-| `core/relations_manager.py` | 179 | 27.4% | | | | |
-| `core/route_ends.py` | 156 | 92.3% | | | | |
-| `core/route_manager.py` | 529 | 84.5% | | | | |
-| `core/schema_version.py` | 44 | 84.1% | | | | |
-| `core/slack_manager.py` | 432 | 80.8% | | | | |
-| `core/style_manager.py` | 404 | 43.1% | | | | |
-| `core/undo_manager.py` | 323 | 81.1% | | | | |
-| `core/validation_manager.py` | 200 | 98.0% | | | | |
-| `core/validation_report.py` | 125 | 93.6% | | | | |
-| `core/validation_rules.py` | 484 | 93.2% | | | | |
-| `models/color_catalogs.py` (dead code) | 130 | 27.7% | | | | |
-| `models/element_defs.py` | 84 | 60.7% | | | | |
-| `models/schema.py` | 99 | 99.0% | | | | |
-| `utils/batch.py` | 17 | 94.1% | | | | |
-| `utils/compat.py` | 240 | 44.6% | | | | |
-| `utils/constants.py` | 102 | 100.0% | | | | |
-| `utils/errors.py` | 187 | 92.5% | | | | |
-| `utils/field_aliases.py` | 217 | 81.6% | | | | |
-| `utils/file_filters.py` | 11 | 100.0% | | | | |
-| `utils/geometry.py` | 318 | 67.6% | | | | |
-| `utils/geopackage.py` | 151 | 88.1% | | | | |
-| `utils/helpers.py` | 253 | 21.3% | | | | |
-| `utils/image_watcher.py` | 38 | 97.4% | | | | |
-| `utils/layer_names.py` (dead code) | 97 | 88.7% | | | | |
-| `utils/legacy_bridge.py` | 231 | 59.7% | | | | |
-| `utils/logger.py` | 80 | 57.5% | | | | |
-| `utils/measure.py` | 107 | 77.6% | | | | |
-| `utils/routing.py` | 205 | 49.3% | | | | |
-| `utils/spatial.py` | 188 | 98.9% | | | | |
-| `utils/uuid_utils.py` | 171 | 76.0% | | | | |
-| **In scope (46 modules)** | **11,640** | **72.7%** | | | | |
-| **Core logic (50 modules)** | **12,093** | **71.7%** | | | | |
+| `core/cable_manager.py` | 614 | 71.0% | 614 | 71.0% | 73.6% | +2.6 |
+| `core/color_manager.py` | 102 | 30.4% | 102 | 30.4% | 34.3% | +3.9 |
+| `core/config_manager.py` (dead code) | 169 | 43.8% | 169 | 43.8% | 43.8% | 0.0 |
+| `core/data_manager.py` | 278 | 69.8% | 278 | 69.8% | 72.7% | +2.9 |
+| `core/drawing_manager.py` | 171 | 23.4% | 171 | 23.4% | 57.9% | +34.5 |
+| `core/export_manager.py` | 628 | 83.0% | 628 | 83.0% | 83.0% | 0.0 |
+| `core/feature_links.py` | 88 | 98.9% | 88 | 98.9% | 98.9% | 0.0 |
+| `core/gpkg_target.py` | 355 | 94.9% | 355 | 94.9% | 94.9% | 0.0 |
+| `core/interchange.py` | 195 | 91.3% | 195 | 91.3% | 91.3% | 0.0 |
+| `core/interchange_bundle.py` | 1,061 | 89.5% | 1,061 | 89.5% | 90.3% | +0.8 |
+| `core/interchange_fields.py` | 78 | 100.0% | 78 | 100.0% | 100.0% | 0.0 |
+| `core/interchange_import.py` | 751 | 91.7% | 751 | 91.7% | 91.7% | 0.0 |
+| `core/layer_manager.py` | 909 | 27.2% | 909 | 27.2% | 55.7% | +28.5 |
+| `core/length_manager.py` | 222 | 82.0% | 222 | 82.0% | 82.0% | 0.0 |
+| `core/length_sync.py` | 187 | 81.8% | 187 | 81.8% | 81.8% | 0.0 |
+| `core/license_manager.py` (licence check of the Pro features) | 57 | 31.6% | 57 | 31.6% | 31.6% | 0.0 |
+| `core/migrations.py` | 102 | 86.3% | 102 | 86.3% | 94.1% | +7.8 |
+| `core/pipe_manager.py` | 247 | 37.7% | 247 | 37.7% | 42.9% | +5.2 |
+| `core/project_compat.py` | 8 | 100.0% | 8 | 100.0% | 100.0% | 0.0 |
+| `core/project_store.py` | 69 | 89.9% | 69 | 89.9% | 89.9% | 0.0 |
+| `core/relations_manager.py` | 179 | 27.4% | 179 | 27.4% | 62.6% | +35.2 |
+| `core/route_ends.py` | 156 | 92.3% | 156 | 92.3% | 98.1% | +5.8 |
+| `core/route_manager.py` | 529 | 84.5% | 529 | 84.5% | 85.4% | +0.9 |
+| `core/schema_version.py` | 44 | 84.1% | 44 | 84.1% | 84.1% | 0.0 |
+| `core/slack_manager.py` | 432 | 80.8% | 432 | 80.8% | 80.8% | 0.0 |
+| `core/style_manager.py` | 404 | 43.1% | 404 | 43.1% | 58.9% | +15.8 |
+| `core/undo_manager.py` | 323 | 81.1% | 323 | 81.1% | 81.1% | 0.0 |
+| `core/validation_manager.py` | 200 | 98.0% | 200 | 98.0% | 98.0% | 0.0 |
+| `core/validation_report.py` | 125 | 93.6% | 125 | 93.6% | 93.6% | 0.0 |
+| `core/validation_rules.py` | 484 | 93.2% | 484 | 93.2% | 93.2% | 0.0 |
+| `models/color_catalogs.py` (dead code) | 130 | 27.7% | 130 | 27.7% | 27.7% | 0.0 |
+| `models/element_defs.py` | 84 | 60.7% | 84 | 60.7% | 60.7% | 0.0 |
+| `models/schema.py` | 99 | 99.0% | 99 | 99.0% | 99.0% | 0.0 |
+| `utils/batch.py` | 17 | 94.1% | 17 | 94.1% | 94.1% | 0.0 |
+| `utils/compat.py` | 240 | 44.6% | 240 | 44.6% | 44.6% | 0.0 |
+| `utils/constants.py` | 102 | 100.0% | 102 | 100.0% | 100.0% | 0.0 |
+| `utils/errors.py` | 187 | 92.5% | 187 | 92.5% | 92.5% | 0.0 |
+| `utils/field_aliases.py` | 217 | 81.6% | 217 | 81.6% | 82.5% | +0.9 |
+| `utils/file_filters.py` | 11 | 100.0% | 11 | 100.0% | 100.0% | 0.0 |
+| `utils/geometry.py` | 318 | 67.6% | 318 | 67.6% | 68.6% | +1.0 |
+| `utils/geopackage.py` | 151 | 88.1% | 151 | 88.1% | 88.1% | 0.0 |
+| `utils/helpers.py` | 253 | 21.3% | 253 | 21.3% | 21.7% | +0.4 |
+| `utils/image_watcher.py` | 38 | 97.4% | 38 | 97.4% | 97.4% | 0.0 |
+| `utils/layer_names.py` (dead code) | 97 | 88.7% | 97 | 88.7% | 88.7% | 0.0 |
+| `utils/legacy_bridge.py` | 231 | 59.7% | 231 | 59.7% | 74.0% | +14.3 |
+| `utils/logger.py` | 80 | 57.5% | 81 | 66.7% | 66.7% | 0.0 |
+| `utils/measure.py` | 107 | 77.6% | 107 | 77.6% | 77.6% | 0.0 |
+| `utils/routing.py` | 205 | 49.3% | 209 | 48.8% | 82.8% | +34.0 |
+| `utils/spatial.py` | 188 | 98.9% | 188 | 98.9% | 98.9% | 0.0 |
+| `utils/uuid_utils.py` | 171 | 76.0% | 171 | 76.0% | 76.0% | 0.0 |
+| **In scope (46 modules)** | **11,640** | **72.7%** | **11,645** | **72.7%** | **78.1%** | **+5.4** |
+| **Core logic (50 modules)** | **12,093** | **71.7%** | **12,098** | **71.8%** | **76.9%** | **+5.1** |
 
 ## Code the tests share
 
