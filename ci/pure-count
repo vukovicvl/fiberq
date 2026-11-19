@@ -10,6 +10,7 @@
 6 tests/test_bench_harness.py
 13 tests/test_bench_report.py
 7 tests/test_city_fixture.py
+3 tests/test_element_catalogue.py
 7 tests/test_error_handling_ratchet.py
 16 tests/test_file_filters.py
 7 tests/test_floor_seed.py

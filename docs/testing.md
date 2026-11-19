@@ -583,6 +583,8 @@ processes need QGIS.
 | `tests/test_style_smoke.py` | the styling of every layer type | memory layers on every leg: renderers, categories, colours, shapes and labels, never a size or a unit; three expected failures, six on QGIS 3.38 and later | 22 | 0 |
 | `tests/test_relations_candidates.py` | the elements along a cable, and the relations | memory layers and one GeoPackage on every leg, against answers worked out by hand; the plugin's search compared with its second copy; five expected failures, six on QGIS 3 | 16 | 0 |
 | `tests/test_route_ends.py` | the functions behind Route correction | memory layers and one GeoJSON file on every leg; ground distances worked out by hand | 27 | 0 |
+| `tests/test_legacy_names.py` | legacy names and the element catalogue | the phrase book's answers and round trip, the cable-layer test on legacy names, the icon each new element layer draws, the catalogue's icons in the two copies that draw and the names in the others | 10 | 0 |
+| `tests/test_element_catalogue.py` | the element catalogue | checks of `fiberq/models/element_defs.py`, which needs no QGIS | 3 | 3 |
 
 The app stages run `tests/app/` with `ci/app-smoke.sh` ([The app smoke](#the-app-smoke)).
 
@@ -640,7 +642,8 @@ git rm -rq tests/test_floor_seed.py tests/floor_check.py tests/floor_seed \
     tests/test_layer_ensure.py \
     tests/test_style_smoke.py \
     tests/test_relations_candidates.py \
-    tests/test_route_ends.py                          # and every other path under WP5's test files
+    tests/test_route_ends.py \
+    tests/test_legacy_names.py tests/test_element_catalogue.py   # and every other path under WP5's test files
 git commit -qm 'coverage: without WP5 test files'
 sh ci/run-all.sh --only test-coverage                 # v1.7.0 without WP5's test files
 ```
