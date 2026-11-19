@@ -1,6 +1,6 @@
 # FiberQ's tests
 
-FiberQ's test suite is in `tests/`: 118 test files and 2,383 tests, run by pytest with the shared
+FiberQ's test suite is in `tests/`: 129 test files and 2,554 tests, run by pytest with the shared
 fixtures of the root [`conftest.py`](../conftest.py). The pipeline in [`ci/`](../ci/README.md) runs it in the
 official QGIS images, from QGIS 3.22 to 4.2, and runs the part that needs no QGIS on its own, in a plain
 Python image. In two of those images it also installs the plugin in the real QGIS desktop and uses it.
@@ -19,10 +19,10 @@ coverage 7.16.2), and every test stage runs them from the pipeline's tool cache
 
 | Tier | Stage | Runs in | What it runs | Time here |
 |---|---|---|---|---|
-| Fast | `pure` | the python image, with no QGIS | the 40 test files that import with no QGIS, GDAL or Qt: 580 of their tests run, and the 414 that do not stop on QGIS or GDAL are its pure items (413 of them pass in the python image, which has no `lrelease`) | under a minute |
-| QGIS legs | `test-322`, `test-340`, `test-344`, `test-40`, `test-42` | the QGIS 3.22, 3.40, 3.44, 4.0 and 4.2 images | the whole suite, the fast tests included: 2,383 tests on each leg | 8 to 23 minutes per leg, two legs at a time |
+| Fast | `pure` | the python image, with no QGIS | the 41 test files that import with no QGIS, GDAL or Qt: 583 of their tests run, and the 417 that do not stop on QGIS or GDAL are its pure items (416 of them pass in the python image, which has no `lrelease`) | under a minute |
+| QGIS legs | `test-322`, `test-340`, `test-344`, `test-40`, `test-42` | the QGIS 3.22, 3.40, 3.44, 4.0 and 4.2 images | the whole suite, the fast tests included: 2,554 tests on each leg | 8 to 23 minutes per leg, two legs at a time |
 | App | `app-340`, `app-42` | the QGIS 3.40 and 4.2 images, in host mode only | the real QGIS desktop under xvfb-run: the stage's own zip installed with QGIS's own Install from ZIP code in a fresh profile, its toolbars and keys against the initGui golden file, a short workflow and a reload of the plugin | about half a minute per leg |
-| Coverage | `test-coverage` | the QGIS 4.2 image, in host mode only | the whole suite under coverage.py, child processes included | about 17 minutes, on its own |
+| Coverage | `test-coverage` | the QGIS 4.2 image, in host mode only | the whole suite under coverage.py, child processes included | about 19 minutes, on its own |
 | Gates | `lint`, `qt6`, `floor` | the python image, the Qt6 checker, the QGIS 3.22 image | static checks, the Qt6 source check and the declared minimum QGIS ([ci/README.md](../ci/README.md)) | seconds each |
 
 The times were measured on one Linux machine with Docker. Every stage starts through `ci/run-all.sh`;
@@ -217,6 +217,42 @@ WP5 adds no tests for two groups of modules:
 Importing the three packages still runs the import-time statements of the dead modules and of
 `core/license_manager`, so their coverage is not zero. The table lists them, marked, and leaves them out of
 the in-scope total.
+
+Inside the modules it tests, WP5 also leaves out code the plugin does not run:
+
+- **Functions nothing calls.** In `utils/routing.py`: `find_route_between_points`,
+  `get_network_connectivity`, `find_endpoints_on_network`. In `core/layer_manager.py`: the `LayerManager`
+  methods `ensure_service_area_layer`, `ensure_objects_layer` (with `_apply_objects_aliases`, which only it
+  uses), `ensure_element_layer` (with the helpers only it uses), `ensure_route_layer`,
+  `ensure_pe_pipe_layer`, `ensure_transition_pipe_layer`, `find_layer_by_name`, `find_layers_by_names`; and
+  the module function `get_layer_manager`. In `core/style_manager.py`: `stylize_element_layer`,
+  `stylize_fiber_break_layer`, `apply_fixed_text_label`, `get_style_manager`. In
+  `core/relations_manager.py`: the relation and latent-element editing methods, `get_latent_for_cable` and
+  the two `*_storage_key` methods. In `core/data_manager.py`: `restore_metadata_to_project`,
+  `get_data_manager`. In `core/route_ends.py`: `_PointGrid.__len__`. In `core/color_manager.py`: the
+  catalogue editing and lookup methods (`get_catalog_by_name`, `add_catalog`, `update_catalog`,
+  `delete_catalog`, `rename_catalog`, `get_colors_for_catalog`, `get_color_by_index`) and
+  `color_catalogs_key`. In `core/drawing_manager.py`: `is_drawing_loaded`, `open_drawing_for_feature`,
+  `get_drawing_info` and the two key methods. In `models/element_defs.py`: `get_element_def_by_name`,
+  `get_element_icon_filename`, `get_joint_closure_def`, `apply_element_aliases`, `_toolbar_icon_path`, the
+  two `to_dict`. In `utils/legacy_bridge.py`: `_img_key`, `_img_set`. In `utils/helpers.py`: every function
+  but `_get_lang`, `_set_lang`, `_load_icon` (with the `_icon_path` and `get_plugin_dir` it calls) and
+  `is_cable_layer`, including its own copy of the phrase book. Nothing the plugin runs calls them: at most
+  the packages' `__init__.py` files re-export them, or they are called only by functions that are unused too
+  (another of these, or a method of `main_plugin.py`).
+- **A manager's own copy of another manager's work**, kept for when the plugin could not build that manager.
+  Every manager's constructor only stores what it is given, so in the plugin these copies run only if the
+  delegate raises, which no measured input does. The tests drive the managers as the plugin wires them, and
+  test a copy only where two copies must give the same answer: the search for the elements along a cable and
+  the relations store (`core/relations_manager.py` against `core/data_manager.py`).
+
+For legacy names, the tests cover the phrase book in `utils/legacy_bridge.py`: the strings the BOM report
+and the picture pop-up pass, which it returns unchanged, and its own phrases with their round trip, kept
+until the book is removed ([docs/i18n.md](i18n.md), Stage 2); and `is_cable_layer`, the one lookup in
+`utils/helpers.py` the plugin calls. The element catalogue is tested where the plugin reads it: the Placing
+elements menu's list (with no QGIS), the lookup Change element type uses and the icon each element's new
+layer draws, the icons in the copies Change element type and the Placing elements menu draw from, and the
+names the other copies give.
 
 ## The plugin's entry points
 
@@ -594,28 +630,28 @@ The app stages run `tests/app/` with `ci/app-smoke.sh` ([The app smoke](#the-app
 
 ## The fast-stage count
 
-Measured with the tests of the commit that added the app stages:
+Measured with the core-logic tests added:
 
 | | Python image, uid 1000 (host mode) | Python image, root (GitLab, in place) | A machine with QGIS, GDAL and lrelease (in place) |
 |---|--:|--:|--:|
-| test files picked | 40 | 40 | 40 |
-| test files left out | 78 | 78 | 78 |
-| tests collected | 607 | 607 | 607 |
+| test files picked | 41 | 41 | 41 |
+| test files left out | 88 | 88 | 88 |
+| tests collected | 610 | 610 | 610 |
 | tests deselected (a pytest-qgis fixture) | 27 | 27 | 27 |
-| tests run | 580 | 580 | 580 |
+| tests run | 583 | 583 | 583 |
 | skipped by the stage (a hidden module stopped them) | 166 | 166 | 166 |
-| **pure items** (in 30 test files) | **414** | **414** | **414** |
-| of which passed | 413 | 412 | 414 |
+| **pure items** (in 31 test files) | **417** | **417** | **417** |
+| of which passed | 416 | 415 | 417 |
 | of which skipped for another reason | 1 (no lrelease) | 2 (no lrelease; root ignores the write bit) | 0 |
 
-`ci/pure-count` holds the 414 pure items, file by file. Of them, **63** come from WP5's test files: 10 from
-the seed tests, `tests/test_floor_seed.py` (7) and `tests/test_qt6_seed.py` (3), which v1.6.0 already
-has, and 53 from the test files added since: the checks, which need no QGIS, of the initGui snapshot's
-comparison and file format (16), of the lifecycle ratchet's messages (3) and of the app stages' JUnit
-writer (34). The other **351** come from earlier work. In the python image 413 of the 414 pass, and one
-skips because the image has no `lrelease` (as root, one more skips). The 166 tests the stage skips run on
-the five QGIS legs: 88 of them need GDAL's Python bindings (`osgeo`), and 78 import QGIS while they run, 47
-of them in a child process.
+`ci/pure-count` holds the 417 pure items, file by file. Of them, **66** come from WP5's test files: 10 from
+the seed tests, `tests/test_floor_seed.py` (7) and `tests/test_qt6_seed.py` (3), which v1.6.0 already has,
+and 56 from the test files added since: the checks, which need no QGIS, of the initGui snapshot's comparison
+and file format (16), of the lifecycle ratchet's messages (3), of the app stages' JUnit writer (34) and of
+the element catalogue (3). The other **351** come from earlier work. In the python image 416 of the 417
+pass, and one skips because the image has no `lrelease` (as root, one more skips). The 166 tests the stage
+skips run on the five QGIS legs: 88 of them need GDAL's Python bindings (`osgeo`), and 78 import QGIS while
+they run, 47 of them in a child process.
 
 ## Coverage of core logic
 
@@ -672,8 +708,10 @@ What the figures include, and what they do not:
   and one language test copies `fiberq/`); a child process that is killed or crashes, which leaves no data;
   the app stages, which drive the real QGIS desktop, not pytest.
 
-The tests of the plugin's entry points mainly run `main_plugin.py`, which this table does not list. Each
-column's percentage is over the statements of the commit it measures.
+The tests of the plugin's entry points mainly run `main_plugin.py`, which this table does not list. The
+core-logic tests leave unrun the functions nothing calls and the managers' own copies they do not compare
+([Core logic](#core-logic)), so the modules that hold them stay below 100%. Each column's percentage is over
+the statements of the commit it measures.
 
 | Module | Statements at v1.6.0 | v1.6.0 | Statements at v1.7.0 | v1.7.0 without WP5's test files | v1.7.0 | WP5's share |
 |---|--:|--:|--:|--:|--:|--:|
@@ -821,6 +859,6 @@ some tests check against the code.
 
 ---
 
-*The fast stage, the coverage measurement, the initGui golden file, the lifecycle ratchet, the app stages
-and this page were developed with support from the [NLnet](https://nlnet.nl) NGI0 Commons Fund, as part of
-WP5.*
+*The fast stage, the coverage measurement, the initGui golden file, the lifecycle ratchet, the app stages,
+the core-logic tests and this page were developed with support from the [NLnet](https://nlnet.nl) NGI0
+Commons Fund, as part of WP5.*
