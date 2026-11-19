@@ -64,7 +64,7 @@ fiberq/               the plugin package (this is what ships)
   styles/ icons/ resources/
 tests/                pytest suite
   support/            code the tests share: a stand-in for iface, the toolbar driver, a child runner,
-                      the initGui snapshot and the lifecycle driver
+                      the initGui snapshot, the lifecycle driver and the core-logic tests' set-up
   app/                the app smoke: the runner that drives the real QGIS desktop, and FiberQ's two starts
 docs/                 schema.md, i18n.md, project-versioning-guide.md
 ci/                   the pipeline: run-all.sh, the stage scripts, ci/legs, ci/hooks/ (ci/README.md); CI runs it
@@ -243,6 +243,19 @@ change that makes `unload()` leave less behind lowers the pin of each count
 that fell, in `PINS`, or `tests/test_lifecycle_ratchet.py` fails. A count above
 its pin is a leftover to fix, not a pin to raise. See
 "The plugin's entry points" in `docs/testing.md`.
+
+The core-logic test files that need QGIS (`docs/testing.md`, "WP5's test
+files") share their set-up, `tests/support/core_env.py`. No other test file or
+module imports it, so that the coverage procedure can remove WP5's test files
+and leave every other test as it is: a new test that needs it goes into one of
+those files, or into a new file listed with them there. Such a file whose tests
+each start from an empty project gets it from `clean_project()`, in the file's
+own `project` fixture, never from `QgsProject.clear()` before each test, which
+costs about 0.15 s a call on QGIS 3.44 and 0.35 s on 4.2. A manager under test
+that reads its `iface` gets `CoreIface`: the map canvases of pytest-qgis's
+`qgis_iface` and of `FakeIface` (`tests/support/fake_iface.py`) have no CRS, so
+a manager given either makes its layers without one. See "Code the tests share"
+in `docs/testing.md`.
 
 ### Qt6 source check
 
