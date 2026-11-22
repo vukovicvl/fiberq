@@ -9,7 +9,8 @@ and green on the automated gate.
 corrections, documentation fixes and good bug reports are as valuable as code —
 see [Translations](#translations) below, which is written for non-programmers.
 
-- Bugs: <https://github.com/vukovicvl/fiberq/issues>
+- Bugs: <https://github.com/vukovicvl/fiberq/issues> (security problems:
+  [SECURITY.md](SECURITY.md))
 - Ideas and feature voting: <https://github.com/vukovicvl/fiberq/discussions/categories/ideas>
 
 ---
