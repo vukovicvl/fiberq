@@ -38,8 +38,9 @@ changelog=
           route, Merge routes, Change route type, Change element type, Delete
           selected, Undo and Redo, Lay cable, and reading the project's
           relations, latent elements and colour catalogues - an unreadable
-          entry is no longer read as empty and then saved over. One message
-          per operation; the details are in Log Messages > FiberQ.
+          entry is reported, and its text is kept in the project under a
+          separate key before anything can be saved over it. One message per
+          operation; the details are in Log Messages > FiberQ.
         * Unhandled Python errors fixed: route correction (a pole without a
           geometry, a multipart route, a raster layer in the project), the
           Optical Schematic View's Center button, Import route on point or
