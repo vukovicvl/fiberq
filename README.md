@@ -2,28 +2,29 @@
 
 Open-source QGIS plugin for fiber optic network design (FTTH / GPON / FTTx).
 
-**Latest release: v1.6.0 — 08.11.2026.** Added on GitHub as a new release.
+**Latest release: v1.7.0.** Added on GitHub as a new release.
 
-v1.6.0 — WP4 · Performance and reliability
+v1.7.0 — WP5 · Automated tests and CI
 
-On a large design, the **Optical Schematic View**, the list of **latent
-elements**, **route correction**, **Generate terminal slacks**, placing a slack,
-FiberQ's own snapping in the placement tools, the undo record after every
-placement and **Lay cable** now use spatial indexes and batched reads instead of
-scanning every feature. And the operations that save, export, import or migrate
-data now say when they fail, and why, instead of failing silently or reporting
-success.
+Before each release, FiberQ's whole test suite now runs on five QGIS versions,
+from 3.22 LTR to 4.2, in the official Linux images, and the plugin is installed
+from a zip and used in the real QGIS desktop on 3.40 and 4.2. The pipeline that
+does it is plain scripts in `ci/`, which anyone with git and docker or podman
+can run, with or without a forge; they are tested on Linux x86-64 with Docker.
 
-    On an 88,622-feature test city, the Optical Schematic View opens in 11 s, not 16 min 39 s
-    The list of latent elements opens there in 5 s; in 1.5.0 it did not finish in 30 minutes
-    Measured against 1.5.0 on QGIS 3.44 and 4.0, with the method, the raw data and the limits
-    One message per failed operation; the details are in Log Messages > FiberQ
-    A test stops silent error handlers from growing back
+    2,554 tests on each of QGIS 3.22, 3.40, 3.44, 4.0 and 4.2
+    The real QGIS desktop on 3.40 and 4.2: install from a zip, a short workflow, a reload
+    WP5's new tests raise the statement coverage of the core logic from 71.8% to 76.9%
+    The tests that need no QGIS or GDAL run on their own, in a plain Python image, in under a minute
+    GitHub runs it on every push: three QGIS versions, and all five on release branches and tags
+    GitLab runs part of it for main, release branches and tags
 
-Guides: [performance on large projects](docs/performance.md) ·
-[the 1.6.0 re-check, replayed in QGIS](docs/qa/1.6.0/)
+Guides: [running the pipeline](ci/README.md) · [the release process](RELEASE.md) ·
+[what the tests cover](docs/testing.md) · [reporting a security problem](SECURITY.md)
 
-Earlier: [moving a design between tools](docs/interchange-guide.md) ·
+Earlier: [performance on large projects](docs/performance.md) ·
+[the 1.6.0 re-check, replayed in QGIS](docs/qa/1.6.0/) ·
+[moving a design between tools](docs/interchange-guide.md) ·
 [the specification](docs/interchange-format.md) ·
 [field mapping](docs/interchange-mapping.md) ·
 [validating a design](docs/validation-guide.md) ·
@@ -41,8 +42,8 @@ For the full feature list and install instructions, see [fiberq/README.md](fiber
 
 Every push to GitHub runs FiberQ's checks and tests, on three QGIS versions (all five for release
 branches and tags), and GitLab runs part of them for `main`, release branches and tags. Anyone can run
-the same pipeline without a forge, with git and docker or podman on an x86-64 machine:
-[ci/README.md](ci/README.md) explains how, and lists
+the same pipeline without a forge, with git and docker or podman (it is tested on Linux x86-64 with
+Docker): [ci/README.md](ci/README.md) explains how, and lists
 [where to see the runs](ci/README.md#where-to-see-the-runs). The release process is in
 [RELEASE.md](RELEASE.md). [docs/testing.md](docs/testing.md) says what the tests cover and how to run
 each tier.
@@ -51,6 +52,8 @@ each tier.
 
 - 💡 **Feature requests & voting (Discussions → Ideas):** https://github.com/vukovicvl/fiberq/discussions/categories/ideas
 - 🐛 **Bug reports (GitHub Issues):** https://github.com/vukovicvl/fiberq/issues
+- 🔒 **Security problems:** report them privately by e-mail, as [SECURITY.md](SECURITY.md) says, not in
+  an issue
 - 📊 **Polls (priorities & decisions):** https://github.com/vukovicvl/fiberq/discussions/categories/polls
 - 🌍 **Translate FiberQ into your language:** [docs/TRANSLATING.md](docs/TRANSLATING.md)
   — a step-by-step guide that assumes no programming, Git or terminal

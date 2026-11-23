@@ -3,7 +3,7 @@ name=FiberQ
 description=Open-source fiber network design tools for QGIS (FTTH/GPON/FTTx)
 about=FiberQ helps telecom engineers and GIS professionals design, analyze, and document fiber optic networks inside QGIS. FiberQ supports QGIS 4 / Qt6 while keeping support for QGIS 3.22 LTR and later, and clears all findings from the QGIS repository security scan. Some advanced features may require an activation key.
 
-version=1.6.0
+version=1.7.0
 qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
 
@@ -23,6 +23,49 @@ license=GPL-3.0-or-later
 class_name=FiberQPlugin
 
 changelog=
+    1.7.0 - Tested on five QGIS versions, by a pipeline anyone can run
+        * Every release is now tested on QGIS 3.22, 3.40, 3.44, 4.0 and 4.2,
+          in the official Linux images, and installed from a zip of it and
+          used in the real QGIS desktop on 3.40 and 4.2, by a pipeline of
+          plain scripts in ci/ that anyone with git and docker or podman can
+          run, with or without a forge (tested on Linux x86-64 with Docker).
+          GitHub runs it on every push, on three QGIS versions (all five,
+          with the desktop test, for release branches and tags), and GitLab
+          runs part of it for main, release branches and tags. ci/README.md
+          says what a host needs and how to run it, and RELEASE.md how a
+          release is made with it.
+        * New tests: the toolbars, menus and keys FiberQ builds at start-up,
+          against a recorded list; what it leaves behind when it unloads,
+          which may only shrink; the core logic, from the cable path across
+          several routes to the colour catalogues, pipes and drawings; and
+          one project taken from before 1.0 to a re-imported interchange
+          bundle. The tests that need neither QGIS nor GDAL run on their own
+          in under a minute. The new tests raise the statement coverage of
+          the core logic from 71.8 to 76.9 percent; docs/testing.md has the
+          table.
+        * Fixed: between two elements nearest the same route vertex, Lay
+          cable wrote a cable of one point, 0 m long, and reported success,
+          and FiberQ Undo could then delete the newest saved cable instead of
+          it; the Pipe tool drew a pipe of one point. Lay cable and the Pipe
+          tool now search the joined routes there, as they do for any pair
+          with no path along the network: Lay cable warns and writes nothing
+          when that finds no path, and the Pipe tool draws its straight pipe.
+        * Fixed: FiberQ's logging module failed to load outside QGIS, where
+          only its tests run it. Inside QGIS nothing changes.
+        * Corrected in the 1.6.0 entry below: what happens to an unreadable
+          relations, latent elements or colour catalogues entry.
+        * SECURITY.md says how to report a security problem privately, and
+          which versions get security fixes.
+        (The pipeline in ci/ with the GitHub, GitLab and Make set-up that
+        runs it, the new tests and test runs described above, ci/README.md,
+        RELEASE.md, docs/testing.md and the README's "Tests and releases"
+        section were developed with support from the NLnet NGI0 Commons Fund.
+        Everything else in this release, including the two fixes, the logger
+        fix's test, the correction in the 1.6.0 entry and SECURITY.md, was
+        not funded by it.)
+        If FiberQ helps your work, you can sponsor its development:
+        https://github.com/sponsors/vukovicvl
+
     1.6.0 - Fast on large projects, and failures you can see
         * Faster on large projects: the Optical Schematic View, the list of
           latent elements, the route correction check, Generate terminal
@@ -38,8 +81,9 @@ changelog=
           route, Merge routes, Change route type, Change element type, Delete
           selected, Undo and Redo, Lay cable, and reading the project's
           relations, latent elements and colour catalogues - an unreadable
-          entry is no longer read as empty and then saved over. One message
-          per operation; the details are in Log Messages > FiberQ.
+          entry is reported, and its text is kept in the project under a
+          separate key before anything can be saved over it. One message per
+          operation; the details are in Log Messages > FiberQ.
         * Unhandled Python errors fixed: route correction (a pole without a
           geometry, a multipart route, a raster layer in the project), the
           Optical Schematic View's Center button, Import route on point or

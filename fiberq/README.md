@@ -1,6 +1,28 @@
-# FiberQ v1.6
+# FiberQ v1.7
 
 A QGIS plugin for fiber optic network design and documentation.
+
+## What's New in v1.7.0 — Automated Tests & CI
+
+- **Tested on five QGIS versions** — before each release, the whole test suite
+  runs on QGIS 3.22, 3.40, 3.44, 4.0 and 4.2, in the official Linux images, and
+  the plugin is installed from a zip and used in the real QGIS desktop on 3.40
+  and 4.2. The pipeline is plain scripts that anyone with git and docker or
+  podman can run, with or without a forge (tested on Linux x86-64 with Docker);
+  see [ci/README.md](https://github.com/vukovicvl/fiberq/blob/main/ci/README.md).
+- **New tests** of the core logic, of what FiberQ builds at start-up and leaves
+  behind when it unloads, and of one project taken from before 1.0 to a
+  re-imported interchange bundle. What each tier covers:
+  [docs/testing.md](https://github.com/vukovicvl/fiberq/blob/main/docs/testing.md).
+- **Fixed** — between two elements nearest the same route vertex, Lay cable
+  wrote a cable of one point, 0 m long, and FiberQ Undo could then delete the
+  newest saved cable instead of it. Lay cable now searches the joined routes
+  there, and warns when they give no path.
+- **Security** —
+  [SECURITY.md](https://github.com/vukovicvl/fiberq/blob/main/SECURITY.md) says
+  how to report a security problem.
+
+The full list is in the changelog (Plugin Manager > FiberQ).
 
 ## What's New in v1.6.0 — Performance & Reliability
 
@@ -239,7 +261,7 @@ Only these two ask for a licence key. Everything else in FiberQ is free.
 
 ## Backward Compatibility
 
-v1.6 opens projects made with any earlier version, from v1.0 on.
+v1.7 opens projects made with any earlier version, from v1.0 on.
 Older projects are migrated automatically on load (see *What's New in v1.3.0*):
 
 - All layer names work in both Serbian and English
